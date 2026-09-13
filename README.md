@@ -90,4 +90,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Participation is covered by the
 
 ## Privacy
 
-See the [privacy policy](PRIVACY.md).
+The canonical privacy policy is published at
+<https://blog.xdsa.net/posts/ftp-music-privacy-policy/>.
+See also [PRIVACY.md](PRIVACY.md).

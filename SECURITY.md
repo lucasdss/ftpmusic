@@ -6,7 +6,7 @@ Please report security issues privately, not in public issues.
 
 - Preferred: GitHub Security Advisories ("Report a vulnerability" on the
   repository Security tab).
-- Email: lucas.dss.santos@outlook.com
+- Email: lucasdss@gmail.com
 
 Include reproduction steps, affected version/commit, and impact. You should
 receive a response within a few days.
