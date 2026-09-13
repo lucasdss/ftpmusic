@@ -1,0 +1,6 @@
+{
+  "server_url": "http://localhost:4533",
+  "username": "your_username",
+  "password": "your_password",
+  "legacy_auth": false
+}

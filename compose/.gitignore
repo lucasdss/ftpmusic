@@ -1,0 +1,10 @@
+# ⚠️ CRITICAL: NEVER commit these files — they contain signing keys and passwords.
+# If these are committed, rotate all keys immediately in Google Play Console.
+*.jks
+*.keystore
+keystore.properties
+output.zip
+*.pem
+
+# Generated Kotlin caches
+.kotlin/

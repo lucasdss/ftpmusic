@@ -1,0 +1,31 @@
+#!/bin/bash
+# Pre-commit hook: Block accidental commits of signing keys, certs, and passwords.
+# Install: cp scripts/pre-commit ../../.git/hooks/pre-commit && chmod +x ../../.git/hooks/pre-commit
+# ⚠️ If any forbidden file was committed, rotate all keys in Google Play Console immediately.
+
+FORBIDDEN_PATTERNS=(
+  "*.jks"
+  "*.keystore"
+  "keystore.properties"
+  "*.pem"
+  "output.zip"
+)
+
+STAGED=$(git diff --cached --name-only)
+
+for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+    if echo "$STAGED" | grep -qF "$pattern" 2>/dev/null; then
+        echo "❌ BLOCKED: Staged file matches forbidden pattern: $pattern"
+        echo ""
+        echo "These files contain signing keys or passwords."
+        echo "They must NEVER be committed to git."
+        echo ""
+        echo "Unstage with: git reset HEAD $pattern"
+        echo ""
+        echo "⚠️  If already pushed, rotate keys in Google Play Console:"
+        echo "  Play Console → App signing → Request key upgrade"
+        exit 1
+    fi
+done
+
+exit 0

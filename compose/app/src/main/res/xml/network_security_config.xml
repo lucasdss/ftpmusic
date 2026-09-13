@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Android Network Security Config cannot express RFC 1918 ranges.
+         ServerConnectionInput enforces that HTTP URLs target only private,
+         loopback, link-local, or .local hosts before credentials are stored.
+         User certificates support explicitly installed self-hosted CAs. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

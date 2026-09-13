@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+partially_staged=$(
+    comm -12 \
+        <(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.kts?$' | sort) \
+        <(git diff --name-only --diff-filter=ACMR | grep -E '\.kts?$' | sort)
+)
+
+if [ -n "$partially_staged" ]; then
+    echo "Commit stopped: partially staged Kotlin files cannot be auto-formatted safely:"
+    echo "$partially_staged"
+    echo "Stage each complete file or commit its hunks separately."
+    exit 1
+fi
+
+before_format=$(
+    git diff --binary -- '*.kt' '*.kts' '.editorconfig' |
+        git hash-object --stdin
+)
+
+./compose/gradlew -p compose ktlintFormat
+
+after_format=$(
+    git diff --binary -- '*.kt' '*.kts' '.editorconfig' |
+        git hash-object --stdin
+)
+
+if [ "$before_format" != "$after_format" ]; then
+    echo "Commit stopped: ktlintFormat changed files."
+    echo "Review and stage formatting changes, then commit again."
+    exit 1
+fi
+
+./compose/gradlew -p compose ktlintCheck detekt

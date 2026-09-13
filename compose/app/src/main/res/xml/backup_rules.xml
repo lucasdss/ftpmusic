@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Preferences, settings, and the local library/play-history database -->
+    <include domain="sharedpref" path="." />
+    <include domain="database" path="ftpmusic.db" />
+    <include domain="file" path="." />
+    <!-- Never back up the encrypted credentials prefs (the Keystore master
+         key is not restored, so the blob would be undecryptable) -->
+    <exclude domain="sharedpref" path="ftpmusic_secure.xml" />
+    <!-- Cached/downloaded music files are re-fetchable — excluded -->
+    <exclude domain="file" path="music_cache" />
+    <exclude domain="file" path="cache" />
+</full-backup-content>

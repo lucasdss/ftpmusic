@@ -1,0 +1,24 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+indent_size = 4
+indent_style = space
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ktlint_code_style = android_studio
+# Detekt + Compose rules enforce context-aware function naming. ktlint's
+# context-free rule rejects required PascalCase @Composable functions.
+ktlint_standard_function-naming = disabled
+# Compose, MockK, JUnit, and design-token DSLs intentionally use star imports.
+ktlint_standard_no-wildcard-imports = disabled
+ktlint_standard_max-line-length = enabled
+max_line_length = 120
+
+[*.md]
+trim_trailing_whitespace = false

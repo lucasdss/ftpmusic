@@ -1,0 +1,64 @@
+config:
+  validation: true
+  warningsAsErrors: true
+
+# Existing large playback/UI coordinators need dedicated decomposition work.
+# Global thresholds high enough to admit them would provide fake enforcement,
+# so complexity rules stay off instead of encoding meaningless limits.
+complexity:
+  ComplexCondition:
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+  LargeClass:
+    active: false
+  LongMethod:
+    active: false
+  LongParameterList:
+    active: false
+  NestedBlockDepth:
+    active: false
+  TooManyFunctions:
+    active: false
+
+# Android/network boundaries intentionally catch broad library exceptions.
+# These rules cannot distinguish boundary handling from swallowed failures.
+exceptions:
+  InstanceOfCheckForException:
+    active: false
+  SwallowedException:
+    active: false
+  TooGenericExceptionCaught:
+    active: false
+  TooGenericExceptionThrown:
+    active: false
+
+empty-blocks:
+  EmptyFunctionBlock:
+    active: false
+
+naming:
+  MatchingDeclarationName:
+    active: false
+  FunctionNaming:
+    active: false
+
+# ktlint is the only formatting authority. Compose rules own context-aware
+# naming; wildcard imports remain explicit project style for DSL-heavy code.
+style:
+  LoopWithTooManyJumpStatements:
+    active: false
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    active: false
+  ReturnCount:
+    active: false
+  UnusedParameter:
+    active: false
+  UnusedPrivateMember:
+    active: false
+  UnusedPrivateProperty:
+    active: false
+  WildcardImport:
+    active: false

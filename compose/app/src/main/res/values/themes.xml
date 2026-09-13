@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Ftpmusic" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorBackground">#FFFFFFFF</item>
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:colorPrimary">#FF6200EE</item>
+        <item name="android:colorPrimaryDark">#FF3700B3</item>
+        <item name="android:colorAccent">#FF03DAC5</item>
+    </style>
+
+    <!-- Fix MediaRouteButton crash: Theme.MediaRouter needs non-transparent colorBackground -->
+    <style name="Theme.MediaRouter" parent="Theme.Ftpmusic">
+        <item name="android:colorBackground">#FFFFFFFF</item>
+    </style>
+</resources>

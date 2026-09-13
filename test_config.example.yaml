@@ -1,0 +1,8 @@
+# Local Navidrome server configuration for testing.
+# Copy this file to test_config.yaml and fill in your server details.
+# test_config.yaml is git-ignored and MUST NOT be committed.
+
+server_url: "http://localhost:4533"
+username: "your_username"
+password: "your_password"
+# Optional: legacy_auth: true   # only for Ampache/Nextcloud Music servers

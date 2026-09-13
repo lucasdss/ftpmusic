@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ backup policy. The encrypted credentials prefs are excluded —
+     their Keystore master key is never restored, so backing them up would only
+     produce undecryptable blobs (users re-login after a device restore). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="." />
+        <include domain="database" path="ftpmusic.db" />
+        <exclude domain="sharedpref" path="ftpmusic_secure.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="." />
+        <include domain="database" path="ftpmusic.db" />
+        <exclude domain="sharedpref" path="ftpmusic_secure.xml" />
+    </device-transfer>
+</data-extraction-rules>
