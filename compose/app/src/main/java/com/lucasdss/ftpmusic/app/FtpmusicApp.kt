@@ -39,6 +39,8 @@ class FtpmusicApp : Application() {
 
     @Inject lateinit var serverConfigStore: com.lucasdss.ftpmusic.app.di.ServerConfigStore
 
+    @Inject lateinit var serverReachabilityMonitor: com.lucasdss.ftpmusic.app.data.repository.ServerReachabilityMonitor
+
     override fun onCreate() {
         super.onCreate()
         // Single authoritative server-config restore — runs before any worker,
@@ -57,6 +59,14 @@ class FtpmusicApp : Application() {
             offlineModeManager.initialize()
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-offline", "Offline restore failed: ${e.message}")
+        }
+        // Keepalive + NetworkCallback so ReachabilityStateHolder recovers when
+        // the server/network come back even if the UI is idle (no opportunistic
+        // API traffic). Must start AFTER config + offline restore.
+        try {
+            serverReachabilityMonitor.start()
+        } catch (e: Exception) {
+            Log.w("ftpmusic-reachability", "Reachability monitor start failed: ${e.message}")
         }
         // v47: restore "Download on Wi-Fi only" so auto-cache and downloads
         // keep the user's data preference after process death.

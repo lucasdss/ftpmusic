@@ -9,7 +9,7 @@
 
 | # | Endpoint | Used For | Callers |
 |---|----------|----------|---------|
-| 1 | `ping` | Server connection test | ServerConnectViewModel, ServerReconnectionService |
+| 1 | `ping` | Server connection test | ServerConnectViewModel, ServerReachabilityMonitor |
 | 2 | `search3` | Search screen | SearchRepository → SearchViewModel |
 | 3 | `getAlbum` | Album detail | AlbumRepository → AlbumDetailViewModel |
 | 4 | `getArtist` | Artist detail | ArtistDetailViewModel |
