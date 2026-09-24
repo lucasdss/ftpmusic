@@ -878,6 +878,195 @@ class PlaybackManagerTest {
         )
     }
 
+    // ── Gapless local queue edits (ADR 0042) ─────────────────────────────
+
+    private fun managerWithDual(): Pair<PlaybackManager, DualQueueManager> {
+        val dual = DualQueueManager()
+        val mgr = PlaybackManager(
+            queueManager,
+            mockPersistenceManager,
+            mockOfflineModeManager,
+            mockDownloadManager,
+            castPreferences,
+            mockAppContext,
+            mockQueueJournalDao,
+            dual,
+            OptimisticQueueDelegate(dual),
+        )
+        return mgr to dual
+    }
+
+    @Test
+    fun `removeFromQueue uses removeMediaItem without replacing timeline`() {
+        PlayerHolder.player = mockPlayer
+        val (manager, _) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100), Track("c", "C", duration = 100)),
+            listOf("http://s/a", "http://s/b", "http://s/c"),
+        )
+
+        manager.removeFromQueue(1)
+
+        verify { mockPlayer.removeMediaItem(1) }
+        // playAlbum is the only setMediaItems call
+        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+    }
+
+    @Test
+    fun `moveQueueItem uses moveMediaItem without replacing timeline`() {
+        PlayerHolder.player = mockPlayer
+        val (manager, _) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100), Track("c", "C", duration = 100)),
+            listOf("http://s/a", "http://s/b", "http://s/c"),
+        )
+
+        manager.moveQueueItem(0, 2)
+
+        verify { mockPlayer.moveMediaItem(0, 2) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+    }
+
+    @Test
+    fun `playNext inserts via addMediaItem without replacing timeline`() {
+        PlayerHolder.player = mockPlayer
+        every { mockPlayer.currentMediaItemIndex } returns 0
+        every { mockPlayer.currentMediaItem } returns null
+        val (manager, _) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100)),
+            listOf("http://s/a", "http://s/b"),
+        )
+
+        manager.playNext(Track("n", "Next", duration = 100), "http://s/n")
+
+        verify { mockPlayer.addMediaItem(any(), match { it.mediaId == "n" }) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+    }
+
+    @Test
+    fun `clearPriorityQueue removes priority items without setMediaItems`() {
+        PlayerHolder.player = mockPlayer
+        val (manager, _) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100)),
+            listOf("http://s/a", "http://s/b"),
+        )
+        manager.addToQueue(Track("c", "C", duration = 100), "http://s/c")
+        // Merged industry: [a, c, b] — priority index 1
+        every { mockPlayer.mediaItemCount } returns 3
+
+        manager.clearPriorityQueue()
+
+        verify { mockPlayer.removeMediaItem(1) }
+        // playAlbum only (addToQueue uses addMediaItems)
+        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+        assertEquals(0, manager.priorityQueueSize)
+    }
+
+    @Test
+    fun `drag coalesce applies one moveMediaItem on commit`() {
+        PlayerHolder.player = mockPlayer
+        val (manager, dual) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100), Track("c", "C", duration = 100)),
+            listOf("http://s/a", "http://s/b", "http://s/c"),
+        )
+        val entryId = dual.getMerged()[0].queueEntryId()
+
+        manager.beginQueueReorder(entryId, 0)
+        manager.moveQueueItem(0, 1)
+        manager.moveQueueItem(1, 2)
+        verify(exactly = 0) { mockPlayer.moveMediaItem(any(), any()) }
+
+        manager.commitQueueReorder()
+        verify(exactly = 1) { mockPlayer.moveMediaItem(0, 2) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+    }
+
+    @Test
+    fun `drag coalesce with no move is a no-op on commit`() {
+        PlayerHolder.player = mockPlayer
+        val (manager, dual) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100)),
+            listOf("http://s/a", "http://s/b"),
+        )
+        val entryId = dual.getMerged()[0].queueEntryId()
+
+        manager.beginQueueReorder(entryId, 0)
+        manager.commitQueueReorder()
+
+        verify(exactly = 0) { mockPlayer.moveMediaItem(any(), any()) }
+    }
+
+    @Test
+    fun `clearQueue removes items after current via removeMediaItem`() {
+        PlayerHolder.player = mockPlayer
+        val itemA = androidx.media3.common.MediaItem.Builder().setMediaId("a").build()
+        every { mockPlayer.currentMediaItem } returns itemA
+        every { mockPlayer.currentMediaItemIndex } returns 0
+        every { mockPlayer.mediaItemCount } returns 3
+        val (manager, _) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100), Track("c", "C", duration = 100)),
+            listOf("http://s/a", "http://s/b", "http://s/c"),
+        )
+        every { mockPlayer.currentMediaItem } returns itemA
+        every { mockPlayer.currentMediaItemIndex } returns 0
+
+        manager.clearQueue()
+
+        verify { mockPlayer.removeMediaItem(2) }
+        verify { mockPlayer.removeMediaItem(1) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+    }
+
+    @Test
+    fun `removeFromQueue during Cast syncs exo mirror via setMediaItems`() {
+        PlayerHolder.player = mockPlayer
+        val exo = mockk<Player>(relaxed = true)
+        PlayerHolder.exoPlayer = exo
+        val (manager, _) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100)),
+            listOf("http://s/a", "http://s/b"),
+        )
+        PlayerHolder.isCasting = true
+        val actions = mutableListOf<CastQueueAction>()
+        manager.castQueueListener = { actions.add(it) }
+
+        manager.removeFromQueue(1)
+
+        verify { exo.setMediaItems(any(), any(), any()) }
+        verify(exactly = 0) { mockPlayer.removeMediaItem(any()) }
+        assertTrue(actions.single() is CastQueueAction.Remove)
+    }
+
+    @Test
+    fun `commitQueueReorder during Cast syncs exo mirror once`() {
+        PlayerHolder.player = mockPlayer
+        val exo = mockk<Player>(relaxed = true)
+        PlayerHolder.exoPlayer = exo
+        val (manager, dual) = managerWithDual()
+        manager.playAlbum(
+            listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100), Track("c", "C", duration = 100)),
+            listOf("http://s/a", "http://s/b", "http://s/c"),
+        )
+        val entryId = dual.getMerged()[0].queueEntryId()
+        PlayerHolder.isCasting = true
+        val actions = mutableListOf<CastQueueAction>()
+        manager.castQueueListener = { actions.add(it) }
+
+        manager.beginQueueReorder(entryId, 0)
+        manager.moveQueueItem(0, 2)
+        manager.commitQueueReorder()
+
+        verify(exactly = 0) { mockPlayer.moveMediaItem(any(), any()) }
+        verify { exo.setMediaItems(any(), any(), any()) }
+        assertTrue(actions.single() is CastQueueAction.Move)
+    }
+
     // ── v46: cover art id extraction must not produce "getCoverArt" ─────
 
     @Test

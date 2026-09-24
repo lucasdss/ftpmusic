@@ -23,9 +23,10 @@
 | Skip Prev | UI → CastPlayer.seekToPreviousMediaItem() | Same → RemoteCastPlayer |
 | Seek | UI → CastPlayer.seekTo(ms) | Same → RemoteCastPlayer |
 | Volume | UI → CastPlayer.volume = x | Same → deviceVolume on Cast receiver |
-| Add Track | UI → PlaybackManager → QueueManager.addMediaItem | Same → RemoteCastPlayer.addMediaItems → Cast receiver |
-| Remove Track | UI → QueueManager.removeMediaItem | Same → RemoteCastPlayer.removeMediaItems → Cast receiver |
-| Play Album | UI → PlaybackManager.playAlbum → setMediaItems | Same → RemoteCastPlayer.setMediaItems → queueLoad |
+| Add Track | UI → PlaybackManager → DualQueue + `addMediaItems` (gapless) | DualQueue + CastQueueAction.Add; exo mirror may sync |
+| Remove Track | UI → PlaybackManager → DualQueue + `removeMediaItem` (gapless local) | DualQueue + CastQueueAction.Remove; exo mirror sync |
+| Move Track | UI → DualQueue + `moveMediaItem` (drag: commit on drag-end) | DualQueue + CastQueueAction.Move |
+| Play Album | UI → PlaybackManager.playAlbum → setMediaItems | Same → ClearAndPlay / receiver queueLoad |
 
 ## Events (Player → UI)
 

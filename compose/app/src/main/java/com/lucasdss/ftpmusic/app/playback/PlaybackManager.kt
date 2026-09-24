@@ -538,11 +538,23 @@ class PlaybackManager @Inject constructor(
         // trim played items, so derive the anchor from mediaId before mutation.
         val currentIndex = currentCanonicalIndex()
         optimist.playNextOptimistic(item, currentIndex)
-        syncDualQueueToPlayer()
+        val inserted = dualQueue.getMerged().firstOrNull { it.queueEntryId() == item.queueEntryId() } ?: item
+        val insertIndex = dualQueue.getMerged().indexOfFirst { it.queueEntryId() == item.queueEntryId() }
+            .coerceAtLeast(0)
+        // Local: insert without replacing timeline (same idea as addToQueue).
+        if (!PlayerHolder.isCasting) {
+            PlayerHolder.player?.addMediaItem(insertIndex, inserted)
+        } else {
+            syncDualQueueToPlayer()
+        }
         // Persist after modifying queue
         val player = PlayerHolder.player
         if (player != null) {
-            val (tracks, urls) = buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
+            val (tracks, urls) = if (PlayerHolder.isCasting) {
+                buildQueueStateFromDual()
+            } else {
+                buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
+            }
             val persistedIndex = if (PlayerHolder.isCasting) currentIndex else player.currentMediaItemIndex
             persistenceSave(tracks, urls, persistedIndex)
             updateNextTrackPreview(player)
@@ -551,7 +563,7 @@ class PlaybackManager @Inject constructor(
         emitCastOrCommit {
             val beforeEntryId = dualQueue.getMerged().getOrNull(currentIndex + 2)?.queueEntryId()
                 ?.takeIf { it > 0 }
-            CastQueueAction.Add(item, beforeEntryId)
+            CastQueueAction.Add(inserted, beforeEntryId)
         }
     }
 
@@ -655,10 +667,18 @@ class PlaybackManager @Inject constructor(
     fun removeFromQueue(index: Int) {
         val (removed, _) = optimist.removeOptimistic(index)
         if (removed == null) return
-        syncDualQueueToPlayer()
+        if (!PlayerHolder.isCasting) {
+            PlayerHolder.player?.removeMediaItem(index)
+        } else {
+            syncDualQueueToPlayer()
+        }
         val player = PlayerHolder.player
         if (player != null) {
-            val (tracks, urls) = buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
+            val (tracks, urls) = if (PlayerHolder.isCasting) {
+                buildQueueStateFromDual()
+            } else {
+                buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
+            }
             persistenceSave(tracks, urls, currentCanonicalIndex())
         }
         emitCastOrCommit {
@@ -675,14 +695,25 @@ class PlaybackManager @Inject constructor(
         }
         val currentIdx = currentCanonicalIndex()
         if (currentIdx >= 0) {
-            val total = player.mediaItemCount
+            val total = dualQueue.size
             for (i in total - 1 downTo currentIdx + 1) {
                 dualQueue.remove(i)
+                if (!PlayerHolder.isCasting) {
+                    player.removeMediaItem(i)
+                }
+            }
+            if (PlayerHolder.isCasting) {
+                syncDualQueueToPlayer()
             }
         } else {
             dualQueue.clear()
+            if (!PlayerHolder.isCasting) {
+                player.stop()
+                player.clearMediaItems()
+            } else {
+                syncDualQueueToPlayer()
+            }
         }
-        syncDualQueueToPlayer()
         scope.launch { persistenceManager.clear() }
     }
 
@@ -717,15 +748,98 @@ class PlaybackManager @Inject constructor(
         persistenceSave(tracks, urls, player.currentMediaItemIndex)
     }
 
-    /** Reorder item in queue + sync to Cast receiver during active session. */
+    // ── Drag-reorder coalesce (Dual/UI during drag; one Exo move on release) ─
+    @Volatile private var reorderDragActive = false
+    private var reorderOriginIndex = -1
+    private var reorderEntryId = 0
+    private var reorderStartMediaId: String? = null
+    private var reorderMoved = false
+
+    /**
+     * Start of a QueueScreen drag. Captures the Exo/Dual index of the row
+     * before mid-drag Dual moves. Call from `draggableHandle(onDragStarted)`.
+     */
+    fun beginQueueReorder(entryId: Int, fromIndex: Int) {
+        reorderDragActive = true
+        reorderEntryId = entryId
+        reorderOriginIndex = if (entryId > 0) {
+            dualQueue.getMerged().indexOfFirst { it.queueEntryId() == entryId }
+                .takeIf { it >= 0 } ?: fromIndex
+        } else {
+            fromIndex
+        }
+        reorderStartMediaId = dualQueue.getMerged().getOrNull(reorderOriginIndex)?.mediaId
+        reorderMoved = false
+    }
+
+    /**
+     * End of a QueueScreen drag. One `moveMediaItem` (local) or exo-mirror
+     * sync (Cast), one persist, one Cast Move. Call from `onDragStopped`.
+     */
+    fun commitQueueReorder() {
+        if (!reorderDragActive) return
+        reorderDragActive = false
+        if (!reorderMoved || reorderOriginIndex < 0) return
+        val finalIndex = when {
+            reorderEntryId > 0 ->
+                dualQueue.getMerged().indexOfFirst { it.queueEntryId() == reorderEntryId }
+
+            reorderStartMediaId != null ->
+                dualQueue.getMerged().indexOfFirst { it.mediaId == reorderStartMediaId }
+
+            else -> -1
+        }
+        if (finalIndex < 0) return
+        val moved = dualQueue.getMerged()[finalIndex]
+        if (!PlayerHolder.isCasting) {
+            if (finalIndex != reorderOriginIndex) {
+                PlayerHolder.player?.moveMediaItem(reorderOriginIndex, finalIndex)
+            }
+        } else {
+            syncDualQueueToPlayer()
+        }
+        val player = PlayerHolder.player
+        if (player != null) {
+            val (tracks, urls) = if (PlayerHolder.isCasting) {
+                buildQueueStateFromDual()
+            } else {
+                buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
+            }
+            persistenceSave(tracks, urls, currentCanonicalIndex())
+        }
+        emitCastOrCommit {
+            val beforeEntryId = dualQueue.getMerged().getOrNull(finalIndex + 1)?.queueEntryId()?.takeIf { it > 0 }
+            CastQueueAction.Move(moved.queueEntryId(), beforeEntryId)
+        }
+    }
+
+    /**
+     * Reorder item in Dual queue. During an active drag ([beginQueueReorder]),
+     * only Dual/UI update — Exo/persist/Cast wait for [commitQueueReorder].
+     * Immediate (non-drag) callers still apply a gapless local `moveMediaItem`.
+     */
     fun moveQueueItem(from: Int, to: Int) {
         if (from == to) return
+        if (reorderDragActive) {
+            if (!reorderMoved) optimist.snapshot()
+            if (!dualQueue.move(from, to)) return
+            reorderMoved = true
+            return
+        }
         val moved = dualQueue.getMerged().getOrNull(from) ?: return
         val (ok, _) = optimist.moveOptimistic(from, to)
         if (!ok) return
-        syncDualQueueToPlayer()
+        if (!PlayerHolder.isCasting) {
+            PlayerHolder.player?.moveMediaItem(from, to)
+        } else {
+            syncDualQueueToPlayer()
+        }
         val player = PlayerHolder.player ?: return
-        val (tracks, urls) = buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
+        val (tracks, urls) = if (PlayerHolder.isCasting) {
+            buildQueueStateFromDual()
+        } else {
+            buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
+        }
         persistenceSave(tracks, urls, currentCanonicalIndex())
         emitCastOrCommit {
             val beforeEntryId = dualQueue.getMerged().getOrNull(to + 1)?.queueEntryId()?.takeIf { it > 0 }
@@ -928,9 +1042,23 @@ class PlaybackManager @Inject constructor(
 
     /** Clear manual Queue only (Spotify/Apple Clear) — keep Continue Playing. */
     fun clearPriorityQueue() {
+        // Capture PRIORITY indices before Dual clear so local Exo can remove
+        // high→low without setMediaItems (preserves currently playing CONTEXT).
+        val priorityIndices = dualQueue.originIsContextFlags()
+            .mapIndexedNotNull { i, isContext -> if (!isContext) i else null }
+            .asReversed()
         optimist.snapshot()
         dualQueue.clearPriority()
-        syncDualQueueToPlayer()
+        if (!PlayerHolder.isCasting) {
+            val player = PlayerHolder.player
+            if (player != null) {
+                for (i in priorityIndices) {
+                    if (i in 0 until player.mediaItemCount) player.removeMediaItem(i)
+                }
+            }
+        } else {
+            syncDualQueueToPlayer()
+        }
         val (tracks, urls) = buildQueueStateFromDual()
         if (tracks.isEmpty()) {
             scope.launch { persistenceManager.clear() }

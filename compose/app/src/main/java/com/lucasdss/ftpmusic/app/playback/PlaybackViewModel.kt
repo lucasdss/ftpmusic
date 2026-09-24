@@ -173,6 +173,8 @@ class PlaybackViewModel @Inject constructor(
     fun persistQueue() {
         playbackManager.persistCurrentQueue()
     }
+    fun beginQueueReorder(entryId: Int, fromIndex: Int) = playbackManager.beginQueueReorder(entryId, fromIndex)
+    fun commitQueueReorder() = playbackManager.commitQueueReorder()
     fun moveQueueItem(from: Int, to: Int) {
         playbackManager.moveQueueItem(from, to)
     }

@@ -161,7 +161,16 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                     items(queueRows, key = { if (it.entryId > 0) it.entryId else it.index }) { item ->
                         val rowKey = if (item.entryId > 0) item.entryId else item.index
                         ReorderableItem(state = reorderableState, key = rowKey) { isDragging ->
-                            QueueDismissRow(item, isDragging, playbackState.isPlaying, viewModel)
+                            QueueDismissRow(
+                                item = item,
+                                isDragging = isDragging,
+                                isPlaying = playbackState.isPlaying,
+                                viewModel = viewModel,
+                                dragHandleModifier = Modifier.draggableHandle(
+                                    onDragStarted = { viewModel.beginQueueReorder(item.entryId, item.index) },
+                                    onDragStopped = { viewModel.commitQueueReorder() },
+                                ),
+                            )
                         }
                     }
                 }
@@ -181,7 +190,16 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                     items(continueRows, key = { if (it.entryId > 0) it.entryId else it.index }) { item ->
                         val rowKey = if (item.entryId > 0) item.entryId else item.index
                         ReorderableItem(state = reorderableState, key = rowKey) { isDragging ->
-                            QueueDismissRow(item, isDragging, playbackState.isPlaying, viewModel)
+                            QueueDismissRow(
+                                item = item,
+                                isDragging = isDragging,
+                                isPlaying = playbackState.isPlaying,
+                                viewModel = viewModel,
+                                dragHandleModifier = Modifier.draggableHandle(
+                                    onDragStarted = { viewModel.beginQueueReorder(item.entryId, item.index) },
+                                    onDragStopped = { viewModel.commitQueueReorder() },
+                                ),
+                            )
                         }
                     }
                 }
@@ -196,6 +214,7 @@ private fun QueueDismissRow(
     isDragging: Boolean,
     isPlaying: Boolean,
     viewModel: PlaybackViewModel,
+    dragHandleModifier: Modifier = Modifier,
 ) {
     SwipeToDismissBox(
         state = rememberSwipeToDismissBoxState(
@@ -230,6 +249,7 @@ private fun QueueDismissRow(
             isPlaying = isPlaying,
             isDragging = isDragging,
             onClick = { viewModel.playQueueItem(item.index) },
+            dragHandleModifier = dragHandleModifier,
         )
     }
 }
@@ -240,6 +260,7 @@ private fun QueueItemRow(
     isPlaying: Boolean = false,
     isDragging: Boolean = false,
     onClick: () -> Unit = {},
+    dragHandleModifier: Modifier = Modifier,
 ) {
     val bgColor = when {
         isDragging -> MaterialTheme.colorScheme.surfaceVariant
@@ -255,8 +276,15 @@ private fun QueueItemRow(
             .padding(vertical = adp(10f), horizontal = spacingL()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Drag handle
-        Icon(Icons.Default.DragHandle, null, tint = Color(0xFF333333), modifier = Modifier.size(adp(14f)))
+        // Drag handle — calvin onDragStopped commits one Exo moveMediaItem
+        Icon(
+            Icons.Default.DragHandle,
+            null,
+            tint = Color(0xFF333333),
+            modifier = Modifier
+                .size(adp(14f))
+                .then(dragHandleModifier),
+        )
         Spacer(Modifier.width(adp(10f)))
 
         // Cover art with EQ overlay
