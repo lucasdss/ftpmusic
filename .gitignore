@@ -47,6 +47,9 @@ compose/app/build/
 # Local SDK path — machine-specific
 local.properties
 
+# Phone log dumps (large / PII-adjacent) — summarize in docs/*_BEHAVIOR_REPORT.md
+docs/logs/*.txt
+
 # Agent/tooling state
 .agents/
 .sisyphus/

@@ -58,7 +58,7 @@ fun ServerErrorBanner(
         val shown = DynamicBaseUrl.url.trimEnd('/').ifBlank { "device-local address" }
         "Your server setting points to \"$shown\" — a device-local address from an old proxy setup. Enter your real server URL."
     } else {
-        "Can't reach your server — check Server settings."
+        "Server unreachable — phone may have data, but can't reach your music server. Cached tracks still play."
     }
 
     Row(

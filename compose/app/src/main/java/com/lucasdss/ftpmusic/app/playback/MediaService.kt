@@ -92,6 +92,24 @@ internal fun decideErrorSkipAction(
 }
 
 /**
+ * When the Subsonic server is unreachable, skip past uncached queue items to
+ * the next fully-cached track (cache-only playback). Returns null if none.
+ */
+internal fun findNextCachedIndex(
+    fromIndex: Int,
+    mediaItemCount: Int,
+    mediaIdAt: (Int) -> String?,
+    isCached: (String) -> Boolean,
+): Int? {
+    for (i in (fromIndex + 1) until mediaItemCount) {
+        val id = mediaIdAt(i) ?: continue
+        if (id.startsWith("radio:")) continue
+        if (isCached(id)) return i
+    }
+    return null
+}
+
+/**
  * User-facing message when a manual Cast connect times out (no session events
  * within the timeout window). First sentence keeps the historical text; the
  * second gives actionable recovery. A connect that produces NO
@@ -1024,19 +1042,45 @@ class MediaService : MediaLibraryService() {
             val currentId = ep.currentMediaItem?.mediaId
             when (decideErrorSkipAction(playerErrorCount, currentId, ep.currentMediaItemIndex, ep.mediaItemCount)) {
                 ErrorSkipAction.SKIP_NEXT -> {
-                    // Remove possibly corrupt cached content so the next play of
-                    // this track re-fetches (span index stays consistent via SimpleCache).
-                    if (!currentId.isNullOrEmpty()) {
+                    val serverUnreachable = !com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
+                    // Outside-LAN fail-fast is not corrupt cache — don't wipe spans.
+                    // When reachable, remove possibly corrupt cached content so the
+                    // next play of this track re-fetches.
+                    if (!serverUnreachable && !currentId.isNullOrEmpty()) {
                         scope.launch(Dispatchers.IO) {
                             try {
                                 cacheService.removeCached(currentId)
                             } catch (_: Exception) {}
                         }
                     }
-                    android.util.Log.w("ftpmusic", "[MediaService] Auto-advancing past failed track: $currentId")
-                    ep.seekToNextMediaItem()
-                    // seekToNextMediaItem() positions the next source but does NOT
-                    // resume playback: with playWhenReady=false (audio-focus loss,
+                    if (serverUnreachable) {
+                        val cachedIdx = findNextCachedIndex(
+                            fromIndex = ep.currentMediaItemIndex,
+                            mediaItemCount = ep.mediaItemCount,
+                            mediaIdAt = { i -> ep.getMediaItemAt(i).mediaId },
+                            isCached = { id -> cacheService.isStoredInCache(id) },
+                        )
+                        if (cachedIdx != null) {
+                            android.util.Log.w(
+                                "ftpmusic",
+                                "[MediaService] Server unreachable — skip to cached idx=$cachedIdx past $currentId",
+                            )
+                            ep.seekTo(cachedIdx, 0L)
+                        } else {
+                            android.util.Log.w(
+                                "ftpmusic",
+                                "[MediaService] Server unreachable — no cached track ahead; stopping after $currentId",
+                            )
+                            playerErrorCount = 0
+                            ep.stop()
+                            return
+                        }
+                    } else {
+                        android.util.Log.w("ftpmusic", "[MediaService] Auto-advancing past failed track: $currentId")
+                        ep.seekToNextMediaItem()
+                    }
+                    // seekToNextMediaItem()/seekTo() position the next source but do
+                    // NOT resume playback: with playWhenReady=false (audio-focus loss,
                     // pause-before-error) the player would sit in STATE_IDLE forever
                     // — Now Playing / QuickSettings show "stopped". media3's internal
                     // error-advance policy would have prepared + played, which the

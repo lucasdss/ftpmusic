@@ -39,7 +39,9 @@ class ServerErrorBannerComposeTest {
         composeRule.setContent {
             ServerErrorBanner(configWarning = false, isOffline = false, onOpenServerSettings = {})
         }
-        composeRule.onNodeWithText("Can't reach your server — check Server settings.").assertExists()
+        composeRule.onNodeWithText(
+            "Server unreachable — phone may have data, but can't reach your music server. Cached tracks still play.",
+        ).assertExists()
     }
 
     @Test
@@ -47,7 +49,9 @@ class ServerErrorBannerComposeTest {
         composeRule.setContent {
             ServerErrorBanner(configWarning = false, isOffline = false, onOpenServerSettings = {})
         }
-        composeRule.onNodeWithText("Can't reach your server — check Server settings.").assertDoesNotExist()
+        composeRule.onNodeWithText(
+            "Server unreachable — phone may have data, but can't reach your music server. Cached tracks still play.",
+        ).assertDoesNotExist()
     }
 
     @Test
@@ -68,7 +72,9 @@ class ServerErrorBannerComposeTest {
         composeRule.setContent {
             ServerErrorBanner(configWarning = true, isOffline = true, onOpenServerSettings = {})
         }
-        composeRule.onNodeWithText("Can't reach your server — check Server settings.").assertDoesNotExist()
+        composeRule.onNodeWithText(
+            "Server unreachable — phone may have data, but can't reach your music server. Cached tracks still play.",
+        ).assertDoesNotExist()
     }
 
     @Test
@@ -91,6 +97,8 @@ class ServerErrorBannerComposeTest {
         }
         composeRule.onNodeWithContentDescription("Dismiss").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Can't reach your server — check Server settings.").assertDoesNotExist()
+        composeRule.onNodeWithText(
+            "Server unreachable — phone may have data, but can't reach your music server. Cached tracks still play.",
+        ).assertDoesNotExist()
     }
 }

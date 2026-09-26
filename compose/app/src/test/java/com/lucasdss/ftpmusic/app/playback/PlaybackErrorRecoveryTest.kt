@@ -207,6 +207,35 @@ class PlaybackErrorRecoveryTest {
     }
 
     @Test
+    fun `findNextCachedIndex skips uncached and radio to first cache hit`() {
+        val ids = listOf("a", "b", "radio:1", "c", "d")
+        val cached = setOf("c")
+        assertEquals(
+            3,
+            findNextCachedIndex(
+                fromIndex = 0,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { it in cached },
+            ),
+        )
+    }
+
+    @Test
+    fun `findNextCachedIndex returns null when nothing ahead is cached`() {
+        val ids = listOf("a", "b", "c")
+        assertEquals(
+            null,
+            findNextCachedIndex(
+                fromIndex = 0,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { false },
+            ),
+        )
+    }
+
+    @Test
     fun `error auto-skip resumes playback after seeking to next track`() {
         // SKIP_NEXT contract: seekToNextMediaItem() positions the next source but
         // does NOT resume — the handler must set playWhenReady=true and prepare(),

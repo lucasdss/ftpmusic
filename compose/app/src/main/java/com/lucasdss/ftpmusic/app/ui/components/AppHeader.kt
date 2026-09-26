@@ -30,7 +30,7 @@ import com.lucasdss.ftpmusic.app.ui.player.CastButton
  * Shared persistent app header — used across all 5 main tabs.
  *
  * Layout (left → right):
- * [ Logo 56×56 | "FTP Music" / "Flow Tempo Pulse" (2/3 width) ]  [ Offline badge? ]  [ Cast button ]
+ * [ Logo 56×56 | "FTP Music" / "Flow Tempo Pulse" (2/3 width) ]  [ Server unreachable? ]  [ Cast button ]
  */
 @Composable
 fun AppHeader(modifier: Modifier = Modifier) {
@@ -91,7 +91,7 @@ fun AppHeader(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.weight(1f))
 
-        // ── Offline badge (conditional) ──
+        // ── Server-unreachable badge (not Simulate Offline) ──
         if (!isReachable) {
             Row(
                 modifier = Modifier
@@ -109,7 +109,7 @@ fun AppHeader(modifier: Modifier = Modifier) {
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    "Offline",
+                    "Server unreachable",
                     color = Color(0xFFFFC800),
                     fontSize = textMicro(),
                     fontWeight = FontWeight.Medium,

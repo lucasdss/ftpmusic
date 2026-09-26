@@ -4,25 +4,32 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
+import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import java.io.IOException
 
 /**
- * Upstream data source that fails fast (IOException) while software offline
- * mode is enabled — BEFORE any socket is opened.
+ * Upstream data source that fails fast (IOException) before opening a socket when:
+ * - software offline mode is enabled ([OfflineModeManager]), OR
+ * - the Subsonic server is marked unreachable ([ReachabilityStateHolder]).
  *
- * Local-first contract: with offline mode on, a cache miss must surface as a
- * playback error in milliseconds (the auto-skip guard then advances the queue
- * to the next cached track) instead of burning the HTTP retry budget with
- * multi-second stalls per track. Cache hits never reach this source — the
- * CacheDataSource serves them from disk.
+ * Outside-LAN / 5G with a home Navidrome: phone has cellular but ping fails →
+ * reachability false. Without this gate, Exo opened HTTP and hung for seconds
+ * per uncached track (user: blank Now Playing, broken Next, force-close).
+ * Cache hits never reach this source — CacheDataSource serves them from disk.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class OfflineAwareHttpDataSource(private val offlineModeManager: OfflineModeManager, private val delegate: DataSource) :
-    DataSource by delegate {
+class OfflineAwareHttpDataSource(
+    private val offlineModeManager: OfflineModeManager,
+    private val delegate: DataSource,
+    private val isServerReachable: () -> Boolean = { ReachabilityStateHolder.isReachable.value },
+) : DataSource by delegate {
 
     override fun open(dataSpec: DataSpec): Long {
         if (offlineModeManager.isOfflineEnabled()) {
             throw IOException("Offline mode — network blocked")
+        }
+        if (!isServerReachable()) {
+            throw IOException("Server unreachable — network blocked")
         }
         return delegate.open(dataSpec)
     }
@@ -30,8 +37,8 @@ class OfflineAwareHttpDataSource(private val offlineModeManager: OfflineModeMana
 
 /**
  * [DataSource.Factory] for [OfflineAwareHttpDataSource]. Wraps the default
- * HTTP factory so ExoPlayer's upstream can never open a socket while the user
- * has offline mode toggled on.
+ * HTTP factory so ExoPlayer's upstream can never open a socket while offline
+ * mode is on or the server is known unreachable.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class OfflineAwareHttpDataSourceFactory(

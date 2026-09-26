@@ -2,7 +2,6 @@ package com.lucasdss.ftpmusic.app.playback
 
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.DefaultHttpDataSource
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import io.mockk.every
 import io.mockk.mockk
@@ -15,10 +14,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Offline enforcement at the playback network boundary (F13): while software
- * offline mode is on, the upstream data source must fail fast with IOException
- * BEFORE opening a socket, so an uncached track errors in milliseconds and the
- * auto-skip guard advances the queue instead of burning the HTTP retry budget.
+ * Offline / unreachable enforcement at the playback network boundary:
+ * software offline OR server unreachable must fail fast with IOException
+ * BEFORE opening a socket.
  */
 class OfflineAwareDataSourceTest {
 
@@ -28,25 +26,45 @@ class OfflineAwareDataSourceTest {
         return mgr
     }
 
-    // DataSpec is mocked — android.net.Uri.parse() returns null off-Android,
-    // and the source under test never reads the spec (it blocks first).
     private val spec: DataSpec = mockk(relaxed = true)
 
     @Test
     fun `offline mode blocks open with IOException`() {
         val delegate = mockk<DataSource>(relaxed = true)
-        val source = OfflineAwareHttpDataSource(offlineManager(offline = true), delegate)
+        val source = OfflineAwareHttpDataSource(
+            offlineManager(offline = true),
+            delegate,
+            isServerReachable = { true },
+        )
 
-        assertThrows(IOException::class.java) { source.open(spec) }
-        // The delegate must NEVER be reached — no socket, no network
+        val err = assertThrows(IOException::class.java) { source.open(spec) }
+        assertTrue(err.message!!.contains("Offline mode"))
         verify(exactly = 0) { delegate.open(any()) }
     }
 
     @Test
-    fun `online mode delegates open to the upstream source`() {
+    fun `server unreachable blocks open with IOException`() {
+        val delegate = mockk<DataSource>(relaxed = true)
+        val source = OfflineAwareHttpDataSource(
+            offlineManager(offline = false),
+            delegate,
+            isServerReachable = { false },
+        )
+
+        val err = assertThrows(IOException::class.java) { source.open(spec) }
+        assertTrue(err.message!!.contains("Server unreachable"))
+        verify(exactly = 0) { delegate.open(any()) }
+    }
+
+    @Test
+    fun `online and reachable delegates open to the upstream source`() {
         val delegate = mockk<DataSource>(relaxed = true)
         every { delegate.open(any()) } returns 1234L
-        val source = OfflineAwareHttpDataSource(offlineManager(offline = false), delegate)
+        val source = OfflineAwareHttpDataSource(
+            offlineManager(offline = false),
+            delegate,
+            isServerReachable = { true },
+        )
 
         assertEquals(1234L, source.open(spec))
         verify(exactly = 1) { delegate.open(spec) }
@@ -57,11 +75,28 @@ class OfflineAwareDataSourceTest {
         val delegate = mockk<DataSource>(relaxed = true)
         every { delegate.open(any()) } returns 1234L
         val mgr = offlineManager(offline = false)
-        val source = OfflineAwareHttpDataSource(mgr, delegate)
+        val source = OfflineAwareHttpDataSource(mgr, delegate, isServerReachable = { true })
 
-        source.open(spec) // online — passes through
+        source.open(spec)
         every { mgr.isOfflineEnabled() } returns true
         assertThrows(IOException::class.java) { source.open(spec) }
+    }
+
+    @Test
+    fun `reachability flipping to false blocks subsequent opens`() {
+        val delegate = mockk<DataSource>(relaxed = true)
+        every { delegate.open(any()) } returns 1234L
+        var reachable = true
+        val source = OfflineAwareHttpDataSource(
+            offlineManager(offline = false),
+            delegate,
+            isServerReachable = { reachable },
+        )
+
+        source.open(spec)
+        reachable = false
+        assertThrows(IOException::class.java) { source.open(spec) }
+        verify(exactly = 1) { delegate.open(any()) }
     }
 
     @Test
