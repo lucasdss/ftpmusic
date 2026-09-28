@@ -62,6 +62,8 @@ class SettingsViewModelTest {
         every { prefs.getLong("last_metadata_sync_ms", any()) } returns 0
         every { prefs.getLong("metadata_sync_duration_ms", any()) } returns 0
         every { prefs.getLong("last_lyrics_fetch_ms", any()) } returns 0
+        every { prefs.getLong("last_full_sync_ms", any()) } returns 0
+        every { prefs.getLong("last_delta_sync_ms", any()) } returns 0
         coEvery { metadataDao.albumCount() } returns 0
         every { metadataSyncWorker.status } returns
             kotlinx.coroutines.flow.MutableStateFlow(com.lucasdss.ftpmusic.app.data.db.SyncStatus())

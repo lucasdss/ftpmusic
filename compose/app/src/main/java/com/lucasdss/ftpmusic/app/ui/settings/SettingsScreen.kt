@@ -802,7 +802,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "Auto-sync every ${state.syncIntervalHours}h",
+                        "Auto-check for new music every ${state.syncIntervalHours}h",
                         color = Color(0xFF888888),
                         fontSize = textLabelM(),
                     )
@@ -848,6 +848,16 @@ fun SettingsScreen(
                     } else {
                         "Never synced"
                     },
+                )
+                SectionDivider()
+                MetricRow(
+                    "Last full sync",
+                    if (state.lastFullSyncMs > 0) timeAgo(state.lastFullSyncMs) else "Never",
+                )
+                SectionDivider()
+                MetricRow(
+                    "Last delta sync",
+                    if (state.lastDeltaSyncMs > 0) timeAgo(state.lastDeltaSyncMs) else "Never",
                 )
                 SectionDivider()
                 MetricRow(

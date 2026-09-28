@@ -12,7 +12,10 @@ The app currently has a hybrid architecture: the Library tab uses DB-first reads
 The Library tab already observes Room DB for albums, artists, playlists, genres, recently played, and stats. No change needed here. Search results should also be written to Room DB before displaying to the UI, enabling offline search.
 
 ### 2. WorkManager Sync Workers
-Replace `MetadataSyncWorker`'s custom coroutine loop with a `PeriodicWorkRequest` (30-minute interval, `NetworkType.CONNECTED` constraint). Replace `DownloadManager`'s custom constraint checks with `WorkManager.Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED)`.
+Replace `MetadataSyncWorker`'s custom coroutine loop with a `PeriodicWorkRequest`
+(Settings Sync Interval, default 12h, `NetworkType.CONNECTED`). See **ADR 0045**
+for delta vs full mode and adaptive track-fetch concurrency (supersedes the
+earlier “always full every 30 minutes” sketch).
 
 ### 3. Conflict Resolution — Last-Write-Wins (LWW)
 For `PendingPlaylistChangeEntity`, add a `server_updated_at` timestamp column. When syncing, compare local `updated_at` with server's `updated_at`. If the server timestamp is newer, set `isConflicted = true` and preserve the local change. If the local change is newer, push to server.

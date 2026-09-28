@@ -1,11 +1,12 @@
 package com.lucasdss.ftpmusic.app.data.db
 
 import androidx.work.ListenableWorker
-import io.mockk.coEvery
+import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -22,22 +23,31 @@ class SyncScheduleWorkerBranchTest {
 
     @Before
     fun setup() {
+        ReachabilityStateHolder.onApiSuccess()
         metadataSyncWorker = mockk(relaxed = true)
+        every { metadataSyncWorker.lastFullSyncMs() } returns System.currentTimeMillis()
+        every { metadataSyncWorker.syncNow(any(), any()) } returns true
         val context = mockk<android.content.Context>(relaxed = true)
         val workerParams = mockk<androidx.work.WorkerParameters>(relaxed = true)
         worker = spyk(SyncScheduleWorker(context, workerParams, metadataSyncWorker))
     }
 
+    @After
+    fun tearDown() {
+        ReachabilityStateHolder.onApiSuccess()
+    }
+
     @Test
     fun `doWork returns Success when sync started`() = runBlocking {
-        coEvery { metadataSyncWorker.syncNow() } returns true
+        every { metadataSyncWorker.lastFullSyncMs() } returns System.currentTimeMillis()
+        every { metadataSyncWorker.syncNow(any(), any()) } returns true
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Success)
     }
 
     @Test
     fun `doWork returns Failure when sync throws after max retries`() = runBlocking {
-        coEvery { metadataSyncWorker.syncNow() } throws RuntimeException("network error")
+        every { metadataSyncWorker.syncNow(any(), any()) } throws RuntimeException("network error")
         every { worker.runAttemptCount } returns 5
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Failure)
@@ -45,7 +55,7 @@ class SyncScheduleWorkerBranchTest {
 
     @Test
     fun `doWork returns Retry on early failure`() = runBlocking {
-        coEvery { metadataSyncWorker.syncNow() } throws RuntimeException("transient")
+        every { metadataSyncWorker.syncNow(any(), any()) } throws RuntimeException("transient")
         every { worker.runAttemptCount } returns 1
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Retry)

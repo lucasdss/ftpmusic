@@ -85,6 +85,31 @@ class MetadataSyncWorkerTest {
     }
 
     @Test
+    fun `syncAlbums DELTA uses newest and upserts without replace`() = runTest {
+        val albumListResponse = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to listOf(
+                        mapOf("id" to "al-new", "name" to "New Album", "artist" to "A", "songCount" to 5),
+                    ),
+                ),
+            ),
+        )
+        coEvery { api.getAlbumList2(type = "newest", size = 500, offset = 0, auth = any()) } returns
+            albumListResponse
+        coEvery { metadataDao.albumCount() } returns 10
+
+        worker.syncAlbums(LibrarySyncMode.DELTA)
+
+        coVerify { metadataDao.upsertAlbums(match { it.size == 1 && it[0].id == "al-new" }) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+        coVerify(exactly = 0) {
+            api.getAlbumList2(type = "alphabeticalByName", size = any(), offset = any(), auth = any())
+        }
+    }
+
+    @Test
     fun `syncAlbums handles multiple pages`() = runTest {
         // First page: 500 albums (full page)
         val page1 = mapOf(

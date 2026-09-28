@@ -31,8 +31,8 @@
 
 ## Metadata Sync
 
-- **Metadata Sync**: Background pipeline that fetches and caches library structure (albums, artists, genres, album tracks) from the Subsonic server for offline availability. Runs on app start and periodically every 30 minutes. Not to be confused with playlist sync or lyrics sync.
-  _Avoid_: Library sync, full sync
+- **Metadata Sync**: Background pipeline that fetches and caches library structure (albums, artists, genres, album tracks) from the Subsonic server for offline availability. Runs on first install, on user Resync, and periodically via WorkManager at the Settings Sync Interval (default 12h): **DELTA** (newest albums upsert) normally, **FULL** catalog replace about every 7 days. Not to be confused with playlist sync or lyrics sync.
+  _Avoid_: Library sync as a synonym for playlist sync only
 
 - **Sync Phase**: One stage of the metadata sync pipeline executed in fixed order: `albums` → `artists` → `genres` → `tracks` → `complete`. The `error` phase is terminal on failure. The UI uses the phase to conditionally label progress cards.
   _Avoid_: Stage, step

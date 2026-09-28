@@ -150,11 +150,21 @@ class MetadataSyncWorker(
 ) {
     companion object {
         private const val TAG = "ftpmusic-metasync"
-        private const val SYNC_INTERVAL_MS = 30 * 60 * 1000L // 30 minutes
         private const val PAGE_SIZE = 500
 
         /** SharedPreferences file name for sync stats/versions. */
         const val PREFS_NAME = "ftpmusic_sync"
+
+        const val PREF_LAST_DELTA_SYNC_MS = "last_delta_sync_ms"
+        const val PREF_LAST_FULL_SYNC_MS = "last_full_sync_ms"
+        const val PREF_LAST_METADATA_SYNC_MS = "last_metadata_sync_ms"
+        const val PREF_METADATA_SYNC_DURATION_MS = "metadata_sync_duration_ms"
+
+        /** Auto FULL catalog heal cadence (ADR-0045). */
+        const val FULL_SYNC_INTERVAL_MS = 7L * 24 * 60 * 60 * 1000
+
+        /** Cap newest pages for DELTA (500 × 3 = 1500 albums). */
+        private const val DELTA_MAX_PAGES = 3
 
         /** Bump when track schema changes so existing caches are re-fetched. */
         private const val METADATA_VERSION = 2
@@ -162,20 +172,25 @@ class MetadataSyncWorker(
         /** Minimum cooldown between auto-triggered sync starts (prevents rapid re-syncs). */
         private const val MIN_SYNC_COOLDOWN_MS = 5 * 60 * 1000L // 5 minutes
 
-        /** Max concurrent album track API fetches per batch. */
-        private const val MAX_CONCURRENT_TRACK_FETCHES = 5
-
-        /** Delay between track sync batches (reduces server load). */
-        private const val TRACK_BATCH_DELAY_MS = 200L
-
         /** Rate-limit spacing between per-genre `getSongsByGenre` calls. */
         private const val GENRE_FETCH_DELAY_MS = 200L
+
+        /**
+         * Choose periodic sync mode from watermark.
+         * Never synced full (or older than 7d) → FULL; else DELTA.
+         */
+        fun resolvePeriodicMode(lastFullSyncMs: Long, nowMs: Long = System.currentTimeMillis()): LibrarySyncMode {
+            if (lastFullSyncMs <= 0L) return LibrarySyncMode.FULL
+            if (nowMs - lastFullSyncMs >= FULL_SYNC_INTERVAL_MS) return LibrarySyncMode.FULL
+            return LibrarySyncMode.DELTA
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private var syncJob: Job? = null
     private val syncJobs = mutableSetOf<Job>()
     private val isSyncing = AtomicBoolean(false)
+    private val trackLimiter = AdaptiveSyncLimiter()
 
     @Volatile private var lastSyncFinishMs: Long = 0L
 
@@ -192,21 +207,23 @@ class MetadataSyncWorker(
             delay(initialDelayMs)
             if (SubsonicCredentials.username.isNotEmpty()) {
                 // Skip startup sync if metadata already exists — periodic WorkManager
-                // handles resyncs at the configured interval (default 12h).
+                // handles DELTA/FULL at the configured interval (ADR-0045).
                 // First-run (no metadata) still triggers immediate sync.
                 if (metadataDao.albumCount() == 0) {
-                    syncNow()
+                    syncNow(mode = LibrarySyncMode.FULL)
                 }
             }
-            // Periodic resync is now handled by WorkManager (FtpmusicApp)
         }
     }
 
-    /** True when cached library metadata already exists — used by the
-     *  periodic WorkManager worker to skip the post-install/update full sync
-     *  on populated libraries (avoids the DB write storm that starved the
-     *  Home loaders' Room reads). */
+    /** True when cached library metadata already exists. */
     suspend fun hasMetadata(): Boolean = metadataDao.albumCount() > 0
+
+    fun lastFullSyncMs(): Long = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getLong(PREF_LAST_FULL_SYNC_MS, 0L)
+
+    fun lastDeltaSyncMs(): Long = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getLong(PREF_LAST_DELTA_SYNC_MS, 0L)
 
     fun stop() {
         syncJob?.cancel()
@@ -215,16 +232,28 @@ class MetadataSyncWorker(
 
     /** Kick off a sync. No-ops if already in progress (atomic CAS guard).
      *  @param forceTrackResync re-fetch tracks for ALL albums (Resync Library button)
+     *  @param mode DELTA (newest upsert) or FULL (alphabetical replace)
      *  @return true if sync started, false if another sync is already running */
-    fun syncNow(forceTrackResync: Boolean = false): Boolean = syncNowAsync(forceTrackResync) != null
+    fun syncNow(
+        forceTrackResync: Boolean = false,
+        mode: LibrarySyncMode = if (forceTrackResync) LibrarySyncMode.FULL else LibrarySyncMode.DELTA,
+    ): Boolean = syncNowAsync(forceTrackResync, mode) != null
 
     /** Launch the sync. Returns a Job. */
     @VisibleForTesting
-    internal fun syncNowAsync(forceTrackResync: Boolean = false): kotlinx.coroutines.Job? {
+    internal fun syncNowAsync(
+        forceTrackResync: Boolean = false,
+        mode: LibrarySyncMode = if (forceTrackResync) LibrarySyncMode.FULL else LibrarySyncMode.DELTA,
+    ): kotlinx.coroutines.Job? {
         // Software offline mode: metadata is already cached locally — nothing to
         // fetch, and the local-first contract forbids the network call.
         if (offlineModeManager.isOfflineEnabled()) {
             android.util.Log.d(TAG, "Skipping sync — offline mode enabled")
+            return null
+        }
+        // Reachability gate — avoid burning retries when server is marked down.
+        if (!com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value) {
+            android.util.Log.d(TAG, "Skipping sync — server unreachable")
             return null
         }
         // Cooldown: skip auto-triggered syncs if the last sync finished recently.
@@ -237,9 +266,11 @@ class MetadataSyncWorker(
             }
         }
         if (!isSyncing.compareAndSet(false, true)) return null
+        val resolvedMode = if (forceTrackResync) LibrarySyncMode.FULL else mode
         val job = scope.launch syncJob@{
             syncJobs.add(coroutineContext[kotlinx.coroutines.Job]!!)
             val startMs = System.currentTimeMillis()
+            trackLimiter.reset()
             // Emit initial status with all rows visible, totals set to what we know
             _status.value = SyncStatus(
                 albumsTotal = 1,
@@ -251,8 +282,8 @@ class MetadataSyncWorker(
                 elapsedMs = 0L,
             )
             try {
-                Log.d(TAG, "Starting metadata sync… (forceTrackResync=$forceTrackResync)")
-                syncAlbums()
+                Log.d(TAG, "Starting metadata sync… mode=$resolvedMode forceTrackResync=$forceTrackResync")
+                syncAlbums(resolvedMode)
                 val albumCount = metadataDao.albumCount()
                 _status.value = _status.value.copy(
                     albums = albumCount,
@@ -321,12 +352,18 @@ class MetadataSyncWorker(
                     )
                 }
                 val durationMs = System.currentTimeMillis() - startMs
+                val now = System.currentTimeMillis()
                 val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                prefs.edit()
-                    .putLong("last_metadata_sync_ms", System.currentTimeMillis())
-                    .putLong("metadata_sync_duration_ms", durationMs)
+                val editor = prefs.edit()
+                    .putLong(PREF_LAST_METADATA_SYNC_MS, now)
+                    .putLong(PREF_METADATA_SYNC_DURATION_MS, durationMs)
                     .putInt("metadata_version", METADATA_VERSION)
-                    .apply()
+                if (resolvedMode == LibrarySyncMode.FULL) {
+                    editor.putLong(PREF_LAST_FULL_SYNC_MS, now)
+                } else {
+                    editor.putLong(PREF_LAST_DELTA_SYNC_MS, now)
+                }
+                editor.apply()
             } catch (e: Exception) {
                 Log.w(TAG, "Metadata sync failed: ${e.message}")
                 _status.value = _status.value.copy(
@@ -345,20 +382,23 @@ class MetadataSyncWorker(
     }
 
     @Suppress("ThrowsCount")
-    internal suspend fun syncAlbums() {
+    internal suspend fun syncAlbums(mode: LibrarySyncMode = LibrarySyncMode.FULL) {
         val username = SubsonicCredentials.username
         val password = SubsonicCredentials.password
         if (username.isEmpty() || password.isEmpty()) return
 
         changedAlbumIds.clear()
         val params = authHelper.buildAuthParams(username, password)
-        val base = DynamicBaseUrl.url.trimEnd('/')
+
+        val listType = if (mode == LibrarySyncMode.DELTA) "newest" else "alphabeticalByName"
+        val maxPages = if (mode == LibrarySyncMode.DELTA) DELTA_MAX_PAGES else Int.MAX_VALUE
 
         val allAlbums = mutableListOf<CachedAlbumEntity>()
         var offset = 0
-        while (true) {
+        var page = 0
+        while (page < maxPages) {
             val response = api.getAlbumList2(
-                type = "alphabeticalByName",
+                type = listType,
                 size = PAGE_SIZE,
                 offset = offset,
                 auth = params,
@@ -371,21 +411,9 @@ class MetadataSyncWorker(
 
             albums.forEach { a ->
                 val m = a as? Map<*, *> ?: return@forEach
-                val id = m["id"] as? String ?: return@forEach
-                allAlbums.add(
-                    CachedAlbumEntity(
-                        id = id,
-                        name = m["name"] as? String ?: "",
-                        artist = m["artist"] as? String,
-                        artistId = m["artistId"] as? String,
-                        year = (m["year"] as? Number)?.toInt(),
-                        coverArt = m["coverArt"] as? String,
-                        songCount = (m["songCount"] as? Number)?.toInt(),
-                        duration = (m["duration"] as? Number)?.toInt(),
-                        genre = m["genre"] as? String,
-                    ),
-                )
+                parseAlbumMap(m)?.let { allAlbums.add(it) }
             }
+            page++
             if (albums.size < PAGE_SIZE) break
             offset += PAGE_SIZE
             delay(100L) // throttle between paginated API calls
@@ -421,33 +449,67 @@ class MetadataSyncWorker(
             Log.w(TAG, "Album sync returned no rows for a populated library — keeping cached albums")
             return
         }
-        // Replace — an empty list with an empty cache is a legitimate no-op
-        // (fresh install / genuinely empty server).
-        metadataDao.replaceAlbums(allAlbums)
-        // Repopulate the albums ledger (favorites table) — ON CONFLICT DO
-        // UPDATE preserves starred_at/user_rating/is_disliked across wipes.
-        try {
-            metadataDao.syncAlbumLedger()
-            metadataDao.pruneAlbumLedger()
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "Album ledger sync failed: ${e.message}")
+
+        if (mode == LibrarySyncMode.DELTA) {
+            // Upsert only — do not wipe albums outside the newest window.
+            if (allAlbums.isNotEmpty()) {
+                metadataDao.upsertAlbums(allAlbums)
+                try {
+                    metadataDao.insertNewAlbumsToLedger()
+                    metadataDao.refreshAlbumLedgerMetadata()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "Album ledger upsert failed: ${e.message}")
+                }
+            }
+            Log.d(TAG, "DELTA upserted ${allAlbums.size} newest albums")
+        } else {
+            // Replace — an empty list with an empty cache is a legitimate no-op
+            // (fresh install / genuinely empty server).
+            metadataDao.replaceAlbums(allAlbums)
+            // Repopulate the albums ledger (favorites table) — ON CONFLICT DO
+            // UPDATE preserves starred_at/user_rating/is_disliked across wipes.
+            try {
+                metadataDao.syncAlbumLedger()
+                metadataDao.pruneAlbumLedger()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w(TAG, "Album ledger sync failed: ${e.message}")
+            }
+            // Clean up tracks for albums deleted from the server
+            try {
+                val orphans = metadataDao.deleteOrphanedAlbumTracks()
+                if (orphans > 0) Log.d(TAG, "Removed $orphans orphaned album tracks")
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+            // Clean up orphaned navidrome cover art files for deleted albums
+            try {
+                coverArtFallback.cleanOrphanedNavidromeArt(allAlbums.mapNotNull { it.coverArt }.toSet())
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+            Log.d(TAG, "FULL cached ${allAlbums.size} albums")
         }
-        // Clean up tracks for albums deleted from the server
-        try {
-            val orphans = metadataDao.deleteOrphanedAlbumTracks()
-            if (orphans > 0) Log.d(TAG, "Removed $orphans orphaned album tracks")
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-        }
-        // Clean up orphaned navidrome cover art files for deleted albums
-        try {
-            coverArtFallback.cleanOrphanedNavidromeArt(allAlbums.mapNotNull { it.coverArt }.toSet())
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-        }
-        _status.value = _status.value.copy(albums = allAlbums.size, albumsTotal = allAlbums.size)
-        Log.d(TAG, "Cached ${allAlbums.size} albums")
+        _status.value = _status.value.copy(
+            albums = metadataDao.albumCount(),
+            albumsTotal = metadataDao.albumCount(),
+        )
+    }
+
+    private fun parseAlbumMap(m: Map<*, *>): CachedAlbumEntity? {
+        val id = m["id"] as? String ?: return null
+        return CachedAlbumEntity(
+            id = id,
+            name = m["name"] as? String ?: "",
+            artist = m["artist"] as? String,
+            artistId = m["artistId"] as? String,
+            year = (m["year"] as? Number)?.toInt(),
+            coverArt = m["coverArt"] as? String,
+            songCount = (m["songCount"] as? Number)?.toInt(),
+            duration = (m["duration"] as? Number)?.toInt(),
+            genre = m["genre"] as? String,
+        )
     }
 
     internal suspend fun syncArtists() {
@@ -821,10 +883,16 @@ class MetadataSyncWorker(
                 }
             }
 
-            // Process in batches for controlled concurrency + memory; each
-            // batch's fetched tracks are written in ONE transaction.
-            pendingAlbums.chunked(MAX_CONCURRENT_TRACK_FETCHES).forEach { chunk ->
-                if (aborted.get()) return@forEach
+            // Process in adaptive batches for controlled concurrency + memory; each
+            // batch's fetched tracks are written in ONE transaction (ADR-0045).
+            var index = 0
+            while (index < pendingAlbums.size) {
+                if (aborted.get()) break
+                val batchSize = trackLimiter.concurrency
+                val end = minOf(index + batchSize, pendingAlbums.size)
+                val chunk = pendingAlbums.subList(index, end).toList()
+                index = end
+                val batchFailures = AtomicInteger(0)
                 val fetched = coroutineScope {
                     chunk.map { album ->
                         async {
@@ -832,7 +900,7 @@ class MetadataSyncWorker(
                             if (tracks == null) {
                                 consecutiveFailures.incrementAndGet()
                                 failedCount.incrementAndGet()
-                                // Abort on 3 consecutive failures (network gone)
+                                batchFailures.incrementAndGet()
                                 if (consecutiveFailures.get() >= 3) {
                                     aborted.set(true)
                                     Log.w(
@@ -848,6 +916,11 @@ class MetadataSyncWorker(
                         }
                     }.awaitAll()
                 }
+                if (batchFailures.get() > 0) {
+                    trackLimiter.onBatchFailure()
+                } else {
+                    trackLimiter.onBatchSuccess()
+                }
                 val allTracks = fetched.flatten()
                 if (allTracks.isNotEmpty()) {
                     metadataDao.replaceAlbumTracksBatch(allTracks)
@@ -859,8 +932,8 @@ class MetadataSyncWorker(
                     albumTracksProgress = count.get(),
                     trackCount = totalTracks.get(),
                 )
-                if (!aborted.get() && pendingAlbums.size > MAX_CONCURRENT_TRACK_FETCHES) {
-                    delay(TRACK_BATCH_DELAY_MS)
+                if (!aborted.get() && index < pendingAlbums.size) {
+                    delay(trackLimiter.batchDelayMs)
                 }
             }
 

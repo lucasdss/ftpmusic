@@ -13,6 +13,7 @@ import java.math.BigInteger
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
+import okhttp3.Dispatcher
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -178,6 +179,12 @@ object NetworkModule {
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
+        .dispatcher(
+            Dispatcher().apply {
+                // Headroom above AdaptiveSyncLimiter max (4) for stream/cover/ping (ADR-0045).
+                maxRequestsPerHost = 6
+            },
+        )
         .addInterceptor(SubsonicAuthInterceptor())
         .addInterceptor(BaseUrlInterceptor())
         .addInterceptor(CustomHeadersInterceptor())

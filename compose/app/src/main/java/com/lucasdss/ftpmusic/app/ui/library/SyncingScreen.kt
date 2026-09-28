@@ -26,6 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.DailyMixEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
+import com.lucasdss.ftpmusic.app.data.db.LibrarySyncMode
 import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
@@ -176,7 +177,7 @@ class SyncingViewModel @Inject constructor(
                 isRunning = true,
             )
             startElapsedTimer()
-            metadataSyncWorker.syncNowAsync()
+            metadataSyncWorker.syncNowAsync(mode = LibrarySyncMode.FULL)
             metadataSyncWorker.status.collect { s ->
                 // Merge worker fields into our status — preserve dailyMixTotal
                 // (set by us) and dailyMixProgress (set during generation).
