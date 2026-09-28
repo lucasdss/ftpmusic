@@ -144,13 +144,14 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_USERNAME = "server_username"
         const val KEY_QUEUE_JOURNAL_CAP = "queue_journal_cap"
         const val KEY_CONTINUOUS_PLAY_ENABLED = "continuous_play_enabled"
-        const val KEY_QUOTA_MB = "quota_mb"
         const val KEY_COVER_ART_QUOTA_MB = "cover_art_quota_mb"
         const val KEY_AUDIO_CACHE_MAX_BYTES = "audio_cache_max_bytes"
         const val KEY_SYNC_INTERVAL_HOURS = "sync_interval_hours"
         const val KEY_PREFER_ITUNES_ART = "prefer_itunes_art"
         const val KEY_LASTFM_API_KEY = "lastfm_api_key"
         const val KEY_QUEUE_OVERWRITE_BEHAVIOR = "queue_overwrite_behavior"
+        const val KEY_CUSTOM_HEADERS = "custom_headers"
+        const val KEY_AUTO_DOWNLOAD_PLAYLISTS = "auto_download_playlists"
 
         /** Software offline mode toggle — persisted so it survives process death. */
         const val KEY_OFFLINE_MODE = "offline_mode"

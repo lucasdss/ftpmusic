@@ -50,7 +50,7 @@ fun SettingsScreen(
             .padding(20.dp),
     ) {
         // ═══ Profile card ═══
-        SectionCard {
+        SectionCard(Modifier.clickable { onProfile() }.testTag("settings_profile_card")) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(miniPlayerHeight()).clip(RoundedCornerShape(32.dp))
@@ -68,7 +68,7 @@ fun SettingsScreen(
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text("Your Profile", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Bold)
-                    Text("Navidrome Account", color = Color(0xFF888888), fontSize = textBodyM())
+                    Text("Listening stats & recently played", color = Color(0xFF888888), fontSize = textBodyM())
                 }
             }
         }
@@ -146,7 +146,7 @@ fun SettingsScreen(
                         onClick = {
                             if (viewModel.saveServerSettings()) onServerSettingsSaved()
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).testTag("settings_server_save"),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8B4)),
                         shape = RoundedCornerShape(cornerS()),
                     ) { Text("Save", color = Color.White) }
@@ -468,20 +468,78 @@ fun SettingsScreen(
         SectionLabel("APPEARANCE")
         SectionCard {
             SectionToggleRow(
-                label = "Dark Mode",
-                subtitle = "Use dark theme",
-                checked = true,
-                onToggle = { /* Dynamic theme switch reserved for future settings work. */ },
-            )
-            SectionDivider()
-            SectionToggleRow(
                 label = "Prefer iTunes album art",
                 subtitle = "Use iTunes artwork instead of Navidrome when available",
                 checked = state.preferItunesArt,
                 onToggle = { viewModel.setPreferItunesArt(it) },
             )
-            SectionDivider()
-            SectionRow("Accent Color", "Teal")
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // ═══ Last.fm section ═══
+        SectionLabel("LAST.FM")
+        SectionCard {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    "API key powers Similar Artists on Artist Detail. Play scrobbling uses your Navidrome server config, not this key.",
+                    color = Color(0xFF888888),
+                    fontSize = textLabelM(),
+                )
+                Spacer(Modifier.height(8.dp))
+                var showLastFmKey by remember { mutableStateOf(false) }
+                var lastFmDraft by remember(state.lastFmApiKey, state.lastFmKeySaved) {
+                    mutableStateOf(state.lastFmApiKey)
+                }
+                OutlinedTextField(
+                    value = lastFmDraft,
+                    onValueChange = {
+                        lastFmDraft = it
+                        viewModel.setLastFmApiKeyDraft(it)
+                    },
+                    label = { Text("API Key", color = Color(0xFF888888)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("settings_lastfm_api_key"),
+                    colors = settingsTextFieldColors(),
+                    shape = RoundedCornerShape(cornerS()),
+                    visualTransformation = if (showLastFmKey) {
+                        androidx.compose.ui.text.input.VisualTransformation.None
+                    } else {
+                        androidx.compose.ui.text.input.PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { showLastFmKey = !showLastFmKey }) {
+                            Icon(
+                                if (showLastFmKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                null,
+                                tint = Color(0xFF888888),
+                            )
+                        }
+                    },
+                    placeholder = { Text("from last.fm/api", color = Color(0xFF555555)) },
+                )
+                if (state.lastFmKeySaved) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Key saved", color = Color(0xFF00C8B4), fontSize = textLabelS())
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacingS())) {
+                    Button(
+                        onClick = { viewModel.setLastFmApiKey(lastFmDraft) },
+                        modifier = Modifier.weight(1f).testTag("settings_lastfm_save"),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8B4)),
+                        shape = RoundedCornerShape(cornerS()),
+                    ) { Text("Save", color = Color.White) }
+                    OutlinedButton(
+                        onClick = {
+                            lastFmDraft = ""
+                            viewModel.clearLastFmApiKey()
+                        },
+                        modifier = Modifier.weight(1f).testTag("settings_lastfm_clear"),
+                        shape = RoundedCornerShape(cornerS()),
+                    ) { Text("Clear", color = Color(0xFF00C8B4)) }
+                }
+            }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -646,7 +704,7 @@ fun SettingsScreen(
         SectionCard {
             // Profile shortcut
             Row(
-                Modifier.clickable { onProfile() }.padding(16.dp),
+                Modifier.clickable { onProfile() }.padding(16.dp).testTag("settings_profile_row"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Filled.Person, null, tint = Color(0xFFB040E8), modifier = Modifier.size(iconSmall()))

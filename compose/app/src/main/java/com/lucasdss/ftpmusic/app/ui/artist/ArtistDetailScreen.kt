@@ -56,6 +56,7 @@ import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 fun ArtistDetailScreen(
     artistId: String = "",
     onAlbumClick: (String) -> Unit = {},
+    onArtistClick: (String) -> Unit = {},
     onBack: () -> Unit = {},
     viewModel: ArtistDetailViewModel = hiltViewModel(),
 ) {
@@ -273,7 +274,19 @@ fun ArtistDetailScreen(
                     ) {
                         itemsIndexed(state.similarArtists) { _, sa ->
                             Column(
-                                Modifier.clickable { /* navigate to similar artist — optional */ }.width(64.dp),
+                                Modifier.clickable {
+                                    viewModel.resolveSimilarArtist(sa.name) { resolvedId ->
+                                        if (resolvedId != null) {
+                                            onArtistClick(resolvedId)
+                                        } else {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "“${sa.name}” not in your library",
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    }
+                                }.width(64.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Box(

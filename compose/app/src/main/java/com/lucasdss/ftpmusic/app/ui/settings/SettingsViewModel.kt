@@ -66,6 +66,9 @@ data class SettingsUiState(
     // v46: Playback notifications feature toggle (default ON). OFF still posts
     // the FGS-satisfying minimal notification, without media controls/art.
     val playbackNotificationsEnabled: Boolean = true,
+    // Last.fm API key (masked in UI when non-blank after save)
+    val lastFmApiKey: String = "",
+    val lastFmKeySaved: Boolean = false,
 )
 
 @HiltViewModel
@@ -129,7 +132,8 @@ class SettingsViewModel @Inject constructor(
             castFromPhone = castPreferences.castFromPhone,
             useHttpForCast = castPreferences.useHttpForCast,
             customHeaders = headers,
-            autoDownloadPlaylists = storage.get("auto_download_playlists")?.toBooleanStrictOrNull() ?: true,
+            autoDownloadPlaylists =
+                storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true,
             downloadMobileData = savedDownloadMobileData,
             offlineMode = storage.get(SecureStorage.KEY_OFFLINE_MODE)?.toBooleanStrictOrNull() ?: false,
             serverUrl = storage.get(SecureStorage.KEY_URL) ?: "",
@@ -147,6 +151,9 @@ class SettingsViewModel @Inject constructor(
             showFavAlbumsSection = savedShowFavAlbums,
             showFavRadioSection = savedShowFavRadio,
             playbackNotificationsEnabled = savedPlaybackNotifications,
+            castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
+            lastFmApiKey = storage.get(SecureStorage.KEY_LASTFM_API_KEY).orEmpty(),
+            lastFmKeySaved = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank(),
         )
         viewModelScope.launch {
             metadataSyncWorker.status.collect { s ->
@@ -156,11 +163,8 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun loadCustomHeaders(): List<Pair<String, String>> {
-        val raw = storage.get("custom_headers") ?: return emptyList()
-        val headers = raw.split("||").mapNotNull { part ->
-            val eq = part.indexOf('=')
-            if (eq > 0) part.substring(0, eq) to part.substring(eq + 1) else null
-        }.filter { it.first.isNotBlank() && it.second.isNotBlank() }.take(5)
+        val raw = storage.get(SecureStorage.KEY_CUSTOM_HEADERS) ?: return emptyList()
+        val headers = com.lucasdss.ftpmusic.app.data.preferences.PreferenceBootstrap.parseCustomHeaders(raw)
         CustomHeadersInterceptor.updateHeaders(headers)
         return headers
     }
@@ -193,7 +197,26 @@ class SettingsViewModel @Inject constructor(
 
     fun setAutoDownloadPlaylists(enabled: Boolean) {
         _state.value = _state.value.copy(autoDownloadPlaylists = enabled)
-        storage.put("auto_download_playlists", enabled.toString())
+        storage.put(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS, enabled.toString())
+    }
+
+    fun setLastFmApiKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isEmpty()) {
+            clearLastFmApiKey()
+            return
+        }
+        storage.put(SecureStorage.KEY_LASTFM_API_KEY, trimmed)
+        _state.value = _state.value.copy(lastFmApiKey = trimmed, lastFmKeySaved = true)
+    }
+
+    fun clearLastFmApiKey() {
+        storage.remove(SecureStorage.KEY_LASTFM_API_KEY)
+        _state.value = _state.value.copy(lastFmApiKey = "", lastFmKeySaved = false)
+    }
+
+    fun setLastFmApiKeyDraft(key: String) {
+        _state.value = _state.value.copy(lastFmApiKey = key)
     }
 
     // v43: Home section visibility toggles — persist to SecureStorage, apply live.
@@ -230,21 +253,26 @@ class SettingsViewModel @Inject constructor(
         _state.value = _state.value.copy(syncIntervalHours = clamped)
         storage.put(SecureStorage.KEY_SYNC_INTERVAL_HOURS, clamped.toString())
         // Reschedule WorkManager with new interval
-        androidx.work.WorkManager.getInstance(context)
-            .enqueueUniquePeriodicWork(
-                "metadata_sync",
-                androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
-                androidx.work.PeriodicWorkRequestBuilder<com.lucasdss.ftpmusic.app.data.db.SyncScheduleWorker>(
-                    clamped.toLong(),
-                    java.util.concurrent.TimeUnit.HOURS,
-                )
-                    .setConstraints(
-                        androidx.work.Constraints.Builder()
-                            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build(),
+        try {
+            androidx.work.WorkManager.getInstance(context)
+                .enqueueUniquePeriodicWork(
+                    "metadata_sync",
+                    androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+                    androidx.work.PeriodicWorkRequestBuilder<com.lucasdss.ftpmusic.app.data.db.SyncScheduleWorker>(
+                        clamped.toLong(),
+                        java.util.concurrent.TimeUnit.HOURS,
                     )
-                    .addTag("metadata_sync")
-                    .build(),
-            )
+                        .setConstraints(
+                            androidx.work.Constraints.Builder()
+                                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build(),
+                        )
+                        .addTag("metadata_sync")
+                        .build(),
+                )
+        } catch (e: IllegalStateException) {
+            // WorkManager unavailable in unit tests
+            android.util.Log.d("ftpmusic-work", "WorkManager not available: ${e.message}")
+        }
     }
 
     fun setCustomHeaders(headers: List<Pair<String, String>>) {
@@ -252,7 +280,7 @@ class SettingsViewModel @Inject constructor(
         _state.value = _state.value.copy(customHeaders = headers)
         // Persist to SecureStorage
         val encoded = headers.joinToString("||") { "${it.first}=${it.second}" }
-        storage.put("custom_headers", encoded)
+        storage.put(SecureStorage.KEY_CUSTOM_HEADERS, encoded)
     }
 
     fun refresh() {
@@ -273,6 +301,7 @@ class SettingsViewModel @Inject constructor(
                 downloadedTrackCount = trackDao.getDownloadedCount(),
                 lyricsCount = lyricsCacheDao.count(),
                 genreCount = genreMixDao.genreCount(),
+                castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
             )
         }
     }

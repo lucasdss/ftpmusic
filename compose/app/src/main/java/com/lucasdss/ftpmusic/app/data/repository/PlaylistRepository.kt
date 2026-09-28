@@ -87,7 +87,7 @@ class PlaylistRepository @Inject constructor(
         )
         playlistDao.upsertAll(listOf(entity))
 
-        val autoDownload = storage.get("auto_download_playlists")?.toBooleanStrictOrNull() ?: true
+        val autoDownload = storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
         val entries = pl["entry"] as? List<*>
         val entryEntities = mutableListOf<PlaylistEntryEntity>()
         val trackEntities = mutableListOf<TrackEntity>()

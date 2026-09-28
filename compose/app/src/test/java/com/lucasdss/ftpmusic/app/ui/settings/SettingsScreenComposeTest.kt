@@ -18,8 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Compose tests for the Settings "Home & Favorites" section: all four
- * visibility toggles render with their labels and delegate to the ViewModel.
+ * Compose tests for Settings: Home toggles, Last.fm, Profile nav, stub removal.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -78,8 +77,6 @@ class SettingsScreenComposeTest {
         val vm = mockViewModel(SettingsUiState())
         render(vm)
 
-        // Regression guard for the v1.0.0 removal of the yt-dlp remote library
-        // feature: the entry point must not resurface in Settings.
         composeRule.onNodeWithText("Manage Remote Library").assertDoesNotExist()
         composeRule.onNodeWithText("Search your remote library and add music").assertDoesNotExist()
     }
@@ -103,9 +100,37 @@ class SettingsScreenComposeTest {
             SettingsScreen(viewModel = vm, onServerSettingsSaved = { saved = true })
         }
 
-        composeRule.onNodeWithText("Save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("settings_server_save").performScrollTo().performClick()
 
         assert(!saved)
         verify { vm.saveServerSettings() }
+    }
+
+    @Test
+    fun `dark mode and accent stubs are absent`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+        composeRule.onNodeWithText("Dark Mode").assertDoesNotExist()
+        composeRule.onNodeWithText("Accent Color").assertDoesNotExist()
+    }
+
+    @Test
+    fun `lastfm section renders and save delegates`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+        composeRule.onNodeWithText("LAST.FM").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_lastfm_save").performScrollTo().performClick()
+        verify { vm.setLastFmApiKey("") }
+    }
+
+    @Test
+    fun `profile card click invokes onProfile`() {
+        val vm = mockViewModel(SettingsUiState())
+        var profileClicked = false
+        composeRule.setContent {
+            SettingsScreen(viewModel = vm, onProfile = { profileClicked = true })
+        }
+        composeRule.onNodeWithTag("settings_profile_card").performClick()
+        assert(profileClicked)
     }
 }

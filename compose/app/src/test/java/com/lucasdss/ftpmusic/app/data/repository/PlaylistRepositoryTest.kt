@@ -110,7 +110,8 @@ class PlaylistRepositoryTest {
 
     @Test
     fun `importPlaylist enqueues downloads when auto-download is enabled`() = runTest {
-        every { storage.get("auto_download_playlists") } returns "true"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            "true"
         val playlistId = "pl-dl"
         val response = mapOf(
             "subsonic-response" to mapOf(
@@ -136,7 +137,8 @@ class PlaylistRepositoryTest {
 
     @Test
     fun `importPlaylist does not download when auto-download is disabled`() = runTest {
-        every { storage.get("auto_download_playlists") } returns "false"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            "false"
         val playlistId = "pl-nodl"
         val response = mapOf(
             "subsonic-response" to mapOf(

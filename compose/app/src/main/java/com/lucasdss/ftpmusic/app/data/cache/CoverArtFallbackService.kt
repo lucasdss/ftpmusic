@@ -52,6 +52,8 @@ interface CoverArtFallbackEntryPoint {
 @Singleton
 class CoverArtFallbackService @Inject constructor(@ApplicationContext private val context: Context) {
     companion object {
+        const val DEFAULT_QUOTA_MB = 300
+
         @Volatile private var fallbackInstance: CoverArtFallbackService? = null
 
         /**
@@ -513,8 +515,8 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
 
     // ── Cover Art Cache Quota (LRU eviction) ────────────────────────────────
 
-    /** Default quota in MB. Overridden by user setting. 500MB ≈ 3000 album covers. */
-    @Volatile var maxCacheBytes: Long = 500L * 1024 * 1024
+    /** Default matches Settings UI (300 MB). PreferenceBootstrap may override from disk. */
+    @Volatile var maxCacheBytes: Long = DEFAULT_QUOTA_MB.toLong() * 1024 * 1024
 
     /**
      * Evict oldest files if total cache size exceeds [maxCacheBytes].

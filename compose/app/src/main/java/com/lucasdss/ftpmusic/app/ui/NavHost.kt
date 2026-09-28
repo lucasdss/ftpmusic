@@ -610,6 +610,7 @@ fun FtpmusicNavHost() {
                     ArtistDetailScreen(
                         artistId = artistId,
                         onAlbumClick = { albumId -> navController.navigate("album/$albumId") },
+                        onArtistClick = { id -> navController.navigate("artist/$id") },
                         onBack = { navController.popBackStack() },
                     )
                 }
@@ -625,7 +626,28 @@ fun FtpmusicNavHost() {
                         },
                         onRebuildMixes = { navController.navigate("rebuildmix") },
                         onCustomMixes = { navController.navigate("customMixes") },
+                        onProfile = { navController.navigate("profile") },
                         onServerSettingsSaved = { /* saved, nothing to do */ },
+                    )
+                }
+                composable("profile") {
+                    com.lucasdss.ftpmusic.app.ui.settings.ProfileScreen(
+                        onBack = { navController.popBackStack() },
+                        onTrackClick = { track ->
+                            val trackModel = com.lucasdss.ftpmusic.app.data.model.Track(
+                                id = track.id,
+                                title = track.title,
+                                artist = track.artist,
+                                album = null,
+                                duration = track.durationSeconds,
+                                coverArt = track.coverArtUrl,
+                                suffix = track.suffix,
+                                contentType = track.contentType,
+                            )
+                            val streamUrl = playbackViewModel.buildStreamUrl(track.id)
+                            playbackViewModel.playSingleTrack(trackModel, streamUrl)
+                            navController.navigate("nowplaying")
+                        },
                     )
                 }
                 composable("customMixes") {

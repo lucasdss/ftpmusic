@@ -85,6 +85,42 @@ class LastFmServiceTest {
         assertEquals("AC/DC \"Live\" \\2024", parsed[0].name)
         assertEquals(0.8, parsed[0].match!!, 0.001)
     }
+
+    @Test
+    fun `parseSimilarArtists skips blank names and empty mbid`() {
+        val json = """{"similarartists":{"artist":[
+            {"name":"","mbid":"x","match":"0.1"},
+            {"name":"Ok","mbid":"","match":null}
+        ]}}"""
+        val result = service.parseSimilarArtists(json)
+        assertEquals(1, result.size)
+        assertEquals("Ok", result[0].name)
+        assertNull(result[0].mbid)
+    }
+
+    @Test
+    fun `currentApiKey reads live from storage`() {
+        val storage = io.mockk.mockk<com.lucasdss.ftpmusic.app.data.security.SecureStorage>(relaxed = true)
+        io.mockk.every {
+            storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LASTFM_API_KEY)
+        } returns "  key1  "
+        val svc = LastFmService(storage)
+        assertEquals("key1", svc.currentApiKey())
+        io.mockk.every {
+            storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LASTFM_API_KEY)
+        } returns null
+        assertEquals("", svc.currentApiKey())
+    }
+
+    @Test
+    fun `fetchSimilarArtists short-circuits without key`() = kotlinx.coroutines.test.runTest {
+        val storage = io.mockk.mockk<com.lucasdss.ftpmusic.app.data.security.SecureStorage>(relaxed = true)
+        io.mockk.every {
+            storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LASTFM_API_KEY)
+        } returns ""
+        val svc = LastFmService(storage)
+        assertTrue(svc.fetchSimilarArtists("X").isEmpty())
+    }
 }
 
 /** Access the private parse method through the real service instance. */

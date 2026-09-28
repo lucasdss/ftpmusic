@@ -41,6 +41,8 @@ class FtpmusicApp : Application() {
 
     @Inject lateinit var serverReachabilityMonitor: com.lucasdss.ftpmusic.app.data.repository.ServerReachabilityMonitor
 
+    @Inject lateinit var preferenceBootstrap: com.lucasdss.ftpmusic.app.data.preferences.PreferenceBootstrap
+
     override fun onCreate() {
         super.onCreate()
         // Single authoritative server-config restore — runs before any worker,
@@ -59,6 +61,13 @@ class FtpmusicApp : Application() {
             offlineModeManager.initialize()
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-offline", "Offline restore failed: ${e.message}")
+        }
+        // Restore prefs that live in process RAM (headers, journal, continuous
+        // play, cover quota) before workers / first network (ADR-0044).
+        try {
+            preferenceBootstrap.hydrate()
+        } catch (e: Exception) {
+            Log.w("ftpmusic-prefs", "Preference bootstrap failed: ${e.message}")
         }
         // Keepalive + NetworkCallback so ReachabilityStateHolder recovers when
         // the server/network come back even if the UI is idle (no opportunistic
@@ -85,13 +94,14 @@ class FtpmusicApp : Application() {
             android.util.Log.w("ftpmusic-secure", "Remote-source key cleanup failed: ${e.message}")
         }
         // Configure Coil with a dedicated disk cache for cover art.
-        // 500MB ≈ 3000 album covers at 600px — prevents thrashing on large libraries.
+        // Size follows Settings cover-art quota (default 300MB).
         try {
+            val coverQuotaBytes = coverArtQuotaBytes()
             coil.ImageLoader.Builder(this)
                 .diskCache {
                     coil.disk.DiskCache.Builder()
                         .directory(cacheDir.resolve("coil_cover_cache"))
-                        .maxSizeBytes(500L * 1024 * 1024)
+                        .maxSizeBytes(coverQuotaBytes)
                         .build()
                 }
                 .crossfade(true)
@@ -156,5 +166,11 @@ class FtpmusicApp : Application() {
             // WorkManager not available (unit test environment)
             Log.d("ftpmusic-work", "WorkManager not available: ${e.message}")
         }
+    }
+
+    private fun coverArtQuotaBytes(): Long {
+        val mb = storage.get(SecureStorage.KEY_COVER_ART_QUOTA_MB)?.toIntOrNull()
+            ?: com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService.DEFAULT_QUOTA_MB
+        return mb.coerceIn(50, 1000).toLong() * 1024 * 1024
     }
 }

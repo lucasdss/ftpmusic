@@ -222,6 +222,22 @@ class ArtistDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Resolve a Last.fm similar-artist name to a local cached artist id.
+     * Prefers exact case-insensitive name match, then first search hit.
+     */
+    fun resolveSimilarArtist(name: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val hits = metadataDao.searchArtists(name)
+                val exact = hits.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                onResult(exact?.id ?: hits.firstOrNull()?.id)
+            } catch (_: Exception) {
+                onResult(null)
+            }
+        }
+    }
+
     /** Cursor-based pagination: load the next page of tracks for the artist. */
     fun loadMoreTracks() {
         val state = _state.value

@@ -26,7 +26,7 @@ import com.lucasdss.ftpmusic.app.ui.library.LibraryViewModel
 @Composable
 fun ProfileScreen(
     onBack: () -> Unit,
-    onTrackClick: (String) -> Unit = {},
+    onTrackClick: (com.lucasdss.ftpmusic.app.data.db.TrackEntity) -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -75,7 +75,7 @@ fun ProfileScreen(
                         StatCard(Icons.Filled.MusicNote, s.totalPlays.toString(), "plays")
                         StatCard(Icons.Filled.Schedule, listeningText, "listening")
                         StatCard(Icons.Filled.Groups, s.artistCount.toString(), "artists")
-                        StatCard(Icons.Filled.LocalFireDepartment, s.trackCount.toString(), "streak")
+                        StatCard(Icons.Filled.LocalFireDepartment, s.trackCount.toString(), "tracks")
                     }
                 }
             }
@@ -103,7 +103,7 @@ fun ProfileScreen(
             items(state.recentlyPlayed, key = { it.id }) { track ->
                 Row(
                     Modifier.fillMaxWidth().clickable {
-                        onTrackClick(track.id)
+                        onTrackClick(track)
                     }.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

@@ -83,7 +83,8 @@ class PlaylistRepositoryBranchTest {
 
     @Test
     fun `importPlaylist defaults auto-download to true when flag is unset or invalid`() = runTest {
-        every { storage.get("auto_download_playlists") } returns null
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            null
         val response = okResponse(
             mapOf("id" to "pl-1", "name" to "A", "entry" to listOf(mapOf<String, Any?>("id" to "t1", "title" to "T"))),
         )
@@ -91,7 +92,8 @@ class PlaylistRepositoryBranchTest {
         repo.importPlaylist("pl-1")
         coVerify(exactly = 1) { downloadManager.enqueue("t1", any(), priority = 1) }
 
-        every { storage.get("auto_download_playlists") } returns "garbage"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            "garbage"
         repo.importPlaylist("pl-1")
         coVerify(exactly = 2) { downloadManager.enqueue("t1", any(), priority = 1) }
     }

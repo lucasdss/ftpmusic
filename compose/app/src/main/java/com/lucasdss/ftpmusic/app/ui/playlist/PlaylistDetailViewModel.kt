@@ -187,7 +187,8 @@ class PlaylistDetailViewModel @Inject constructor(
             if (_state.value.isSyncing) return@launch
             _state.value = _state.value.copy(isSyncing = true)
             try {
-                val autoDownload = storage.get("auto_download_playlists")?.toBooleanStrictOrNull() ?: true
+                val autoDownload =
+                    storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
                 val authParams = auth.buildAuthParams(username, password)
                 val response = api.getPlaylist(authParams, id = playlistId)
                 if (!auth.checkResponseStatus(response)) {
@@ -428,7 +429,8 @@ class PlaylistDetailViewModel @Inject constructor(
                 )
                 syncWorker.flushNow()
                 // Auto-download tracks if setting is enabled
-                val autoDownload = storage.get("auto_download_playlists")?.toBooleanStrictOrNull() ?: true
+                val autoDownload =
+                    storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
                 if (autoDownload) {
                     newTrackIds.forEach { tid ->
                         val streamUrl = buildStreamUrl(tid)
@@ -492,7 +494,8 @@ class PlaylistDetailViewModel @Inject constructor(
                 )
                 syncWorker.flushNow()
                 // Auto-download tracks if setting is enabled (same as addToPlaylist)
-                val autoDownload = storage.get("auto_download_playlists")?.toBooleanStrictOrNull() ?: true
+                val autoDownload =
+                    storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
                 if (autoDownload) {
                     newIds.forEach { tid ->
                         val streamUrl = buildStreamUrl(tid)

@@ -53,7 +53,8 @@ class PlaylistDetailViewModelTest {
         Dispatchers.setMain(testDispatcher)
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        every { storage.get("auto_download_playlists") } returns "true"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            "true"
     }
 
     @After
@@ -1042,7 +1043,8 @@ class PlaylistDetailViewModelTest {
     @Test
     fun `addTracksToThisPlaylist skips auto-download when disabled`() = runTest {
         setupTracks(emptyList())
-        every { storage.get("auto_download_playlists") } returns "false"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            "false"
         coEvery { playlistDao.getEntries("pl-1") } returns emptyList()
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(
             TrackEntity(id = "t1", title = "Song One", artist = "A", durationSeconds = 180),

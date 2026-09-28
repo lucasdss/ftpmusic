@@ -489,6 +489,27 @@ class ArtistDetailViewModelTest {
     }
 
     @Test
+    fun `resolveSimilarArtist returns exact local match id`() = runTest(testDispatcher) {
+        coEvery { metadataDao.searchArtists("Similar A") } returns listOf(
+            CachedArtistEntity(id = "ar-sim", name = "Similar A"),
+            CachedArtistEntity(id = "ar-other", name = "Similar AB"),
+        )
+        var resolved: String? = "sentinel"
+        viewModel.resolveSimilarArtist("Similar A") { resolved = it }
+        advanceUntilIdle()
+        assertEquals("ar-sim", resolved)
+    }
+
+    @Test
+    fun `resolveSimilarArtist returns null when not in library`() = runTest(testDispatcher) {
+        coEvery { metadataDao.searchArtists("Missing") } returns emptyList()
+        var resolved: String? = "sentinel"
+        viewModel.resolveSimilarArtist("Missing") { resolved = it }
+        advanceUntilIdle()
+        assertNull(resolved)
+    }
+
+    @Test
     fun `loadArtist skips lastfm fetch when offline`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"

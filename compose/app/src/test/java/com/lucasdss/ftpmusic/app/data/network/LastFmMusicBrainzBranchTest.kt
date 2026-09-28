@@ -12,7 +12,6 @@ import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.ResponseBody
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -26,19 +25,15 @@ import org.junit.Test
  */
 class LastFmMusicBrainzBranchTest {
 
-    private val context: Context = mockk(relaxed = true)
+    private val storage: SecureStorage = mockk(relaxed = true)
 
     @Before
     fun setUp() {
-        every { context.applicationContext } returns context
+        every { storage.get(SecureStorage.KEY_LASTFM_API_KEY) } returns "test-key"
     }
 
     companion object {
         init {
-            // Keep the real MasterKeys class from initializing (AndroidKeyStore
-            // is unavailable on the plain JVM); LastFmService's apiKey lazy reads
-            // SecureStorage, whose prefs creation fails gracefully to the default.
-            // Set up once per class to limit javaagent redefinition churn.
             mockkStatic(MasterKeys::class)
             every { MasterKeys.getOrCreate(any<KeyGenParameterSpec>()) } returns "test_master_key_alias"
         }
@@ -68,22 +63,29 @@ class LastFmMusicBrainzBranchTest {
     // ── LastFmService ───────────────────────────────────────────────────────
 
     @Test
+    fun `fetchSimilarArtists returns empty when api key blank`() = runTest {
+        every { storage.get(SecureStorage.KEY_LASTFM_API_KEY) } returns ""
+        val service = LastFmService(storage)
+        assertTrue(service.fetchSimilarArtists("Artist").isEmpty())
+    }
+
+    @Test
     fun `fetchSimilarArtists returns empty on unsuccessful response`() = runTest {
-        val service = LastFmService(context)
+        val service = LastFmService(storage)
         injectMockClient(service, mockClient(successful = false))
         assertTrue(service.fetchSimilarArtists("Artist").isEmpty())
     }
 
     @Test
     fun `fetchSimilarArtists returns empty when response body is null`() = runTest {
-        val service = LastFmService(context)
+        val service = LastFmService(storage)
         injectMockClient(service, mockClient(successful = true, bodyString = null))
         assertTrue(service.fetchSimilarArtists("Artist").isEmpty())
     }
 
     @Test
     fun `fetchSimilarArtists returns empty when the request throws`() = runTest {
-        val service = LastFmService(context)
+        val service = LastFmService(storage)
         val client = mockk<OkHttpClient>()
         every { client.newCall(any()) } throws RuntimeException("network down")
         injectMockClient(service, client)
@@ -91,14 +93,23 @@ class LastFmMusicBrainzBranchTest {
     }
 
     @Test
+    fun `currentApiKey reflects mid-session storage updates`() {
+        every { storage.get(SecureStorage.KEY_LASTFM_API_KEY) } returns ""
+        val service = LastFmService(storage)
+        assertEquals("", service.currentApiKey())
+        every { storage.get(SecureStorage.KEY_LASTFM_API_KEY) } returns "  new-key  "
+        assertEquals("new-key", service.currentApiKey())
+    }
+
+    @Test
     fun `parseSimilarArtists returns empty when similarartists missing`() {
-        val service = LastFmService(context)
+        val service = LastFmService(storage)
         assertTrue(service.parseSimilarArtists("""{"other":1}""").isEmpty())
     }
 
     @Test
     fun `parseStoredJson returns empty for blank input`() {
-        val service = LastFmService(context)
+        val service = LastFmService(storage)
         assertTrue(service.parseStoredJson(null).isEmpty())
         assertTrue(service.parseStoredJson("").isEmpty())
         assertTrue(service.parseStoredJson("   ").isEmpty())
@@ -106,9 +117,7 @@ class LastFmMusicBrainzBranchTest {
 
     @Test
     fun `toStoredJson serializes artists to a json array`() {
-        val service = LastFmService(context)
-        // org.json is a stub on the plain JVM — JSONArray.toString() can return
-        // null; the important part is the per-artist put() calls execute.
+        val service = LastFmService(storage)
         try {
             val json = service.toStoredJson(
                 listOf(
@@ -202,10 +211,6 @@ class LastFmMusicBrainzBranchTest {
     @Test
     fun `encodeQueryParam handles blanks`() {
         val service = MusicBrainzService()
-        // Via search methods returning null for blank inputs
-        assertEquals(null, runBlocking2 { service.searchArtistMbid("") })
+        assertEquals(null, kotlinx.coroutines.runBlocking { service.searchArtistMbid("") })
     }
-
-    private inline fun <T> runBlocking2(crossinline block: suspend () -> T): T =
-        kotlinx.coroutines.runBlocking { block() }
 }

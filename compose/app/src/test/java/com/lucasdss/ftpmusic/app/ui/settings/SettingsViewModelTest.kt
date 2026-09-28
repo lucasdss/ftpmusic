@@ -495,4 +495,120 @@ class SettingsViewModelTest {
             createViewModel()
         assertFalse(vm.state.value.playbackNotificationsEnabled)
     }
+
+    // ── Last.fm / remaining setters ─────────────────────────────────────
+
+    @Test
+    fun `setLastFmApiKey persists trimmed key`() {
+        viewModel.setLastFmApiKey("  abc123  ")
+        assertEquals("abc123", viewModel.state.value.lastFmApiKey)
+        assertTrue(viewModel.state.value.lastFmKeySaved)
+        verify { storage.put(SecureStorage.KEY_LASTFM_API_KEY, "abc123") }
+    }
+
+    @Test
+    fun `setLastFmApiKey blank clears key`() {
+        viewModel.setLastFmApiKey("keep")
+        viewModel.setLastFmApiKey("   ")
+        assertEquals("", viewModel.state.value.lastFmApiKey)
+        assertFalse(viewModel.state.value.lastFmKeySaved)
+        verify { storage.remove(SecureStorage.KEY_LASTFM_API_KEY) }
+    }
+
+    @Test
+    fun `clearLastFmApiKey removes storage`() {
+        viewModel.clearLastFmApiKey()
+        verify { storage.remove(SecureStorage.KEY_LASTFM_API_KEY) }
+        assertFalse(viewModel.state.value.lastFmKeySaved)
+    }
+
+    @Test
+    fun `setPreferItunesArt persists`() {
+        viewModel.setPreferItunesArt(true)
+        assertTrue(viewModel.state.value.preferItunesArt)
+        verify { storage.put(SecureStorage.KEY_PREFER_ITUNES_ART, "true") }
+    }
+
+    @Test
+    fun `setAutoDownloadPlaylists persists`() {
+        viewModel.setAutoDownloadPlaylists(false)
+        assertFalse(viewModel.state.value.autoDownloadPlaylists)
+        verify { storage.put(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS, "false") }
+    }
+
+    @Test
+    fun `setContinuousPlayEnabled updates playback manager`() {
+        viewModel.setContinuousPlayEnabled(false)
+        assertFalse(viewModel.state.value.continuousPlayEnabled)
+        verify { playbackManager.setContinuousPlayEnabled(false) }
+        verify { storage.put(SecureStorage.KEY_CONTINUOUS_PLAY_ENABLED, "false") }
+    }
+
+    @Test
+    fun `setOverwriteBehavior persists key`() {
+        viewModel.setOverwriteBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH)
+        assertEquals(
+            com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH,
+            viewModel.state.value.overwriteBehavior,
+        )
+        verify { storage.put(SecureStorage.KEY_QUEUE_OVERWRITE_BEHAVIOR, "push") }
+    }
+
+    @Test
+    fun `setCustomHeaders encodes and updates interceptor`() {
+        viewModel.setCustomHeaders(listOf("X-A" to "1", "X-B" to "2"))
+        assertEquals(listOf("X-A" to "1", "X-B" to "2"), viewModel.state.value.customHeaders)
+        verify { storage.put(SecureStorage.KEY_CUSTOM_HEADERS, "X-A=1||X-B=2") }
+        assertEquals(
+            listOf("X-A" to "1", "X-B" to "2"),
+            com.lucasdss.ftpmusic.app.data.network.CustomHeadersInterceptor.headers,
+        )
+    }
+
+    @Test
+    fun `setSyncIntervalHours clamps and persists`() {
+        viewModel.setSyncIntervalHours(48)
+        assertEquals(24, viewModel.state.value.syncIntervalHours)
+        verify { storage.put(SecureStorage.KEY_SYNC_INTERVAL_HOURS, "24") }
+    }
+
+    @Test
+    fun `stored lastfm key restored on init`() {
+        every { storage.get(SecureStorage.KEY_LASTFM_API_KEY) } returns "saved-key"
+        val vm = createViewModel()
+        assertEquals("saved-key", vm.state.value.lastFmApiKey)
+        assertTrue(vm.state.value.lastFmKeySaved)
+    }
+
+    @Test
+    fun `setJournalCap clamps and persists`() {
+        viewModel.setJournalCap(5)
+        assertEquals(10, viewModel.state.value.journalCap)
+        verify { playbackManager.setJournalCap(10) }
+        viewModel.setJournalCap(600)
+        assertEquals(500, viewModel.state.value.journalCap)
+    }
+
+    @Test
+    fun `setCoverArtQuota updates service and storage`() {
+        viewModel.setCoverArtQuota(200)
+        assertEquals(200, viewModel.state.value.coverArtQuotaMb)
+        verify { coverArtFallback.maxCacheBytes = 200L * 1024 * 1024 }
+        verify { coverArtFallback.evictIfNeeded() }
+        verify { storage.put(SecureStorage.KEY_COVER_ART_QUOTA_MB, "200") }
+    }
+
+    @Test
+    fun `clearCoverArtCache clears and refreshes`() = runTest(testDispatcher) {
+        viewModel.clearCoverArtCache()
+        advanceUntilIdle()
+        verify { coverArtFallback.clearCache() }
+    }
+
+    @Test
+    fun `setLastFmApiKeyDraft updates state without persist`() {
+        viewModel.setLastFmApiKeyDraft("draft-key")
+        assertEquals("draft-key", viewModel.state.value.lastFmApiKey)
+        verify(exactly = 0) { storage.put(SecureStorage.KEY_LASTFM_API_KEY, any()) }
+    }
 }

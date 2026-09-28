@@ -1,8 +1,6 @@
 package com.lucasdss.ftpmusic.app.data.network
 
-import android.content.Context
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,10 +20,11 @@ import org.json.JSONObject
  *
  * Returns: {"similarartists":{"artist":[{"name":"X","mbid":"...","match":"0.85"}]}}
  *
- * Rate limit: 5 req/sec (last.fm policy). Free API key required.
+ * Rate limit: 5 req/sec (last.fm policy). Free API key required (Settings → Last.fm).
+ * Key is read per call so a mid-session Settings save takes effect (ADR-0044).
  */
 @Singleton
-class LastFmService @Inject constructor(@ApplicationContext private val context: Context) {
+class LastFmService @Inject constructor(private val storage: SecureStorage) {
 
     companion object {
         private const val BASE = "https://ws.audioscrobbler.com/2.0/"
@@ -38,11 +37,8 @@ class LastFmService @Inject constructor(@ApplicationContext private val context:
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    private val apiKey: String by lazy {
-        SecureStorage(context.applicationContext).get(SecureStorage.KEY_LASTFM_API_KEY)
-            ?.trim()
-            .orEmpty()
-    }
+    /** Current API key from SecureStorage (trimmed). Empty ⇒ fetch short-circuits. */
+    fun currentApiKey(): String = storage.get(SecureStorage.KEY_LASTFM_API_KEY)?.trim().orEmpty()
 
     /**
      * Fetch similar artists for a given artist name.
@@ -51,6 +47,7 @@ class LastFmService @Inject constructor(@ApplicationContext private val context:
      */
     suspend fun fetchSimilarArtists(artistName: String, limit: Int = 8): List<SimilarArtist> =
         withContext(Dispatchers.IO) {
+            val apiKey = currentApiKey()
             if (apiKey.isEmpty()) return@withContext emptyList()
             try {
                 val url = "$BASE?method=artist.getSimilar&artist=" +

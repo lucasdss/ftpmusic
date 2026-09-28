@@ -714,7 +714,8 @@ class LibraryViewModel @Inject constructor(
             var cached: List<PlaylistEntity> = emptyList()
             try {
                 cached = playlistDao.getAll()
-                val autoDownload = storage.get("auto_download_playlists")?.toBooleanStrictOrNull() ?: true
+                val autoDownload =
+                    storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
                 _state.value = _state.value.copy(
                     playlists = cached.map { entity ->
                         val pendingCount = pendingChangeDao.pendingCountForPlaylist(entity.id)
@@ -819,7 +820,8 @@ class LibraryViewModel @Inject constructor(
                 val currentId = resolveCurrentPlaylistId(playlistId)
                 playlistRepo.addToPlaylist(currentId, trackIds.distinct())
                 // Mirror PlaylistDetailViewModel: auto-download when enabled
-                val autoDownload = storage.get("auto_download_playlists")?.toBooleanStrictOrNull() ?: true
+                val autoDownload =
+                    storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
                 if (autoDownload) {
                     val base = com.lucasdss.ftpmusic.app.di.DynamicBaseUrl.url.trimEnd('/')
                     trackIds.distinct().forEach { tid ->

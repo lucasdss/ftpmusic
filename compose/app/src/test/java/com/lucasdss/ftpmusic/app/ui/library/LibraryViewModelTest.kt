@@ -2406,7 +2406,8 @@ class LibraryViewModelTest {
             PlaylistEntity(id = "new-1", name = "Road Trip", trackCount = 1),
         )
         coEvery { playlistDao.getEntries(any()) } returns emptyList()
-        every { storage.get("auto_download_playlists") } returns "false"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            "false"
         viewModel = playlistVm()
 
         viewModel.addTracksToNewPlaylist("new-1", listOf("t1"))
@@ -2423,7 +2424,8 @@ class LibraryViewModelTest {
             PlaylistEntity(id = "server-9", name = "Road Trip", trackCount = 0),
         )
         coEvery { playlistDao.getEntries(any()) } returns emptyList()
-        every { storage.get("auto_download_playlists") } returns "false"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
+            "false"
         viewModel = playlistVm()
         // createdPlaylist still carries the stale temp id
         val field = LibraryViewModel::class.java.getDeclaredField("_state")
