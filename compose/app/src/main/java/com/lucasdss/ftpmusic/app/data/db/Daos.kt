@@ -1147,7 +1147,7 @@ interface TrackWaveformDao {
     suspend fun deleteByTrackIds(trackIds: List<String>)
 }
 
-// ── Listen events (Profile metrics — ADR-0046) ──────────────────────────────
+// ── Listen events (Profile metrics — ADR-0046 / 0047) ───────────────────────
 
 @Dao
 interface ListenEventDao {
@@ -1157,7 +1157,8 @@ interface ListenEventDao {
     @Query(
         """
         SELECT COALESCE(SUM(listened_seconds), 0) FROM listen_events
-        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+        WHERE is_backfill = 0
+          AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         """,
     )
@@ -1183,8 +1184,8 @@ interface ListenEventDao {
 
     @Query(
         """
-        SELECT COUNT(DISTINCT artist_id) FROM listen_events
-        WHERE artist_id IS NOT NULL
+        SELECT COUNT(DISTINCT COALESCE(artist_id, artist_name)) FROM listen_events
+        WHERE (artist_id IS NOT NULL OR artist_name IS NOT NULL)
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         """,
@@ -1198,7 +1199,8 @@ interface ListenEventDao {
         WHERE (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY track_id
-        ORDER BY playCount DESC
+        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
+                 playCount DESC
         LIMIT :limit
         """,
     )
@@ -1214,7 +1216,8 @@ interface ListenEventDao {
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY COALESCE(artist_id, artist_name)
-        ORDER BY playCount DESC
+        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
+                 playCount DESC
         LIMIT :limit
         """,
     )
@@ -1230,7 +1233,8 @@ interface ListenEventDao {
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY COALESCE(album_id, album_name)
-        ORDER BY playCount DESC
+        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
+                 playCount DESC
         LIMIT :limit
         """,
     )
@@ -1244,7 +1248,8 @@ interface ListenEventDao {
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY genre
-        ORDER BY playCount DESC
+        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
+                 playCount DESC
         LIMIT :limit
         """,
     )
@@ -1256,12 +1261,14 @@ interface ListenEventDao {
                MAX(listened_at) AS listened_at,
                MAX(listened_seconds) AS listened_seconds
         FROM listen_events
+        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY track_id
         ORDER BY listened_at DESC
         LIMIT :limit
         """,
     )
-    suspend fun recentlyPlayed(limit: Int = 20): List<RecentListenRow>
+    suspend fun recentlyPlayed(startMs: Long?, endMs: Long?, limit: Int = 20): List<RecentListenRow>
 
     /** Distinct local calendar days (yyyy-MM-dd) that have ≥1 listen, newest first. */
     @Query(

@@ -35,3 +35,5 @@ a listening-history log. Restoring that name would confuse intent.
 - Pre-migration multi-play timestamps collapse to `last_played_at` (streak/week
   may undercount until new listens).
 - LibraryViewModel lifetime stats become legacy / Home unused path.
+- **Superseded in part by ADR-0047:** backfill minutes excluded via `is_backfill`;
+  calendar week + period recent + write-path enrich.

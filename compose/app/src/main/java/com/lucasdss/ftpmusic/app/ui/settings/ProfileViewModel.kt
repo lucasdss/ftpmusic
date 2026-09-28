@@ -63,7 +63,7 @@ class ProfileViewModel @Inject constructor(
                 val topArtists = listenEventDao.topArtists(startMs, endMs)
                 val topAlbums = listenEventDao.topAlbums(startMs, endMs)
                 val topGenres = listenEventDao.topGenres(startMs, endMs)
-                val recentRows = listenEventDao.recentlyPlayed(20)
+                val recentRows = listenEventDao.recentlyPlayed(startMs, endMs, 20)
                 val recentTracks = resolveRecentTracks(recentRows)
                 _state.value = _state.value.copy(
                     summary = ProfileSummary(

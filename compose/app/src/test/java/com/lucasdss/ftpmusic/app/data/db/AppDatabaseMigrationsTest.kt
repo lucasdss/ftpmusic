@@ -482,9 +482,22 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 53 to 54 adds is_backfill and marks existing`() {
+        run(AppDatabase.MIGRATION_53_54)
+        verify {
+            db.execSQL(
+                match {
+                    it.contains("is_backfill") && it.contains("DEFAULT 0")
+                },
+            )
+        }
+        verify { db.execSQL("UPDATE listen_events SET is_backfill = 1") }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
-        assertEquals(53, AppDatabase.ALL_MIGRATIONS_53.last().endVersion)
+        assertEquals(54, AppDatabase.ALL_MIGRATIONS_54.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -509,8 +522,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_48, AppDatabase.ALL_MIGRATIONS_49,
             AppDatabase.ALL_MIGRATIONS_50, AppDatabase.ALL_MIGRATIONS_51,
             AppDatabase.ALL_MIGRATIONS_52, AppDatabase.ALL_MIGRATIONS_53,
+            AppDatabase.ALL_MIGRATIONS_54,
         )
-        assertEquals(44, all.size)
+        assertEquals(45, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

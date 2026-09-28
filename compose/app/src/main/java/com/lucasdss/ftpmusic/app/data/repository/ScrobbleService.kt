@@ -64,7 +64,7 @@ class ScrobbleService @Inject constructor(
 
     /**
      * Report a completed listen: Subsonic scrobble (if online), increment play_count,
-     * and insert a [ListenEventEntity] with honest [listenedSeconds].
+     * and insert a [ListenEventEntity] with honest [listenedSeconds] (ADR-0047).
      */
     fun scrobble(
         trackId: String,
@@ -91,17 +91,26 @@ class ScrobbleService @Inject constructor(
             }
             ensureTrackRow(trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre)
             trackDao.incrementPlayCount(trackId)
+            val row = trackDao.getTrack(trackId)
+            val resolvedDuration = durationSeconds ?: row?.durationSeconds
+            val cappedSeconds = when {
+                resolvedDuration != null && resolvedDuration > 0 ->
+                    listenedSeconds.coerceIn(1, resolvedDuration)
+
+                else -> listenedSeconds.coerceAtLeast(1)
+            }
             listenEventDao.insert(
                 ListenEventEntity(
                     trackId = trackId,
                     listenedAt = listenedAt,
-                    listenedSeconds = listenedSeconds.coerceAtLeast(1),
-                    artistId = artistId,
-                    artistName = artist,
-                    albumId = albumId,
+                    listenedSeconds = cappedSeconds,
+                    artistId = artistId ?: row?.artistId,
+                    artistName = artist ?: row?.artist,
+                    albumId = albumId ?: row?.albumId,
                     albumName = albumName,
-                    genre = genre,
-                    trackTitle = title ?: trackId,
+                    genre = genre ?: row?.genre,
+                    trackTitle = title ?: row?.title ?: trackId,
+                    isBackfill = false,
                 ),
             )
         }

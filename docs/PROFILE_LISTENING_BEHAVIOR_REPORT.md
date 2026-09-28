@@ -1,18 +1,18 @@
 # Profile Listening — Behavior Report
 
 Date: 2026-09-28
-ADR: 0046
+ADR: 0046, 0047
 
 ## Surface
 
-Settings → Profile. Dedicated `ProfileViewModel` (not Library VM).
+Settings → Profile. Dedicated `ProfileViewModel`.
 
 ## Periods
 
 | Chip | Window |
 |------|--------|
-| Week | rolling last 7 days `[now-7d, now]` |
-| Month | calendar month start → now (device TZ) |
+| Week | calendar ISO week Mon 00:00 (device TZ) → now |
+| Month | calendar month start → now |
 | Year | calendar year start → now |
 | All time | unbounded |
 
@@ -20,36 +20,37 @@ Settings → Profile. Dedicated `ProfileViewModel` (not Library VM).
 
 | Metric | Source |
 |--------|--------|
-| Minutes | `SUM(listened_seconds)/60` |
-| Plays | `COUNT(*)` events |
+| Minutes | `SUM(listened_seconds) WHERE is_backfill=0` / 60 |
+| Plays | `COUNT(*)` (includes backfill) |
 | Songs | `COUNT(DISTINCT track_id)` |
-| Artists | `COUNT(DISTINCT artist_id)` (null artist_id excluded) |
-| Day streak | consecutive local calendar days w/ ≥1 event ending today |
-| Top songs/artists/albums/genres | `GROUP BY` count DESC LIMIT 5 |
-| Recently played | distinct tracks by max(`listened_at`) DESC LIMIT 20 |
+| Artists | `COUNT(DISTINCT COALESCE(artist_id, artist_name))` |
+| Day streak | all-time consecutive local days (UI: "All time") |
+| Tops | GROUP BY; rank `SUM(honest seconds) DESC, COUNT(*) DESC` LIMIT 5 |
+| Recently played | distinct tracks in **period** by max(`listened_at`) LIMIT 20 |
 
 ## Write path
 
-MediaService scrobble (≥60% or AUTO transition) → `ScrobbleService.scrobble(..., listenedSeconds)` →
+MediaService (≥60% transition **or** `STATE_ENDED`) → `ScrobbleService.scrobble` →
 
 1. Subsonic API if not software-offline
-2. `ensureTrackRow` + `incrementPlayCount` (Daily Mix weights)
-3. insert `listen_events` row (`listened_seconds = max(1, positionSec)`)
+2. `ensureTrackRow` + enrich missing genre/artist/album from Room
+3. `incrementPlayCount`
+4. insert `listen_events` (`is_backfill=0`, seconds clamped `[1, duration]`)
 
-## Backfill (v52→v53)
+One-shot guard avoids double scrobble transition + ENDED.
 
-Expand each `tracks.play_count > 0` into N events at `COALESCE(last_played_at,0)`,
-`listened_seconds = COALESCE(duration_seconds, 180)`. Pre-upgrade All-time/tops populated;
-Week/Month empty if timestamps old.
+## Backfill
+
+v53: expand `play_count` into N events (approximate).
+v54: all existing rows marked `is_backfill=1` — excluded from minutes only.
 
 ## Edges
 
-- Offline: event + play_count still written; server skip
-- Empty period: zeros, empty tops, "Nothing played yet"
-- Process death mid-track: no event until scrobble fires
-- Never-played catalog rows: excluded from recent (events only)
-- ADR-0009 pending_scrobbles ≠ this table (was dead server-retry queue)
+- Offline: event still written
+- Empty period: zeros / empty lists
+- Process death mid-track: no event until scrobble
+- Seek past duration: seconds capped
 
 ## Out of scope
 
-Product analytics SDKs, Last.fm Wrapped, share cards, avatar, prune.
+Wrapped/share, discovery %, prune, product analytics.

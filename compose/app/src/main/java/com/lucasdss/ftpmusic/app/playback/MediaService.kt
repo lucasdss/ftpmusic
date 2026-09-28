@@ -557,6 +557,9 @@ class MediaService : MediaLibraryService() {
 
     @Volatile private var lastTrackedPositionMs = 0L
 
+    /** Prevents double insert when both transition and STATE_ENDED fire (ADR-0047). */
+    @Volatile private var lastScrobbledTrackId: String? = null
+
     /** True once startForeground succeeded — lets onStartCommand retry it. */
     @Volatile private var foregroundStarted = false
 
@@ -659,6 +662,18 @@ class MediaService : MediaLibraryService() {
             }
         }
 
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                val trackId = lastTrackId ?: return
+                if (hasPassed60Percent) {
+                    scrobbleTrackIfNeeded(
+                        trackId,
+                        PlayerHolder.player?.currentMediaItem?.mediaMetadata,
+                    )
+                }
+            }
+        }
+
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             // CastPlayer handles Cast track loading automatically via RemoteCastPlayer
             // Capture previous track metadata NOW — currentMediaItem is still the old track at this point
@@ -671,27 +686,11 @@ class MediaService : MediaLibraryService() {
             lastTrackId = mediaItem?.mediaId
             playerErrorCount = 0 // Reset error counter on new track
             if (previousTrackId != null && (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || hasPassed60Percent)) {
-                val extras = previousMeta?.extras
-                val durationSec = (extras?.getLong("duration") ?: 0L).toInt()
-                val listenedSec = when {
-                    lastTrackedPositionMs > 0L -> (lastTrackedPositionMs / 1000L).toInt().coerceAtLeast(1)
-                    durationSec > 0 -> (durationSec * 0.6).toInt().coerceAtLeast(1)
-                    else -> 1
-                }
-                scope.launch {
-                    scrobbleService.scrobble(
-                        previousTrackId,
-                        previousMeta?.title?.toString(),
-                        previousMeta?.artist?.toString(),
-                        extras?.getString("albumId"),
-                        extras?.getString("artistId"),
-                        durationSec,
-                        previousMeta?.artworkUri?.lastPathSegment,
-                        extras?.getString("genre"),
-                        listenedSeconds = listenedSec,
-                        albumName = previousMeta?.albumTitle?.toString(),
-                    )
-                }
+                scrobbleTrackIfNeeded(previousTrackId, previousMeta)
+            }
+            // Replaying the same track after a scrobble — allow another completion event.
+            if (mediaItem?.mediaId != null && mediaItem.mediaId == lastScrobbledTrackId) {
+                lastScrobbledTrackId = null
             }
             hasPassed60Percent = false // reset for the new track
             lastTrackedPositionMs = 0L
@@ -1117,6 +1116,34 @@ class MediaService : MediaLibraryService() {
                     playerErrorCount = 0
                 }
             }
+        }
+    }
+
+    /** Scrobble once per track completion; shared by transition + STATE_ENDED (ADR-0047). */
+    private fun scrobbleTrackIfNeeded(trackId: String, meta: androidx.media3.common.MediaMetadata?) {
+        if (trackId == lastScrobbledTrackId) return
+        lastScrobbledTrackId = trackId
+        val extras = meta?.extras
+        val durationSec = (extras?.getLong("duration") ?: 0L).toInt()
+        var listenedSec = when {
+            lastTrackedPositionMs > 0L -> (lastTrackedPositionMs / 1000L).toInt().coerceAtLeast(1)
+            durationSec > 0 -> (durationSec * 0.6).toInt().coerceAtLeast(1)
+            else -> 1
+        }
+        if (durationSec > 0) listenedSec = listenedSec.coerceAtMost(durationSec)
+        scope.launch {
+            scrobbleService.scrobble(
+                trackId,
+                meta?.title?.toString(),
+                meta?.artist?.toString(),
+                extras?.getString("albumId"),
+                extras?.getString("artistId"),
+                durationSec.takeIf { it > 0 },
+                meta?.artworkUri?.lastPathSegment,
+                extras?.getString("genre"),
+                listenedSeconds = listenedSec,
+                albumName = meta?.albumTitle?.toString(),
+            )
         }
     }
 

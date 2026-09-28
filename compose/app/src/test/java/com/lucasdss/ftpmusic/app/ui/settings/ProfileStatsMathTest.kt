@@ -8,10 +8,12 @@ import org.junit.Test
 class ProfileStatsMathTest {
 
     @Test
-    fun `week bounds are rolling 7 days`() {
-        val now = 1_700_000_000_000L // fixed
+    fun `week bounds are calendar Monday start UTC`() {
+        // 2023-11-15 is Wednesday → Monday 2023-11-13
+        val now = LocalDate.of(2023, 11, 15).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val (start, end) = ProfileStatsMath.periodBounds(StatsPeriod.WEEK, now, ZoneOffset.UTC)
-        assertEquals(now - 7L * 24 * 60 * 60 * 1000, start)
+        val expected = LocalDate.of(2023, 11, 13).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        assertEquals(expected, start)
         assertEquals(now + 1, end)
     }
 

@@ -1,10 +1,12 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
 
 enum class StatsPeriod {
     WEEK,
@@ -14,14 +16,14 @@ enum class StatsPeriod {
 }
 
 /**
- * Pure period / streak math for Profile metrics (ADR-0046). Easy to unit-test.
+ * Pure period / streak math for Profile metrics (ADR-0046 / 0047).
  */
 object ProfileStatsMath {
     private val dayFmt: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 
     /**
      * Returns `[startMs, endMs)` bounds. Null start = unbounded (All time).
-     * endMs is exclusive and usually `now + 1` so "now" is included.
+     * Week = calendar ISO week (Monday 00:00 device TZ → now).
      */
     fun periodBounds(
         period: StatsPeriod,
@@ -32,8 +34,12 @@ object ProfileStatsMath {
         val zdt = Instant.ofEpochMilli(nowMs).atZone(zone)
         return when (period) {
             StatsPeriod.WEEK -> {
-                val start = zdt.minusDays(7).toInstant().toEpochMilli()
-                start to endMs
+                val monday = zdt.toLocalDate()
+                    .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                    .atStartOfDay(zone)
+                    .toInstant()
+                    .toEpochMilli()
+                monday to endMs
             }
 
             StatsPeriod.MONTH -> {
@@ -55,7 +61,6 @@ object ProfileStatsMath {
     /**
      * Consecutive local calendar days with ≥1 listen, ending at [today]
      * (or yesterday if today empty — still counts as active streak through yesterday).
-     * [daysNewestFirst] are ISO yyyy-MM-dd strings from SQLite localtime.
      */
     fun computeStreakDays(daysNewestFirst: List<String>, today: LocalDate = LocalDate.now()): Int {
         if (daysNewestFirst.isEmpty()) return 0

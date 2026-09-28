@@ -98,13 +98,19 @@ fun ProfileScreen(
             }
 
             val streak = state.summary.streakDays
-            Text(
-                if (streak <= 0) "No listening streak yet" else "$streak-day streak",
-                color = if (streak <= 0) Color(0xFF666666) else Color(0xFF00C8B4),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text(
+                    if (streak <= 0) "No streak yet" else "$streak-day streak",
+                    color = if (streak <= 0) Color(0xFF666666) else Color(0xFF00C8B4),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    "All time",
+                    color = Color(0xFF555555),
+                    fontSize = 12.sp,
+                )
+            }
 
             TopSection("Top Songs", state.topTracks)
             TopSection("Top Artists", state.topArtists)

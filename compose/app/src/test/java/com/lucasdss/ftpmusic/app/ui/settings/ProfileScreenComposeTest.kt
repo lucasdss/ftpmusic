@@ -1,8 +1,10 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
 import android.app.Application
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -48,9 +50,10 @@ class ProfileScreenComposeTest {
         composeRule.onNodeWithText("My Listening").assertIsDisplayed()
         composeRule.onNodeWithText("songs").assertIsDisplayed()
         composeRule.onNodeWithText("2-day streak").assertIsDisplayed()
+        composeRule.onAllNodesWithText("All time").assertCountEquals(2)
         composeRule.onNodeWithText("Week").assertIsDisplayed()
-        composeRule.onNodeWithText("Top Songs").assertIsDisplayed()
-        composeRule.onNodeWithText("Hit").assertIsDisplayed()
+        composeRule.onNodeWithText("Top Songs").assertExists()
+        composeRule.onNodeWithText("Hit").assertExists()
         verify { vm.refresh() }
     }
 

@@ -532,6 +532,8 @@ data class ListenEventEntity(
     @ColumnInfo(name = "album_name") val albumName: String? = null,
     val genre: String? = null,
     @ColumnInfo(name = "track_title") val trackTitle: String? = null,
+    /** v54: synthetic backfill rows excluded from honest minutes (ADR-0047). */
+    @ColumnInfo(name = "is_backfill", defaultValue = "0") val isBackfill: Boolean = false,
 )
 
 data class TopCountRow(val itemKey: String, val label: String?, val playCount: Int)

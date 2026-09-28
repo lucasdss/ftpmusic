@@ -38,7 +38,7 @@ import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
     ],
-    version = 53,
+    version = 54,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -945,5 +945,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_53 = ALL_MIGRATIONS_52 + MIGRATION_52_53
+
+        // Migration 53→54: is_backfill — mark all existing as synthetic (ADR-0047).
+        val MIGRATION_53_54 = object : Migration(53, 54) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE listen_events ADD COLUMN is_backfill INTEGER NOT NULL DEFAULT 0",
+                )
+                database.execSQL("UPDATE listen_events SET is_backfill = 1")
+            }
+        }
+        val ALL_MIGRATIONS_54 = ALL_MIGRATIONS_53 + MIGRATION_53_54
     }
 }

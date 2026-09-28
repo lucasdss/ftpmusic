@@ -120,10 +120,46 @@ class ScrobbleServiceTest {
         coVerify(timeout = 2000) { listenEventDao.insert(capture(slot)) }
         coVerify(timeout = 2000) { trackDao.incrementPlayCount(eq("t-scrob"), any()) }
         assertEquals("t-scrob", slot.captured.trackId)
-        assertEquals(1, slot.captured.listenedSeconds) // clamped
+        assertEquals(1, slot.captured.listenedSeconds) // clamped min
         assertEquals(12345L, slot.captured.listenedAt)
         assertEquals("Album", slot.captured.albumName)
         assertEquals("Rock", slot.captured.genre)
+        assertFalse(slot.captured.isBackfill)
+    }
+
+    @Test
+    fun `scrobble caps seconds to duration and enriches genre from DB`() = runTest(testDispatcher) {
+        coEvery { trackDao.getTrack("t-enrich") } returns TrackEntity(
+            id = "t-enrich",
+            title = "DB Title",
+            artist = "DB Artist",
+            artistId = "ar-db",
+            albumId = "al-db",
+            genre = "Jazz",
+            durationSeconds = 100,
+            playCount = 2,
+        )
+        service.scrobble(
+            "t-enrich",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            listenedSeconds = 999,
+            listenedAt = 99L,
+        )
+        val slot = slot<ListenEventEntity>()
+        coVerify(timeout = 2000) { listenEventDao.insert(capture(slot)) }
+        assertEquals(100, slot.captured.listenedSeconds)
+        assertEquals("Jazz", slot.captured.genre)
+        assertEquals("ar-db", slot.captured.artistId)
+        assertEquals("DB Artist", slot.captured.artistName)
+        assertEquals("al-db", slot.captured.albumId)
+        assertEquals("DB Title", slot.captured.trackTitle)
+        assertFalse(slot.captured.isBackfill)
     }
 
     // ── Play count preservation (RED: fails until ensureTrackRow fix) ───────

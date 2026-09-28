@@ -45,7 +45,7 @@ class ProfileViewModelTest {
         coEvery { listenEventDao.topArtists(any(), any(), any()) } returns emptyList()
         coEvery { listenEventDao.topAlbums(any(), any(), any()) } returns emptyList()
         coEvery { listenEventDao.topGenres(any(), any(), any()) } returns emptyList()
-        coEvery { listenEventDao.recentlyPlayed(any()) } returns listOf(
+        coEvery { listenEventDao.recentlyPlayed(any(), any(), any()) } returns listOf(
             RecentListenRow("t1", "Song", "Artist", 1000L, 180),
         )
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(
@@ -94,7 +94,7 @@ class ProfileViewModelTest {
 
     @Test
     fun `empty recent stays empty`() = runTest(dispatcher) {
-        coEvery { listenEventDao.recentlyPlayed(any()) } returns emptyList()
+        coEvery { listenEventDao.recentlyPlayed(any(), any(), any()) } returns emptyList()
         vm.refresh()
         advanceUntilIdle()
         assertEquals(0, vm.state.value.recentlyPlayed.size)
