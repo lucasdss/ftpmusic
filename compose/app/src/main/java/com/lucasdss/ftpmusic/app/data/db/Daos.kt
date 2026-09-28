@@ -190,26 +190,61 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE genre = :genre")
     suspend fun getTracksByGenre(genre: String): List<TrackEntity>
 
-    // ── v47/v48: Custom Daily Mix source pools (disliked tracks always
-    //    excluded; id-only so composite AND filters can intersect sets) ──
+    // ── v47/v51/v52: Custom Daily Mix source pools (disliked tracks + parent
+    //    album/artist ledger flags excluded at SQL; id-only for AND intersect) ──
 
-    @Query("SELECT id FROM tracks WHERE genre = :genre AND is_disliked = 0")
+    @Query(
+        "SELECT t.id FROM tracks t " +
+            "LEFT JOIN albums a ON t.album_id = a.id " +
+            "LEFT JOIN artists ar ON t.artist_id = ar.id " +
+            "WHERE t.genre = :genre AND t.is_disliked = 0 " +
+            "AND COALESCE(a.is_disliked, 0) = 0 " +
+            "AND COALESCE(ar.is_disliked, 0) = 0",
+    )
     suspend fun getMixTrackIdsByGenre(genre: String): List<String>
 
     /** Decade pool ids: album-year range. Uses the tracks.album_id index
-     *  joined to the albums ledger (PK lookup). */
+     *  joined to the albums ledger (PK lookup). Disliked albums excluded. */
     @Query(
         "SELECT t.id FROM tracks t JOIN albums a ON t.album_id = a.id " +
-            "WHERE a.year BETWEEN :minYear AND :maxYear AND t.is_disliked = 0",
+            "WHERE a.year BETWEEN :minYear AND :maxYear AND t.is_disliked = 0 " +
+            "AND a.is_disliked = 0",
     )
     suspend fun getMixTrackIdsByYearRange(minYear: Int, maxYear: Int): List<String>
 
-    @Query("SELECT id FROM tracks WHERE artist_id IN (:artistIds) AND is_disliked = 0")
+    @Query(
+        "SELECT t.id FROM tracks t " +
+            "LEFT JOIN albums a ON t.album_id = a.id " +
+            "LEFT JOIN artists ar ON t.artist_id = ar.id " +
+            "WHERE t.artist_id IN (:artistIds) AND t.is_disliked = 0 " +
+            "AND COALESCE(a.is_disliked, 0) = 0 " +
+            "AND COALESCE(ar.is_disliked, 0) = 0",
+    )
     suspend fun getMixTrackIdsByArtistIds(artistIds: List<String>): List<String>
 
     /** Name fallback for tracks missing an artist_id (legacy rows). */
-    @Query("SELECT id FROM tracks WHERE artist_id IS NULL AND artist IN (:artistNames) AND is_disliked = 0")
+    @Query(
+        "SELECT t.id FROM tracks t " +
+            "LEFT JOIN albums a ON t.album_id = a.id " +
+            "WHERE t.artist_id IS NULL AND t.artist IN (:artistNames) AND t.is_disliked = 0 " +
+            "AND COALESCE(a.is_disliked, 0) = 0",
+    )
     suspend fun getMixTrackIdsByArtistNames(artistNames: List<String>): List<String>
+
+    /**
+     * Filter-on-read / pre-hydrate: keep only playable mix candidates among
+     * [ids] (not track-disliked; album/artist ledger not disliked). Order of
+     * [ids] is not preserved — caller reorders.
+     */
+    @Query(
+        "SELECT t.id FROM tracks t " +
+            "LEFT JOIN albums a ON t.album_id = a.id " +
+            "LEFT JOIN artists ar ON t.artist_id = ar.id " +
+            "WHERE t.id IN (:ids) AND t.is_disliked = 0 " +
+            "AND COALESCE(a.is_disliked, 0) = 0 " +
+            "AND COALESCE(ar.is_disliked, 0) = 0",
+    )
+    suspend fun filterMixPlayableIds(ids: List<String>): List<String>
 
     /** Random tracks with NO genre assigned — used as supplemental diversity for
      *  Daily Mix generation (gap filler after the genre-filtered primary pool). */
@@ -755,6 +790,10 @@ interface CachedMetadataDao {
 
     @Query("SELECT id FROM artists WHERE is_disliked = 1")
     suspend fun getDislikedArtistIds(): List<String>
+
+    /** Names of disliked artists — exclude name-only tracks (`artist_id` null). */
+    @Query("SELECT name FROM artists WHERE is_disliked = 1")
+    suspend fun getDislikedArtistNames(): List<String>
 
     /** Reactive variant — Home observes this so dislike state updates live. */
     @Query("SELECT id FROM artists WHERE is_disliked = 1")

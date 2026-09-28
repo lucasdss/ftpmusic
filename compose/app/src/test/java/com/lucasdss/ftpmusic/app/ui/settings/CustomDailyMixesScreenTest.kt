@@ -174,6 +174,22 @@ class CustomDailyMixesScreenTest {
     }
 
     @Test
+    fun `editor shows fill-from-other-mixes switch`() {
+        stubDefaults()
+        coEvery { repository.getAll() } returns emptyList()
+
+        render()
+        composeRule.onNodeWithTag("custom_mixes_add").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("mix_editor_cross_mix_fill").assertIsDisplayed()
+        composeRule.onNodeWithText("Fill from other mixes").assertIsDisplayed()
+        composeRule.onNodeWithTag("mix_editor_cross_mix_fill").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Fill remaining slots from your other mix pools").assertIsDisplayed()
+    }
+
+    @Test
     fun `missing source genres surface as a row warning`() {
         stubDefaults()
         coEvery { repository.getAll() } returns listOf(mix(1L, "Rock Mix"))

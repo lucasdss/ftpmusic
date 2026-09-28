@@ -44,6 +44,8 @@ data class CustomMix(
     val filters: MixFilters,
     val autoCache: Boolean,
     val isDefault: Boolean,
+    /** When false (default), short pools shrink — no Phase-3 fill from other mixes. */
+    val allowCrossMixFill: Boolean = false,
 )
 
 /**
@@ -102,8 +104,9 @@ class DailyMixRepository @Inject constructor(
     )
 
     /** Per-run dimension caches: a genre/decade shared by several mixes is
-     *  resolved once. Favorites are fetched once too. */
-    private class PoolCaches(val favoriteArtists: List<ArtistEntity>) {
+     *  resolved once. Favorites and disliked artist names (name-only tracks)
+     *  are fetched once too. Album/artist-id dislike is applied in SQL JOINs. */
+    private class PoolCaches(val favoriteArtists: List<ArtistEntity>, val dislikedArtistNames: Set<String>) {
         val genreIds = mutableMapOf<String, Set<String>>()
         val decadeIds = mutableMapOf<String, Set<String>>()
     }
@@ -161,10 +164,19 @@ class DailyMixRepository @Inject constructor(
     }
 
     /** @return inserted id, or null when at the 20-mix cap (atomic check). */
-    suspend fun addMix(name: String, filters: MixFilters, autoCache: Boolean): Long? = withContext(ioDispatcher) {
+    suspend fun addMix(
+        name: String,
+        filters: MixFilters,
+        autoCache: Boolean,
+        allowCrossMixFill: Boolean = false,
+    ): Long? = withContext(ioDispatcher) {
         val normalized = normalize(name, filters) ?: return@withContext null
         val id = customMixDao.insertIfUnderCap(
-            normalized.toEntity(autoCache = autoCache, isDefault = false),
+            normalized.toEntity(
+                autoCache = autoCache,
+                allowCrossMixFill = allowCrossMixFill,
+                isDefault = false,
+            ),
             MAX_MIXES,
         )
         if (id == -1L) null else id
@@ -172,10 +184,17 @@ class DailyMixRepository @Inject constructor(
 
     /**
      * Persist an edit. Clears the `is_default` badge (any edit makes a mix
-     * user-owned). Filter edits regenerate immediately and reconcile the
-     * auto-cache ownership; auto-cache toggles cache/evict immediately.
+     * user-owned). Filter / fill-mode edits regenerate immediately and
+     * reconcile the auto-cache ownership; auto-cache toggles cache/evict
+     * immediately.
      */
-    suspend fun updateMix(id: Long, name: String, filters: MixFilters, autoCache: Boolean) = withContext(ioDispatcher) {
+    suspend fun updateMix(
+        id: Long,
+        name: String,
+        filters: MixFilters,
+        autoCache: Boolean,
+        allowCrossMixFill: Boolean = false,
+    ) = withContext(ioDispatcher) {
         val old = customMixDao.getById(id) ?: return@withContext
         val normalized = normalize(name, filters) ?: return@withContext
         val filtersChanged = old.sourceKind != normalized.sourceKind ||
@@ -183,12 +202,19 @@ class DailyMixRepository @Inject constructor(
             old.decadesJson != normalized.decadesJson ||
             old.artistsJson != normalized.artistsJson ||
             old.includeFavoriteArtists != normalized.includeFavoriteArtists
+        val fillChanged = old.allowCrossMixFill != allowCrossMixFill
         val autoCacheChanged = old.autoCache != autoCache
         customMixDao.update(
-            normalized.toEntity(autoCache = autoCache, isDefault = false, id = old.id, createdAt = old.createdAt),
+            normalized.toEntity(
+                autoCache = autoCache,
+                allowCrossMixFill = allowCrossMixFill,
+                isDefault = false,
+                id = old.id,
+                createdAt = old.createdAt,
+            ),
         )
         when {
-            filtersChanged -> {
+            filtersChanged || fillChanged -> {
                 val ids = generateOne(id, manual = true)
                 mixCacheCoordinator.onSourceChanged(id, ids)
             }
@@ -228,6 +254,7 @@ class DailyMixRepository @Inject constructor(
         }
         val caches = PoolCaches(
             favoriteArtists = if (needsFavorites) metadataDao.getAllStarredArtists() else emptyList(),
+            dislikedArtistNames = metadataDao.getDislikedArtistNames().toSet(),
         )
         val pools = mixes.associate { it.id to resolvePool(it, caches) }
         val allSongs = pools.values.flatten().distinctBy { it.id }
@@ -283,7 +310,12 @@ class DailyMixRepository @Inject constructor(
         if (!shouldRegen) return emptyList()
 
         val poolIds = songs.mapTo(mutableSetOf()) { it.id }
-        val supplemental = context.allSongs.filter { it.id !in poolIds }
+        // Default shrink: no Phase-3 fill from other mixes' pools (genre purity).
+        val supplemental = if (mix.allowCrossMixFill) {
+            context.allSongs.filter { it.id !in poolIds }
+        } else {
+            emptyList()
+        }
         val yesterdayMix = if (existingMix != null && existingMix.date == context.yesterday) {
             existingMix
         } else {
@@ -344,6 +376,29 @@ class DailyMixRepository @Inject constructor(
     }
 
     /**
+     * Filter-on-read: drop tracks that are track-disliked or belong to a
+     * disliked album/artist (including name-only rows). Preserves [trackIds]
+     * order. Cheap — used by Mix Detail / play so UI never waits on regen.
+     */
+    suspend fun filterPlayableMixTrackIds(trackIds: List<String>): List<String> = withContext(ioDispatcher) {
+        if (trackIds.isEmpty()) return@withContext emptyList()
+        val dislikedNames = metadataDao.getDislikedArtistNames().toSet()
+        val kept = trackIds.chunked(SQL_CHUNK)
+            .flatMap { trackDao.filterMixPlayableIds(it) }
+            .toSet()
+        val orderedKept = trackIds.filter { it in kept }
+        if (dislikedNames.isEmpty() || orderedKept.isEmpty()) {
+            return@withContext orderedKept
+        }
+        // Name-only hole: artist_id null + artist display name disliked.
+        val nameBlocked = orderedKept.chunked(SQL_CHUNK)
+            .flatMap { trackDao.getTracksByIds(it) }
+            .filter { it.artistId == null && it.artist != null && it.artist in dislikedNames }
+            .mapTo(mutableSetOf()) { it.id }
+        orderedKept.filter { it !in nameBlocked }
+    }
+
+    /**
      * Resolve a recipe's pool: OR inside each dimension, AND across the
      * non-empty dimensions, empty dimension = wildcard.
      */
@@ -379,11 +434,13 @@ class DailyMixRepository @Inject constructor(
         if (artistIds.isNotEmpty()) {
             val ids = mutableSetOf<String>()
             artistIds.chunked(SQL_CHUNK).forEach { ids += trackDao.getMixTrackIdsByArtistIds(it) }
-            // Name fallback for rows without an artist_id.
+            // Name fallback for rows without an artist_id — skip disliked names.
             val explicitNames = explicitArtistIds
                 .chunked(SQL_CHUNK)
                 .flatMap { chunk -> metadataDao.getArtistsByIds(chunk).map { it.name } }
-            val names = (explicitNames + favoriteArtists.map { it.name }).distinct()
+            val names = (explicitNames + favoriteArtists.map { it.name })
+                .distinct()
+                .filter { it !in caches.dislikedArtistNames }
             names.chunked(SQL_CHUNK).forEach { ids += trackDao.getMixTrackIdsByArtistNames(it) }
             dimensions += ids
         }
@@ -391,9 +448,21 @@ class DailyMixRepository @Inject constructor(
         if (dimensions.isEmpty()) return emptyList()
         val intersection = dimensions.reduce { acc, set -> acc intersect set }
         if (intersection.isEmpty()) return emptyList()
-        return intersection.toList()
+        // Pre-hydrate SQL filter (belt + suspenders with pool JOINs) then load
+        // only survivors — avoids discarding full TrackEntity rows.
+        val playable = intersection.toList()
+            .chunked(SQL_CHUNK)
+            .flatMap { trackDao.filterMixPlayableIds(it) }
+        if (playable.isEmpty()) return emptyList()
+        return playable
             .chunked(SQL_CHUNK)
             .flatMap { trackDao.getTracksByIds(it) }
+            // Name-only tracks: no artist_id → SQL artist join misses them.
+            .filter { track ->
+                track.artistId != null ||
+                    track.artist == null ||
+                    track.artist !in caches.dislikedArtistNames
+            }
             .map { it.toSongInfo() }
     }
 
@@ -457,10 +526,12 @@ private fun CustomMixEntity.toDomain(): CustomMix = CustomMix(
     ),
     autoCache = autoCache,
     isDefault = isDefault,
+    allowCrossMixFill = allowCrossMixFill,
 )
 
 private fun CustomMixEntity.toEntity(
     autoCache: Boolean,
+    allowCrossMixFill: Boolean,
     isDefault: Boolean,
     id: Long = this.id,
     createdAt: Long = this.createdAt,
@@ -473,6 +544,7 @@ private fun CustomMixEntity.toEntity(
     artistsJson = artistsJson,
     includeFavoriteArtists = includeFavoriteArtists,
     autoCache = autoCache,
+    allowCrossMixFill = allowCrossMixFill,
     isDefault = isDefault,
     createdAt = createdAt,
 )

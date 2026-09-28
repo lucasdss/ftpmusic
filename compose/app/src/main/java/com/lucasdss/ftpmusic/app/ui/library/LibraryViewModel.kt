@@ -679,7 +679,9 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isGeneratingMixes = true)
             try {
-                dailyMixRepository.generateOne(mixId, manual = true)
+                withContext(ioDispatcher) {
+                    dailyMixRepository.generateOne(mixId, manual = true)
+                }
                 loadDailyMixes()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

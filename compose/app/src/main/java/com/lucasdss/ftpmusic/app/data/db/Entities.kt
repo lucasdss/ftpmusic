@@ -14,7 +14,13 @@ data class ServerEntity(
     @ColumnInfo(name = "auth_type") val authType: String = "password",
 )
 
-@Entity(tableName = "artists")
+@Entity(
+    tableName = "artists",
+    indices = [
+        // v52: Daily Mix parent-dislike lookups
+        Index(value = ["is_disliked"]),
+    ],
+)
 data class ArtistEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "server_id") val serverId: String = "",
@@ -28,7 +34,13 @@ data class ArtistEntity(
     @ColumnInfo(name = "pending_unstar_at") val pendingUnstarAt: Long? = null,
 )
 
-@Entity(tableName = "albums")
+@Entity(
+    tableName = "albums",
+    indices = [
+        // v52: Daily Mix parent-dislike lookups
+        Index(value = ["is_disliked"]),
+    ],
+)
 data class AlbumEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "server_id") val serverId: String = "",
@@ -422,6 +434,8 @@ data class CustomMixEntity(
     @ColumnInfo(name = "artists_json", defaultValue = "") val artistsJson: String = "",
     @ColumnInfo(name = "include_favorite_artists", defaultValue = "0") val includeFavoriteArtists: Boolean = false,
     @ColumnInfo(name = "auto_cache") val autoCache: Boolean = false,
+    /** v51: when false (default), short pools shrink — no Phase-3 fill from other mixes. */
+    @ColumnInfo(name = "allow_cross_mix_fill", defaultValue = "0") val allowCrossMixFill: Boolean = false,
     @ColumnInfo(name = "is_default") val isDefault: Boolean = false,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
 )

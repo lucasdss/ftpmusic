@@ -42,6 +42,10 @@ class MixDetailViewModelTest {
         cacheService = mockk(relaxed = true)
         downloadManager = mockk(relaxed = true)
         favoriteRepository = mockk(relaxed = true)
+        coEvery { dailyMixRepository.filterPlayableMixTrackIds(any()) } coAnswers {
+            @Suppress("UNCHECKED_CAST")
+            invocation.args[0] as List<String>
+        }
         viewModel = MixDetailViewModel(
             genreMixDao, dailyMixRepository, trackDao, authHelper, storage,
             playbackManager = playbackManager,

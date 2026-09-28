@@ -39,7 +39,7 @@ class CustomDailyMixesViewModelTest {
         coEvery { repository.allGenres() } returns emptyList()
         coEvery { metadataDao.getAllStarredArtists() } returns emptyList()
         coEvery { repository.missingSourceGenres() } returns emptyMap()
-        coEvery { repository.addMix(any(), any(), any()) } returns 1L
+        coEvery { repository.addMix(any(), any(), any(), any()) } returns 1L
         coEvery { metadataDao.searchArtistsPaged(any(), any(), any()) } returns emptyList()
     }
 
@@ -117,6 +117,23 @@ class CustomDailyMixesViewModelTest {
         assertTrue(editor.includeFavoriteArtists)
         assertTrue(editor.autoCache)
         assertEquals("Artist One", model.state.value.selectedArtistNames["ar1"])
+    }
+
+    @Test
+    fun `setAllowCrossMixFill persists on save`() = runTest(testDispatcher) {
+        val model = vm()
+        advanceUntilIdle()
+        model.openNew()
+        model.setName("Pure MPB")
+        model.toggleGenre("MPB")
+        model.setAllowCrossMixFill(true)
+
+        model.save()
+        advanceUntilIdle()
+
+        coVerify {
+            repository.addMix("Pure MPB", MixFilters(genres = listOf("MPB")), false, true)
+        }
     }
 
     @Test
@@ -281,6 +298,7 @@ class CustomDailyMixesViewModelTest {
                 "My Mix",
                 MixFilters(genres = listOf("Rock"), decades = listOf("90s")),
                 true,
+                false,
             )
         }
         assertNull(model.state.value.editor)
@@ -289,7 +307,7 @@ class CustomDailyMixesViewModelTest {
 
     @Test
     fun `save keeps the editor open when the cap is reached`() = runTest(testDispatcher) {
-        coEvery { repository.addMix(any(), any(), any()) } returns null
+        coEvery { repository.addMix(any(), any(), any(), any()) } returns null
         val model = vm()
         advanceUntilIdle()
         model.openNew()
@@ -320,7 +338,7 @@ class CustomDailyMixesViewModelTest {
         model.save()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.addMix(any(), any(), any()) }
+        coVerify(exactly = 1) { repository.addMix(any(), any(), any(), any()) }
     }
 
     @Test
@@ -334,7 +352,15 @@ class CustomDailyMixesViewModelTest {
         model.save()
         advanceUntilIdle()
 
-        coVerify { repository.updateMix(9L, "New", MixFilters(decades = listOf("80s", "90s")), false) }
+        coVerify {
+            repository.updateMix(
+                9L,
+                "New",
+                MixFilters(decades = listOf("80s", "90s")),
+                false,
+                false,
+            )
+        }
         assertEquals("\"New\" saved", model.toast.value)
     }
 
@@ -402,7 +428,7 @@ class CustomDailyMixesViewModelTest {
         advanceUntilIdle()
 
         assertNull(model.state.value.editor)
-        coVerify(exactly = 0) { repository.addMix(any(), any(), any()) }
+        coVerify(exactly = 0) { repository.addMix(any(), any(), any(), any()) }
         coVerify(exactly = 0) { repository.deleteMix(any()) }
     }
 

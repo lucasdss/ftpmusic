@@ -54,6 +54,7 @@ class DailyMixRepositoryTest {
         artists: String = "",
         includeFavorites: Boolean = false,
         autoCache: Boolean = false,
+        allowCrossMixFill: Boolean = false,
         isDefault: Boolean = true,
     ) = CustomMixEntity(
         id = id,
@@ -64,13 +65,22 @@ class DailyMixRepositoryTest {
         artistsJson = artists,
         includeFavoriteArtists = includeFavorites,
         autoCache = autoCache,
+        allowCrossMixFill = allowCrossMixFill,
         isDefault = isDefault,
     )
 
-    private fun track(id: String) = TrackEntity(id = id, title = "T $id", artist = "A", albumId = "al-$id")
+    private fun track(id: String, albumId: String? = "al-$id", artistId: String? = null) =
+        TrackEntity(id = id, title = "T $id", artist = "A", albumId = albumId, artistId = artistId)
 
     private fun seeded() {
         coEvery { customMixDao.getState() } returns CustomMixStateEntity(seededAt = 1L)
+        // Default: SQL parent-dislike filter is identity (tests that need exclusion
+        // override filterMixPlayableIds).
+        coEvery { trackDao.filterMixPlayableIds(any()) } coAnswers {
+            @Suppress("UNCHECKED_CAST")
+            invocation.args[0] as List<String>
+        }
+        coEvery { metadataDao.getDislikedArtistNames() } returns emptyList()
     }
 
     // ── Seeding ──────────────────────────────────────────────────────────────
@@ -625,5 +635,146 @@ class DailyMixRepositoryTest {
 
         assertEquals(1, repository.generateAll(today, manual = false))
         coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+    }
+
+    @Test
+    fun `generateAll drops tracks on disliked albums and artists`() = runTest {
+        val mix = mixEntity(id = 1L, genres = "Rock")
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(mix)
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("keep", "alb", "art")
+        coEvery { trackDao.filterMixPlayableIds(any()) } returns listOf("keep")
+        coEvery { trackDao.getTracksByIds(listOf("keep")) } returns listOf(
+            track("keep", albumId = "ok-al", artistId = "ok-ar"),
+        )
+        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
+
+        assertEquals(1, repository.generateAll(today, manual = false))
+        coVerify {
+            genreMixDao.replaceDailyMix(
+                today,
+                1L,
+                match { rows -> rows.map { it.trackId } == listOf("keep") },
+            )
+        }
+    }
+
+    @Test
+    fun `generateAll drops name-only tracks of disliked artists`() = runTest {
+        val mix = mixEntity(id = 1L, genres = "Rock")
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(mix)
+        coEvery { metadataDao.getDislikedArtistNames() } returns listOf("Bad Name")
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("ok", "named")
+        coEvery { trackDao.filterMixPlayableIds(any()) } returns listOf("ok", "named")
+        coEvery { trackDao.getTracksByIds(listOf("ok", "named")) } returns listOf(
+            track("ok", albumId = "a1", artistId = "ar1").copy(artist = "Good"),
+            TrackEntity(id = "named", title = "N", artist = "Bad Name", albumId = "a2", artistId = null),
+        )
+        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
+
+        assertEquals(1, repository.generateAll(today, manual = false))
+        coVerify {
+            genreMixDao.replaceDailyMix(
+                today,
+                1L,
+                match { rows -> rows.map { it.trackId } == listOf("ok") },
+            )
+        }
+    }
+
+    @Test
+    fun `filterPlayableMixTrackIds preserves order and drops blocked ids`() = runTest {
+        coEvery { metadataDao.getDislikedArtistNames() } returns emptyList()
+        coEvery { trackDao.filterMixPlayableIds(listOf("a", "b", "c")) } returns listOf("c", "a")
+
+        val result = repository.filterPlayableMixTrackIds(listOf("a", "b", "c"))
+
+        assertEquals(listOf("a", "c"), result)
+    }
+
+    @Test
+    fun `filterPlayableMixTrackIds drops name-only disliked artists`() = runTest {
+        coEvery { metadataDao.getDislikedArtistNames() } returns listOf("Bad Name")
+        coEvery { trackDao.filterMixPlayableIds(any()) } returns listOf("ok", "named")
+        coEvery { trackDao.getTracksByIds(listOf("ok", "named")) } returns listOf(
+            track("ok", artistId = "ar1").copy(artist = "Good"),
+            TrackEntity(id = "named", title = "N", artist = "Bad Name", artistId = null),
+        )
+
+        assertEquals(listOf("ok"), repository.filterPlayableMixTrackIds(listOf("ok", "named")))
+    }
+
+    @Test
+    fun `generateAll default shrink omits other-mix tracks from supplemental`() = runTest {
+        val mpb = mixEntity(id = 1L, genres = "MPB", allowCrossMixFill = false)
+        val rock = mixEntity(id = 2L, genres = "Rock", allowCrossMixFill = false)
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(mpb, rock)
+        coEvery { trackDao.getMixTrackIdsByGenre("MPB") } returns listOf("b1", "b2")
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns (1..40).map { "r$it" }
+        coEvery { trackDao.getTracksByIds(any()) } coAnswers {
+            (invocation.args[0] as List<String>).map { id ->
+                track(id).copy(artist = if (id.startsWith("r")) "Rock-$id" else "Brazil")
+            }
+        }
+        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
+
+        assertEquals(2, repository.generateAll(today, manual = false))
+        coVerify {
+            genreMixDao.replaceDailyMix(
+                today,
+                1L,
+                match { rows -> rows.map { it.trackId }.all { it.startsWith("b") } },
+            )
+        }
+    }
+
+    @Test
+    fun `generateAll with allowCrossMixFill can pull other-mix tracks`() = runTest {
+        val mpb = mixEntity(id = 1L, genres = "MPB", allowCrossMixFill = true)
+        val rock = mixEntity(id = 2L, genres = "Rock", allowCrossMixFill = false)
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(mpb, rock)
+        coEvery { trackDao.getMixTrackIdsByGenre("MPB") } returns listOf("b1", "b2")
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns (1..40).map { "r$it" }
+        coEvery { trackDao.getTracksByIds(any()) } coAnswers {
+            (invocation.args[0] as List<String>).map { id ->
+                track(id).copy(artist = if (id.startsWith("r")) "Rock-$id" else "Brazil")
+            }
+        }
+        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
+
+        assertEquals(2, repository.generateAll(today, manual = false))
+        coVerify {
+            genreMixDao.replaceDailyMix(
+                today,
+                1L,
+                match { rows -> rows.any { it.trackId.startsWith("r") } },
+            )
+        }
+    }
+
+    @Test
+    fun `updateMix fill-flag change regenerates`() = runTest {
+        val old = mixEntity(id = 5L, genres = "Rock", allowCrossMixFill = false)
+        coEvery { customMixDao.getById(5L) } returns old
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(old.copy(allowCrossMixFill = true))
+        coEvery { trackDao.getMixTrackIdsByGenre(any()) } returns listOf("t1")
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("t1"))
+        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
+
+        repository.updateMix(
+            5L,
+            "Rock Mix",
+            MixFilters(genres = listOf("Rock")),
+            autoCache = false,
+            allowCrossMixFill = true,
+        )
+
+        coVerify { customMixDao.update(match { it.allowCrossMixFill }) }
+        coVerify { genreMixDao.replaceDailyMix(today, 5L, any()) }
+        coVerify { mixCacheCoordinator.onSourceChanged(5L, listOf("t1")) }
     }
 }

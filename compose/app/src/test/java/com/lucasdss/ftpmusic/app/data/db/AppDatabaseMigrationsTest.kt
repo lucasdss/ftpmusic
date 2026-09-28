@@ -455,9 +455,28 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 50 to 51 adds allow_cross_mix_fill`() {
+        run(AppDatabase.MIGRATION_50_51)
+        verify {
+            db.execSQL(
+                match {
+                    it.contains("allow_cross_mix_fill") && it.contains("DEFAULT 0")
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `migration 51 to 52 adds parent-dislike indexes`() {
+        run(AppDatabase.MIGRATION_51_52)
+        verify { db.execSQL(match { it.contains("index_albums_is_disliked") }) }
+        verify { db.execSQL(match { it.contains("index_artists_is_disliked") }) }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
-        assertEquals(50, AppDatabase.ALL_MIGRATIONS_50.last().endVersion)
+        assertEquals(52, AppDatabase.ALL_MIGRATIONS_52.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -480,9 +499,10 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_44, AppDatabase.ALL_MIGRATIONS_45,
             AppDatabase.ALL_MIGRATIONS_46, AppDatabase.ALL_MIGRATIONS_47,
             AppDatabase.ALL_MIGRATIONS_48, AppDatabase.ALL_MIGRATIONS_49,
-            AppDatabase.ALL_MIGRATIONS_50,
+            AppDatabase.ALL_MIGRATIONS_50, AppDatabase.ALL_MIGRATIONS_51,
+            AppDatabase.ALL_MIGRATIONS_52,
         )
-        assertEquals(41, all.size)
+        assertEquals(43, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

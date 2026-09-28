@@ -37,7 +37,7 @@ import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
         TrackWaveformEntity::class,
         RadioFavoriteEntity::class,
     ],
-    version = 50,
+    version = 52,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -849,5 +849,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_50 = ALL_MIGRATIONS_49 + MIGRATION_49_50
+
+        // Migration 50→51: per-mix cross-mix fill flag (default off = shrink).
+        val MIGRATION_50_51 = object : Migration(50, 51) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE custom_mixes ADD COLUMN allow_cross_mix_fill INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_51 = ALL_MIGRATIONS_50 + MIGRATION_50_51
+
+        // Migration 51→52: indexes for Daily Mix parent-dislike lookups.
+        val MIGRATION_51_52 = object : Migration(51, 52) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_albums_is_disliked` ON `albums` (`is_disliked`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_artists_is_disliked` ON `artists` (`is_disliked`)",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_52 = ALL_MIGRATIONS_51 + MIGRATION_51_52
     }
 }

@@ -785,11 +785,16 @@ class MixDetailViewModel @Inject constructor(
                 }
 
                 if (trackIds.isNotEmpty()) {
-                    val allTracks = trackDao.getTracksByIds(trackIds)
+                    val playableIds = dailyMixRepository.filterPlayableMixTrackIds(trackIds)
+                    val allTracks = if (playableIds.isEmpty()) {
+                        emptyList()
+                    } else {
+                        trackDao.getTracksByIds(playableIds)
+                    }
                     _likedTrackIds.value = allTracks.filter { it.starredAt != null }.map { it.id }.toSet()
                     _dislikedTrackIds.value = allTracks.filter { it.isDisliked }.map { it.id }.toSet()
                     val trackMap = allTracks.associateBy { it.id }
-                    val displayTracks = trackIds.mapNotNull { id ->
+                    val displayTracks = playableIds.mapNotNull { id ->
                         trackMap[id]?.let { t ->
                             GenreMixTrack(
                                 t.id,

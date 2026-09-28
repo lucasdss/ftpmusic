@@ -437,6 +437,60 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `mix decade pool excludes disliked albums`() = runBlocking {
+        val trackDao = db.trackDao()
+        val meta = db.cachedMetadataDao()
+        trackDao.upsert(TrackEntity(id = "y1", title = "Y1", albumId = "al1"))
+        trackDao.upsert(TrackEntity(id = "y2", title = "Y2", albumId = "al2"))
+        meta.replaceAlbums(
+            listOf(
+                CachedAlbumEntity(id = "al1", name = "Good", artist = "X", year = 1985),
+                CachedAlbumEntity(id = "al2", name = "Bad", artist = "Y", year = 1986),
+            ),
+        )
+        meta.insertNewAlbumsToLedger()
+        meta.setAlbumDisliked("al2", true)
+
+        assertEquals(listOf("y1"), trackDao.getMixTrackIdsByYearRange(1980, 1989))
+    }
+
+    @Test
+    fun `mix genre pool excludes disliked album and artist via join`() = runBlocking {
+        val trackDao = db.trackDao()
+        val meta = db.cachedMetadataDao()
+        trackDao.upsert(
+            TrackEntity(id = "g1", title = "G1", genre = "Rock", albumId = "al1", artistId = "ar1"),
+        )
+        trackDao.upsert(
+            TrackEntity(id = "g2", title = "G2", genre = "Rock", albumId = "al2", artistId = "ar1"),
+        )
+        trackDao.upsert(
+            TrackEntity(id = "g3", title = "G3", genre = "Rock", albumId = "al1", artistId = "ar2"),
+        )
+        meta.replaceAlbums(
+            listOf(
+                CachedAlbumEntity(id = "al1", name = "A1", artist = "X", year = 2000),
+                CachedAlbumEntity(id = "al2", name = "A2", artist = "Y", year = 2001),
+            ),
+        )
+        meta.insertNewAlbumsToLedger()
+        // ensureArtistLedgerRow reads from cached_artists — seed those first.
+        meta.replaceArtists(
+            listOf(
+                CachedArtistEntity(id = "ar1", name = "Artist One"),
+                CachedArtistEntity(id = "ar2", name = "Artist Two"),
+            ),
+        )
+        meta.ensureArtistLedgerRow("ar1")
+        meta.ensureArtistLedgerRow("ar2")
+        meta.setAlbumDisliked("al2", true)
+        meta.setArtistDisliked("ar2", true)
+
+        assertEquals(listOf("g1"), trackDao.getMixTrackIdsByGenre("Rock"))
+        assertEquals(listOf("g1"), trackDao.filterMixPlayableIds(listOf("g1", "g2", "g3")))
+    }
+
+    @Test
     fun `migration 46 to 47 maps settings and rekeys daily mix on real SQLite`() {
         val testDb = "migration-46-47-${System.nanoTime()}.db"
         context.deleteDatabase(testDb)

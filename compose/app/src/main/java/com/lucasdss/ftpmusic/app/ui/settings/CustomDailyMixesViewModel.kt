@@ -39,6 +39,7 @@ data class MixEditorState(
     val artistResults: List<ArtistOption> = emptyList(),
     val artistResultsExhausted: Boolean = false,
     val autoCache: Boolean = false,
+    val allowCrossMixFill: Boolean = false,
     val pendingDelete: Boolean = false,
 ) {
     val isNew: Boolean get() = mixId == null
@@ -136,6 +137,7 @@ class CustomDailyMixesViewModel @Inject constructor(
                 artistIds = mix.filters.artistIds.toSet(),
                 includeFavoriteArtists = mix.filters.includeFavoriteArtists,
                 autoCache = mix.autoCache,
+                allowCrossMixFill = mix.allowCrossMixFill,
             ),
         )
         val ids = mix.filters.artistIds
@@ -177,6 +179,8 @@ class CustomDailyMixesViewModel @Inject constructor(
     fun setActiveTab(tab: String) = updateEditor { it.copy(activeTab = tab) }
 
     fun setAutoCache(enabled: Boolean) = updateEditor { it.copy(autoCache = enabled) }
+
+    fun setAllowCrossMixFill(enabled: Boolean) = updateEditor { it.copy(allowCrossMixFill = enabled) }
 
     fun requestDelete() = updateEditor { it.copy(pendingDelete = true) }
 
@@ -322,7 +326,12 @@ class CustomDailyMixesViewModel @Inject constructor(
             try {
                 val mixId = editor.mixId
                 if (mixId == null) {
-                    val id = repository.addMix(name, filters, editor.autoCache)
+                    val id = repository.addMix(
+                        name,
+                        filters,
+                        editor.autoCache,
+                        editor.allowCrossMixFill,
+                    )
                     if (id == null) {
                         // Cap reached (or a racing save won) — keep the editor
                         // open so the typed recipe is not silently lost.
@@ -331,7 +340,13 @@ class CustomDailyMixesViewModel @Inject constructor(
                     }
                     _toast.value = "\"$name\" added"
                 } else {
-                    repository.updateMix(mixId, name, filters, editor.autoCache)
+                    repository.updateMix(
+                        mixId,
+                        name,
+                        filters,
+                        editor.autoCache,
+                        editor.allowCrossMixFill,
+                    )
                     _toast.value = "\"$name\" saved"
                 }
                 _state.value = _state.value.copy(editor = null)

@@ -501,6 +501,39 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
                 )
             }
 
+            // Cross-mix fill (default off = shrink)
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ROW_BG)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Fill from other mixes",
+                        color = Color.White,
+                        fontSize = textBodyM(),
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        if (editor.allowCrossMixFill) {
+                            "Fill remaining slots from your other mix pools"
+                        } else {
+                            "When this mix is short, keep it smaller — no tracks from other mixes"
+                        },
+                        color = Color(0xFF666666),
+                        fontSize = textLabelS(),
+                    )
+                }
+                Switch(
+                    checked = editor.allowCrossMixFill,
+                    onCheckedChange = viewModel::setAllowCrossMixFill,
+                    colors = SwitchDefaults.colors(checkedTrackColor = TEAL),
+                    modifier = Modifier.semantics { testTag = "mix_editor_cross_mix_fill" },
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
         }
 
