@@ -1,5 +1,7 @@
 package com.lucasdss.ftpmusic.app.data.repository
 
+import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
+import com.lucasdss.ftpmusic.app.data.db.ListenEventEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
@@ -22,6 +24,7 @@ import org.junit.Test
 class ScrobbleServiceTest {
 
     private val trackDao: TrackDao = mockk(relaxed = true)
+    private val listenEventDao: ListenEventDao = mockk(relaxed = true)
     private val api: SubsonicApi = mockk(relaxed = true)
     private val storage: SecureStorage = mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
@@ -35,6 +38,7 @@ class ScrobbleServiceTest {
         service =
             ScrobbleService(
                 trackDao,
+                listenEventDao,
                 api,
                 storage,
                 mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
@@ -94,6 +98,32 @@ class ScrobbleServiceTest {
     fun `dispose cancels scope`() {
         service.dispose()
         // No exception = scope cancelled
+    }
+
+    @Test
+    fun `scrobble inserts listen event with clamped seconds`() = runTest(testDispatcher) {
+        coEvery { trackDao.getTrack("t-scrob") } returns null
+        service.scrobble(
+            "t-scrob",
+            "Title",
+            "Artist",
+            "al-1",
+            "ar-1",
+            200,
+            null,
+            "Rock",
+            listenedSeconds = 0,
+            albumName = "Album",
+            listenedAt = 12345L,
+        )
+        val slot = slot<ListenEventEntity>()
+        coVerify(timeout = 2000) { listenEventDao.insert(capture(slot)) }
+        coVerify(timeout = 2000) { trackDao.incrementPlayCount(eq("t-scrob"), any()) }
+        assertEquals("t-scrob", slot.captured.trackId)
+        assertEquals(1, slot.captured.listenedSeconds) // clamped
+        assertEquals(12345L, slot.captured.listenedAt)
+        assertEquals("Album", slot.captured.albumName)
+        assertEquals("Rock", slot.captured.genre)
     }
 
     // ── Play count preservation (RED: fails until ensureTrackRow fix) ───────

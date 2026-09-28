@@ -508,3 +508,38 @@ data class TrackWaveformEntity(
     @ColumnInfo(name = "bars_json") val barsJson: String,
     @ColumnInfo(name = "cached_at") val cachedAt: Long = System.currentTimeMillis(),
 )
+
+// ── v53: Listen events (Profile period metrics — ADR-0046) ───────────────────
+
+@Entity(
+    tableName = "listen_events",
+    indices = [
+        Index(value = ["listened_at"]),
+        Index(value = ["track_id"]),
+        Index(value = ["artist_id"]),
+        Index(value = ["album_id"]),
+        Index(value = ["genre"]),
+    ],
+)
+data class ListenEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "track_id") val trackId: String,
+    @ColumnInfo(name = "listened_at") val listenedAt: Long,
+    @ColumnInfo(name = "listened_seconds") val listenedSeconds: Int,
+    @ColumnInfo(name = "artist_id") val artistId: String? = null,
+    @ColumnInfo(name = "artist_name") val artistName: String? = null,
+    @ColumnInfo(name = "album_id") val albumId: String? = null,
+    @ColumnInfo(name = "album_name") val albumName: String? = null,
+    val genre: String? = null,
+    @ColumnInfo(name = "track_title") val trackTitle: String? = null,
+)
+
+data class TopCountRow(val itemKey: String, val label: String?, val playCount: Int)
+
+data class RecentListenRow(
+    @ColumnInfo(name = "track_id") val trackId: String,
+    @ColumnInfo(name = "track_title") val trackTitle: String?,
+    @ColumnInfo(name = "artist_name") val artistName: String?,
+    @ColumnInfo(name = "listened_at") val listenedAt: Long,
+    @ColumnInfo(name = "listened_seconds") val listenedSeconds: Int,
+)

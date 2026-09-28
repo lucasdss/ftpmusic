@@ -8,6 +8,7 @@ import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
 import com.lucasdss.ftpmusic.app.data.db.GenreDao
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
+import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
 import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeDao
@@ -49,7 +50,7 @@ object DatabaseModule {
         AppDatabase::class.java,
         "ftpmusic.db",
     )
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_52)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_53)
         // NO fallbackToDestructiveMigration: all migrations 1→46 are registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
         // instead of silently wiping the database (the playlist-loss root cause).
@@ -83,6 +84,8 @@ object DatabaseModule {
     @Provides fun provideCustomMixDao(db: AppDatabase): CustomMixDao = db.customMixDao()
 
     @Provides fun provideRadioFavoriteDao(db: AppDatabase): RadioFavoriteDao = db.radioFavoriteDao()
+
+    @Provides fun provideListenEventDao(db: AppDatabase): ListenEventDao = db.listenEventDao()
 
     @Provides
     @Singleton

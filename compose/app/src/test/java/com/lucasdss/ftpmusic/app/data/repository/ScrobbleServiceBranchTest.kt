@@ -42,7 +42,7 @@ class ScrobbleServiceBranchTest {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         every { offlineModeManager.isOfflineEnabled() } returns false
-        service = ScrobbleService(trackDao, api, storage, offlineModeManager)
+        service = ScrobbleService(trackDao, mockk(relaxed = true), api, storage, offlineModeManager)
     }
 
     @After

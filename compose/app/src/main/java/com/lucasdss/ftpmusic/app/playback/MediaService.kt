@@ -555,6 +555,8 @@ class MediaService : MediaLibraryService() {
      *  Set by positionPoller, consumed by onMediaItemTransition. */
     @Volatile private var hasPassed60Percent = false
 
+    @Volatile private var lastTrackedPositionMs = 0L
+
     /** True once startForeground succeeded — lets onStartCommand retry it. */
     @Volatile private var foregroundStarted = false
 
@@ -670,6 +672,12 @@ class MediaService : MediaLibraryService() {
             playerErrorCount = 0 // Reset error counter on new track
             if (previousTrackId != null && (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || hasPassed60Percent)) {
                 val extras = previousMeta?.extras
+                val durationSec = (extras?.getLong("duration") ?: 0L).toInt()
+                val listenedSec = when {
+                    lastTrackedPositionMs > 0L -> (lastTrackedPositionMs / 1000L).toInt().coerceAtLeast(1)
+                    durationSec > 0 -> (durationSec * 0.6).toInt().coerceAtLeast(1)
+                    else -> 1
+                }
                 scope.launch {
                     scrobbleService.scrobble(
                         previousTrackId,
@@ -677,15 +685,16 @@ class MediaService : MediaLibraryService() {
                         previousMeta?.artist?.toString(),
                         extras?.getString("albumId"),
                         extras?.getString("artistId"),
-                        (
-                            extras?.getLong("duration")
-                                ?: 0L
-                            ).toInt(),
+                        durationSec,
                         previousMeta?.artworkUri?.lastPathSegment,
+                        extras?.getString("genre"),
+                        listenedSeconds = listenedSec,
+                        albumName = previousMeta?.albumTitle?.toString(),
                     )
                 }
             }
             hasPassed60Percent = false // reset for the new track
+            lastTrackedPositionMs = 0L
 
             // Persist queue + enqueue upcoming tracks for download (local-first:
             // the whole queue is progressively cached, next 3 urgent).
@@ -1123,6 +1132,7 @@ class MediaService : MediaLibraryService() {
                 // Track 60% playback threshold for scrobble eligibility.
                 // Position is read every 200ms; once crossed, the flag persists
                 // until the next track transition.
+                lastTrackedPositionMs = player.currentPosition
                 if (!hasPassed60Percent && player.duration > 0 &&
                     player.currentPosition >= player.duration * 0.6f
                 ) {

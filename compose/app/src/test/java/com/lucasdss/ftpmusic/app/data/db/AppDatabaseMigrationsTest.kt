@@ -474,9 +474,17 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 52 to 53 creates listen_events and backfill`() {
+        run(AppDatabase.MIGRATION_52_53)
+        verify { db.execSQL(match { it.contains("CREATE TABLE IF NOT EXISTS `listen_events`") }) }
+        verify { db.execSQL(match { it.contains("index_listen_events_listened_at") }) }
+        verify { db.execSQL(match { it.contains("WITH RECURSIVE expand") }) }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
-        assertEquals(52, AppDatabase.ALL_MIGRATIONS_52.last().endVersion)
+        assertEquals(53, AppDatabase.ALL_MIGRATIONS_53.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -500,9 +508,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_46, AppDatabase.ALL_MIGRATIONS_47,
             AppDatabase.ALL_MIGRATIONS_48, AppDatabase.ALL_MIGRATIONS_49,
             AppDatabase.ALL_MIGRATIONS_50, AppDatabase.ALL_MIGRATIONS_51,
-            AppDatabase.ALL_MIGRATIONS_52,
+            AppDatabase.ALL_MIGRATIONS_52, AppDatabase.ALL_MIGRATIONS_53,
         )
-        assertEquals(43, all.size)
+        assertEquals(44, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

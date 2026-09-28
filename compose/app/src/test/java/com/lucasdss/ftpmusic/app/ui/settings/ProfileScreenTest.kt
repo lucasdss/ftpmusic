@@ -27,8 +27,8 @@ class ProfileScreenTest {
     }
 
     @Test
-    fun `formatListeningTime returns 0h for zero`() {
-        assertEquals("0h", formatListeningTime(0))
+    fun `formatListeningTime returns 0m for zero`() {
+        assertEquals("0m", formatListeningTime(0))
     }
 
     @Test

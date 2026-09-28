@@ -23,6 +23,9 @@ class OfflineModeManager @Inject constructor(private val storage: SecureStorage)
      *  without needing a stubbed StateFlow. */
     fun isOfflineEnabled(): Boolean = _isOffline.value
 
+    /** Alias used across workers/scrobble/download — same as [isOfflineEnabled]. */
+    fun isQueueEnabled(): Boolean = isOfflineEnabled()
+
     /** Restore the persisted toggle. MUST run at app startup before any worker
      *  (download manager, sync workers, scrobble service) can make network calls —
      *  otherwise the user believes they are offline while the app streams. */

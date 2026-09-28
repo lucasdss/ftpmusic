@@ -1,6 +1,8 @@
 package com.lucasdss.ftpmusic.app.data.repository
 
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
+import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
+import com.lucasdss.ftpmusic.app.data.db.ListenEventEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.model.Track
@@ -13,14 +15,15 @@ import kotlinx.coroutines.*
 
 /**
  * Play tracking + Subsonic scrobbling service.
- * Increments local play_count, reports now-playing / scrobble to Subsonic server.
+ * Increments local play_count, inserts listen_events, reports to Subsonic.
  *
- * Local-first: the local play count / track row is ALWAYS written (survives
- * offline); the server API call is skipped while software offline mode is on.
+ * Local-first: play count + listen event ALWAYS written (survives offline);
+ * server API call skipped while software offline mode is on.
  */
 @Singleton
 class ScrobbleService @Inject constructor(
     private val trackDao: TrackDao,
+    private val listenEventDao: ListenEventDao,
     private val api: SubsonicApi,
     private val storage: SecureStorage,
     private val offlineModeManager: OfflineModeManager,
@@ -59,7 +62,10 @@ class ScrobbleService @Inject constructor(
         }
     }
 
-    /** Report a completed listen and increment local play count. */
+    /**
+     * Report a completed listen: Subsonic scrobble (if online), increment play_count,
+     * and insert a [ListenEventEntity] with honest [listenedSeconds].
+     */
     fun scrobble(
         trackId: String,
         title: String? = null,
@@ -69,9 +75,12 @@ class ScrobbleService @Inject constructor(
         durationSeconds: Int? = null,
         coverArtUrl: String? = null,
         genre: String? = null,
+        listenedSeconds: Int = 1,
+        albumName: String? = null,
+        listenedAt: Long = System.currentTimeMillis(),
     ) {
         scope.launch {
-            if (!offlineModeManager.isOfflineEnabled()) {
+            if (!offlineModeManager.isQueueEnabled()) {
                 try {
                     api.scrobble(authParams(), id = trackId, submission = true)
                 } catch (
@@ -82,6 +91,19 @@ class ScrobbleService @Inject constructor(
             }
             ensureTrackRow(trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre)
             trackDao.incrementPlayCount(trackId)
+            listenEventDao.insert(
+                ListenEventEntity(
+                    trackId = trackId,
+                    listenedAt = listenedAt,
+                    listenedSeconds = listenedSeconds.coerceAtLeast(1),
+                    artistId = artistId,
+                    artistName = artist,
+                    albumId = albumId,
+                    albumName = albumName,
+                    genre = genre,
+                    trackTitle = title ?: trackId,
+                ),
+            )
         }
     }
 
@@ -127,7 +149,7 @@ class ScrobbleService @Inject constructor(
         }
     }
 
-    /** Track a play: increment local count and update timestamp. */
+    /** Track a play: increment local count and update timestamp (no listen_event). */
     fun trackPlay(trackId: String) {
         scope.launch {
             trackDao.incrementPlayCount(trackId)

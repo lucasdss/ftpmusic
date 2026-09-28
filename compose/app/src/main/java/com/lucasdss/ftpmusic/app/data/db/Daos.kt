@@ -16,7 +16,9 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE cached_file_path IS NOT NULL ORDER BY last_played_at ASC LIMIT :limit")
     suspend fun getRecentlyPlayedCached(limit: Int = 20): List<TrackEntity>
 
-    @Query("SELECT * FROM tracks ORDER BY last_played_at DESC LIMIT :limit")
+    @Query(
+        "SELECT * FROM tracks WHERE last_played_at IS NOT NULL ORDER BY last_played_at DESC LIMIT :limit",
+    )
     suspend fun getRecentlyPlayed(limit: Int = 20): List<TrackEntity>
 
     @Query("SELECT * FROM tracks WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit")
@@ -1143,4 +1145,132 @@ interface TrackWaveformDao {
 
     @Query("DELETE FROM track_waveforms WHERE track_id IN (:trackIds)")
     suspend fun deleteByTrackIds(trackIds: List<String>)
+}
+
+// ── Listen events (Profile metrics — ADR-0046) ──────────────────────────────
+
+@Dao
+interface ListenEventDao {
+    @Insert
+    suspend fun insert(event: ListenEventEntity): Long
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(listened_seconds), 0) FROM listen_events
+        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        """,
+    )
+    suspend fun sumListenedSeconds(startMs: Long?, endMs: Long?): Long
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM listen_events
+        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        """,
+    )
+    suspend fun countPlays(startMs: Long?, endMs: Long?): Int
+
+    @Query(
+        """
+        SELECT COUNT(DISTINCT track_id) FROM listen_events
+        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        """,
+    )
+    suspend fun countDistinctTracks(startMs: Long?, endMs: Long?): Int
+
+    @Query(
+        """
+        SELECT COUNT(DISTINCT artist_id) FROM listen_events
+        WHERE artist_id IS NOT NULL
+          AND (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        """,
+    )
+    suspend fun countDistinctArtists(startMs: Long?, endMs: Long?): Int
+
+    @Query(
+        """
+        SELECT track_id AS itemKey, track_title AS label, COUNT(*) AS playCount
+        FROM listen_events
+        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        GROUP BY track_id
+        ORDER BY playCount DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun topTracks(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+
+    @Query(
+        """
+        SELECT COALESCE(artist_id, artist_name, '') AS itemKey,
+               artist_name AS label,
+               COUNT(*) AS playCount
+        FROM listen_events
+        WHERE (artist_id IS NOT NULL OR artist_name IS NOT NULL)
+          AND (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        GROUP BY COALESCE(artist_id, artist_name)
+        ORDER BY playCount DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun topArtists(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+
+    @Query(
+        """
+        SELECT COALESCE(album_id, album_name, '') AS itemKey,
+               album_name AS label,
+               COUNT(*) AS playCount
+        FROM listen_events
+        WHERE (album_id IS NOT NULL OR album_name IS NOT NULL)
+          AND (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        GROUP BY COALESCE(album_id, album_name)
+        ORDER BY playCount DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun topAlbums(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+
+    @Query(
+        """
+        SELECT genre AS itemKey, genre AS label, COUNT(*) AS playCount
+        FROM listen_events
+        WHERE genre IS NOT NULL AND genre != ''
+          AND (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        GROUP BY genre
+        ORDER BY playCount DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun topGenres(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+
+    @Query(
+        """
+        SELECT track_id, track_title, artist_name,
+               MAX(listened_at) AS listened_at,
+               MAX(listened_seconds) AS listened_seconds
+        FROM listen_events
+        GROUP BY track_id
+        ORDER BY listened_at DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun recentlyPlayed(limit: Int = 20): List<RecentListenRow>
+
+    /** Distinct local calendar days (yyyy-MM-dd) that have ≥1 listen, newest first. */
+    @Query(
+        """
+        SELECT DISTINCT date(listened_at / 1000, 'unixepoch', 'localtime') AS day
+        FROM listen_events
+        ORDER BY day DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun distinctListenDays(limit: Int = 400): List<String>
 }

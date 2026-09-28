@@ -36,8 +36,9 @@ import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
         CustomMixStateEntity::class,
         TrackWaveformEntity::class,
         RadioFavoriteEntity::class,
+        ListenEventEntity::class,
     ],
-    version = 52,
+    version = 53,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -57,6 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun customMixDao(): CustomMixDao
     abstract fun trackWaveformDao(): TrackWaveformDao
     abstract fun radioFavoriteDao(): RadioFavoriteDao
+    abstract fun listenEventDao(): ListenEventDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -872,5 +874,76 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_52 = ALL_MIGRATIONS_51 + MIGRATION_51_52
+
+        // Migration 52→53: listen_events + backfill from tracks.play_count (ADR-0046).
+        val MIGRATION_52_53 = object : Migration(52, 53) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `listen_events` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `track_id` TEXT NOT NULL,
+                        `listened_at` INTEGER NOT NULL,
+                        `listened_seconds` INTEGER NOT NULL,
+                        `artist_id` TEXT,
+                        `artist_name` TEXT,
+                        `album_id` TEXT,
+                        `album_name` TEXT,
+                        `genre` TEXT,
+                        `track_title` TEXT
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_listen_events_listened_at` ON `listen_events` (`listened_at`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_listen_events_track_id` ON `listen_events` (`track_id`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_listen_events_artist_id` ON `listen_events` (`artist_id`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_listen_events_album_id` ON `listen_events` (`album_id`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_listen_events_genre` ON `listen_events` (`genre`)",
+                )
+                // Expand play_count into N rows so All-time / tops are non-empty post-upgrade.
+                database.execSQL(
+                    """
+                    INSERT INTO listen_events (
+                        track_id, listened_at, listened_seconds,
+                        artist_id, artist_name, album_id, album_name, genre, track_title
+                    )
+                    WITH RECURSIVE expand AS (
+                        SELECT
+                            id AS track_id,
+                            play_count AS n,
+                            COALESCE(last_played_at, 0) AS listened_at,
+                            COALESCE(duration_seconds, 180) AS listened_seconds,
+                            artist_id,
+                            artist AS artist_name,
+                            album_id,
+                            genre,
+                            title AS track_title
+                        FROM tracks
+                        WHERE play_count > 0
+                        UNION ALL
+                        SELECT
+                            track_id, n - 1, listened_at, listened_seconds,
+                            artist_id, artist_name, album_id, genre, track_title
+                        FROM expand
+                        WHERE n > 1
+                    )
+                    SELECT
+                        track_id, listened_at, listened_seconds,
+                        artist_id, artist_name, album_id, NULL, genre, track_title
+                    FROM expand
+                    """.trimIndent(),
+                )
+            }
+        }
+        val ALL_MIGRATIONS_53 = ALL_MIGRATIONS_52 + MIGRATION_52_53
     }
 }

@@ -17,6 +17,7 @@ class ScrobbleContinuousTest {
 
     private fun createService() = ScrobbleService(
         trackDao,
+        mockk(relaxed = true),
         api,
         storage,
         mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
