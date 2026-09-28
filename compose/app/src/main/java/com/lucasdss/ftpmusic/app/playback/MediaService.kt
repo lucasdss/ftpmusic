@@ -713,6 +713,10 @@ class MediaService : MediaLibraryService() {
                     "ftpmusic",
                     "[MediaService] onMediaItemTransition: title=${metadata.title} artist=${metadata.artist} album=${metadata.albumTitle} idx=${player?.currentMediaItemIndex} count=${player?.mediaItemCount}",
                 )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-playback",
+                    "transition id=${mediaItem.mediaId} reason=$reason title=${metadata.title}",
+                )
                 if (playbackManager.isUrlSwapInProgress) {
                     // URL-only swap — don't reset position or metadata, just update track index
                     // idx is read from Player directly by PlaybackState.fromPlayer
@@ -1040,6 +1044,11 @@ class MediaService : MediaLibraryService() {
         }
         override fun onPlayerError(error: PlaybackException) {
             android.util.Log.e("MediaService", "Playback error: ${error.message}", error)
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.e(
+                "ftpmusic-playback",
+                "player error: ${error.message}",
+                error,
+            )
             val ep = exoPlayer
             // Edge 40: recovery must not require STATE_IDLE — an error arriving
             // while the player is mid-transition (buffering) previously skipped
@@ -1131,6 +1140,10 @@ class MediaService : MediaLibraryService() {
             else -> 1
         }
         if (durationSec > 0) listenedSec = listenedSec.coerceAtMost(durationSec)
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "scrobble track=$trackId secs=$listenedSec",
+        )
         scope.launch {
             scrobbleService.scrobble(
                 trackId,

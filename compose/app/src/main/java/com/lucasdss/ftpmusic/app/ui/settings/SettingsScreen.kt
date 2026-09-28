@@ -41,6 +41,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Column(
         Modifier
@@ -547,7 +548,6 @@ fun SettingsScreen(
         // ═══ Notifications section ═══
         SectionLabel("NOTIFICATIONS")
         SectionCard {
-            val context = LocalContext.current
             val systemNotificationsEnabled = androidx.core.app.NotificationManagerCompat
                 .from(context).areNotificationsEnabled()
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -890,6 +890,74 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(Modifier.height(24.dp))
+
+        // ═══ About / Diagnostics section ═══
+        SectionLabel("ABOUT / DIAGNOSTICS")
+        SectionCard {
+            SectionRow("Version", viewModel.appVersionLabel())
+            SectionDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val text = viewModel.diagnosticsSnapshot()
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_SUBJECT, "ftpmusic diagnostics")
+                            putExtra(android.content.Intent.EXTRA_TEXT, text)
+                        }
+                        context.startActivity(
+                            android.content.Intent.createChooser(send, "Share diagnostics"),
+                        )
+                    }
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("settings_share_diagnostics"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Share, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(iconSmall()))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "Share diagnostics",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Export recent sync / playback breadcrumbs (no upload)",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
+                }
+            }
+            SectionDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.clearDiagnostics() }
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("settings_clear_diagnostics"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.DeleteSweep, null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(iconSmall()))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "Clear log",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Wipe the in-app diagnostic ring buffer",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(adp(40f)))
 
         // Logo footer
@@ -909,7 +977,11 @@ fun SettingsScreen(
             Spacer(Modifier.height(12.dp))
             Text("FTP Music", color = Color.White, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
             Text("Flow Tempo Pulse", color = Color(0xFF00C8B4), fontSize = textBodyM())
-            Text("v1.0.0 · Navidrome / Subsonic API", color = Color(0xFF666666), fontSize = textLabelM())
+            Text(
+                "v${com.lucasdss.ftpmusic.app.BuildConfig.VERSION_NAME} · Navidrome / Subsonic API",
+                color = Color(0xFF666666),
+                fontSize = textLabelM(),
+            )
         }
 
         Spacer(Modifier.height(32.dp))

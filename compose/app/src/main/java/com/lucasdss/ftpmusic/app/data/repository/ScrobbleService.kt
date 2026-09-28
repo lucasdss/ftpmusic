@@ -5,6 +5,7 @@ import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
 import com.lucasdss.ftpmusic.app.data.db.ListenEventEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
@@ -87,7 +88,10 @@ class ScrobbleService @Inject constructor(
                     e: Exception,
                 ) {
                     android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
+                    DiagnosticLog.w("ftpmusic-scrobble", "API skip/fail: ${e.message}")
                 }
+            } else {
+                DiagnosticLog.d("ftpmusic-scrobble", "API skip — offline id=$trackId")
             }
             ensureTrackRow(trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre)
             trackDao.incrementPlayCount(trackId)
@@ -112,6 +116,10 @@ class ScrobbleService @Inject constructor(
                     trackTitle = title ?: row?.title ?: trackId,
                     isBackfill = false,
                 ),
+            )
+            DiagnosticLog.d(
+                "ftpmusic-scrobble",
+                "listen event id=$trackId secs=$cappedSeconds",
             )
         }
     }

@@ -613,4 +613,16 @@ class SettingsViewModelTest {
         assertEquals("draft-key", viewModel.state.value.lastFmApiKey)
         verify(exactly = 0) { storage.put(SecureStorage.KEY_LASTFM_API_KEY, any()) }
     }
+
+    @Test
+    fun `diagnosticsSnapshot and clearDiagnostics`() {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("t", "vm-line")
+        every { offlineModeManager.isQueueEnabled() } returns false
+        val snap = viewModel.diagnosticsSnapshot()
+        assertTrue(snap.contains("vm-line"))
+        assertTrue(snap.contains(viewModel.appVersionLabel().substringBefore(" (")))
+        viewModel.clearDiagnostics()
+        assertEquals(0, com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.lineCount())
+    }
 }

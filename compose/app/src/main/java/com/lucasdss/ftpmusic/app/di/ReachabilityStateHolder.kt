@@ -15,12 +15,20 @@ object ReachabilityStateHolder {
     internal fun onApiSuccess() {
         if (!_isReachable.value) {
             _isReachable.value = true
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-reach",
+                "server reachable again",
+            )
         }
     }
 
     internal fun onApiFailure() {
         if (_isReachable.value) {
             _isReachable.value = false
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-reach",
+                "server unreachable",
+            )
         }
     }
 }

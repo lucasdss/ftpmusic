@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
 import androidx.annotation.VisibleForTesting
+import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
@@ -249,11 +250,13 @@ class MetadataSyncWorker(
         // fetch, and the local-first contract forbids the network call.
         if (offlineModeManager.isOfflineEnabled()) {
             android.util.Log.d(TAG, "Skipping sync — offline mode enabled")
+            DiagnosticLog.d(TAG, "skip sync — offline")
             return null
         }
         // Reachability gate — avoid burning retries when server is marked down.
         if (!com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value) {
             android.util.Log.d(TAG, "Skipping sync — server unreachable")
+            DiagnosticLog.d(TAG, "skip sync — unreachable")
             return null
         }
         // Cooldown: skip auto-triggered syncs if the last sync finished recently.
@@ -262,6 +265,7 @@ class MetadataSyncWorker(
             val elapsed = System.currentTimeMillis() - lastSyncFinishMs
             if (lastSyncFinishMs > 0L && elapsed < MIN_SYNC_COOLDOWN_MS) {
                 android.util.Log.d(TAG, "Skipping sync — cooldown active (${elapsed}ms < ${MIN_SYNC_COOLDOWN_MS}ms)")
+                DiagnosticLog.d(TAG, "skip sync — cooldown")
                 return null
             }
         }
@@ -283,6 +287,7 @@ class MetadataSyncWorker(
             )
             try {
                 Log.d(TAG, "Starting metadata sync… mode=$resolvedMode forceTrackResync=$forceTrackResync")
+                DiagnosticLog.d(TAG, "sync start mode=$resolvedMode force=$forceTrackResync")
                 syncAlbums(resolvedMode)
                 val albumCount = metadataDao.albumCount()
                 _status.value = _status.value.copy(
@@ -366,6 +371,7 @@ class MetadataSyncWorker(
                 editor.apply()
             } catch (e: Exception) {
                 Log.w(TAG, "Metadata sync failed: ${e.message}")
+                DiagnosticLog.e(TAG, "sync failed: ${e.message}", e)
                 _status.value = _status.value.copy(
                     isRunning = false,
                     phase = "error",
@@ -375,6 +381,8 @@ class MetadataSyncWorker(
                 lastSyncFinishMs = System.currentTimeMillis()
                 isSyncing.set(false)
                 syncJobs.remove(coroutineContext[kotlinx.coroutines.Job]!!)
+                val phase = _status.value.phase
+                DiagnosticLog.d(TAG, "sync end phase=$phase elapsed=${System.currentTimeMillis() - startMs}ms")
             }
         }
         syncJobs.add(job)

@@ -420,4 +420,23 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+
+    /** Build diagnostics export text (no network upload). */
+    fun diagnosticsSnapshot(): String {
+        val prefs = context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE)
+        return com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            context = context,
+            offline = _state.value.offlineMode || offlineModeManager.isQueueEnabled(),
+            reachable = com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value,
+            lastFullSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, 0),
+            lastDeltaSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, 0),
+        )
+    }
+
+    fun clearDiagnostics() {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+    }
+
+    fun appVersionLabel(): String =
+        "${com.lucasdss.ftpmusic.app.BuildConfig.VERSION_NAME} (${com.lucasdss.ftpmusic.app.BuildConfig.VERSION_CODE})"
 }
