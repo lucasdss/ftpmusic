@@ -38,6 +38,7 @@ import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
@@ -373,13 +374,13 @@ fun AlbumDetailScreen(
                         Spacer(Modifier.width(12.dp))
                         // Info
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                track.title,
+                            FittingText(
+                                text = track.title,
                                 color = if (isActive) Color(0xFF00C8B4) else Color.White,
                                 fontSize = textHeadingS(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(2.dp))
                             Row {
@@ -900,8 +901,21 @@ private fun SheetAction(label: String, subtitle: String, icon: ImageVector, colo
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Medium)
-            Text(subtitle, color = Color(0xFF888888), fontSize = textLabelM())
+            FittingText(
+                text = label,
+                color = Color.White,
+                fontSize = textBodyM(),
+                minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FittingText(
+                text = subtitle,
+                color = Color(0xFF888888),
+                fontSize = textLabelM(),
+                minFontSize = textMicro(),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
     HorizontalDivider(color = Color.White.copy(alpha = 0.04f), modifier = Modifier.padding(horizontal = spacingL()))

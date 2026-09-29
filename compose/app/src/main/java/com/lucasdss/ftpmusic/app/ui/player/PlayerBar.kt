@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -396,11 +397,12 @@ private fun PlayerMiniBar(
                 Spacer(Modifier.width(8.dp))
                 // Track info
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        title ?: "No track",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
+                    FittingText(
+                        text = title ?: "No track",
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                        minFontSize = textMicro(),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     val artistLine = artist ?: ""
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -419,22 +421,23 @@ private fun PlayerMiniBar(
                                 }
                             }
                             Spacer(Modifier.width(4.dp))
-                            Text(
-                                castDeviceName!!,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                            FittingText(
+                                text = castDeviceName!!,
                                 color = if (!isQueueSynced) Color(0xFFF0A040) else Color(0xFF00C8B4),
                                 fontSize = 10.sp,
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.weight(1f, fill = false),
+                                fillMaxWidth = false,
                             )
                         } else {
-                            Text(
-                                artistLine.ifEmpty { "" },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
+                            FittingText(
+                                text = artistLine.ifEmpty { "" },
+                                fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                                minFontSize = textMicro(),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f, fill = false),
+                                fillMaxWidth = false,
                             )
                         }
                         if (priorityQueueSize > 0) {
@@ -676,22 +679,22 @@ private fun ColumnScope.PlayerMainBody(
             // Track info row — title / artist+actions / rating
             Row(Modifier.fillMaxWidth().padding(horizontal = spacingL()), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        title ?: "",
+                    FittingText(
+                        text = title ?: "",
                         color = Color.White,
                         fontSize = textHeadingL(),
+                        minFontSize = textMicro(),
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     Row(Modifier.padding(top = spacingXS()), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            artist ?: "",
+                        FittingText(
+                            text = artist ?: "",
                             color = Color(0xFF999999),
                             fontSize = textBodyM(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            minFontSize = textMicro(),
                             modifier = Modifier.weight(1f),
+                            fillMaxWidth = false,
                         )
                         Surface(
                             shape = RoundedCornerShape(50),
@@ -2122,20 +2125,20 @@ private fun QueueTrackRow(
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                track.title,
+            FittingText(
+                text = track.title,
                 color = if (dimmed) Color(0xFF999999) else Color.White,
                 fontSize = textBodyM(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                minFontSize = textMicro(),
+                modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {
-                Text(
-                    it,
+                FittingText(
+                    text = it,
                     color = if (dimmed) Color(0xFF555555) else Color(0xFF666666),
                     fontSize = textLabelM(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    minFontSize = textMicro(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {

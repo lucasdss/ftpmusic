@@ -498,6 +498,27 @@ class SettingsViewModelTest {
         assertFalse(vm.state.value.playbackNotificationsEnabled)
     }
 
+    // ── v49: Hide navigation labels ─────────────────────────────────────
+
+    @Test
+    fun `hide nav labels default to disabled`() {
+        assertFalse(viewModel.state.value.hideNavLabels)
+    }
+
+    @Test
+    fun `setHideNavLabels persists to storage`() {
+        viewModel.setHideNavLabels(true)
+        assertTrue(viewModel.state.value.hideNavLabels)
+        verify { storage.put(SecureStorage.KEY_NAV_HIDE_LABELS, "true") }
+    }
+
+    @Test
+    fun `stored hide nav labels pref is restored on init`() {
+        every { storage.get(SecureStorage.KEY_NAV_HIDE_LABELS) } returns "true"
+        val vm = createViewModel()
+        assertTrue(vm.state.value.hideNavLabels)
+    }
+
     // ── Last.fm / remaining setters ─────────────────────────────────────
 
     @Test

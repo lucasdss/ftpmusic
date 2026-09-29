@@ -48,6 +48,7 @@ import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
@@ -169,10 +170,13 @@ fun ArtistDetailScreen(
                         )
                         state.publicRatingVotes?.let { votes ->
                             Spacer(Modifier.width(6.dp))
-                            Text(
-                                "($votes votes · MusicBrainz)",
+                            FittingText(
+                                text = "($votes votes · MusicBrainz)",
                                 color = Color(0xFF666666),
                                 fontSize = textLabelM(),
+                                minFontSize = textMicro(),
+                                modifier = Modifier.weight(1f, fill = false),
+                                fillMaxWidth = false,
                             )
                         }
                     }
@@ -820,8 +824,21 @@ private fun ArtistSheetAction(label: String, subtitle: String, icon: ImageVector
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Medium)
-            Text(subtitle, color = Color(0xFF888888), fontSize = textLabelM())
+            FittingText(
+                text = label,
+                color = Color.White,
+                fontSize = textBodyM(),
+                minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FittingText(
+                text = subtitle,
+                color = Color(0xFF888888),
+                fontSize = textLabelM(),
+                minFontSize = textMicro(),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
     HorizontalDivider(color = Color.White.copy(alpha = 0.04f), modifier = Modifier.padding(horizontal = spacingL()))

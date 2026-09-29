@@ -170,5 +170,8 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         // v47: "Download on Wi-Fi only" persisted so auto-cache/downloads keep
         // respecting it across process death (DownloadManager reads it at start).
         const val KEY_DOWNLOAD_MOBILE_DATA = "download_mobile_data"
+
+        // v49: Hide bottom-nav labels (icon-only). Default OFF (labels shown).
+        const val KEY_NAV_HIDE_LABELS = "nav_hide_labels"
     }
 }

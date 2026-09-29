@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -181,14 +182,23 @@ fun PlaylistDetailScreen(
                             Text("⚠", fontSize = 16.sp)
                             Spacer(Modifier.width(8.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    "Sync Conflict",
+                                FittingText(
+                                    text = "Sync Conflict",
                                     color = Color(0xFFFF8C00),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 state.conflictMessage?.let {
-                                    Text(it, color = Color(0x88FFFFFF), fontSize = 11.sp)
+                                    FittingText(
+                                        text = it,
+                                        color = Color(0x88FFFFFF),
+                                        fontSize = 11.sp,
+                                        minFontSize = textMicro(),
+                                        maxLines = 3,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
                                 }
                             }
                             TextButton(onClick = { viewModel.syncToServer() }) {
@@ -891,8 +901,21 @@ private fun PlaylistSheetAction(label: String, subtitle: String, icon: ImageVect
         }
         Spacer(Modifier.width(spacingM()))
         Column(Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Medium)
-            Text(subtitle, color = Color(0xFF888888), fontSize = textLabelM())
+            FittingText(
+                text = label,
+                color = Color.White,
+                fontSize = textBodyM(),
+                minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FittingText(
+                text = subtitle,
+                color = Color(0xFF888888),
+                fontSize = textLabelM(),
+                minFontSize = textMicro(),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
     HorizontalDivider(color = Color.White.copy(alpha = 0.04f), modifier = Modifier.padding(horizontal = spacingL()))

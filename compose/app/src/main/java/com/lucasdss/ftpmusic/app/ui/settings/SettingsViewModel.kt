@@ -68,6 +68,8 @@ data class SettingsUiState(
     // v46: Playback notifications feature toggle (default ON). OFF still posts
     // the FGS-satisfying minimal notification, without media controls/art.
     val playbackNotificationsEnabled: Boolean = true,
+    // v49: Hide bottom-nav labels (icon-only). Default OFF = labels shown.
+    val hideNavLabels: Boolean = false,
     // Last.fm API key (masked in UI when non-blank after save)
     val lastFmApiKey: String = "",
     val lastFmKeySaved: Boolean = false,
@@ -123,6 +125,8 @@ class SettingsViewModel @Inject constructor(
         val savedShowFavRadio = storage.get(SecureStorage.KEY_HOME_SHOW_FAV_RADIO)?.toBooleanStrictOrNull() ?: true
         val savedPlaybackNotifications =
             storage.get(SecureStorage.KEY_PLAYBACK_NOTIFICATIONS)?.toBooleanStrictOrNull() ?: true
+        val savedHideNavLabels =
+            storage.get(SecureStorage.KEY_NAV_HIDE_LABELS)?.toBooleanStrictOrNull() ?: false
         // v47: restore the persisted Wi-Fi-only preference into the download
         // worker so auto-cache respects it after process death.
         val savedDownloadMobileData =
@@ -153,6 +157,7 @@ class SettingsViewModel @Inject constructor(
             showFavAlbumsSection = savedShowFavAlbums,
             showFavRadioSection = savedShowFavRadio,
             playbackNotificationsEnabled = savedPlaybackNotifications,
+            hideNavLabels = savedHideNavLabels,
             castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
             lastFmApiKey = storage.get(SecureStorage.KEY_LASTFM_API_KEY).orEmpty(),
             lastFmKeySaved = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank(),
@@ -248,6 +253,12 @@ class SettingsViewModel @Inject constructor(
     fun setPlaybackNotificationsEnabled(enabled: Boolean) {
         _state.value = _state.value.copy(playbackNotificationsEnabled = enabled)
         storage.put(SecureStorage.KEY_PLAYBACK_NOTIFICATIONS, enabled.toString())
+    }
+
+    // v49: Hide bottom-nav labels (icon-only). Live via activity-scoped SettingsVM.
+    fun setHideNavLabels(enabled: Boolean) {
+        _state.value = _state.value.copy(hideNavLabels = enabled)
+        storage.put(SecureStorage.KEY_NAV_HIDE_LABELS, enabled.toString())
     }
 
     fun setSyncIntervalHours(hours: Int) {

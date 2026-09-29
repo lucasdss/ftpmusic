@@ -31,8 +31,10 @@ import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.SyncStatus
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
 import com.lucasdss.ftpmusic.app.ui.textLabelM
+import com.lucasdss.ftpmusic.app.ui.textMicro
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -402,7 +404,13 @@ private fun SyncRowCard(row: SyncStatus.Row) {
         Spacer(Modifier.width(12.dp))
         // Label + progress bar
         Column(Modifier.weight(1f)) {
-            Text(row.label, color = Color.White, fontSize = 14.sp)
+            FittingText(
+                text = row.label,
+                color = Color.White,
+                fontSize = 14.sp,
+                minFontSize = textMicro(),
+                modifier = Modifier.fillMaxWidth(),
+            )
             if (row.showProgress && row.total > 0) {
                 Spacer(Modifier.height(4.dp))
                 LinearProgressIndicator(

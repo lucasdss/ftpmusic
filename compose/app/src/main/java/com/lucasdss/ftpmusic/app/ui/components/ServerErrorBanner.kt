@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
+import com.lucasdss.ftpmusic.app.ui.textMicro
 
 /**
  * Warning banner for server problems. Two sources:
@@ -73,10 +74,12 @@ fun ServerErrorBanner(
     ) {
         Icon(Icons.Default.Warning, null, tint = Color(0xFFFFC800), modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(8.dp))
-        Text(
-            message,
+        FittingText(
+            text = message,
             color = Color(0xFFE8C766),
             fontSize = 12.sp,
+            minFontSize = textMicro(),
+            maxLines = 3,
             modifier = Modifier.weight(1f),
         )
         Text(

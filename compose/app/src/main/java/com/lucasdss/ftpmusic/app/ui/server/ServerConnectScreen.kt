@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,10 +44,14 @@ fun ServerConnectScreen(onConnected: () -> Unit = {}, viewModel: ServerConnectVi
             )
             if (isCleartextServerUrl(state.serverUrl)) {
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "HTTP sends your music-server credentials without transport encryption. Use only on a trusted private network.",
+                FittingText(
+                    text = "HTTP sends your music-server credentials without transport encryption. " +
+                        "Use only on a trusted private network.",
                     color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                    minFontSize = textMicro(),
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             Spacer(Modifier.height(12.dp))
@@ -95,10 +100,13 @@ fun ServerConnectScreen(onConnected: () -> Unit = {}, viewModel: ServerConnectVi
 
             state.error?.let {
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    it,
+                FittingText(
+                    text = it,
                     color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                    minFontSize = textMicro(),
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

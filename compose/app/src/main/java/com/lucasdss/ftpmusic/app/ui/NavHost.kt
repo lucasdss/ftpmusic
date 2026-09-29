@@ -1,4 +1,5 @@
 package com.lucasdss.ftpmusic.app.ui
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.album.AlbumDetailScreen
 import com.lucasdss.ftpmusic.app.ui.artist.ArtistDetailScreen
 import com.lucasdss.ftpmusic.app.ui.components.AppHeader
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.favorites.FavoritesScreen
 import com.lucasdss.ftpmusic.app.ui.genre.GenreDetailScreen
 import com.lucasdss.ftpmusic.app.ui.library.HomeScreen
@@ -64,6 +66,7 @@ import com.lucasdss.ftpmusic.app.ui.player.parseLrcText
 import com.lucasdss.ftpmusic.app.ui.search.SearchScreen
 import com.lucasdss.ftpmusic.app.ui.server.ServerConnectScreen
 import com.lucasdss.ftpmusic.app.ui.settings.SettingsScreen
+import com.lucasdss.ftpmusic.app.ui.settings.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -95,6 +98,12 @@ fun FtpmusicNavHost() {
     val currentRoute = navBackStackEntry?.destination?.route
 
     val playbackViewModel: PlaybackViewModel = hiltViewModel()
+    // Activity-scoped so SettingsScreen toggle updates the bar live.
+    val settingsViewModel: SettingsViewModel = hiltViewModel(
+        viewModelStoreOwner = LocalContext.current as ComponentActivity,
+    )
+    val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+    val hideNavLabels = settingsState.hideNavLabels
     // P1: strip the 200 ms position tick out of the metadata state so a tick
     // never recomposes this whole scope (every screen, bottom nav, player).
     // The flow transformation lives in the ViewModel (stateWithoutPosition);
@@ -324,12 +333,19 @@ fun FtpmusicNavHost() {
                                         modifier = Modifier.size(adp(22f)),
                                     )
                                 },
-                                label = {
-                                    Text(
-                                        tab.label,
-                                        fontSize = textLabelM(),
-                                        fontWeight = FontWeight.Medium,
-                                    )
+                                label = if (hideNavLabels) {
+                                    null
+                                } else {
+                                    {
+                                        FittingText(
+                                            text = tab.label,
+                                            fontSize = textLabelM(),
+                                            minFontSize = textMicro(),
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            fillMaxWidth = true,
+                                        )
+                                    }
                                 },
                                 selected = selected,
                                 onClick = {

@@ -46,6 +46,7 @@ import com.lucasdss.ftpmusic.app.data.model.Playlist
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
@@ -335,11 +336,13 @@ fun SearchScreen(
                                     modifier = Modifier.size(16.dp),
                                 )
                                 Spacer(Modifier.width(10.dp))
-                                Text(
-                                    "Downloaded only",
+                                FittingText(
+                                    text = "Downloaded only",
                                     color = Color.White,
                                     fontSize = textBodyM(),
+                                    minFontSize = textMicro(),
                                     modifier = Modifier.weight(1f),
+                                    fillMaxWidth = false,
                                 )
                                 // Toggle switch
                                 Box(
@@ -445,11 +448,13 @@ fun SearchScreen(
                                                 )
                                             }
                                         } else {
-                                            Text(
-                                                term,
+                                            FittingText(
+                                                text = term,
                                                 color = Color(0xFFCCCCCC),
                                                 fontSize = textBodyM(),
+                                                minFontSize = textMicro(),
                                                 modifier = Modifier.weight(1f),
+                                                fillMaxWidth = false,
                                             )
                                         }
                                         Icon(
@@ -708,15 +713,21 @@ fun SearchScreen(
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(
-                                        a.name,
+                                    FittingText(
+                                        text = a.name,
                                         color = Color.White,
                                         fontSize = textHeadingS(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                     a.albumCount?.let {
-                                        Text("$it albums", color = Color(0xFF888888), fontSize = textBodyM())
+                                        FittingText(
+                                            text = "$it albums",
+                                            color = Color(0xFF888888),
+                                            fontSize = textBodyM(),
+                                            minFontSize = textMicro(),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
                                     }
                                 }
                                 TypeBadge("artist")
@@ -770,12 +781,12 @@ fun SearchScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    album.name,
+                                FittingText(
+                                    text = album.name,
                                     color = Color.White,
                                     fontSize = textHeadingS(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 val subtitle = buildString {
                                     album.artist?.let { append(it) }
@@ -785,12 +796,12 @@ fun SearchScreen(
                                     }
                                 }
                                 if (subtitle.isNotEmpty()) {
-                                    Text(
-                                        subtitle,
+                                    FittingText(
+                                        text = subtitle,
                                         color = Color(0xFF888888),
                                         fontSize = textBodyM(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                             }
@@ -852,12 +863,12 @@ fun SearchScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    t.title,
+                                FittingText(
+                                    text = t.title,
                                     color = Color.White,
                                     fontSize = textHeadingS(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 val subtitle = buildString {
                                     t.artist?.let { append(it) }
@@ -867,12 +878,12 @@ fun SearchScreen(
                                     }
                                 }
                                 if (subtitle.isNotEmpty()) {
-                                    Text(
-                                        subtitle,
+                                    FittingText(
+                                        text = subtitle,
                                         color = Color(0xFF888888),
                                         fontSize = textBodyM(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                             }
@@ -932,14 +943,20 @@ fun SearchScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    pl.name,
+                                FittingText(
+                                    text = pl.name,
                                     color = Color.White,
                                     fontSize = textHeadingS(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
-                                Text("${pl.songCount} tracks", color = Color(0xFF888888), fontSize = textBodyM())
+                                FittingText(
+                                    text = "${pl.songCount} tracks",
+                                    color = Color(0xFF888888),
+                                    fontSize = textBodyM(),
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                             Icon(
                                 Icons.Default.CheckCircle,

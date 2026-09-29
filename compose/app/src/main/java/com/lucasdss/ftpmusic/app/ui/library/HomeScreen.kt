@@ -56,6 +56,7 @@ import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 
@@ -144,17 +145,22 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.width(16.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    "Surprise Me",
+                                FittingText(
+                                    text = "Surprise Me",
                                     color = Color.White,
                                     fontSize = 20.sp,
+                                    minFontSize = textMicro(),
                                     fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Spacer(Modifier.height(4.dp))
-                                Text(
-                                    "Random music from your library",
+                                FittingText(
+                                    text = "Random music from your library",
                                     color = Color.White.copy(alpha = 0.8f),
                                     fontSize = 13.sp,
+                                    minFontSize = textMicro(),
+                                    maxLines = 2,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }
@@ -170,12 +176,14 @@ fun HomeScreen(
                                 .padding(horizontal = spacingL(), vertical = spacingXS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Daily Mixes",
+                            FittingText(
+                                text = "Daily Mixes",
                                 color = Color.White,
                                 fontSize = textHeadingM(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
+                                fillMaxWidth = false,
                             )
                             IconButton(
                                 onClick = { viewModel.refreshAllMixes() },
@@ -233,12 +241,14 @@ fun HomeScreen(
                             Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Playlists",
+                            FittingText(
+                                text = "Playlists",
                                 color = Color.White,
                                 fontSize = textHeadingM(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
+                                fillMaxWidth = false,
                             )
                             Text(
                                 "See all",
@@ -273,12 +283,14 @@ fun HomeScreen(
                             Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Favorite Artists",
+                            FittingText(
+                                text = "Favorite Artists",
                                 color = Color.White,
                                 fontSize = textHeadingM(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
+                                fillMaxWidth = false,
                             )
                             Icon(
                                 Icons.Default.ThumbUp,
@@ -327,12 +339,14 @@ fun HomeScreen(
                             Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Favorite Albums",
+                            FittingText(
+                                text = "Favorite Albums",
                                 color = Color.White,
                                 fontSize = textHeadingM(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
+                                fillMaxWidth = false,
                             )
                             Icon(
                                 Icons.Default.ThumbUp,
@@ -409,12 +423,14 @@ fun HomeScreen(
                             Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Favorite Radio",
+                            FittingText(
+                                text = "Favorite Radio",
                                 color = Color.White,
                                 fontSize = textHeadingM(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
+                                fillMaxWidth = false,
                             )
                             Icon(
                                 Icons.Default.Bookmark,
@@ -458,12 +474,14 @@ fun HomeScreen(
                                 .padding(horizontal = spacingL(), vertical = spacingXS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Tuned In",
+                            FittingText(
+                                text = "Tuned In",
                                 color = Color.White,
                                 fontSize = textHeadingM(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
+                                fillMaxWidth = false,
                             )
                             Icon(
                                 Icons.Default.ChevronRight,
@@ -499,7 +517,14 @@ fun HomeScreen(
                                 ) {
                                     Icon(Icons.Filled.PlayArrow, null, tint = color, modifier = Modifier.size(adp(10f)))
                                     Spacer(Modifier.width(4.dp))
-                                    Text(genre, color = color, fontSize = textBodyM(), fontWeight = FontWeight.SemiBold)
+                                    FittingText(
+                                        text = genre,
+                                        color = color,
+                                        fontSize = textBodyM(),
+                                        minFontSize = textMicro(),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fillMaxWidth = false,
+                                    )
                                 }
                             }
                         }
@@ -515,12 +540,14 @@ fun HomeScreen(
                                 .padding(horizontal = spacingL(), vertical = spacingXS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Recently Added",
+                            FittingText(
+                                text = "Recently Added",
                                 color = Color.White,
                                 fontSize = textHeadingM(),
+                                minFontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
+                                fillMaxWidth = false,
                             )
                             Icon(
                                 Icons.Default.Refresh,
@@ -948,20 +975,20 @@ private fun TrackRow(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                track.title,
+            FittingText(
+                text = track.title,
                 color = if (isActive) Color(0xFF00C8B4) else Color.White,
                 fontSize = textHeadingS(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                minFontSize = textMicro(),
+                modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {
-                Text(
-                    it,
+                FittingText(
+                    text = it,
                     color = Color(0xFF888888),
                     fontSize = textBodyM(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    minFontSize = textMicro(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

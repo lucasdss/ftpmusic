@@ -3,7 +3,6 @@ package com.lucasdss.ftpmusic.app.ui.search
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -12,6 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 private val TYPE_COLORS = mapOf(
     "artist" to Color(0xFF00C8B4),
@@ -23,11 +23,13 @@ private val TYPE_COLORS = mapOf(
 @Composable
 fun TypeBadge(type: String, modifier: Modifier = Modifier) {
     val color = TYPE_COLORS[type] ?: Color(0xFF888888)
-    Text(
+    FittingText(
         text = type,
         color = color,
         fontSize = textMicro(),
+        minFontSize = textMicro(),
         fontWeight = FontWeight.Bold,
+        fillMaxWidth = false,
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
             .background(color.copy(alpha = 0.13f))

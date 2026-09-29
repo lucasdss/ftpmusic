@@ -17,10 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.CoverArtColors
 
 /**
@@ -124,19 +124,20 @@ fun MiniPlayer(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text(
+                        FittingText(
                             text = title ?: "",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                            minFontSize = textMicro(),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         if (!subtitle.isNullOrBlank()) {
-                            Text(
+                            FittingText(
                                 text = subtitle,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                                minFontSize = textMicro(),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }

@@ -37,6 +37,7 @@ import com.lucasdss.ftpmusic.app.playback.PlaybackViewModel
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import com.lucasdss.ftpmusic.app.playback.QueueRevisionTracker
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -336,22 +337,22 @@ private fun QueueItemRow(
 
         // Title + Artist + Star rating
         Column(Modifier.weight(1f)) {
-            Text(
+            FittingText(
                 text = item.title,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                fontSize = MaterialTheme.typography.bodyLarge.fontSize,
+                minFontSize = textMicro(),
                 color = if (item.isCurrent) Color(0xFF00C8B4) else Color.White,
+                modifier = Modifier.fillMaxWidth(),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 item.artist?.let { a ->
-                    Text(
-                        a,
+                    FittingText(
+                        text = a,
                         color = Color(0xFF888888),
                         fontSize = asp(12f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        minFontSize = textMicro(),
                         modifier = Modifier.weight(1f, fill = false),
+                        fillMaxWidth = false,
                     )
                 }
                 Row(modifier = Modifier.padding(start = adp(8f))) {

@@ -115,6 +115,16 @@ class SettingsScreenComposeTest {
     }
 
     @Test
+    fun `hide navigation labels toggle delegates to the view model`() {
+        val vm = mockViewModel(SettingsUiState(hideNavLabels = false))
+        render(vm)
+
+        composeRule.onNodeWithText("Hide navigation labels").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_toggle_Hide_navigation_labels").performClick()
+        verify { vm.setHideNavLabels(true) }
+    }
+
+    @Test
     fun `lastfm section renders and save delegates`() {
         val vm = mockViewModel(SettingsUiState())
         render(vm)

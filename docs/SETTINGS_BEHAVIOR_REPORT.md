@@ -45,10 +45,11 @@ No DataStore. No ThemeMode. No download-quality pref.
 | Wi-Fi Only downloads | `KEY_DOWNLOAD_MOBILE_DATA` (inverted UX) | DownloadManager (FtpmusicApp) |
 | Auto-Download Playlists | `KEY_AUTO_DOWNLOAD_PLAYLISTS` | Library/Playlist VMs |
 
-### Appearance
+### Appearance / DISPLAY
 | Control | Persist | Consumer |
 |---------|---------|----------|
 | Prefer iTunes album art | `KEY_PREFER_ITUNES_ART` | CoverArtResolver |
+| Hide navigation labels | `KEY_NAV_HIDE_LABELS` (default OFF) | FtpmusicNavHost (activity-scoped SettingsVM) |
 
 Dark Mode / Accent Color stubs **removed**.
 

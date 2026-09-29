@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -30,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 @Composable
 fun SettingsScreen(
@@ -38,7 +40,9 @@ fun SettingsScreen(
     onProfile: () -> Unit = {},
     onServerSettingsSaved: () -> Unit = {},
     onCustomMixes: () -> Unit = {},
-    viewModel: SettingsViewModel = hiltViewModel(),
+    viewModel: SettingsViewModel = hiltViewModel(
+        viewModelStoreOwner = LocalContext.current as ComponentActivity,
+    ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -473,6 +477,13 @@ fun SettingsScreen(
                 subtitle = "Use iTunes artwork instead of Navidrome when available",
                 checked = state.preferItunesArt,
                 onToggle = { viewModel.setPreferItunesArt(it) },
+            )
+            SectionDivider()
+            SectionToggleRow(
+                label = "Hide navigation labels",
+                subtitle = "Show icons only in the bottom bar",
+                checked = state.hideNavLabels,
+                onToggle = { viewModel.setHideNavLabels(it) },
             )
         }
 
@@ -1025,9 +1036,26 @@ private fun SectionRow(label: String, value: String) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingM()),
         horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = Color.White, fontSize = textHeadingS())
-        Text(value, color = Color(0xFF888888), fontSize = textHeadingS())
+        FittingText(
+            text = label,
+            color = Color.White,
+            fontSize = textHeadingS(),
+            minFontSize = textMicro(),
+            modifier = Modifier.weight(1f),
+            fillMaxWidth = false,
+        )
+        Spacer(Modifier.width(8.dp))
+        FittingText(
+            text = value,
+            color = Color(0xFF888888),
+            fontSize = textHeadingS(),
+            minFontSize = textMicro(),
+            modifier = Modifier.weight(1f),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            fillMaxWidth = true,
+        )
     }
 }
 
@@ -1038,8 +1066,19 @@ private fun SectionToggleRow(label: String, subtitle: String, checked: Boolean, 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = textHeadingS())
-            Text(subtitle, color = Color(0xFF666666), fontSize = textLabelM())
+            FittingText(
+                text = label,
+                color = Color.White,
+                fontSize = textHeadingS(),
+                minFontSize = textMicro(),
+            )
+            FittingText(
+                text = subtitle,
+                color = Color(0xFF666666),
+                fontSize = textLabelM(),
+                minFontSize = textMicro(),
+                maxLines = 2,
+            )
         }
         // Custom teal toggle
         Box(
@@ -1080,13 +1119,20 @@ private fun OverwriteBehaviorOption(label: String, subtitle: String, selected: B
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                label,
+            FittingText(
+                text = label,
                 color = if (selected) Color(0xFF00C8B4) else Color.White,
                 fontSize = textHeadingS(),
+                minFontSize = textMicro(),
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             )
-            Text(subtitle, color = Color(0xFF666666), fontSize = textLabelM())
+            FittingText(
+                text = subtitle,
+                color = Color(0xFF666666),
+                fontSize = textLabelM(),
+                minFontSize = textMicro(),
+                maxLines = 2,
+            )
         }
     }
     SectionDivider()
@@ -1099,11 +1145,31 @@ private fun MetricRow(label: String, value: String, subtitle: String? = null) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = Color.White, fontSize = textHeadingS())
-        Column(horizontalAlignment = Alignment.End) {
-            Text(value, color = Color(0xFF888888), fontSize = textHeadingS())
+        FittingText(
+            text = label,
+            color = Color.White,
+            fontSize = textHeadingS(),
+            minFontSize = textMicro(),
+            modifier = Modifier.weight(1f),
+            fillMaxWidth = false,
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
+            FittingText(
+                text = value,
+                color = Color(0xFF888888),
+                fontSize = textHeadingS(),
+                minFontSize = textMicro(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            )
             if (subtitle != null) {
-                Text(subtitle, color = Color(0xFF666666), fontSize = textLabelM())
+                FittingText(
+                    text = subtitle,
+                    color = Color(0xFF666666),
+                    fontSize = textLabelM(),
+                    minFontSize = textMicro(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                )
             }
         }
     }

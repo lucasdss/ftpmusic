@@ -47,6 +47,7 @@ import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 import com.lucasdss.ftpmusic.app.ui.playlist.AddSongsPickerContent
 import kotlinx.coroutines.flow.first
@@ -342,15 +343,21 @@ fun LibraryContent(
                                         )
                                         Spacer(Modifier.width(12.dp))
                                         Column(Modifier.weight(1f)) {
-                                            Text(
-                                                artist.name,
+                                            FittingText(
+                                                text = artist.name,
                                                 color = Color.White,
                                                 fontSize = textHeadingS(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
+                                                minFontSize = textMicro(),
+                                                modifier = Modifier.fillMaxWidth(),
                                             )
                                             artist.albumCount?.let {
-                                                Text("$it albums", color = Color(0xFF888888), fontSize = textLabelM())
+                                                FittingText(
+                                                    text = "$it albums",
+                                                    color = Color(0xFF888888),
+                                                    fontSize = textLabelM(),
+                                                    minFontSize = textMicro(),
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
                                             }
                                         }
                                         FavoriteThumbButton(
@@ -451,12 +458,12 @@ fun LibraryContent(
                                             }
                                             Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
-                                                Text(
-                                                    pl.name,
+                                                FittingText(
+                                                    text = pl.name,
                                                     color = Color.White,
                                                     fontSize = textHeadingS(),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
+                                                    minFontSize = textMicro(),
+                                                    modifier = Modifier.fillMaxWidth(),
                                                 )
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
@@ -620,19 +627,19 @@ fun LibraryContent(
                                         }
                                         Spacer(Modifier.width(12.dp))
                                         Column(Modifier.weight(1f)) {
-                                            Text(
-                                                station.name,
+                                            FittingText(
+                                                text = station.name,
                                                 color = Color.White,
                                                 fontSize = textHeadingS(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
+                                                minFontSize = textMicro(),
+                                                modifier = Modifier.fillMaxWidth(),
                                             )
-                                            Text(
-                                                station.streamUrl,
+                                            FittingText(
+                                                text = station.streamUrl,
                                                 color = Color(0xFF888888),
                                                 fontSize = textLabelM(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
+                                                minFontSize = textMicro(),
+                                                modifier = Modifier.fillMaxWidth(),
                                             )
                                         }
                                         // v43: Bookmark ribbon (local-only favorite)
@@ -768,11 +775,13 @@ fun LibraryContent(
                             modifier = Modifier.size(22.dp),
                         )
                         Spacer(Modifier.width(12.dp))
-                        Text(
-                            "Import from Server",
+                        FittingText(
+                            text = "Import from Server",
                             color = Color(0xFF00C8B4),
                             fontSize = 14.sp,
+                            minFontSize = textMicro(),
                             modifier = Modifier.weight(1f),
+                            fillMaxWidth = false,
                         )
                         Icon(
                             Icons.Default.ChevronRight,
@@ -814,11 +823,13 @@ fun LibraryContent(
                     )
                     // Error
                     if (state.createPlaylistError != null) {
-                        Text(
-                            state.createPlaylistError!!,
+                        FittingText(
+                            text = state.createPlaylistError!!,
                             color = Color(0xFFFF5252),
                             fontSize = 12.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            minFontSize = textMicro(),
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
                         )
                     }
                     Spacer(Modifier.height(12.dp))

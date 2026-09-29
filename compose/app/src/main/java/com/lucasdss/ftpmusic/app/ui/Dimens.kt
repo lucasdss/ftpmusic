@@ -2,24 +2,44 @@ package com.lucasdss.ftpmusic.app.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Adaptive design tokens that scale with screen width.
+ * Adaptive design tokens that scale with screen width (and text with fontScale).
  *
- * Reference width: 360dp (standard phone). Scale factor: 1.0–1.25×.
- * On Pixel 8 Pro (440dp): scale ≈ 1.22× → 14sp → 17sp, 16dp → 19.5dp.
- * On tablets: capped at 1.25×.
+ * Reference width: 360dp (standard phone).
+ * Width factor: **0.85–1.25×** (downscales narrow phones, caps tablets).
+ * Text factor: width × fontCompensation so large a11y fontScale is partially
+ * absorbed and layout-critical labels are less likely to blow out rows.
  */
 object AdaptiveScale {
-    /** Screen-width scale factor, clamped to [1.0 .. 1.25]. */
+    /** Pure width scale. Clamp [0.85 .. 1.25]. */
+    fun widthFactor(screenWidthDp: Int): Float = (screenWidthDp / 360f).coerceIn(0.85f, 1.25f)
+
+    /**
+     * Partial absorb of system fontScale above 1.0.
+     * fontScale 1.0 → 1.0; 1.4 → ~0.71 → clamped to 0.75; above 1.4 stays 0.75.
+     */
+    fun fontCompensation(fontScale: Float): Float = (1f / fontScale.coerceIn(1f, 1.4f)).coerceIn(0.75f, 1f)
+
+    /** Combined text scale for [asp]. */
+    fun textFactor(screenWidthDp: Int, fontScale: Float): Float =
+        widthFactor(screenWidthDp) * fontCompensation(fontScale)
+
+    /** Screen-width scale factor for spacing/icons. */
     @Composable
-    fun factor(): Float {
+    fun factor(): Float = widthFactor(LocalConfiguration.current.screenWidthDp)
+
+    /** Text scale factor (width + font compensation). */
+    @Composable
+    fun textFactor(): Float {
         val width = LocalConfiguration.current.screenWidthDp
-        return (width / 360f).coerceIn(1.0f, 1.25f)
+        val fontScale = LocalDensity.current.fontScale
+        return textFactor(width, fontScale)
     }
 }
 
@@ -29,9 +49,9 @@ object AdaptiveScale {
 @Composable
 fun adp(base: Float): Dp = (base * AdaptiveScale.factor()).dp
 
-/** Scale a sp value to current screen width. */
+/** Scale a sp value to current screen width with partial fontScale absorb. */
 @Composable
-fun asp(base: Float): TextUnit = (base * AdaptiveScale.factor()).sp
+fun asp(base: Float): TextUnit = (base * AdaptiveScale.textFactor()).sp
 
 // ── Spacing tokens ───────────────────────────────────────────────────────────
 

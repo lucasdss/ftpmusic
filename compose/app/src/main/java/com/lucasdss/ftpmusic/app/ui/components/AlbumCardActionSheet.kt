@@ -50,8 +50,22 @@ fun AlbumCardActionSheet(
             }
             // Header
             Column(Modifier.padding(horizontal = spacingXL(), vertical = spacingM())) {
-                Text(albumName, color = Color.White, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
-                Text("$artistName · $trackCount tracks", color = Color(0xFF888888), fontSize = textBodyM())
+                FittingText(
+                    text = albumName,
+                    color = Color.White,
+                    fontSize = textHeadingM(),
+                    minFontSize = textMicro(),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FittingText(
+                    text = "$artistName · $trackCount tracks",
+                    color = Color(0xFF888888),
+                    fontSize = textBodyM(),
+                    minFontSize = textMicro(),
+                    maxLines = 2,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             HorizontalDivider(
                 color = Color.White.copy(alpha = 0.06f),

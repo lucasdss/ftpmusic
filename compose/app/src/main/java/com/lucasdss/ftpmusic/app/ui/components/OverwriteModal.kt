@@ -66,12 +66,15 @@ fun OverwriteModal(contextName: String, onKeepQueue: () -> Unit, onClearAndPlay:
 
             Spacer(Modifier.height(spacingXS()))
 
-            Text(
-                "You have tracks in your Priority Queue from \"$contextName\". Do you want to clear them and play this, or keep them?",
+            FittingText(
+                text = "You have tracks in your Priority Queue from \"$contextName\". " +
+                    "Do you want to clear them and play this, or keep them?",
                 color = Color(0xFF888888),
                 fontSize = textBodyM(),
+                minFontSize = textMicro(),
+                maxLines = 4,
                 textAlign = TextAlign.Center,
-                lineHeight = asp(20f),
+                modifier = Modifier.fillMaxWidth(),
             )
 
             Spacer(Modifier.height(spacingL()))
