@@ -94,18 +94,24 @@ class SyncingViewModelTest {
     @Test
     fun `startSync triggers sync when no metadata exists`() = runTest(testDispatcher) {
         coEvery { metadataDao.albumCount() } returns 0
+        coEvery { dailyMixRepository.getAll() } returns emptyList()
         coEvery { trackDao.getStarredIdsByIds(any()) } returns emptyList()
         coEvery { trackDao.getRatedTracksByIds(any()) } returns emptyList()
         // Not running — startSync's wait-for-idle passes immediately.
         // Must set phase="complete" so the collect {} in startSync() exits.
         every { metadataSyncWorker.status } returns MutableStateFlow(SyncStatus(phase = "complete", isRunning = false))
+        every { metadataSyncWorker.syncNowAsync(any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync()
+        advanceUntilIdle()
 
-        testScheduler.runCurrent()
-
-        verify(atLeast = 1) { metadataSyncWorker.syncNowAsync(any()) }
+        verify(atLeast = 1) {
+            metadataSyncWorker.syncNowAsync(
+                forceTrackResync = false,
+                mode = com.lucasdss.ftpmusic.app.data.db.LibrarySyncMode.FULL,
+            )
+        }
         cleanup(viewModel)
     }
 

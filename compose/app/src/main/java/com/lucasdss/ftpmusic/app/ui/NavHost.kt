@@ -88,6 +88,7 @@ data class BottomNavItem(
     val unselectedIcon: ImageVector,
 )
 
+@Suppress("ThrowsCount") // CancellationException rethrows in nested LaunchedEffects
 @Composable
 fun FtpmusicNavHost() {
     val navController = rememberNavController()

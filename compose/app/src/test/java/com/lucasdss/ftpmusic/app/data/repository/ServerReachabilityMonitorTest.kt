@@ -255,8 +255,7 @@ class ServerReachabilityMonitorTest {
     @Test
     fun `start survives NetworkWatcher register failure`() = runTest(testDispatcher) {
         val broken = object : NetworkWatcher {
-            override fun start(onAvailable: () -> Unit, onLost: () -> Unit): Unit =
-                throw IllegalStateException("no permission")
+            override fun start(onAvailable: () -> Unit, onLost: () -> Unit): Unit = error("no permission")
             override fun stop() {}
         }
         val m = ServerReachabilityMonitor(

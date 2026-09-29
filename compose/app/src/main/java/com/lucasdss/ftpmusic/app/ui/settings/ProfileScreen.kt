@@ -252,8 +252,13 @@ private fun TopSection(title: String, rows: List<TopCountRow>) {
 }
 
 @Composable
-private fun StatCard(icon: ImageVector, value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun RowScope.StatCard(icon: ImageVector, value: String, label: String) {
+    // weight(1f) bounds width so FittingText never measures against Infinity
+    // (unbounded fillMaxWidth in a Row collapses sibling labels in Robolectric).
+    Column(
+        modifier = Modifier.weight(1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Box(
             Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF00C8B4).copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,

@@ -3,11 +3,10 @@
 Date: 2026-08-19
 Status: Accepted
 
-> **Status note (2026-08-25):** verified on 1.2.0 (versionCode 3) — signed AAB/APK
-> rebuilt, 1878 tests green, `lintVitalRelease` clean. Follow-up hardening in this
-> release pass: queue-sheet LazyColumn (H1), EQ gating on real `isPlaying`, lyrics
-> key fix (M7), debug-only logging (L1), cast callback leak fix (M5), Room schema
-> export.
+> **Status note (2026-09-29):** verified on 1.2.0 (versionCode 4) — signed AAB
+> rebuilt for Play Internal testing; unit suite green; `lintVitalRelease` gate
+> required before upload. Prior note (2026-08-25) referred to an interim
+> rebuild still labeled 1.1.0 / code 3 in Gradle.
 
 ## Context
 
