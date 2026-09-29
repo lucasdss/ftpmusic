@@ -29,6 +29,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.lucasdss.ftpmusic.app.data.db.TopCountRow
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 @Composable
 fun ProfileScreen(
@@ -149,19 +151,19 @@ fun ProfileScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            track.title,
+                        FittingText(
+                            text = track.title,
                             color = Color.White,
                             fontSize = 15.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            minFontSize = textMicro(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                        Text(
-                            track.artist ?: "Unknown",
+                        FittingText(
+                            text = track.artist ?: "Unknown",
                             color = Color(0xFF888888),
                             fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            minFontSize = textMicro(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     Text(
@@ -196,18 +198,19 @@ private fun RowScope.PeriodChip(
     onSelect: (StatsPeriod) -> Unit,
 ) {
     val active = selected == period
-    Text(
-        label,
+    FittingText(
+        text = label,
         color = if (active) Color.Black else Color.White,
         fontSize = 13.sp,
+        minFontSize = textMicro(),
         fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
         modifier = Modifier
             .weight(1f)
             .clip(RoundedCornerShape(20.dp))
             .background(if (active) Color(0xFF00C8B4) else Color(0xFF1A1A24))
             .clickable { onSelect(period) }
             .padding(vertical = 8.dp),
-        textAlign = TextAlign.Center,
     )
 }
 
@@ -230,12 +233,11 @@ private fun TopSection(title: String, rows: List<TopCountRow>) {
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.width(24.dp),
                     )
-                    Text(
-                        row.label?.takeIf { it.isNotBlank() } ?: row.itemKey,
+                    FittingText(
+                        text = row.label?.takeIf { it.isNotBlank() } ?: row.itemKey,
                         color = Color.White,
                         fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        minFontSize = textMicro(),
                         modifier = Modifier.weight(1f),
                     )
                     Text(
@@ -259,7 +261,15 @@ private fun StatCard(icon: ImageVector, value: String, label: String) {
             Icon(icon, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.height(6.dp))
-        Text(value, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        FittingText(
+            text = value,
+            color = Color.White,
+            fontSize = 16.sp,
+            minFontSize = textMicro(),
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Text(label, color = Color(0xFF888888), fontSize = 12.sp)
     }
 }

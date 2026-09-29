@@ -19,7 +19,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -39,6 +38,7 @@ import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -249,20 +249,20 @@ fun FavoritesScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    track.title,
+                                FittingText(
+                                    text = track.title,
                                     color = if (isActive) Color(0xFF00C8B4) else Color.White,
                                     fontSize = textBodyM(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 track.artist?.let {
-                                    Text(
-                                        it,
+                                    FittingText(
+                                        text = it,
                                         color = Color(0xFF888888),
                                         fontSize = textLabelM(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                             }
@@ -302,12 +302,12 @@ fun FavoritesScreen(
                             ArtistAvatar(artistName = artist.name, coverArtId = artist.coverArtUrl, size = 48.dp)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    artist.name,
+                                FittingText(
+                                    text = artist.name,
                                     color = Color.White,
                                     fontSize = textBodyM(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Text("Artist", color = Color(0xFF888888), fontSize = textLabelM())
                             }
@@ -375,19 +375,19 @@ fun FavoritesScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    album.name,
+                                FittingText(
+                                    text = album.name,
                                     color = if (isActive) Color(0xFF00C8B4) else Color.White,
                                     fontSize = textBodyM(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
-                                Text(
-                                    listOfNotNull(album.artist, album.year?.toString()).joinToString(" · "),
+                                FittingText(
+                                    text = listOfNotNull(album.artist, album.year?.toString()).joinToString(" · "),
                                     color = Color(0xFF888888),
                                     fontSize = textLabelM(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                             Icon(
@@ -426,12 +426,12 @@ fun FavoritesScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    station.name,
+                                FittingText(
+                                    text = station.name,
                                     color = Color.White,
                                     fontSize = textBodyM(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
@@ -441,12 +441,12 @@ fun FavoritesScreen(
                                         modifier = Modifier.size(10.dp),
                                     )
                                     Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        station.streamUrl,
+                                    FittingText(
+                                        text = station.streamUrl,
                                         color = Color(0xFF888888),
                                         fontSize = textLabelM(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.weight(1f),
                                     )
                                 }
                             }

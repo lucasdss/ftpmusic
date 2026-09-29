@@ -329,7 +329,10 @@ fun FtpmusicNavHost() {
                                         } else {
                                             tab.selectedIcon
                                         },
-                                        contentDescription = tab.label,
+                                        contentDescription = navTabIconContentDescription(
+                                            hideNavLabels,
+                                            tab.label,
+                                        ),
                                         modifier = Modifier.size(adp(22f)),
                                     )
                                 },

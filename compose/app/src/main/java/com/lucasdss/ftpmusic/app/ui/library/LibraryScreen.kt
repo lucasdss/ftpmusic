@@ -1025,13 +1025,12 @@ fun LibraryContent(
                                         modifier = Modifier.size(22.dp),
                                     )
                                     Spacer(Modifier.width(12.dp))
-                                    Text(
-                                        pl.name,
+                                    FittingText(
+                                        text = pl.name,
                                         color = Color.White,
                                         fontSize = 14.sp,
+                                        minFontSize = textMicro(),
                                         modifier = Modifier.weight(1f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
                                     )
                                     Text("${pl.trackCount} tracks", color = Color(0xFF888888), fontSize = 12.sp)
                                 }

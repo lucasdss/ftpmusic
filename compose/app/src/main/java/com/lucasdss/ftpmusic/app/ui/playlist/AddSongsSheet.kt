@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import kotlinx.coroutines.delay
 
@@ -228,22 +229,22 @@ fun AddSongsPickerContent(
                         }
                         Spacer(Modifier.width(spacingM()))
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                track.title,
+                            FittingText(
+                                text = track.title,
                                 color = if (isAdded) Color(0xFF666666) else Color.White,
                                 fontSize = textBodyM(),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                minFontSize = textMicro(),
+                                modifier = Modifier.fillMaxWidth(),
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 track.artist?.let {
-                                    Text(
-                                        it,
+                                    FittingText(
+                                        text = it,
                                         color = Color(0xFF888888),
                                         fontSize = textLabelM(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false),
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.weight(1f),
+                                        fillMaxWidth = false,
                                     )
                                 }
                                 track.durationSeconds?.let { raw ->

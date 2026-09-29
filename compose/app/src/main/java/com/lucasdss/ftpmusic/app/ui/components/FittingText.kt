@@ -2,6 +2,7 @@ package com.lucasdss.ftpmusic.app.ui.components
 
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -22,7 +23,8 @@ import com.lucasdss.ftpmusic.app.ui.textMicro
  * Layout-safe text: shrinks font size to fit [maxWidth], then ellipsizes.
  *
  * Protects constrained slots (nav labels, row titles, chips) from one-word
- * unbreakable strings and large fontScale blowouts.
+ * unbreakable strings and large fontScale blowouts. System a11y fontScale is
+ * honored via token `.sp`; this composable only shrinks when the slot overflows.
  */
 @Composable
 fun FittingText(
@@ -39,9 +41,19 @@ fun FittingText(
 ) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val baseStyle = LocalTextStyle.current
     BoxWithConstraints(modifier = modifier) {
         val maxWidthPx = with(density) { maxWidth.roundToPx() }.coerceAtLeast(0)
-        val resolvedSize = remember(text, fontSize, minFontSize, fontWeight, maxLines, maxWidthPx) {
+        val resolvedSize = remember(
+            text,
+            fontSize,
+            minFontSize,
+            fontWeight,
+            maxLines,
+            maxWidthPx,
+            softWrap,
+            baseStyle,
+        ) {
             fitFontSize(
                 text = text,
                 startSp = fontSize.value,
@@ -52,7 +64,9 @@ fun FittingText(
                 measure = { sizeSp, weight, lines, widthPx ->
                     textMeasurer.measure(
                         text = text,
-                        style = TextStyle(fontSize = sizeSp.sp, fontWeight = weight),
+                        style = baseStyle.merge(
+                            TextStyle(fontSize = sizeSp.sp, fontWeight = weight),
+                        ),
                         constraints = Constraints(maxWidth = widthPx.coerceAtLeast(0)),
                         maxLines = lines,
                         overflow = TextOverflow.Clip,
@@ -78,6 +92,9 @@ fun FittingText(
 /**
  * Binary-search largest font size in [minSp .. startSp] that does not overflow.
  * Pure helper for unit tests — [measure] returns true when text overflows.
+ *
+ * When [maxWidthPx] is <= 0 (first layout / unconstrained), returns [minSp]
+ * so callers do not flash oversized text.
  */
 internal fun fitFontSize(
     text: String,
@@ -88,13 +105,15 @@ internal fun fitFontSize(
     maxWidthPx: Int,
     measure: (sizeSp: Float, weight: FontWeight?, lines: Int, widthPx: Int) -> Boolean,
 ): Float {
-    if (text.isEmpty() || maxWidthPx <= 0) return startSp
     val loBound = minSp.coerceAtMost(startSp)
+    if (text.isEmpty()) return startSp
+    // Not ready to measure — prefer min to avoid first-frame oversize flash.
+    if (maxWidthPx <= 0) return loBound
     if (!measure(startSp, fontWeight, maxLines, maxWidthPx)) return startSp
     var low = loBound
     var high = startSp
     var best = loBound
-    // ~6 iterations → 0.25sp precision for typical 10–16sp ranges
+    // ~8 iterations → ~0.25sp precision for typical 10–16sp ranges
     repeat(8) {
         val mid = (low + high) / 2f
         if (measure(mid, fontWeight, maxLines, maxWidthPx)) {
@@ -104,5 +123,10 @@ internal fun fitFontSize(
             low = mid
         }
     }
-    return best
+    // Guarantee non-overflow when possible: step down if search landed hot.
+    var verified = best
+    while (verified > loBound && measure(verified, fontWeight, maxLines, maxWidthPx)) {
+        verified = (verified - 0.25f).coerceAtLeast(loBound)
+    }
+    return verified
 }

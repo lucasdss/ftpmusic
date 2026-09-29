@@ -53,6 +53,7 @@ import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -101,10 +102,11 @@ fun MixDetailScreen(
                 IconButton(onClick = onBack) {
                     Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                 }
-                Text(
-                    mixName,
+                FittingText(
+                    text = mixName,
                     color = Color.White,
                     fontSize = 20.sp,
+                    minFontSize = textMicro(),
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
@@ -359,22 +361,22 @@ fun MixDetailScreen(
                                     onLongClick = { showTrackSheet = track },
                                 ),
                             ) {
-                                Text(
-                                    track.title,
+                                FittingText(
+                                    text = track.title,
                                     color = if (isActive) Color(0xFF00C8B4) else Color.White,
                                     fontSize = 15.sp,
+                                    minFontSize = textMicro(),
                                     fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 track.artist?.let {
-                                    Text(
-                                        it,
+                                    FittingText(
+                                        text = it,
                                         color = Color(0xFF888888),
                                         fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                                 // Star rating (parity with Album)
@@ -938,21 +940,21 @@ private fun MixTrackActionSheet(
             }
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text(
-                        track.title,
+                    FittingText(
+                        text = track.title,
                         color = Color.White,
                         fontSize = textHeadingS(),
+                        minFontSize = textMicro(),
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     track.artist?.let {
-                        Text(
-                            it,
+                        FittingText(
+                            text = it,
                             color = Color(0xFF888888),
                             fontSize = textBodyM(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            minFontSize = textMicro(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }
@@ -1006,8 +1008,22 @@ private fun MixSheetAction(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Medium)
-            Text(subtitle, color = Color(0xFF888888), fontSize = textLabelM())
+            FittingText(
+                text = label,
+                color = Color.White,
+                fontSize = textBodyM(),
+                minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FittingText(
+                text = subtitle,
+                color = Color(0xFF888888),
+                fontSize = textLabelM(),
+                minFontSize = textMicro(),
+                maxLines = 2,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
     HorizontalDivider(color = Color.White.copy(alpha = 0.04f), modifier = Modifier.padding(horizontal = spacingL()))

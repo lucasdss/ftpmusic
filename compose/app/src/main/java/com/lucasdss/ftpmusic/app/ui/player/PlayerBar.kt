@@ -500,13 +500,12 @@ private fun PlayerFullHeader(
             ) {
                 Icon(Icons.Default.Cast, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(12.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    if (castDeviceName != null) "Casting to $castDeviceName" else "Casting…",
+                FittingText(
+                    text = if (castDeviceName != null) "Casting to $castDeviceName" else "Casting…",
                     color = Color(0xFF00C8B4),
                     fontSize = 11.sp,
+                    minFontSize = textMicro(),
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 if (!isQueueSynced) {
@@ -537,13 +536,12 @@ private fun PlayerFullHeader(
                 ) {
                     Icon(Icons.Default.Timer, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(12.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Sleep timer — ${formatPlayerBarTime(remainingSec * 1000)}",
+                    FittingText(
+                        text = "Sleep timer — ${formatPlayerBarTime(remainingSec * 1000)}",
                         color = Color(0xFF00C8B4),
                         fontSize = 11.sp,
+                        minFontSize = textMicro(),
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -1276,12 +1274,14 @@ private fun BoxScope.PlayerQueuePanel(
                                         modifier = Modifier.size(adp(11f)),
                                     )
                                     Spacer(Modifier.width(spacingS()))
-                                    Text(
-                                        "Queue → Continue Playing order flattened into a Cast receiver timeline.",
+                                    FittingText(
+                                        text = "Queue → Continue Playing order flattened " +
+                                            "into a Cast receiver timeline.",
                                         color = Color(0xFF00C8B4),
                                         fontSize = textLabelS(),
+                                        minFontSize = textMicro(),
                                         maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
                                     )
                                 }
                             }
@@ -1369,20 +1369,20 @@ private fun BoxScope.PlayerQueuePanel(
                                     }
                                     Spacer(Modifier.width(spacingM()))
                                     Column(Modifier.weight(1f)) {
-                                        Text(
-                                            title ?: "No track",
+                                        FittingText(
+                                            text = title ?: "No track",
                                             color = Color.White,
                                             fontSize = textBodyM(),
+                                            minFontSize = textMicro(),
                                             fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
-                                        Text(
-                                            artist ?: "",
+                                        FittingText(
+                                            text = artist ?: "",
                                             color = Color(0xFF9CA3AF),
                                             fontSize = textLabelM(),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
+                                            minFontSize = textMicro(),
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
                                     }
                                     if (duration > 0) {
@@ -1411,14 +1411,13 @@ private fun BoxScope.PlayerQueuePanel(
                                         modifier = Modifier.size(adp(12f)),
                                     )
                                     Spacer(Modifier.width(spacingXS()))
-                                    Text(
-                                        "Playing from: $contextSource",
+                                    FittingText(
+                                        text = "Playing from: $contextSource",
                                         color = Color(0xFF666666),
                                         fontSize = textLabelS(),
+                                        minFontSize = textMicro(),
                                         fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.5.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
                                     )
                                 }
                             }

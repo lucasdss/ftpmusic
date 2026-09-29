@@ -2,45 +2,26 @@ package com.lucasdss.ftpmusic.app.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Adaptive design tokens that scale with screen width (and text with fontScale).
+ * Adaptive design tokens that scale with screen width.
  *
  * Reference width: 360dp (standard phone).
  * Width factor: **0.85–1.25×** (downscales narrow phones, caps tablets).
- * Text factor: width × fontCompensation so large a11y fontScale is partially
- * absorbed and layout-critical labels are less likely to blow out rows.
+ * Text tokens ([asp]) use width factor only and still use `.sp`, so system
+ * accessibility fontScale is honored. Constrained slots use FittingText.
  */
 object AdaptiveScale {
     /** Pure width scale. Clamp [0.85 .. 1.25]. */
     fun widthFactor(screenWidthDp: Int): Float = (screenWidthDp / 360f).coerceIn(0.85f, 1.25f)
 
-    /**
-     * Partial absorb of system fontScale above 1.0.
-     * fontScale 1.0 → 1.0; 1.4 → ~0.71 → clamped to 0.75; above 1.4 stays 0.75.
-     */
-    fun fontCompensation(fontScale: Float): Float = (1f / fontScale.coerceIn(1f, 1.4f)).coerceIn(0.75f, 1f)
-
-    /** Combined text scale for [asp]. */
-    fun textFactor(screenWidthDp: Int, fontScale: Float): Float =
-        widthFactor(screenWidthDp) * fontCompensation(fontScale)
-
-    /** Screen-width scale factor for spacing/icons. */
+    /** Screen-width scale factor for spacing/icons/text tokens. */
     @Composable
     fun factor(): Float = widthFactor(LocalConfiguration.current.screenWidthDp)
-
-    /** Text scale factor (width + font compensation). */
-    @Composable
-    fun textFactor(): Float {
-        val width = LocalConfiguration.current.screenWidthDp
-        val fontScale = LocalDensity.current.fontScale
-        return textFactor(width, fontScale)
-    }
 }
 
 // ── Adaptive dp / sp helpers ─────────────────────────────────────────────────
@@ -49,9 +30,9 @@ object AdaptiveScale {
 @Composable
 fun adp(base: Float): Dp = (base * AdaptiveScale.factor()).dp
 
-/** Scale a sp value to current screen width with partial fontScale absorb. */
+/** Scale a sp value to current screen width. System fontScale still applies via `.sp`. */
 @Composable
-fun asp(base: Float): TextUnit = (base * AdaptiveScale.textFactor()).sp
+fun asp(base: Float): TextUnit = (base * AdaptiveScale.factor()).sp
 
 // ── Spacing tokens ───────────────────────────────────────────────────────────
 

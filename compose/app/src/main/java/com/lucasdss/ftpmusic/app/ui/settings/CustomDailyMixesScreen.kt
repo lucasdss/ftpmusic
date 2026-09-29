@@ -63,11 +63,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.data.repository.CustomMix
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.data.repository.MixFilters
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.textBodyM
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
 import com.lucasdss.ftpmusic.app.ui.textLabelM
 import com.lucasdss.ftpmusic.app.ui.textLabelS
+import com.lucasdss.ftpmusic.app.ui.textMicro
 
 private val TEAL = Color(0xFF00C8B4)
 private val ORANGE = Color(0xFFFFA726)
@@ -116,13 +118,13 @@ private fun MixList(state: CustomDailyMixesUiState, onBack: () -> Unit, viewMode
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFCCCCCC))
             }
             Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                Text(
-                    "Custom Daily Mixes",
+                FittingText(
+                    text = "Custom Daily Mixes",
                     color = Color.White,
                     fontSize = textHeadingS(),
+                    minFontSize = textMicro(),
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
                     "${state.mixes.size} / ${DailyMixRepository.MAX_MIXES} configured",
@@ -219,13 +221,13 @@ private fun MixRow(index: Int, mix: CustomMix, missing: List<String>, onEdit: ()
             modifier = Modifier.width(20.dp),
         )
         Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-            Text(
-                mix.name,
+            FittingText(
+                text = mix.name,
                 color = Color.White,
                 fontSize = textBodyM(),
+                minFontSize = textMicro(),
                 fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
             )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -247,23 +249,23 @@ private fun MixRow(index: Int, mix: CustomMix, missing: List<String>, onEdit: ()
                     Icon(Icons.Default.ArrowDownward, "Auto-cache on", tint = TEAL, modifier = Modifier.size(12.dp))
                 }
             }
-            Text(
-                sourceLabel(mix.filters),
+            FittingText(
+                text = sourceLabel(mix.filters),
                 color = Color(0xFF666666),
                 fontSize = textLabelS(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                minFontSize = textMicro(),
+                modifier = Modifier.fillMaxWidth(),
             )
             if (missing.isNotEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, null, tint = RED, modifier = Modifier.size(12.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Missing: ${missing.joinToString(", ")}",
+                    FittingText(
+                        text = "Missing: ${missing.joinToString(", ")}",
                         color = RED,
                         fontSize = textLabelS(),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        minFontSize = textMicro(),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
@@ -324,10 +326,11 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
             IconButton(onClick = viewModel::closeEditor) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFCCCCCC))
             }
-            Text(
-                if (editor.isNew) "New Mix" else "Edit Mix",
+            FittingText(
+                text = if (editor.isNew) "New Mix" else "Edit Mix",
                 color = Color.White,
                 fontSize = textHeadingS(),
+                minFontSize = textMicro(),
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
             )
@@ -353,13 +356,12 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        "Delete \"${editor.name}\"?",
+                    FittingText(
+                        text = "Delete \"${editor.name}\"?",
                         color = Color.White,
                         fontSize = textLabelM(),
+                        minFontSize = textMicro(),
                         modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     Button(
                         onClick = viewModel::cancelDelete,
@@ -482,15 +484,25 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Auto-Cache Mix", color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Bold)
-                    Text(
-                        if (editor.autoCache) {
+                    FittingText(
+                        text = "Auto-Cache Mix",
+                        color = Color.White,
+                        fontSize = textBodyM(),
+                        minFontSize = textMicro(),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    FittingText(
+                        text = if (editor.autoCache) {
                             "New tracks will be cached when this mix regenerates"
                         } else {
                             "Off — tracks cached only when added to queue"
                         },
                         color = Color(0xFF666666),
                         fontSize = textLabelS(),
+                        minFontSize = textMicro(),
+                        maxLines = 2,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 Switch(
@@ -510,20 +522,25 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        "Fill from other mixes",
+                    FittingText(
+                        text = "Fill from other mixes",
                         color = Color.White,
                         fontSize = textBodyM(),
+                        minFontSize = textMicro(),
                         fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(
-                        if (editor.allowCrossMixFill) {
+                    FittingText(
+                        text = if (editor.allowCrossMixFill) {
                             "Fill remaining slots from your other mix pools"
                         } else {
                             "When this mix is short, keep it smaller — no tracks from other mixes"
                         },
                         color = Color(0xFF666666),
                         fontSize = textLabelS(),
+                        minFontSize = textMicro(),
+                        maxLines = 2,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 Switch(
@@ -658,11 +675,21 @@ private fun ArtistsSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("All favorite artists", color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Bold)
-                Text(
-                    "Dynamically includes every artist you thumb-up",
+                FittingText(
+                    text = "All favorite artists",
+                    color = Color.White,
+                    fontSize = textBodyM(),
+                    minFontSize = textMicro(),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FittingText(
+                    text = "Dynamically includes every artist you thumb-up",
                     color = Color(0xFF666666),
                     fontSize = textLabelS(),
+                    minFontSize = textMicro(),
+                    maxLines = 2,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             Switch(
@@ -755,12 +782,11 @@ private fun ArtistResultRow(artist: ArtistOption, selected: Boolean, onToggle: (
             Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
         Spacer(Modifier.width(10.dp))
-        Text(
-            artist.name,
+        FittingText(
+            text = artist.name,
             color = Color.White,
             fontSize = textBodyM(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            minFontSize = textMicro(),
             modifier = Modifier.weight(1f),
         )
         if (artist.isFavorite) {

@@ -9,9 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 /**
  * @deprecated Replaced by unified [PlayerBar] composable. Cast controls are now built into
@@ -52,18 +52,18 @@ fun CastMiniController(
                 )
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
+                    FittingText(
                         text = trackTitle ?: "Connected",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                        minFontSize = textMicro(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(
+                    FittingText(
                         text = "Casting to $deviceName",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                        minFontSize = textMicro(),
                         color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 IconButton(onClick = onDisconnect) {

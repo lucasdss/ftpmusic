@@ -513,10 +513,32 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setHideNavLabels false persists to storage`() {
+        viewModel.setHideNavLabels(true)
+        viewModel.setHideNavLabels(false)
+        assertFalse(viewModel.state.value.hideNavLabels)
+        verify { storage.put(SecureStorage.KEY_NAV_HIDE_LABELS, "false") }
+    }
+
+    @Test
     fun `stored hide nav labels pref is restored on init`() {
         every { storage.get(SecureStorage.KEY_NAV_HIDE_LABELS) } returns "true"
         val vm = createViewModel()
         assertTrue(vm.state.value.hideNavLabels)
+    }
+
+    @Test
+    fun `invalid hide nav labels pref defaults to false on init`() {
+        every { storage.get(SecureStorage.KEY_NAV_HIDE_LABELS) } returns "not-a-bool"
+        val vm = createViewModel()
+        assertFalse(vm.state.value.hideNavLabels)
+    }
+
+    @Test
+    fun `stored hide nav labels false is restored on init`() {
+        every { storage.get(SecureStorage.KEY_NAV_HIDE_LABELS) } returns "false"
+        val vm = createViewModel()
+        assertFalse(vm.state.value.hideNavLabels)
     }
 
     // ── Last.fm / remaining setters ─────────────────────────────────────

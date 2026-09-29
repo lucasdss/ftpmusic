@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +57,15 @@ fun GenreDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(genre.ifEmpty { "Genre" }, color = Color.White, fontSize = textHeadingM()) },
+                title = {
+                    FittingText(
+                        text = genre.ifEmpty { "Genre" },
+                        color = Color.White,
+                        fontSize = textHeadingM(),
+                        minFontSize = textMicro(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
@@ -161,21 +170,21 @@ fun GenreDetailScreen(
                                         }
                                     }
                                     Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        album.name,
+                                    FittingText(
+                                        text = album.name,
                                         color = Color.White,
                                         fontSize = textBodyM(),
+                                        minFontSize = textMicro(),
                                         fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                     album.artist?.let {
-                                        Text(
-                                            it,
+                                        FittingText(
+                                            text = it,
                                             color = Color(0xFF888888),
                                             fontSize = textLabelM(),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
+                                            minFontSize = textMicro(),
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
                                     }
                                 }
@@ -246,12 +255,12 @@ fun GenreDetailScreen(
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(
-                                            artist.name,
+                                        FittingText(
+                                            text = artist.name,
                                             color = Color.White,
                                             fontSize = textHeadingS(),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
+                                            minFontSize = textMicro(),
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
                                     }
                                     Icon(
