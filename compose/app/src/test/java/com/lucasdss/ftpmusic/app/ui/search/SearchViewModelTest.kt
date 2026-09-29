@@ -35,11 +35,15 @@ class SearchViewModelTest {
     private val genreDao: GenreDao = mockk(relaxed = true)
     private val api: SubsonicApi = mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
+    private val offlineFlow = MutableStateFlow(false)
+    private val offlineManager: OfflineModeManager = mockk(relaxed = true)
     private lateinit var viewModel: SearchViewModel
 
     @Before
     fun setUp() {
         NetworkAvailabilityHolder.resetForTests(true)
+        offlineFlow.value = false
+        every { offlineManager.isOffline } returns offlineFlow
         Dispatchers.setMain(testDispatcher)
         viewModel =
             SearchViewModel(
@@ -49,7 +53,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 api,
-                mockk<OfflineModeManager>(relaxed = true),
+                offlineManager,
             )
     }
 
@@ -259,7 +263,7 @@ class SearchViewModelTest {
                 trackDao,
                 metadataDao,
                 api,
-                mockk<OfflineModeManager>(relaxed = true),
+                offlineManager,
             )
         assertTrue(viewModel.isLocalOnly())
         viewModel.onQueryChanged("air")
@@ -269,6 +273,91 @@ class SearchViewModelTest {
         coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
         coVerify(exactly = 1) { trackDao.searchPlayableTracks("air") }
         assertTrue(viewModel.state.value.filterDownloaded)
+    }
+
+    @Test
+    fun `OS network loss mid-session re-runs active search as playable-only`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { repository.search("mid", "user", "pass", any()) } returns SearchResults(
+            tracks = listOf(Track("online1", "Online", duration = 1)),
+        )
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        coEvery { trackDao.searchAllTracks("mid") } returns emptyList()
+        coEvery { trackDao.getTracksByIds(any()) } returns emptyList()
+        coEvery { trackDao.searchPlayableTracks("mid") } returns listOf(
+            TrackEntity(
+                id = "local1",
+                title = "Local",
+                artist = "A",
+                coverArtUrl = "",
+                durationSeconds = 1,
+                isDownloaded = true,
+            ),
+        )
+        coEvery { metadataDao.searchPlayableAlbums("mid") } returns emptyList()
+        coEvery { metadataDao.searchPlayableArtists("mid") } returns emptyList()
+
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                metadataDao,
+                api,
+                offlineManager,
+            )
+        viewModel.onQueryChanged("mid")
+        viewModel.search()
+        advanceUntilIdle()
+        assertEquals("online1", viewModel.state.value.tracks.firstOrNull()?.id)
+
+        NetworkAvailabilityHolder.resetForTests(false)
+        advanceUntilIdle()
+
+        coVerify(atLeast = 1) { trackDao.searchPlayableTracks("mid") }
+        assertEquals("local1", viewModel.state.value.tracks.firstOrNull()?.id)
+        assertTrue(viewModel.state.value.filterDownloaded)
+    }
+
+    @Test
+    fun `observeLocalOnly tolerates missing offline flow`() = runTest(testDispatcher) {
+        val broken = mockk<OfflineModeManager>()
+        every { broken.isOffline } throws RuntimeException("no flow")
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                broken,
+            )
+        advanceUntilIdle()
+        assertFalse(viewModel.isLocalOnly())
+    }
+
+    @Test
+    fun `observeLocalOnly skips re-search when no active query`() = runTest(testDispatcher) {
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+            )
+        advanceUntilIdle()
+        NetworkAvailabilityHolder.resetForTests(false)
+        advanceUntilIdle()
+        coVerify(exactly = 0) { trackDao.searchPlayableTracks(any()) }
+        assertTrue(viewModel.isLocalOnly())
     }
 
     @Test
@@ -447,7 +536,12 @@ class SearchViewModelTest {
         val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
         viewModel =
             SearchViewModel(
-                repository, storage, genreDao, trackDao, metadataDao, api,
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                metadataDao,
+                api,
                 mockk(relaxed = true),
             )
         viewModel.onQueryChanged("ab")

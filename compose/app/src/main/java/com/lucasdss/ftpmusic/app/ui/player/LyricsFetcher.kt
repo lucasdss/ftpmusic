@@ -1,8 +1,10 @@
 package com.lucasdss.ftpmusic.app.ui.player
 
 import com.google.gson.Gson
+import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
 import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.LyricsCacheEntity
+import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 
 /** Display payload for Now Playing lyrics overlay. */
 internal data class LyricsDisplay(val lines: List<LyricLine> = emptyList(), val text: String? = null) {
@@ -38,6 +40,9 @@ internal object LyricsFetcher {
     /**
      * Resolve lyrics for a track: version eviction, cache hit (+ optional reparse),
      * or miss marker. Does not perform network I/O.
+     *
+     * Reparse only for legacy raw-only rows (`syncedLinesJson` and `unstructuredText`
+     * both null). Negative / unstructured hits skip reparse to avoid Gson+put every open.
      */
     suspend fun resolveFromCache(
         trackId: String,
@@ -50,8 +55,11 @@ internal object LyricsFetcher {
             return null
         }
         var display = displayFromEntity(cached)
-        if (cached.syncedLinesJson == null && cached.rawJson != null) {
-            val upgraded = reparseFromRaw(cached.rawJson, trackId, dao)
+        val needsReparse = cached.syncedLinesJson == null &&
+            cached.unstructuredText == null &&
+            cached.rawJson != null
+        if (needsReparse) {
+            val upgraded = reparseFromRaw(cached.rawJson!!, trackId, dao)
             if (upgraded != null) {
                 display = upgraded
             }
@@ -62,6 +70,12 @@ internal object LyricsFetcher {
             needsBackgroundRefresh = isCacheStale(cached.fetchedAt, nowMs),
         )
     }
+
+    /** Network fetch allowed only when not Simulate Offline and OS has INTERNET. */
+    fun shouldFetchLyricsOverNetwork(
+        isOffline: Boolean,
+        hasOsNetwork: Boolean = NetworkAvailabilityHolder.hasOsNetwork.value,
+    ): Boolean = !LocalOnlyPolicy.isLocalOnly(isOffline, hasOsNetwork)
 
     fun displayFromEntity(cached: LyricsCacheEntity): LyricsDisplay {
         if (cached.syncedLinesJson != null) {

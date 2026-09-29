@@ -322,7 +322,7 @@ class LyricsFetcherTest {
     }
 
     @Test
-    fun `resolveFromCache reparses rawJson without synced lines`() = runBlocking {
+    fun `resolveFromCache reparses legacy raw-only rows without unstructured`() = runBlocking {
         val dao = mockk<LyricsCacheDao>(relaxed = true)
         val raw = com.google.gson.Gson().toJson(
             response(
@@ -340,7 +340,7 @@ class LyricsFetcherTest {
             title = "t",
             rawJson = raw,
             syncedLinesJson = null,
-            unstructuredText = "old",
+            unstructuredText = null,
             fetchedAt = 50L,
             cacheVersion = LyricsCacheEntity.CURRENT_CACHE_VERSION,
         )
@@ -354,6 +354,32 @@ class LyricsFetcherTest {
         assertNotNull(result)
         assertTrue(result!!.display.isSynced || result.display.text != null)
         coVerify { dao.put(any()) }
+    }
+
+    @Test
+    fun `resolveFromCache skips reparse when unstructured already stored`() = runBlocking {
+        val dao = mockk<LyricsCacheDao>(relaxed = true)
+        val raw = com.google.gson.Gson().toJson(response(mapOf("value" to "cached plain")))
+        coEvery { dao.get("neg") } returns LyricsCacheEntity(
+            trackId = "neg",
+            artist = "a",
+            title = "t",
+            rawJson = raw,
+            syncedLinesJson = null,
+            unstructuredText = "",
+            fetchedAt = 1L,
+            cacheVersion = LyricsCacheEntity.CURRENT_CACHE_VERSION,
+        )
+        LyricsFetcher.resolveFromCache("neg", dao, nowMs = 1L)
+        LyricsFetcher.resolveFromCache("neg", dao, nowMs = 1L)
+        coVerify(exactly = 0) { dao.put(any()) }
+    }
+
+    @Test
+    fun `shouldFetchLyricsOverNetwork false when offline or no OS net`() {
+        assertFalse(LyricsFetcher.shouldFetchLyricsOverNetwork(isOffline = true, hasOsNetwork = true))
+        assertFalse(LyricsFetcher.shouldFetchLyricsOverNetwork(isOffline = false, hasOsNetwork = false))
+        assertTrue(LyricsFetcher.shouldFetchLyricsOverNetwork(isOffline = false, hasOsNetwork = true))
     }
 
     @Test

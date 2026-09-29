@@ -66,6 +66,80 @@ class ConnectivityNetworkWatcherTest {
     }
 
     @Test
+    fun `onLost with other network still INTERNET fires onAvailable not onLost`() {
+        val cm = mockk<ConnectivityManager>(relaxed = true)
+        val wifi = mockk<Network>(relaxed = true)
+        val cell = mockk<Network>(relaxed = true)
+        val cellCaps = mockk<NetworkCapabilities>()
+        every { cellCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } returns true
+        every { cm.activeNetwork } returns null andThen cell
+        every { cm.getNetworkCapabilities(cell) } returns cellCaps
+
+        val request = mockk<NetworkRequest>(relaxed = true)
+        val cbSlot = slot<ConnectivityManager.NetworkCallback>()
+        every { cm.registerNetworkCallback(request, capture(cbSlot)) } just runs
+
+        var available = 0
+        var lost = 0
+        ConnectivityNetworkWatcher(cm, request).start(
+            onAvailable = { available++ },
+            onLost = { lost++ },
+        )
+        assertFalse(NetworkAvailabilityHolder.hasOsNetwork.value)
+
+        // WiFi lost but cell remains active with INTERNET
+        cbSlot.captured.onLost(wifi)
+        assertEquals(1, available)
+        assertEquals(0, lost)
+
+        // Caps lose INTERNET on this iface but activeNetwork still has it
+        val noInternet = mockk<NetworkCapabilities>()
+        every { noInternet.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } returns false
+        cbSlot.captured.onCapabilitiesChanged(wifi, noInternet)
+        assertEquals(2, available)
+        assertEquals(0, lost)
+    }
+
+    @Test
+    fun `onLost with no remaining INTERNET fires onLost`() {
+        val cm = mockk<ConnectivityManager>(relaxed = true)
+        every { cm.activeNetwork } returns null
+        val request = mockk<NetworkRequest>(relaxed = true)
+        val cbSlot = slot<ConnectivityManager.NetworkCallback>()
+        every { cm.registerNetworkCallback(request, capture(cbSlot)) } just runs
+
+        var lost = 0
+        ConnectivityNetworkWatcher(cm, request).start(
+            onAvailable = {},
+            onLost = { lost++ },
+        )
+        cbSlot.captured.onLost(mockk(relaxed = true))
+        assertEquals(1, lost)
+    }
+
+    @Test
+    fun `context constructor resolves ConnectivityManager`() {
+        val cm = mockk<ConnectivityManager>(relaxed = true)
+        every { cm.activeNetwork } returns null
+        val ctx = mockk<android.content.Context>()
+        every { ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) } returns cm
+        val request = mockk<NetworkRequest>(relaxed = true)
+        val cbSlot = slot<ConnectivityManager.NetworkCallback>()
+        every { cm.registerNetworkCallback(request, capture(cbSlot)) } just runs
+
+        // Primary default (null request) + Context ctor both construct without NetworkRequest.Builder.
+        val viaCm = ConnectivityNetworkWatcher(cm)
+        viaCm.stop() // no-op before start
+
+        val viaCtx = ConnectivityNetworkWatcher(ctx)
+        // Inject request by constructing the testable 2-arg form after resolving CM
+        val watcher = ConnectivityNetworkWatcher(cm, request)
+        watcher.start(onAvailable = {}, onLost = {})
+        assertFalse(NetworkAvailabilityHolder.hasOsNetwork.value)
+        watcher.stop()
+    }
+
+    @Test
     fun `stop before start is no-op`() {
         val cm = mockk<ConnectivityManager>(relaxed = true)
         val watcher = ConnectivityNetworkWatcher(cm, mockk(relaxed = true))

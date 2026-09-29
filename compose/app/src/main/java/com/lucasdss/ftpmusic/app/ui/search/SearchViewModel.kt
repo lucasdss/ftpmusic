@@ -20,12 +20,15 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.SearchRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 data class SearchState(
@@ -87,6 +90,30 @@ class SearchViewModel @Inject constructor(
         val recent = raw.split("|||").filter { it.isNotBlank() }
         _state.value = _state.value.copy(recentSearches = recent)
         loadGenres()
+        observeLocalOnly()
+    }
+
+    /** Airplane / Simulate Offline flip mid-session → re-run active search (ADR 0051). */
+    private fun observeLocalOnly() {
+        viewModelScope.launch {
+            try {
+                val offlineFlow = offlineModeManager.isOffline ?: return@launch
+                var previous: Boolean? = null
+                combine(offlineFlow, NetworkAvailabilityHolder.hasOsNetwork) { offline, hasNet ->
+                    LocalOnlyPolicy.isLocalOnly(offline, hasNet)
+                }.distinctUntilChanged().collect { localOnly ->
+                    val was = previous
+                    previous = localOnly
+                    if (was == null || was == localOnly) return@collect
+                    val q = _state.value.query.trim()
+                    if (_state.value.hasSearched && q.length >= 2) {
+                        search()
+                    }
+                }
+            } catch (_: Exception) {
+                // Relaxed mocks / missing offline flow in unit tests
+            }
+        }
     }
 
     fun loadGenres() {

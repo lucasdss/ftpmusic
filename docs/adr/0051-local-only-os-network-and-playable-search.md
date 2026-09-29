@@ -17,9 +17,12 @@ offline search (1A) + treat true no-OS-network like offline for search/play gate
 1. **`NetworkAvailabilityHolder`** — StateFlow OS INTERNET capability. Seeded at boot;
    updated via `ConnectivityNetworkWatcher` `onAvailable` / `onLost` /
    `onCapabilitiesChanged`. Wired from `ServerReachabilityMonitor.start` + `FtpmusicApp`.
+   **Lost / caps-down:** re-check `activeNetwork` INTERNET before flipping unavailable
+   (WiFi drop while cell up must not false local-only).
 
 2. **`LocalOnlyPolicy.isLocalOnly(offline, hasOsNetwork)`** — browse/search gate.
    Does **not** flip `OfflineModeManager` (ADR 0043 preserved: Offline chip ≠ unreachable).
+   Search/Library **collect** offline + OS flows; flip → re-search / reload browse.
 
 3. **Upstream order** in `OfflineAwareHttpDataSource.open`: software offline → no OS
    network → server unreachable → else open.

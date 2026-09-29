@@ -1820,6 +1820,25 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `OS network flip mid-session reloads offline artists`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { metadataDao.getOfflineArtists() } returns emptyList()
+        coEvery { metadataDao.getOfflineAlbums() } returns emptyList()
+        coEvery { metadataDao.getAllArtists() } returns emptyList()
+        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+        val (vm, _) = offlineVm()
+        advanceUntilIdle()
+        NetworkAvailabilityHolder.resetForTests(false)
+        advanceUntilIdle()
+        assertTrue(vm.isLocalOnly())
+        coVerify(atLeast = 1) { metadataDao.getOfflineArtists() }
+        NetworkAvailabilityHolder.resetForTests(true)
+        advanceUntilIdle()
+        assertFalse(vm.isLocalOnly())
+    }
+
+    @Test
     fun `playSurpriseMe offline uses cached tracks and skips API`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"

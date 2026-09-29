@@ -9,6 +9,9 @@ Related: ADR 0013, 0022, 0043, 0051
 - **OS network lost** (airplane) = `NetworkAvailabilityHolder.hasOsNetwork=false`. No auto-toggle Offline.
 - **Server unreachable** = `ReachabilityStateHolder`. AppHeader "Server unreachable".
 - **Local-only browse/search** = `LocalOnlyPolicy.isLocalOnly` = offline OR !osNetwork.
+- **Reactive flip** = Search/Library collect offline + `hasOsNetwork`; enter/leave local-only
+  re-runs active search / reloads artists+albums+genres.
+- **OS lost honesty** = watcher re-checks `activeNetwork` INTERNET on iface lost (multi-net).
 - **Upstream block** = offline OR !osNetwork OR !reachable (`OfflineAwareHttpDataSource`).
 - Cache hits never open upstream.
 
@@ -44,4 +47,6 @@ Partial/missing → upstream gate throws → `findNextCachedIndex` / stop.
 
 ## Validation
 
-Unit: LocalOnlyPolicy, NetworkAvailabilityHolder, OfflineAwareDataSource, SearchViewModel local-only, Library Surprise Me local-only, ConnectivityNetworkWatcher onLost.
+Unit: LocalOnlyPolicy, NetworkAvailabilityHolder, OfflineAwareDataSource, SearchViewModel
+local-only + mid-session OS flip re-search, Library Surprise Me local-only,
+ConnectivityNetworkWatcher onLost multi-net revalidate.

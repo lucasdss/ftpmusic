@@ -9,9 +9,11 @@ Status: hardened on-demand path (getLyrics). No getLyricsBySongId this pass.
 3. Cache lookup by `trackId` (Room `lyrics_cache`):
    - `cacheVersion < CURRENT (2)` → delete → treat miss.
    - Hit → show synced lines or unstructured text. No `touch()` (fetchedAt = fetch time only).
-   - Hit + `rawJson` + no synced → `reparseFromRaw` may upgrade to synced.
-   - Hit age > 24h → child coroutine refresh (cancellable with effect); UI keeps stale until next open.
-4. Miss → `getLyrics(artist, title)` → parse → cache → UI.
+   - Hit + legacy raw-only (`rawJson` set, both `syncedLinesJson` + `unstructuredText` null) →
+     `reparseFromRaw` may upgrade. Negative / unstructured hits skip reparse (no put spam).
+   - Hit age > 24h → child coroutine refresh **only if** network allowed; UI keeps stale.
+4. Miss → if local-only (Simulate Offline or !OS INTERNET) → empty UI, no network.
+   Else → `getLyrics(artist, title)` → parse → cache → UI.
 5. Overlay: LYRICS chip → `LyricsContent` (synced LazyColumn or plain scroll).
 
 ## Formats
@@ -46,11 +48,12 @@ Not supported: OpenSubsonic `getLyricsBySongId`, embedded USLT/sidecar `.lrc` cl
 |------|----------|
 | Cancel mid-fetch | Rethrow `CancellationException` |
 | Network fail | Empty UI; log warn |
-| Offline + cache hit | Show cache |
-| Offline + miss | Empty UI |
+| Offline + cache hit | Show cache; no TTL network refresh |
+| Offline + miss | Empty UI (no network attempt) |
 | Null trackId | Fetch OK; no cache write |
 | Process death | Overlay closed; cache hit on remount |
 | All-zero timestamps | Unstructured fallback |
+| Negative cache reopen | Skip reparse; no `dao.put` |
 
 ## Gaps (deferred)
 

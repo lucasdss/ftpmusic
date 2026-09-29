@@ -732,6 +732,8 @@ fun FtpmusicNavHost() {
                             appContext,
                             LyricsCacheEntryPoint::class.java,
                         )
+                        val allowNetwork = com.lucasdss.ftpmusic.app.ui.player.LyricsFetcher
+                            .shouldFetchLyricsOverNetwork(isOffline = playbackState.isOffline)
                         try {
                             val resolve = withContext(Dispatchers.IO) {
                                 val dao = lyricsEntry.lyricsCacheDao()
@@ -743,7 +745,7 @@ fun FtpmusicNavHost() {
                                 lyricLines = resolve.display.lines
                                 lyricsText = resolve.display.text
                                 lyricsLoading = false
-                                if (resolve.needsBackgroundRefresh && trackId != null) {
+                                if (allowNetwork && resolve.needsBackgroundRefresh && trackId != null) {
                                     // Child of this effect — cancelled on track change (no detached scope).
                                     launch(Dispatchers.IO) {
                                         try {
@@ -761,6 +763,10 @@ fun FtpmusicNavHost() {
                                         }
                                     }
                                 }
+                                return@LaunchedEffect
+                            }
+                            if (!allowNetwork) {
+                                lyricsLoading = false
                                 return@LaunchedEffect
                             }
                             val display = withContext(Dispatchers.IO) {

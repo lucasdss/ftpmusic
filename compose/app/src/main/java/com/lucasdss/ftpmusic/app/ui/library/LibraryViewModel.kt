@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
+import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.AlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
@@ -27,6 +28,7 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.playback.DailyMixGenerationCoordinator
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
@@ -37,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -256,6 +259,31 @@ class LibraryViewModel @Inject constructor(
         refreshHomePrefs()
         loadFavorites()
         observeFavorites()
+        observeLocalOnly()
+    }
+
+    /** Airplane / Simulate Offline flip → reload browse surfaces (ADR 0051). */
+    private fun observeLocalOnly() {
+        viewModelScope.launch {
+            try {
+                val offlineFlow = offlineModeManager.isOffline ?: return@launch
+                var previous: Boolean? = null
+                combine(offlineFlow, NetworkAvailabilityHolder.hasOsNetwork) { offline, hasNet ->
+                    LocalOnlyPolicy.isLocalOnly(offline, hasNet)
+                }.distinctUntilChanged().collect { localOnly ->
+                    val was = previous
+                    previous = localOnly
+                    if (was == null || was == localOnly) return@collect
+                    if (username().isNotEmpty()) {
+                        loadArtists()
+                        loadAlbums()
+                    }
+                    loadGenres()
+                }
+            } catch (_: Exception) {
+                // Relaxed mocks / missing offline flow in unit tests
+            }
+        }
     }
 
     // ── v43: Home section visibility + favorites ─────────────────────────────

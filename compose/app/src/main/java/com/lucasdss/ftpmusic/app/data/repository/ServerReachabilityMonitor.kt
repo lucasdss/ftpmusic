@@ -178,9 +178,7 @@ interface NetworkWatcher {
 
 class ConnectivityNetworkWatcher(
     private val connectivity: ConnectivityManager,
-    private val request: NetworkRequest = NetworkRequest.Builder()
-        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        .build(),
+    private val request: NetworkRequest? = null,
 ) : NetworkWatcher {
     constructor(context: Context) : this(
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
@@ -197,19 +195,32 @@ class ConnectivityNetworkWatcher(
             }
 
             override fun onLost(network: Network) {
-                onLost()
+                // WiFi drop while cell still up → re-check activeNetwork (ADR 0051).
+                reconcileOsNetwork(onAvailable, onLost)
             }
 
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
                 if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
                     onAvailable()
                 } else {
-                    onLost()
+                    reconcileOsNetwork(onAvailable, onLost)
                 }
             }
         }
         callback = cb
-        connectivity.registerNetworkCallback(request, cb)
+        val req = request ?: NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        connectivity.registerNetworkCallback(req, cb)
+    }
+
+    /** Lost/caps-down for one iface must not flip local-only if another still has INTERNET. */
+    private fun reconcileOsNetwork(onAvailable: () -> Unit, onLost: () -> Unit) {
+        if (NetworkAvailabilityHolder.hasInternetCapability(connectivity)) {
+            onAvailable()
+        } else {
+            onLost()
+        }
     }
 
     override fun stop() {
