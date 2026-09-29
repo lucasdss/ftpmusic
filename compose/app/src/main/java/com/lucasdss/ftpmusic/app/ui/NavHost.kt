@@ -35,7 +35,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.android.gms.cast.framework.CastContext
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
-import com.lucasdss.ftpmusic.app.data.db.LyricsCacheEntity
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
@@ -61,8 +60,6 @@ import com.lucasdss.ftpmusic.app.ui.player.CastDevicePickerDialog
 import com.lucasdss.ftpmusic.app.ui.player.PlayerBar
 import com.lucasdss.ftpmusic.app.ui.player.PlayerBarColors
 import com.lucasdss.ftpmusic.app.ui.player.PlayerBarState
-import com.lucasdss.ftpmusic.app.ui.player.cleanLyricText
-import com.lucasdss.ftpmusic.app.ui.player.parseLrcText
 import com.lucasdss.ftpmusic.app.ui.search.SearchScreen
 import com.lucasdss.ftpmusic.app.ui.server.ServerConnectScreen
 import com.lucasdss.ftpmusic.app.ui.settings.SettingsScreen
@@ -735,79 +732,50 @@ fun FtpmusicNavHost() {
                             appContext,
                             LyricsCacheEntryPoint::class.java,
                         )
-                        withContext(Dispatchers.IO) {
-                            try {
+                        try {
+                            val resolve = withContext(Dispatchers.IO) {
                                 val dao = lyricsEntry.lyricsCacheDao()
-                                // Check Room cache — instant, no spinner flicker
-                                trackId?.let { dao.get(it) }?.let { cached ->
-                                    // Evict stale caches from older schema versions
-                                    if (cached.cacheVersion < LyricsCacheEntity.CURRENT_CACHE_VERSION) {
-                                        dao.delete(trackId!!)
-                                    } else {
-                                        dao.touch(trackId!!) // LRU: update access time
-                                        if (cached.syncedLinesJson != null) {
-                                            lyricLines = com.google.gson.Gson().fromJson(
-                                                cached.syncedLinesJson,
-                                                Array<com.lucasdss.ftpmusic.app.ui.player.LyricLine>::class.java,
-                                            ).toList()
-                                        } else {
-                                            lyricsText = cached.unstructuredText
+                                trackId?.let {
+                                    com.lucasdss.ftpmusic.app.ui.player.LyricsFetcher.resolveFromCache(it, dao)
+                                }
+                            }
+                            if (resolve != null) {
+                                lyricLines = resolve.display.lines
+                                lyricsText = resolve.display.text
+                                lyricsLoading = false
+                                if (resolve.needsBackgroundRefresh && trackId != null) {
+                                    // Child of this effect — cancelled on track change (no detached scope).
+                                    launch(Dispatchers.IO) {
+                                        try {
+                                            refreshLyricsInBackground(
+                                                artist,
+                                                title,
+                                                trackId,
+                                                lyricsEntry,
+                                                appContext,
+                                            )
+                                        } catch (e: kotlinx.coroutines.CancellationException) {
+                                            throw e
+                                        } catch (_: Exception) {
+                                            // Silent — stale cache still shown
                                         }
-                                        // Re-parse from raw if synced lines not yet extracted (newer parsing logic)
-                                        if (cached.syncedLinesJson == null && cached.rawJson != null) {
-                                            reparseFromRaw(cached.rawJson, trackId!!, dao)
-                                            // Reload from DB — reparseFromRaw may have written syncedLinesJson
-                                            val updated = dao.get(trackId!!)
-                                            if (updated != null && updated.syncedLinesJson != null) {
-                                                lyricLines = com.google.gson.Gson().fromJson(
-                                                    updated.syncedLinesJson,
-                                                    Array<com.lucasdss.ftpmusic.app.ui.player.LyricLine>::class.java,
-                                                ).toList()
-                                                lyricsText = null
-                                            }
-                                        }
-                                        lyricsLoading = false
-                                        // 24h TTL: background re-fetch if cache is older than 24h
-                                        val cacheAge = System.currentTimeMillis() - cached.fetchedAt
-                                        if (cacheAge > 24 * 60 * 60 * 1000L) {
-                                            kotlinx.coroutines.CoroutineScope(
-                                                kotlinx.coroutines.SupervisorJob() + Dispatchers.IO,
-                                            ).launch {
-                                                try {
-                                                    fetchLyricsAndCache(
-                                                        artist,
-                                                        title,
-                                                        trackId,
-                                                        dao,
-                                                        lyricsEntry,
-                                                        appContext,
-                                                    )
-                                                } catch (_: Exception) {
-                                                    // Background refresh failure is silent — cached data still shown
-                                                }
-                                            }
-                                        }
-                                        return@withContext
                                     }
                                 }
-                                // Cache miss — fetch from server (spinner stays visible)
-                                val (lines, text) = fetchLyricsAndCache(
-                                    artist,
-                                    title,
-                                    trackId,
-                                    dao,
-                                    lyricsEntry,
-                                    appContext,
-                                )
-                                lyricLines = lines
-                                lyricsText = text
-                                lyricsLoading = false
-                            } catch (e: Exception) {
-                                android.util.Log.w("ftpmusic-lyrics", "Failed to fetch lyrics: ${e.message}")
-                                lyricsText = null
-                                lyricLines = emptyList()
-                                lyricsLoading = false
+                                return@LaunchedEffect
                             }
+                            val display = withContext(Dispatchers.IO) {
+                                fetchLyricsForTrack(artist, title, trackId, lyricsEntry, appContext)
+                            }
+                            lyricLines = display.lines
+                            lyricsText = display.text
+                            lyricsLoading = false
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            android.util.Log.w("ftpmusic-lyrics", "Failed to fetch lyrics: ${e.message}")
+                            lyricsText = null
+                            lyricLines = emptyList()
+                            lyricsLoading = false
                         }
                     }
 
@@ -897,6 +865,7 @@ fun FtpmusicNavHost() {
                             downloadedTrackIds = playbackState.downloadedTrackIds,
                             colors = nowPlayingPlayerColors,
                             expanded = true,
+                            trackId = playbackState.currentTrackId,
                             lyricsText = lyricsText,
                             lyricLines = lyricLines,
                             lyricsLoading = lyricsLoading,
@@ -1140,141 +1109,42 @@ private fun refreshCastRoutes(
 }
 
 /**
- * Fetch lyrics from the Subsonic API, parse, cache, and return the result.
- * Used both for cache-miss display and background stale-cache refresh.
- *
- * @return Pair of (lyricLines, lyricsText) — one will be non-null, the other null/empty.
+ * Fetch lyrics from Subsonic getLyrics, parse, cache. Used for miss + silent TTL refresh.
  */
-private suspend fun fetchLyricsAndCache(
+private suspend fun fetchLyricsForTrack(
     artist: String,
     title: String,
     trackId: String?,
-    dao: com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao,
     lyricsEntry: com.lucasdss.ftpmusic.app.di.LyricsCacheEntryPoint,
     context: android.content.Context,
-): Pair<List<com.lucasdss.ftpmusic.app.ui.player.LyricLine>, String?> {
+): com.lucasdss.ftpmusic.app.ui.player.LyricsDisplay {
+    val dao = lyricsEntry.lyricsCacheDao()
     val api = lyricsEntry.subsonicApi()
     val authParams = lyricsEntry.subsonicAuthHelper().buildAuthParams(
         com.lucasdss.ftpmusic.app.di.SubsonicCredentials.username,
         com.lucasdss.ftpmusic.app.di.SubsonicCredentials.password,
     )
-    val response = api.getLyrics(authParams, artist, title)
-    val sr = response["subsonic-response"] as? Map<*, *>
-    val lyricsData = sr?.get("lyrics") as? Map<*, *>
-
-    // Try structured (synced) lyrics first
-    val structuredLines = lyricsData?.get("line") as? List<*>
-    if (structuredLines != null && structuredLines.isNotEmpty()) {
-        val rawLines = structuredLines.mapNotNull { line ->
-            val m = line as? Map<*, *> ?: return@mapNotNull null
-            val start = (m["start"] as? Number)?.toLong() ?: 0L
-            val value = m["value"] as? String ?: return@mapNotNull null
-            Pair(start, value)
-        }
-        var lyricLines = rawLines.map { (start, value) ->
-            com.lucasdss.ftpmusic.app.ui.player.LyricLine(start, cleanLyricText(value))
-        }
-        // LRC fallback if all starts are 0
-        if (lyricLines.all { it.timeMs == 0L }) {
-            val combinedRaw = rawLines.joinToString("\n") { it.second }
-            val lrcParsed = parseLrcText(combinedRaw)
-            if (lrcParsed.isNotEmpty()) lyricLines = lrcParsed
-        }
-        trackId?.let {
-            dao.put(
-                LyricsCacheEntity(
-                    it,
-                    artist,
-                    title,
-                    rawJson = com.google.gson.Gson().toJson(response),
-                    syncedLinesJson = com.google.gson.Gson().toJson(lyricLines),
-                ),
-            )
-        }
-        context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-            .edit().putLong("last_lyrics_fetch_ms", System.currentTimeMillis()).apply()
-        return Pair(lyricLines, null)
-    }
-
-    // Unstructured text
-    val text = lyricsData?.get("value") as? String
-        ?: (lyricsData?.get("text") as? String)
-    val lrcParsed = text?.let { parseLrcText(it) }
-    val lyricLines = if (lrcParsed != null && lrcParsed.isNotEmpty()) lrcParsed else emptyList()
-    val lyricsText = if (lyricLines.isEmpty()) text else null
-
-    if (trackId != null && text != null) {
-        val syncedJson = if (lyricLines.isNotEmpty()) com.google.gson.Gson().toJson(lyricLines) else null
-        dao.put(
-            LyricsCacheEntity(
-                trackId,
-                artist,
-                title,
-                rawJson = com.google.gson.Gson().toJson(response),
-                unstructuredText = if (syncedJson != null) null else text,
-                syncedLinesJson = syncedJson,
-            ),
-        )
-    }
-    context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-        .edit().putLong("last_lyrics_fetch_ms", System.currentTimeMillis()).apply()
-    return Pair(lyricLines, lyricsText)
+    return com.lucasdss.ftpmusic.app.ui.player.LyricsFetcher.fetchAndCache(
+        artist = artist,
+        title = title,
+        trackId = trackId,
+        dao = dao,
+        getLyrics = { a, t -> api.getLyrics(authParams, a, t) },
+        markFetched = {
+            context.getSharedPreferences(
+                MetadataSyncWorker.PREFS_NAME,
+                android.content.Context.MODE_PRIVATE,
+            ).edit().putLong("last_lyrics_fetch_ms", System.currentTimeMillis()).apply()
+        },
+    )
 }
 
-/**
- * Re-parse lyrics from raw API JSON when parsing logic has improved.
- * Called on cache hit for entries that have rawJson but no syncedLines.
- */
-private suspend fun reparseFromRaw(
-    rawJson: String,
+private suspend fun refreshLyricsInBackground(
+    artist: String,
+    title: String,
     trackId: String,
-    dao: com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao,
+    lyricsEntry: com.lucasdss.ftpmusic.app.di.LyricsCacheEntryPoint,
+    context: android.content.Context,
 ) {
-    try {
-        val response = com.google.gson.Gson().fromJson(rawJson, Map::class.java) as? Map<*, *> ?: return
-        val sr = response["subsonic-response"] as? Map<*, *> ?: return
-        val lyricsData = sr["lyrics"] as? Map<*, *> ?: return
-
-        // Structured lines (LRC already parsed by server)
-        val structuredLines = lyricsData["line"] as? List<*>
-        val finalLines: List<com.lucasdss.ftpmusic.app.ui.player.LyricLine>
-
-        if (structuredLines != null) {
-            val rawLines = structuredLines.mapNotNull { line ->
-                val m = line as? Map<*, *> ?: return@mapNotNull null
-                val start = (m["start"] as? Number)?.toLong() ?: 0L
-                val value = m["value"] as? String ?: return@mapNotNull null
-                Pair(start, value)
-            }
-            val parsed = rawLines.map { (start, value) ->
-                com.lucasdss.ftpmusic.app.ui.player.LyricLine(
-                    start,
-                    com.lucasdss.ftpmusic.app.ui.player.cleanLyricText(value),
-                )
-            }
-            finalLines = if (parsed.all { it.timeMs == 0L }) {
-                val combinedRaw = rawLines.joinToString("\n") { it.second }
-                parseLrcText(combinedRaw).ifEmpty { parsed }
-            } else {
-                parsed
-            }
-        } else {
-            // Unstructured text — try LRC parsing
-            val text = lyricsData["value"] as? String ?: lyricsData["text"] as? String ?: return
-            finalLines = parseLrcText(text)
-            if (finalLines.isEmpty()) return
-        }
-
-        if (finalLines.isNotEmpty()) {
-            dao.put(
-                com.lucasdss.ftpmusic.app.data.db.LyricsCacheEntity(
-                    trackId = trackId,
-                    artist = null,
-                    title = null,
-                    rawJson = rawJson,
-                    syncedLinesJson = com.google.gson.Gson().toJson(finalLines),
-                ),
-            )
-        }
-    } catch (_: Exception) {}
+    fetchLyricsForTrack(artist, title, trackId, lyricsEntry, context)
 }

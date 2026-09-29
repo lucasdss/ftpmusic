@@ -40,7 +40,7 @@
 
 | Design Feature | API Required | Implemented? | Gap |
 |---------------|-------------|-------------|-----|
-| **Lyrics** (Now Playing tab) | `getLyrics` / `getLyricsBySongId` (OpenSubsonic) | ❌ | Design shows "Lyrics Context" tab anchor + "real-time synchronized scrolling lyrics". Navidrome supports both embedded (.lrc/.txt) and OpenSubsonic structured lyrics. |
+| **Lyrics** (Now Playing tab) | `getLyrics` / `getLyricsBySongId` (OpenSubsonic) | ⚠️ PARTIAL | `getLyrics` + Room cache + Now Playing synced/plain overlay shipped. `getLyricsBySongId` / OpenSubsonic `songLyrics` still missing (artist+title key can mismatch multi-disc). |
 | **Star Ratings** (albums/tracks) | `setRating` + parse `userRating` from `getAlbum`/`search3` | ❌ | Design shows StarRating on album cards + track rows. No `getRating` endpoint exists; ratings embedded in entity responses. Need to parse `userRating` field from existing API responses and implement `setRating`. |
 | **"Play Similar"** (Now Playing) | `getSimilarSongs2` + OpenSubsonic `sonicSimilarity` | ⚠️ PARTIAL | `getSimilarSongs2` is implemented. But design calls for "Play more like this" / "Play similar artists" — the current implementation uses a local fallback (same-artist → same-genre → random). Should use API first. |
 | **Internet Radio** (Android Auto) | `getInternetRadioStations` | ❌ | Design references "Live Radio" for Android Auto browse tree. Navidrome supports full internet radio suite. |
@@ -53,10 +53,11 @@
 
 ### HIGH PRIORITY — Design Mock References These
 
-#### 3.1 Lyrics (`getLyrics` + `getLyricsBySongId`)
+#### 3.1 Lyrics (`getLyrics` ✅ + `getLyricsBySongId` ❌)
 **Design:** Now Playing mock shows a "Lyrics" tab with scrolling synchronized lyrics.  
 **Server:** Navidrome supports both simple text lyrics (`getLyrics`) and OpenSubsonic structured lyrics (`getLyricsBySongId`) with timed lines, language codes, synced/unsynced flags.  
-**Implementation gap:** No lyrics endpoint in SubsonicApi.kt. No lyrics UI on Now Playing.
+**Implemented:** `SubsonicApi.getLyrics`, Room `lyrics_cache`, Now Playing overlay (synced scroll + plain fallback). See `docs/LYRICS_BEHAVIOR_REPORT.md` + ADR 0050.  
+**Remaining gap:** `getLyricsBySongId` / `songLyrics` not wired — fetch still keyed by artist+title.
 
 #### 3.2 Similar Songs / "Play Similar" (`getSimilarSongs2` + OpenSubsonic `sonicSimilarity`)
 **Design:** "Play more like this" / "Play similar artists" actions.  
@@ -146,7 +147,7 @@ Fields returned by Subsonic API but NOT mapped in Kotlin models:
 
 | # | Priority | Action | Effort |
 |---|----------|--------|--------|
-| 1 | 🔴 HIGH | Implement `getLyrics` / `getLyricsBySongId` + Lyrics tab on Now Playing | Medium |
+| 1 | 🔴 HIGH | Wire `getLyricsBySongId` / OpenSubsonic `songLyrics` (getLyrics + UI already shipped) | Medium |
 | 2 | 🔴 HIGH | Parse `getSimilarSongs2` response properly, make it primary for "Play Similar" | Low |
 | 3 | 🔴 HIGH | Implement `getInternetRadioStations` for Android Auto browse tree | Low |
 | 4 | 🔴 HIGH | Implement `setRating` + parse `userRating` from entity responses + add StarRating UI | Medium |

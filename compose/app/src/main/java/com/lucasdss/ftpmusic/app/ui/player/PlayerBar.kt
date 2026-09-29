@@ -1727,6 +1727,7 @@ private fun PlayerLyricsOverlay(
                 LyricsContent(
                     artist = artist,
                     title = title,
+                    trackId = trackId,
                     positionMs = positionMs,
                     lyricsText = lyricsText,
                     lyricLines = lyricLines,
@@ -1774,6 +1775,7 @@ data class PlayerBarState(
     val nextTracks: List<com.lucasdss.ftpmusic.app.playback.UpcomingTrack> = emptyList(),
     val expanded: Boolean = false,
     val colors: PlayerBarColors = PlayerBarColors(),
+    val trackId: String? = null,
     val lyricsText: String? = null,
     val lyricLines: List<LyricLine> = emptyList(),
     val lyricsLoading: Boolean = false,
@@ -2171,6 +2173,7 @@ private fun QueueTrackRow(
 private fun LyricsContent(
     artist: String?,
     title: String?,
+    trackId: String? = null,
     positionMs: Long,
     lyricsText: String? = null,
     lyricLines: List<LyricLine> = emptyList(),
@@ -2178,9 +2181,8 @@ private fun LyricsContent(
     onSeekToMs: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    // Reset scroll position when lyrics change to a different track
-    val listStateKey = lyricLines.firstOrNull()?.timeMs ?: 0
-    val listState = remember(listStateKey) { androidx.compose.foundation.lazy.LazyListState() }
+    // Reset scroll when track changes (not first-line timeMs — collisions across tracks).
+    val listState = remember(trackId) { androidx.compose.foundation.lazy.LazyListState() }
 
     // Keep screen on while viewing lyrics
     val view = androidx.compose.ui.platform.LocalView.current
@@ -2189,53 +2191,61 @@ private fun LyricsContent(
         onDispose { view.keepScreenOn = false }
     }
 
-    // Lines sorted by timeMs for the binary search below (P4) — remembered so
-    // the O(n log n) sort runs once per track, not per 200 ms tick.
     val sortedLines = remember(lyricLines) { lyricLines.sortedBy { it.timeMs } }
+    val isSynced = remember(sortedLines) { sortedLines.any { it.timeMs > 0L } }
+    val cleanedUnstructured = remember(lyricsText) { lyricsText?.let { cleanLyricText(it) } }
 
-    // Find active line index based on playback position (binary search — the
-    // previous indexOfLast scan ran O(n) on every tick while the overlay was
-    // open, P4).
     val activeIndex = lastLyricIndexBefore(sortedLines, positionMs)
 
-    // Auto-scroll to active line
+    // Pause auto-scroll briefly after user interaction so animateScroll does not fight finger.
+    var suppressAutoScrollUntil by remember(trackId) { mutableLongStateOf(0L) }
+    var programmaticScroll by remember { mutableStateOf(false) }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress && !programmaticScroll) {
+            suppressAutoScrollUntil = System.currentTimeMillis() + 3_000L
+        }
+    }
     LaunchedEffect(activeIndex) {
+        if (System.currentTimeMillis() < suppressAutoScrollUntil) return@LaunchedEffect
         if (activeIndex >= 0 && sortedLines.isNotEmpty()) {
-            listState.animateScrollToItem(maxOf(0, activeIndex - 2))
+            programmaticScroll = true
+            try {
+                listState.animateScrollToItem(maxOf(0, activeIndex - 2))
+            } finally {
+                programmaticScroll = false
+            }
         }
     }
 
     Column(modifier = modifier.padding(horizontal = spacingL())) {
-        // API indicator
         Row(Modifier.padding(vertical = spacingS()), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Mic, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Synced via getLyrics", color = Color(0xFF666666), fontSize = textLabelS())
+            Text(
+                if (isSynced) "Synced lyrics" else "Lyrics",
+                color = Color(0xFF666666),
+                fontSize = textLabelS(),
+            )
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
-                sortedLines.isNotEmpty() -> {
+                sortedLines.isNotEmpty() && isSynced -> {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(spacingXS()),
                         contentPadding = PaddingValues(vertical = spacingL()),
                     ) {
-                        // Key by timeMs + index: parseLrcText prepends an untimed
-                        // intro line (timeMs=0), which collides with a [00:00.xx]
-                        // first timestamp (duplicate-key crash otherwise).
                         itemsIndexed(sortedLines, key = { idx, line -> "${line.timeMs}-$idx" }) { idx, line ->
                             val isActive = idx == activeIndex
                             val isPast = idx < activeIndex
-                            // Row: [bar area 40dp] [lyrics centered weight 1f] [spacer 40dp]
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(
                                     IntrinsicSize.Max,
                                 ).padding(vertical = spacingXS()),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                // Left bar area — teal pill when active
                                 Box(
                                     Modifier.width(adp(40f)).fillMaxHeight(),
                                     contentAlignment = Alignment.Center,
@@ -2250,7 +2260,6 @@ private fun LyricsContent(
                                         )
                                     }
                                 }
-                                // Lyrics text — centered
                                 Column(
                                     Modifier.weight(1f),
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -2262,7 +2271,8 @@ private fun LyricsContent(
                                     }
                                     val fontSize = if (isActive) asp(24f) else asp(18f)
                                     Text(
-                                        text = stripHtmlTags(line.text),
+                                        // Already cleaned at parse time — no per-tick stripHtmlTags.
+                                        text = line.text,
                                         color = textColor,
                                         fontSize = fontSize,
                                         fontWeight = FontWeight.SemiBold,
@@ -2272,18 +2282,16 @@ private fun LyricsContent(
                                             .clickable { onSeekToMs(line.timeMs) },
                                     )
                                 }
-                                // Symmetrical right margin
                                 Spacer(Modifier.width(adp(40f)))
                             }
                         }
                     }
                 }
 
-                lyricsText != null -> {
-                    // Unstructured lyrics (fallback)
+                cleanedUnstructured != null && cleanedUnstructured.isNotBlank() -> {
                     val scrollState = rememberScrollState()
                     Text(
-                        text = stripHtmlTags(lyricsText),
+                        text = cleanedUnstructured,
                         color = Color(0xFFCCCCCC),
                         fontSize = textBodyL(),
                         lineHeight = asp(24f),
@@ -2295,7 +2303,6 @@ private fun LyricsContent(
                 }
 
                 else -> {
-                    // Loading or empty state
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (isLoading) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {

@@ -450,10 +450,6 @@ interface LyricsCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(entity: LyricsCacheEntity)
 
-    /** Touch the fetchedAt timestamp on cache hit to track LRU recency. */
-    @Query("UPDATE lyrics_cache SET fetchedAt = :now WHERE trackId = :trackId")
-    suspend fun touch(trackId: String, now: Long = System.currentTimeMillis())
-
     @Query("DELETE FROM lyrics_cache WHERE trackId = :trackId")
     suspend fun delete(trackId: String)
 
