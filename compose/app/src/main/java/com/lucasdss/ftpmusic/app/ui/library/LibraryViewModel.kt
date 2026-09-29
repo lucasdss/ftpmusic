@@ -2,6 +2,7 @@ package com.lucasdss.ftpmusic.app.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
 import com.lucasdss.ftpmusic.app.data.db.AlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
@@ -222,6 +223,9 @@ class LibraryViewModel @Inject constructor(
     } catch (_: Exception) {
         false
     }
+
+    /** Simulate Offline or no OS INTERNET — playable Room browse (ADR 0051). */
+    fun isLocalOnly(): Boolean = LocalOnlyPolicy.isLocalOnly(isOffline())
 
     /**
      * Refresh the loopback-config warning from the current server URL.
@@ -572,11 +576,11 @@ class LibraryViewModel @Inject constructor(
             if (allGenres.isNotEmpty()) {
                 _state.value = _state.value.copy(genres = allGenres.map { it.name }.take(8))
                 // Background refresh only when online
-                if (!isOffline()) maybeSyncGenres()
+                if (!isLocalOnly()) maybeSyncGenres()
                 return
             }
             // No cached genres — fetch from API only when online
-            if (isOffline()) {
+            if (isLocalOnly()) {
                 _state.value = _state.value.copy(genres = emptyList())
                 return
             }
@@ -743,7 +747,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun loadRadioStations() {
-        if (isOffline()) return
+        if (isLocalOnly()) return
         viewModelScope.launch {
             try {
                 val authParams = authHelper.buildAuthParams(username(), password())
@@ -1093,7 +1097,7 @@ class LibraryViewModel @Inject constructor(
                 // Load cached artists first — filter to offline-only when offline.
                 // The Room read is bounded: a startup DB write storm must never
                 // strand isLoading=true forever (Home eternal spinner).
-                val cached = if (isOffline()) {
+                val cached = if (isLocalOnly()) {
                     metadataDao.getOfflineArtists()
                 } else {
                     kotlinx.coroutines.withTimeoutOrNull(30_000) { metadataDao.getAllArtists() }
@@ -1110,7 +1114,7 @@ class LibraryViewModel @Inject constructor(
                     _state.value = _state.value.copy(isLoading = true)
                 }
                 // Background refresh from API — skip when offline
-                if (isOffline()) {
+                if (isLocalOnly()) {
                     _state.value = _state.value.copy(isLoading = false)
                     return@launch
                 }
@@ -1161,7 +1165,7 @@ class LibraryViewModel @Inject constructor(
                 // Load from local cache — filter to offline-only when offline.
                 // The Room read is bounded: a startup DB write storm must never
                 // strand isLoading=true forever (Home eternal spinner).
-                val cached = if (isOffline()) {
+                val cached = if (isLocalOnly()) {
                     metadataDao.getOfflineAlbums()
                 } else {
                     kotlinx.coroutines.withTimeoutOrNull(30_000) { metadataDao.getAllAlbums() }
@@ -1180,7 +1184,7 @@ class LibraryViewModel @Inject constructor(
                     )
                 }
                 // Then fetch newest 50 from API for freshness
-                if (isOffline()) {
+                if (isLocalOnly()) {
                     _state.value = _state.value.copy(isLoading = false)
                     return@launch
                 }
@@ -1222,7 +1226,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun loadRandomAlbums() {
-        if (isOffline()) {
+        if (isLocalOnly()) {
             // Offline: show cached albums (shuffled) instead of nothing
             viewModelScope.launch {
                 try {
@@ -1315,7 +1319,7 @@ class LibraryViewModel @Inject constructor(
             // Albums tab uses loadAlphaAlbums (full catalog). Appending
             // newest-offset pages would scramble sort and jank the grid.
             if (alphaCatalogComplete) return@launch
-            if (isOffline()) return@launch
+            if (isLocalOnly()) return@launch
             if (isLoadingMore) return@launch
             isLoadingMore = true
             try {
@@ -1420,7 +1424,7 @@ class LibraryViewModel @Inject constructor(
     fun loadAlphaAlbums() {
         // Immediate: load from cached_albums DB table (filter to offline-only when offline)
         viewModelScope.launch {
-            val cached = if (isOffline()) metadataDao.getOfflineAlbums() else metadataDao.getAllAlbums()
+            val cached = if (isLocalOnly()) metadataDao.getOfflineAlbums() else metadataDao.getAllAlbums()
             if (cached.isNotEmpty()) {
                 val albums = cached.map { c ->
                     Album(
@@ -1435,7 +1439,7 @@ class LibraryViewModel @Inject constructor(
         }
         // Background: refresh from API (skip when offline)
         viewModelScope.launch {
-            if (isOffline()) return@launch
+            if (isLocalOnly()) return@launch
             try {
                 val auth = authHelper.buildAuthParams(username(), password())
                 val allAlbums = mutableListOf<Album>()
@@ -1494,7 +1498,7 @@ class LibraryViewModel @Inject constructor(
         surpriseMeLoading = true
         viewModelScope.launch {
             // Offline: play locally cached random tracks instead of the API.
-            if (isOffline()) {
+            if (isLocalOnly()) {
                 surpriseMeOffline()
                 return@launch
             }
@@ -1644,7 +1648,7 @@ class LibraryViewModel @Inject constructor(
         surpriseMeLoading = true
         // Offline: refill from locally cached random tracks (no network).
         // Appends — a background refill must never replace the playing queue.
-        if (isOffline()) {
+        if (isLocalOnly()) {
             viewModelScope.launch {
                 try {
                     val entities = trackDao.getRandomCachedTracks(50)

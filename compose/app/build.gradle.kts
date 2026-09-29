@@ -108,7 +108,8 @@ android {
             // Required for Robolectric Compose UI tests (createComposeRule)
             isIncludeAndroidResources = true
             all {
-                it.maxHeapSize = "1g" // default 512m intermittently OOMs the jacoco javaagent
+                it.maxHeapSize = "2g" // jacoco agent; keep modest on constrained hosts
+
                 // Robolectric Compose tests flake with AppNotIdleException when
                 // sandboxes compete for CPU, and shared @Volatile statics
                 // (DynamicBaseUrl) leak across classes under multi-fork orderings.

@@ -14,15 +14,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Offline / unreachable enforcement at the playback network boundary:
- * software offline OR server unreachable must fail fast with IOException
- * BEFORE opening a socket.
+ * Offline / no-OS-network / unreachable enforcement at the playback network boundary:
+ * must fail fast with IOException BEFORE opening a socket.
  */
 class OfflineAwareDataSourceTest {
 
     private fun offlineManager(offline: Boolean): OfflineModeManager {
         val mgr = mockk<OfflineModeManager>(relaxed = true)
-        every { mgr.isOfflineEnabled() } returns offline
+        every { mgr.isQueueEnabled() } returns offline
         return mgr
     }
 
@@ -35,10 +34,26 @@ class OfflineAwareDataSourceTest {
             offlineManager(offline = true),
             delegate,
             isServerReachable = { true },
+            hasOsNetwork = { true },
         )
 
         val err = assertThrows(IOException::class.java) { source.open(spec) }
         assertTrue(err.message!!.contains("Offline mode"))
+        verify(exactly = 0) { delegate.open(any()) }
+    }
+
+    @Test
+    fun `no OS network blocks open with IOException`() {
+        val delegate = mockk<DataSource>(relaxed = true)
+        val source = OfflineAwareHttpDataSource(
+            offlineManager(offline = false),
+            delegate,
+            isServerReachable = { true },
+            hasOsNetwork = { false },
+        )
+
+        val err = assertThrows(IOException::class.java) { source.open(spec) }
+        assertTrue(err.message!!.contains("No network"))
         verify(exactly = 0) { delegate.open(any()) }
     }
 
@@ -49,6 +64,7 @@ class OfflineAwareDataSourceTest {
             offlineManager(offline = false),
             delegate,
             isServerReachable = { false },
+            hasOsNetwork = { true },
         )
 
         val err = assertThrows(IOException::class.java) { source.open(spec) }
@@ -64,6 +80,7 @@ class OfflineAwareDataSourceTest {
             offlineManager(offline = false),
             delegate,
             isServerReachable = { true },
+            hasOsNetwork = { true },
         )
 
         assertEquals(1234L, source.open(spec))
@@ -75,10 +92,15 @@ class OfflineAwareDataSourceTest {
         val delegate = mockk<DataSource>(relaxed = true)
         every { delegate.open(any()) } returns 1234L
         val mgr = offlineManager(offline = false)
-        val source = OfflineAwareHttpDataSource(mgr, delegate, isServerReachable = { true })
+        val source = OfflineAwareHttpDataSource(
+            mgr,
+            delegate,
+            isServerReachable = { true },
+            hasOsNetwork = { true },
+        )
 
         source.open(spec)
-        every { mgr.isOfflineEnabled() } returns true
+        every { mgr.isQueueEnabled() } returns true
         assertThrows(IOException::class.java) { source.open(spec) }
     }
 
@@ -91,11 +113,31 @@ class OfflineAwareDataSourceTest {
             offlineManager(offline = false),
             delegate,
             isServerReachable = { reachable },
+            hasOsNetwork = { true },
         )
 
         source.open(spec)
         reachable = false
         assertThrows(IOException::class.java) { source.open(spec) }
+        verify(exactly = 1) { delegate.open(any()) }
+    }
+
+    @Test
+    fun `OS network loss mid-session blocks subsequent opens`() {
+        val delegate = mockk<DataSource>(relaxed = true)
+        every { delegate.open(any()) } returns 1234L
+        var hasNet = true
+        val source = OfflineAwareHttpDataSource(
+            offlineManager(offline = false),
+            delegate,
+            isServerReachable = { true },
+            hasOsNetwork = { hasNet },
+        )
+
+        source.open(spec)
+        hasNet = false
+        val err = assertThrows(IOException::class.java) { source.open(spec) }
+        assertTrue(err.message!!.contains("No network"))
         verify(exactly = 1) { delegate.open(any()) }
     }
 
@@ -127,7 +169,7 @@ class OfflineAwareDataSourceFactoryTest {
 
     private fun offlineManager(offline: Boolean): OfflineModeManager {
         val mgr = mockk<OfflineModeManager>(relaxed = true)
-        every { mgr.isOfflineEnabled() } returns offline
+        every { mgr.isQueueEnabled() } returns offline
         return mgr
     }
 

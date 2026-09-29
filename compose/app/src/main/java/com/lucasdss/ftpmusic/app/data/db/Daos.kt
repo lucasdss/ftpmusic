@@ -160,6 +160,13 @@ interface TrackDao {
     )
     suspend fun searchAllTracks(query: String): List<TrackEntity>
 
+    /** Local-only search: downloaded or Room-flagged cache path (matches Library offline). */
+    @Query(
+        "SELECT * FROM tracks WHERE (title LIKE '%' || :query || '%' OR artist LIKE '%' || :query || '%') " +
+            "AND (cached_file_path IS NOT NULL OR is_downloaded = 1) ORDER BY title ASC LIMIT 50",
+    )
+    suspend fun searchPlayableTracks(query: String): List<TrackEntity>
+
     @Query("SELECT * FROM tracks WHERE cached_file_path IS NOT NULL LIMIT :limit OFFSET :offset")
     suspend fun getCachedPaginated(offset: Int, limit: Int): List<TrackEntity>
 
@@ -610,6 +617,14 @@ interface CachedMetadataDao {
     )
     suspend fun searchAlbums(query: String): List<CachedAlbumEntity>
 
+    /** Local-only album search — albums that have at least one playable track. */
+    @Query(
+        "SELECT DISTINCT a.* FROM cached_albums a JOIN tracks t ON t.album_id = a.id " +
+            "WHERE (a.name LIKE '%' || :query || '%' OR a.artist LIKE '%' || :query || '%') " +
+            "AND (t.cached_file_path IS NOT NULL OR t.is_downloaded = 1) ORDER BY a.name ASC LIMIT 50",
+    )
+    suspend fun searchPlayableAlbums(query: String): List<CachedAlbumEntity>
+
     @Query("SELECT COUNT(*) FROM cached_artists")
     suspend fun artistCount(): Int
 
@@ -662,6 +677,15 @@ interface CachedMetadataDao {
 
     @Query("SELECT * FROM cached_artists WHERE name LIKE '%' || :query || '%' ORDER BY name ASC")
     suspend fun searchArtists(query: String): List<CachedArtistEntity>
+
+    /** Local-only artist search — artists with at least one playable track. */
+    @Query(
+        "SELECT DISTINCT ar.* FROM cached_artists ar JOIN tracks t ON " +
+            "(t.artist_id = ar.id OR (t.artist_id IS NULL AND t.artist = ar.name)) " +
+            "WHERE ar.name LIKE '%' || :query || '%' " +
+            "AND (t.cached_file_path IS NOT NULL OR t.is_downloaded = 1) ORDER BY ar.name ASC LIMIT 50",
+    )
+    suspend fun searchPlayableArtists(query: String): List<CachedArtistEntity>
 
     /** Paged variant for the Custom Daily Mix artist picker ("Load more"). */
     @Query(

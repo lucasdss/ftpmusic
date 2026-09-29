@@ -10,6 +10,7 @@ import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
+import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -36,6 +37,7 @@ import kotlinx.coroutines.withTimeout
  * the server/network recover. This monitor:
  *  - pings Subsonic on a keepalive timer (15s unreachable / 60s reachable)
  *  - probes immediately (debounced) when OS reports INTERNET via NetworkCallback
+ *  - mirrors OS network up/down into [NetworkAvailabilityHolder] (airplane gate)
  *
  * Does NOT touch [OfflineModeManager] (intentional Simulate Offline stays sticky).
  */
@@ -83,7 +85,15 @@ class ServerReachabilityMonitor(
         val s = CoroutineScope(dispatcher + SupervisorJob())
         scope = s
         try {
-            networkWatcher.start { onNetworkAvailable() }
+            networkWatcher.start(
+                onAvailable = {
+                    NetworkAvailabilityHolder.setAvailable(true)
+                    onNetworkAvailable()
+                },
+                onLost = {
+                    NetworkAvailabilityHolder.setAvailable(false)
+                },
+            )
         } catch (e: Exception) {
             Log.w(TAG, "NetworkCallback register failed: ${e.message}")
         }
@@ -160,9 +170,9 @@ class ServerReachabilityMonitor(
     }
 }
 
-/** Abstraction over ConnectivityManager so unit tests can fire net-up without Robolectric. */
+/** Abstraction over ConnectivityManager so unit tests can fire net-up/down without Robolectric. */
 interface NetworkWatcher {
-    fun start(onAvailable: () -> Unit)
+    fun start(onAvailable: () -> Unit, onLost: () -> Unit = {})
     fun stop()
 }
 
@@ -178,15 +188,23 @@ class ConnectivityNetworkWatcher(
 
     private var callback: ConnectivityManager.NetworkCallback? = null
 
-    override fun start(onAvailable: () -> Unit) {
+    override fun start(onAvailable: () -> Unit, onLost: () -> Unit) {
+        // Seed before callbacks so airplane-at-boot is honest immediately.
+        NetworkAvailabilityHolder.initialize(connectivity)
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 onAvailable()
             }
 
+            override fun onLost(network: Network) {
+                onLost()
+            }
+
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
                 if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
                     onAvailable()
+                } else {
+                    onLost()
                 }
             }
         }

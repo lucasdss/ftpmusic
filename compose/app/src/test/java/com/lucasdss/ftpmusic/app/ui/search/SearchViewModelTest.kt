@@ -11,6 +11,7 @@ import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.repository.SearchRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -38,6 +39,7 @@ class SearchViewModelTest {
 
     @Before
     fun setUp() {
+        NetworkAvailabilityHolder.resetForTests(true)
         Dispatchers.setMain(testDispatcher)
         viewModel =
             SearchViewModel(
@@ -53,6 +55,7 @@ class SearchViewModelTest {
 
     @After
     fun tearDown() {
+        NetworkAvailabilityHolder.resetForTests(true)
         Dispatchers.resetMain()
     }
 
@@ -191,13 +194,88 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun `search skips API call when offline and shows cached results`() = runTest(testDispatcher) {
+    fun `search skips API call when offline and shows playable results only`() = runTest(testDispatcher) {
         val offlineFlow = MutableStateFlow(true)
         val offlineManager = mockk<OfflineModeManager>()
         every { offlineManager.isOffline } returns offlineFlow
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
 
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        coEvery { trackDao.searchPlayableTracks("test") } returns listOf(
+            TrackEntity(
+                id = "t1",
+                title = "Cached Song",
+                artist = "Artist",
+                coverArtUrl = "",
+                durationSeconds = 100,
+                isDownloaded = true,
+            ),
+        )
+        coEvery { metadataDao.searchPlayableAlbums("test") } returns emptyList()
+        coEvery { metadataDao.searchPlayableArtists("test") } returns emptyList()
+
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                metadataDao,
+                api,
+                offlineManager,
+            )
+        viewModel.onQueryChanged("test")
+        viewModel.search()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { trackDao.searchPlayableTracks("test") }
+        coVerify(exactly = 0) { trackDao.searchAllTracks(any()) }
+        assertFalse(viewModel.state.value.isLoading)
+        assertTrue(viewModel.state.value.filterDownloaded)
+        assertEquals(1, viewModel.state.value.tracks.size)
+        assertEquals("t1", viewModel.state.value.tracks[0].id)
+    }
+
+    @Test
+    fun `search playable-only when OS network lost without Simulate Offline`() = runTest(testDispatcher) {
+        NetworkAvailabilityHolder.resetForTests(false)
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        coEvery { trackDao.searchPlayableTracks("air") } returns emptyList()
+        coEvery { metadataDao.searchPlayableAlbums("air") } returns emptyList()
+        coEvery { metadataDao.searchPlayableArtists("air") } returns emptyList()
+
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                metadataDao,
+                api,
+                mockk<OfflineModeManager>(relaxed = true),
+            )
+        assertTrue(viewModel.isLocalOnly())
+        viewModel.onQueryChanged("air")
+        viewModel.search()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { trackDao.searchPlayableTracks("air") }
+        assertTrue(viewModel.state.value.filterDownloaded)
+    }
+
+    @Test
+    fun `setFilterDownloaded refuse clear while local-only`() = runTest(testDispatcher) {
+        val offlineFlow = MutableStateFlow(true)
+        val offlineManager = mockk<OfflineModeManager>()
+        every { offlineManager.isOffline } returns offlineFlow
         viewModel =
             SearchViewModel(
                 repository,
@@ -208,12 +286,9 @@ class SearchViewModelTest {
                 api,
                 offlineManager,
             )
-        viewModel.onQueryChanged("test")
-        viewModel.search()
-        advanceUntilIdle()
-
-        coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
-        assertFalse(viewModel.state.value.isLoading)
+        viewModel.setFilterDownloaded(true)
+        viewModel.setFilterDownloaded(false)
+        assertTrue(viewModel.state.value.filterDownloaded)
     }
 
     @Test
@@ -309,5 +384,80 @@ class SearchViewModelTest {
         assertEquals(2, state.allTracks.size)
         assertEquals(1, state.tracks.size)
         assertEquals("t1", state.tracks[0].id)
+    }
+
+    @Test
+    fun `loadMoreSearchResults skips when local-only`() = runTest(testDispatcher) {
+        NetworkAvailabilityHolder.resetForTests(false)
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                mockk<OfflineModeManager>(relaxed = true),
+            )
+        viewModel.onQueryChanged("more")
+        viewModel.loadMoreSearchResults()
+        advanceUntilIdle()
+        coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `search short query is no-op`() = runTest(testDispatcher) {
+        viewModel.onQueryChanged("a")
+        viewModel.search()
+        advanceUntilIdle()
+        coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
+        assertFalse(viewModel.state.value.hasSearched)
+    }
+
+    @Test
+    fun `setFilterType updates state`() = runTest(testDispatcher) {
+        viewModel.setFilterType(SearchFilterType.SONGS)
+        assertEquals(SearchFilterType.SONGS, viewModel.state.value.filterType)
+    }
+
+    @Test
+    fun `setFilterDownloaded applies and clears when online`() = runTest(testDispatcher) {
+        NetworkAvailabilityHolder.resetForTests(true)
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                mockk<OfflineModeManager>(relaxed = true),
+            )
+        // Seed state via search failure path with empty results
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { repository.search(any(), any(), any(), any()) } returns SearchResults(
+            tracks = listOf(Track("t1", "A", duration = 1), Track("t2", "B", duration = 1)),
+        )
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.searchAllTracks(any()) } returns emptyList()
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(
+            TrackEntity(id = "t1", title = "A", artist = "", coverArtUrl = "", isDownloaded = true),
+        )
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        viewModel =
+            SearchViewModel(
+                repository, storage, genreDao, trackDao, metadataDao, api,
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("ab")
+        viewModel.search()
+        advanceUntilIdle()
+        viewModel.setFilterDownloaded(true)
+        assertTrue(viewModel.state.value.filterDownloaded)
+        assertEquals(1, viewModel.state.value.tracks.size)
+        viewModel.setFilterDownloaded(false)
+        assertFalse(viewModel.state.value.filterDownloaded)
+        assertEquals(2, viewModel.state.value.tracks.size)
     }
 }

@@ -12,6 +12,7 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.repository.WaveformRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.playback.DailyMixGenerationCoordinator
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
@@ -1794,6 +1795,29 @@ class LibraryViewModelTest {
         contentType = "audio/mpeg",
         suffix = "mp3",
     )
+
+    @Test
+    fun `playSurpriseMe local-only via OS network loss uses cached tracks`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        val (vm, offlineManager) = offlineVm()
+        offlineManager.disable()
+        NetworkAvailabilityHolder.resetForTests(false)
+        try {
+            assertTrue(vm.isLocalOnly())
+            assertFalse(vm.isOffline())
+            coEvery { trackDao.getRandomCachedTracks(50) } returns listOf(cachedEntity("t1"))
+            PlayerHolder.player = null
+
+            vm.playSurpriseMe()
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { trackDao.getRandomCachedTracks(50) }
+            coVerify(exactly = 0) { api.getRandomSongs(any(), size = 50) }
+        } finally {
+            NetworkAvailabilityHolder.resetForTests(true)
+        }
+    }
 
     @Test
     fun `playSurpriseMe offline uses cached tracks and skips API`() = runTest(testDispatcher) {

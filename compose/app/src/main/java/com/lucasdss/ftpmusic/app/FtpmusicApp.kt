@@ -69,6 +69,13 @@ class FtpmusicApp : Application() {
         } catch (e: Exception) {
             Log.w("ftpmusic-prefs", "Preference bootstrap failed: ${e.message}")
         }
+        // Seed OS network before reachability monitor (airplane-at-boot gate).
+        try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.initialize(cm)
+        } catch (e: Exception) {
+            Log.w("ftpmusic-net", "OS network seed failed: ${e.message}")
+        }
         // Keepalive + NetworkCallback so ReachabilityStateHolder recovers when
         // the server/network come back even if the UI is idle (no opportunistic
         // API traffic). Must start AFTER config + offline restore.

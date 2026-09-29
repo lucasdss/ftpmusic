@@ -3,7 +3,7 @@
 Date: 2026-09-26
 Status: Accepted
 Related: ADR 0022 (offline enforcement), ADR 0041 (reachability keepalive),
-ADR 0023 (server-unreachable UX)
+ADR 0023 (server-unreachable UX), ADR 0051 (OS network local-only + playable search)
 
 ## Context
 

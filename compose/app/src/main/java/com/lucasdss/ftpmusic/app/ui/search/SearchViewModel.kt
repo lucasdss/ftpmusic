@@ -2,6 +2,8 @@ package com.lucasdss.ftpmusic.app.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
+import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -53,9 +55,9 @@ class SearchViewModel @Inject constructor(
     private val storage: SecureStorage,
     private val genreDao: GenreDao,
     private val trackDao: TrackDao,
-    private val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao,
+    private val metadataDao: CachedMetadataDao,
     private val api: SubsonicApi,
-    private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
+    private val offlineModeManager: OfflineModeManager,
 ) : ViewModel() {
 
     companion object {
@@ -76,6 +78,9 @@ class SearchViewModel @Inject constructor(
         false
     }
 
+    /** Simulate Offline or no OS INTERNET — playable Room only. */
+    fun isLocalOnly(): Boolean = LocalOnlyPolicy.isLocalOnly(isOffline())
+
     init {
         // Load recent searches from storage
         val raw = storage.get(KEY_RECENT_SEARCHES) ?: ""
@@ -89,8 +94,8 @@ class SearchViewModel @Inject constructor(
             try {
                 // Try cached genres from local DB
                 var allGenres = genreDao.getAllByPopularity()
-                if (allGenres.isEmpty() && !isOffline()) {
-                    // Fetch from API (skip when offline — cached data may be empty)
+                if (allGenres.isEmpty() && !isLocalOnly()) {
+                    // Fetch from API (skip when local-only — cached data may be empty)
                     val authHelper = SubsonicAuthHelper()
                     val username = storage.get(SecureStorage.KEY_USERNAME) ?: ""
                     val password = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
@@ -148,7 +153,50 @@ class SearchViewModel @Inject constructor(
         searchJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
             val filterEnabled = _state.value.filterDownloaded
+            val localOnly = isLocalOnly()
             try {
+                // Local-only: playable Room queries only (1A) — skip full catalog + API.
+                if (localOnly) {
+                    val playableEntities = trackDao.searchPlayableTracks(query)
+                    val playableTracks = playableEntities.map { t ->
+                        Track(
+                            id = t.id,
+                            title = t.title,
+                            artist = t.artist,
+                            artistId = t.artistId,
+                            albumId = t.albumId,
+                            coverArt = t.coverArtUrl,
+                            duration = t.durationSeconds,
+                        )
+                    }
+                    val playableAlbums = metadataDao.searchPlayableAlbums(query).map {
+                        Album(
+                            id = it.id,
+                            name = it.name,
+                            artist = it.artist,
+                            artistId = it.artistId,
+                            coverArt = it.coverArt,
+                        )
+                    }
+                    val playableArtists = metadataDao.searchPlayableArtists(query).map {
+                        Artist(id = it.id, name = it.name, coverArt = it.coverArt)
+                    }
+                    val localIds = playableTracks.map { it.id }.toSet()
+                    _state.value = _state.value.copy(
+                        tracks = playableTracks,
+                        albums = playableAlbums,
+                        artists = playableArtists,
+                        playlists = emptyList(),
+                        allTracks = playableTracks,
+                        localTrackIds = localIds,
+                        filterDownloaded = true,
+                        resultCount = playableTracks.size + playableAlbums.size + playableArtists.size,
+                        hasSearched = true,
+                        isLoading = false,
+                    )
+                    return@launch
+                }
+
                 // 1. Show cached results from local DB immediately
                 val cachedTrackEntities = trackDao.searchAllTracks(query)
                 val cachedTracks = cachedTrackEntities.map { t ->
@@ -199,11 +247,7 @@ class SearchViewModel @Inject constructor(
                     )
                 }
 
-                // 2. Fetch fresh results from server (skip when offline)
-                if (isOffline()) {
-                    _state.value = _state.value.copy(isLoading = false)
-                    return@launch
-                }
+                // 2. Fetch fresh results from server
                 val username = storage.get(SecureStorage.KEY_USERNAME) ?: ""
                 val password = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
                 if (username.isEmpty()) {
@@ -269,6 +313,8 @@ class SearchViewModel @Inject constructor(
     }
 
     fun setFilterDownloaded(enabled: Boolean) {
+        // Local-only forces playable filter — refuse clearing.
+        if (isLocalOnly() && !enabled) return
         _state.value = _state.value.copy(filterDownloaded = enabled)
         if (enabled) {
             applyDownloadFilter()
@@ -307,8 +353,8 @@ class SearchViewModel @Inject constructor(
                 isLoadingMoreSearch = false
                 return@launch
             }
-            // Pagination requires the network — skip in offline mode
-            if (isOffline()) {
+            // Pagination requires the network — skip when local-only
+            if (isLocalOnly()) {
                 isLoadingMoreSearch = false
                 return@launch
             }

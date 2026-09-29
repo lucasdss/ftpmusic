@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.data.repository
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
+import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import io.mockk.coEvery
@@ -36,6 +37,7 @@ class ServerReachabilityMonitorTest {
     @Before
     fun setUp() {
         ReachabilityStateHolder.onApiSuccess()
+        NetworkAvailabilityHolder.resetForTests(true)
         DynamicBaseUrl.url = "https://music.example.com"
         SubsonicCredentials.username = "user"
         SubsonicCredentials.password = "pass"
@@ -53,8 +55,9 @@ class ServerReachabilityMonitorTest {
 
     @After
     fun tearDown() {
-        monitor.stop()
+        if (::monitor.isInitialized) monitor.stop()
         ReachabilityStateHolder.onApiSuccess()
+        NetworkAvailabilityHolder.resetForTests(true)
         DynamicBaseUrl.url = ""
         SubsonicCredentials.username = ""
         SubsonicCredentials.password = ""
@@ -252,7 +255,8 @@ class ServerReachabilityMonitorTest {
     @Test
     fun `start survives NetworkWatcher register failure`() = runTest(testDispatcher) {
         val broken = object : NetworkWatcher {
-            override fun start(onAvailable: () -> Unit): Unit = throw IllegalStateException("no permission")
+            override fun start(onAvailable: () -> Unit, onLost: () -> Unit): Unit =
+                throw IllegalStateException("no permission")
             override fun stop() {}
         }
         val m = ServerReachabilityMonitor(
@@ -281,20 +285,27 @@ class ServerReachabilityMonitorTest {
         var startCount = 0
             private set
         private var onAvailable: (() -> Unit)? = null
+        private var onLost: (() -> Unit)? = null
 
-        override fun start(onAvailable: () -> Unit) {
+        override fun start(onAvailable: () -> Unit, onLost: () -> Unit) {
             startCount++
             started = true
             this.onAvailable = onAvailable
+            this.onLost = onLost
         }
 
         override fun stop() {
             started = false
             onAvailable = null
+            onLost = null
         }
 
         fun fireAvailable() {
             onAvailable?.invoke()
+        }
+
+        fun fireLost() {
+            onLost?.invoke()
         }
     }
 }
