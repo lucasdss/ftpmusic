@@ -31,7 +31,6 @@ import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.playback.DailyMixGenerationCoordinator
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
-import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -1517,9 +1516,10 @@ class LibraryViewModel @Inject constructor(
     }
 
     /**
-     * Fetch 50 random tracks from Navidrome and play them.
-     * Smart append: if nothing is playing, replace queue and start playback.
-     * If already playing, append to end without interrupting.
+     * Fetch 50 random tracks from Navidrome and start a NEW context.
+     * One-shot only — no auto-refill. Queue continuation is Continuous Play
+     * (journal → appendToContext in MediaService), a separate feature.
+     * tryStartContext applies overwrite behavior (Ask / Clean / Push).
      */
     fun playSurpriseMe() {
         if (surpriseMeLoading) return
@@ -1585,9 +1585,8 @@ class LibraryViewModel @Inject constructor(
 
     /**
      * Offline fallback for Surprise Me: plays up to 50 locally CACHED random
-     * tracks (no network). Always starts a NEW context through the overwrite
-     * protection — the background refill path (maybeRefillRandomQueue) has its
-     * own inline append and never routes through here.
+     * tracks (no network). Always starts a NEW context through overwrite
+     * protection. One-shot only — no auto-refill.
      */
     private fun surpriseMeOffline() {
         viewModelScope.launch {
@@ -1661,86 +1660,6 @@ class LibraryViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-home", "albumAction $action failed: ${e.message}")
-            }
-        }
-    }
-
-    /**
-     * Refill the random queue when it drops below 10 tracks.
-     * Only active if surprise me playback was previously initiated.
-     */
-    fun maybeRefillRandomQueue() {
-        val queueSize = PlayerHolder.exoPlayer?.mediaItemCount ?: return
-        if (queueSize >= 10) return
-        if (surpriseMeLoading) return
-        surpriseMeLoading = true
-        // Offline: refill from locally cached random tracks (no network).
-        // Appends — a background refill must never replace the playing queue.
-        if (isLocalOnly()) {
-            viewModelScope.launch {
-                try {
-                    val entities = trackDao.getRandomCachedTracks(50)
-                    if (entities.isNotEmpty()) {
-                        val tracks = entities.map { e ->
-                            Track(
-                                id = e.id, title = e.title, artist = e.artist,
-                                albumId = e.albumId, artistId = e.artistId,
-                                duration = e.durationSeconds, coverArt = e.coverArtUrl,
-                                contentType = e.contentType, suffix = e.suffix,
-                            )
-                        }
-                        val baseUrl = com.lucasdss.ftpmusic.app.di.DynamicBaseUrl.url.trimEnd('/')
-                        val urls = tracks.map { authHelper.buildStreamUrl(baseUrl, it.id, username(), password()) }
-                        playbackManager.addAllToQueue(tracks, urls)
-                        android.util.Log.d("ftpmusic", "[SurpriseMe] offline refill: ${tracks.size} cached tracks")
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("ftpmusic", "[SurpriseMe] offline refill failed: ${e.message}")
-                } finally {
-                    surpriseMeLoading = false
-                }
-            }
-            return
-        }
-        viewModelScope.launch {
-            try {
-                val auth = authHelper.buildAuthParams(username(), password())
-                val response = api.getRandomSongs(auth, size = 50)
-                val sr = response["subsonic-response"] as? Map<*, *> ?: return@launch
-                val randomSongs = sr["randomSongs"] as? Map<*, *> ?: return@launch
-                val songs = randomSongs["song"] as? List<*> ?: return@launch
-
-                val tracks = songs.mapNotNull { s ->
-                    val m = s as? Map<*, *> ?: return@mapNotNull null
-                    val id = m["id"] as? String ?: return@mapNotNull null
-                    Track(
-                        id = id,
-                        title = m["title"] as? String ?: "",
-                        artist = m["artist"] as? String,
-                        album = m["album"] as? String,
-                        albumId = m["albumId"] as? String,
-                        artistId = m["artistId"] as? String,
-                        duration = (m["duration"] as? Number)?.toInt(),
-                        coverArt = m["coverArt"] as? String,
-                        trackNumber = (m["track"] as? Number)?.toInt(),
-                        contentType = m["contentType"] as? String,
-                        suffix = m["suffix"] as? String,
-                    )
-                }
-
-                if (tracks.isEmpty()) return@launch
-
-                val baseUrl = com.lucasdss.ftpmusic.app.di.DynamicBaseUrl.url.trimEnd('/')
-                val urls = tracks.map { track ->
-                    authHelper.buildStreamUrl(baseUrl, track.id, username(), password())
-                }
-
-                playbackManager.addAllToQueue(tracks, urls)
-                android.util.Log.d("ftpmusic", "[SurpriseMe] Refilled ${tracks.size} random tracks")
-            } catch (e: Exception) {
-                android.util.Log.w("ftpmusic", "[SurpriseMe] Refill failed: ${e.message}")
-            } finally {
-                surpriseMeLoading = false
             }
         }
     }

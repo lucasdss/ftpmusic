@@ -110,9 +110,6 @@ fun FtpmusicNavHost() {
     val playbackState by playbackViewModel.stateWithoutPosition
         .collectAsStateWithLifecycle(initialValue = com.lucasdss.ftpmusic.app.playback.PlaybackState())
 
-    // Surprise Me continuous refill — hoisted to @Composable scope
-    val libraryViewModel: com.lucasdss.ftpmusic.app.ui.library.LibraryViewModel = hiltViewModel()
-
     // Fallback cover art service — races iTunes + MusicBrainz when Navidrome has no art
     val appContext = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(appContext) }
@@ -128,13 +125,11 @@ fun FtpmusicNavHost() {
         }
     }
 
-    // Refresh queue download status when queue size changes
+    // Refresh queue download status when queue size changes.
+    // Continuous Play (journal → context) lives in MediaService — not here.
+    // Surprise Me is one-shot only and must never auto-mutate the queue.
     LaunchedEffect(playbackState.queueSize) {
         playbackViewModel.refreshQueueDownloadStatus()
-        // Continuous refill for Surprise Me random mode
-        if (playbackState.queueSize in 1..9) {
-            libraryViewModel.maybeRefillRandomQueue()
-        }
     }
 
     // Recover Cast session after process restart — CastPlayer in MediaService

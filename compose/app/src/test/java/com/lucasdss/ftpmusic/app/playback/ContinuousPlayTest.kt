@@ -124,35 +124,29 @@ class ContinuousPlayTest {
         assertTrue("At most 2 unique tracks", result.size <= 2)
     }
 
-    // ── hasLoadedContinuation reset logic tests ─────────────────────────────
+    // ── hasLoadedContinuation reset logic tests (via ContinuousPlayGate) ──
 
     @Test
     fun `same mediaId does not reset continuation`() {
-        // When onMediaItemTransition fires with the same last-track mediaId,
-        // hasLoadedContinuation should NOT reset — prevents double-loading
-        val previousTrackId = "track-last"
-        val mediaId = "track-last" // same track (e.g., user clicks last track again)
-        val shouldReset = mediaId != previousTrackId
-        assertFalse("Same track should not reset continuation flag", shouldReset)
+        assertFalse(
+            "Same track should not reset continuation flag",
+            ContinuousPlayGate.shouldResetContinuation("track-last", "track-last"),
+        )
     }
 
     @Test
     fun `different mediaId resets continuation`() {
-        // When a NEW queue is loaded and its last track starts,
-        // hasLoadedContinuation must reset so continuous play fires again
-        val previousTrackId = "old-track"
-        val mediaId = "new-track" // different track (new queue loaded)
-        val shouldReset = mediaId != previousTrackId
-        assertTrue("New track should reset continuation flag", shouldReset)
+        assertTrue(
+            "New track should reset continuation flag",
+            ContinuousPlayGate.shouldResetContinuation("old-track", "new-track"),
+        )
     }
 
     @Test
     fun `null previousTrackId resets continuation on first transition`() {
-        // On first ever transition (startup), previousTrackId is null.
-        // This should reset so the first time we reach end, continuous play fires.
-        val previousTrackId: String? = null
-        val mediaId = "track-1"
-        val shouldReset = mediaId != previousTrackId
-        assertTrue("First transition should reset continuation flag", shouldReset)
+        assertTrue(
+            "First transition should reset continuation flag",
+            ContinuousPlayGate.shouldResetContinuation(null, "track-1"),
+        )
     }
 }

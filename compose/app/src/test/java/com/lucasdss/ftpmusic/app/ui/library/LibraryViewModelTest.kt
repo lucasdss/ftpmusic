@@ -1961,26 +1961,6 @@ class LibraryViewModelTest {
         coVerify(exactly = 0) { trackDao.getRandomCachedTracks(50) }
     }
 
-    @Test
-    fun `maybeRefillRandomQueue offline refills from cached tracks`() = runTest(testDispatcher) {
-        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
-        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        val (vm, offlineManager) = offlineVm()
-        offlineManager.enable()
-        coEvery { trackDao.getRandomCachedTracks(50) } returns listOf(cachedEntity("t1"))
-        val mockExo = mockk<androidx.media3.common.Player>(relaxed = true)
-        every { mockExo.mediaItemCount } returns 5 // below refill threshold
-        PlayerHolder.exoPlayer = mockExo
-        PlayerHolder.player = mockk(relaxed = true)
-
-        vm.maybeRefillRandomQueue()
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { trackDao.getRandomCachedTracks(50) }
-        coVerify(exactly = 0) { api.getRandomSongs(any(), size = 50) }
-        coVerify(exactly = 1) { playbackManager.addAllToQueue(any(), any()) }
-    }
-
     // ── resyncAll internal loaders (coverage of *Internal parse paths) ──
 
     @Test

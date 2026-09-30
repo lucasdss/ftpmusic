@@ -361,7 +361,7 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "Stores recently played sources for continuous play suggestions",
+                "Stores recently played sources (albums, playlists, mixes, Surprise Me) for Continuous Play",
                 color = Color(0xFF666666),
                 fontSize = textLabelS(),
                 modifier = Modifier.padding(horizontal = spacingL()),
@@ -369,7 +369,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(4.dp))
             SectionToggleRow(
                 label = "Continuous Play",
-                subtitle = "Auto-add tracks when queue runs out",
+                subtitle = "Auto-append journal picks to context when queue runs out",
                 checked = state.continuousPlayEnabled,
                 onToggle = { viewModel.setContinuousPlayEnabled(it) },
             )

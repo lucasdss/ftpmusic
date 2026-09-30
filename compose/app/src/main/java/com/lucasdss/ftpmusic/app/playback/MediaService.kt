@@ -740,12 +740,16 @@ class MediaService : MediaLibraryService() {
                 // Continuous play: journal-based smart track selection
                 if (player != null) {
                     // Reset continuation flag when a new track starts (mediaId changed)
-                    if (mediaItem.mediaId != previousTrackId) {
+                    if (ContinuousPlayGate.shouldResetContinuation(previousTrackId, mediaItem.mediaId)) {
                         hasLoadedContinuation = false
                     }
-                    if (!PlayerHolder.isCasting &&
-                        player.currentMediaItemIndex >= player.mediaItemCount - 1 && !hasLoadedContinuation &&
-                        playbackManager.continuousPlayEnabled
+                    if (ContinuousPlayGate.shouldLoadContinuation(
+                            isCasting = PlayerHolder.isCasting,
+                            currentIndex = player.currentMediaItemIndex,
+                            mediaItemCount = player.mediaItemCount,
+                            hasLoadedContinuation = hasLoadedContinuation,
+                            continuousPlayEnabled = playbackManager.continuousPlayEnabled,
+                        )
                     ) {
                         hasLoadedContinuation = true
                         scope.launch {
@@ -788,10 +792,20 @@ class MediaService : MediaLibraryService() {
                                             // append to CONTEXT (not user-added priority) so the
                                             // context/priority split stays correct after disconnect.
                                             playbackManager.appendToContext(listOf(track), listOf(url))
-                                        } catch (_: Exception) {}
+                                        } catch (e: Exception) {
+                                            android.util.Log.w(
+                                                "ftpmusic-playback",
+                                                "Continuous play: skip track $trackId: ${e.message}",
+                                            )
+                                        }
                                     }
                                 }
-                            } catch (_: Exception) {}
+                            } catch (e: Exception) {
+                                android.util.Log.w(
+                                    "ftpmusic-playback",
+                                    "Continuous play: journal load failed: ${e.message}",
+                                )
+                            }
                         }
                     }
                 }

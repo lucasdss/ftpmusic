@@ -32,7 +32,7 @@ No DataStore. No ThemeMode. No download-quality pref.
 | Control | Persist | Consumer |
 |---------|---------|----------|
 | History Size | `KEY_QUEUE_JOURNAL_CAP` | PlaybackManager (bootstrap + Settings) |
-| Continuous Play | `KEY_CONTINUOUS_PLAY_ENABLED` | PlaybackManager |
+| Continuous Play | `KEY_CONTINUOUS_PLAY_ENABLED` | MediaService last-item → journal → `appendToContext` (ADR-0052; not Surprise Me) |
 | Overwrite Ask/Clean/Push | `KEY_QUEUE_OVERWRITE_BEHAVIOR` | PlaybackManager.overwriteBehavior() live read |
 
 ### Network / Cast / Downloads
