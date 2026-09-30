@@ -1,6 +1,6 @@
 # UI Responsiveness Behavior Report
 
-Caveman terse. Phone-first shell. Post ADR-0049 harden.
+Caveman terse. Phone-first shell. Post ADR-0049 harden + nav label center fix.
 
 ## Shell
 
@@ -21,8 +21,25 @@ Caveman terse. Phone-first shell. Post ADR-0049 harden.
 - Start token size → shrink to min → Ellipsis.
 - Zero-width (first frame) → use min size (no oversize flash).
 - Measure merges `LocalTextStyle` so fit matches paint.
-- Use: Row+weight, nav labels, chips, badges, titles beside icons.
+- Default `fillMaxWidth = true` + default `textAlign = Start`.
+- **Centered chrome rule:** any slot where glyphs must sit under a centered icon/chip
+  MUST pass `textAlign = TextAlign.Center` when `fillMaxWidth` is true (or use
+  `fillMaxWidth = false` so M3/Column centers intrinsic width).
+- Use: Row+weight (Start OK), nav labels (Center), chips, badges, titles beside icons.
 - One-word unbreakable strings: shrink first, then ellipsis. No clip.
+
+## FittingText design audit (centered chrome)
+
+| Site | Align | Risk | Action |
+|------|-------|------|--------|
+| Bottom nav label `NavHost` | Center + fillMaxWidth | Was Start → left skew under icon | Fixed |
+| Profile PeriodChip / StatCard | Center + bounded width | Was fixed earlier | OK |
+| OverwriteModal body | Center | Intentional | OK |
+| Settings value row | End | Intentional | OK |
+| TypeBadge | fillMaxWidth=false | Intrinsic | OK |
+| Home section headers / genre chips | fillMaxWidth=false or Start row | Content, not chrome center | OK |
+| Search/Library/Player row titles | Start + weight/fillMaxWidth | Intentional LTR rows | OK |
+| Syncing progress labels | Start | Content | OK |
 
 ## Settings APPEARANCE
 
@@ -37,8 +54,10 @@ Caveman terse. Phone-first shell. Post ADR-0049 harden.
 - Process death restores hide-labels (VM init).
 - Toggle live while Settings + bar visible.
 - TalkBack: icon-only announces via icon CD; labeled mode uses label.
+- Nav label vs icon centerX must match within 2dp (`NavBarLabelsTest`).
 
 ## Out of scope
 
 - strings.xml i18n.
 - Tablet NavigationRail / multi-pane.
+- Changing FittingText global `fillMaxWidth` default.

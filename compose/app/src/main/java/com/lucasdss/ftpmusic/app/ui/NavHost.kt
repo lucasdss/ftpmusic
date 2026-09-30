@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -345,6 +346,9 @@ fun FtpmusicNavHost() {
                                             fontWeight = FontWeight.Medium,
                                             maxLines = 1,
                                             fillMaxWidth = true,
+                                            // M3 centers the icon; Start-align in a full-width
+                                            // label slot left-skews glyphs under the icon.
+                                            textAlign = TextAlign.Center,
                                         )
                                     }
                                 },

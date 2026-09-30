@@ -12,12 +12,13 @@ App shell is phone `NavigationBar` only. `AdaptiveScale` only scaled **up** (1.0
 
 1. **Phone harden only** — no `WindowSizeClass` / `NavigationRail` this pass. Document tablet gap; defer adaptive suite.
 2. **Width-only tokens** — width factor clamp **0.85..1.25** for `adp`/`asp`. `asp` uses `.sp` so **system fontScale is honored**.
-3. **FittingText owns overflow** — shrink font to min within constraints, then `TextOverflow.Ellipsis`. Protect constrained slots (including one-word chrome). Do **not** cancel a11y globally.
+3. **FittingText owns overflow** — shrink font to min within constraints, then `TextOverflow.Ellipsis`. Protect constrained slots (including one-word chrome). Do **not** cancel a11y globally. **Centered chrome** (nav labels, equal chips) that uses `fillMaxWidth = true` must also set `textAlign = TextAlign.Center`; otherwise glyphs Start-align in a full-width slot while M3 centers the icon.
 4. **Hide nav labels** — `KEY_NAV_HIDE_LABELS` (default false). Activity-scoped `SettingsViewModel` so Settings toggle updates bar live. Icon `contentDescription` only when labels hidden.
 
 ## Consequences
 
 - Narrow phones get width downscale; large a11y fonts still grow tokens.
 - Constrained chrome stays layout-safe via FittingText.
+- Nav labels stay horizontally centered under icons when labels are shown.
 - Icon-only nav available from Settings → APPEARANCE.
 - Tablet/foldable NavigationRail remains future work.

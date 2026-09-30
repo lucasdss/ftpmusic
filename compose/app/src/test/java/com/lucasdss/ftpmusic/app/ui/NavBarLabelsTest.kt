@@ -9,14 +9,21 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,8 +62,41 @@ class NavBarLabelsTest {
         composeRule.onNodeWithText("Home").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Home").assertDoesNotExist()
     }
+
+    @Test
+    fun `label centerX matches icon centerX when labels shown`() {
+        composeRule.setContent {
+            TestBottomBar(hideNavLabels = false)
+        }
+        composeRule.waitForIdle()
+
+        val iconBounds = composeRule.onNodeWithTag("nav_icon_Home", useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val labelBounds = composeRule.onNodeWithTag("nav_label_Home", useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+
+        val iconCenterX = (iconBounds.left + iconBounds.right) / 2f
+        val labelCenterX = (labelBounds.left + labelBounds.right) / 2f
+        val density = composeRule.density
+        val tolerancePx = with(density) { 2.dp.toPx() }
+
+        assertTrue(
+            "nav label centerX ($labelCenterX) must align with icon centerX ($iconCenterX) " +
+                "within ${tolerancePx}px; delta=${abs(iconCenterX - labelCenterX)}",
+            abs(iconCenterX - labelCenterX) < tolerancePx,
+        )
+        // Sanity: both nodes laid out (non-zero width).
+        assertTrue(iconBounds.width > 0f)
+        assertTrue(labelBounds.width > 0f)
+    }
 }
 
+/**
+ * Mirrors prod NavigationBarItem label wiring from FtpmusicNavHost
+ * (fillMaxWidth + TextAlign.Center + Medium weight). Tags are harness-only.
+ */
 @Composable
 private fun TestBottomBar(hideNavLabels: Boolean) {
     val label = "Home"
@@ -66,7 +106,9 @@ private fun TestBottomBar(hideNavLabels: Boolean) {
                 Icon(
                     imageVector = Icons.Filled.Home,
                     contentDescription = navTabIconContentDescription(hideNavLabels, label),
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .testTag("nav_icon_Home"),
                 )
             },
             label = if (hideNavLabels) {
@@ -77,7 +119,11 @@ private fun TestBottomBar(hideNavLabels: Boolean) {
                         text = label,
                         fontSize = textLabelM(),
                         minFontSize = textMicro(),
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
+                        fillMaxWidth = true,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("nav_label_Home"),
                     )
                 }
             },
