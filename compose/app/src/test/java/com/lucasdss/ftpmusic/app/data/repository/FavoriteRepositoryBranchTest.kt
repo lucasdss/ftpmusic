@@ -58,7 +58,7 @@ class FavoriteRepositoryBranchTest {
     @Test
     fun `likeTrack clears dislike then stars`() = runTest {
         repo.likeTrack("t1")
-        coVerify { trackDao.setDisliked("t1", false) }
+        coVerify { trackDao.setDisliked("t1", false, any()) }
         coVerify { trackDao.setStarredAt("t1", any()) }
         coVerify { api.star(any(), id = "t1") }
     }
@@ -67,7 +67,7 @@ class FavoriteRepositoryBranchTest {
     fun `dislikeTrack clears star and mirrors unstar`() = runTest {
         repo.dislikeTrack("t1")
         coVerify { trackDao.setStarredAt("t1", null) }
-        coVerify { trackDao.setDisliked("t1", true) }
+        coVerify { trackDao.setDisliked("t1", true, any()) }
         coVerify { trackDao.setPendingUnstar("t1", any()) }
         coVerify { api.unstar(any(), id = "t1") }
     }

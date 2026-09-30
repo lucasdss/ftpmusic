@@ -28,6 +28,20 @@ class FavoritesViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        // SharedFlows with no replay: observe() waits; load() tests keep their state.
+        every { trackDao.getStarredFlow(50) } returns kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        every { metadataDao.getStarredAlbumsFlow(50) } returns
+            kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        every { metadataDao.getStarredArtistsFlow(50) } returns
+            kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        every { radioFavoriteDao.getAllFlow() } returns
+            kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        every { trackDao.getDislikedFlow(50) } returns
+            kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        every { metadataDao.getDislikedAlbumsFlow(50) } returns
+            kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        every { metadataDao.getDislikedArtistsFlow(50) } returns
+            kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
         viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
     }
 
@@ -260,12 +274,12 @@ class FavoritesViewModelTest {
             kotlinx.coroutines.flow.MutableStateFlow<List<com.lucasdss.ftpmusic.app.data.db.ArtistEntity>>(
                 emptyList(),
             )
-        coEvery { trackDao.getStarredFlow(50) } returns kotlinx.coroutines.flow.flowOf(
+        every { trackDao.getStarredFlow(50) } returns kotlinx.coroutines.flow.flowOf(
             listOf(com.lucasdss.ftpmusic.app.data.db.TrackEntity(id = "t1", title = "Arcade Heart")),
         )
-        coEvery { metadataDao.getStarredAlbumsFlow(50) } returns albumsFlow
-        coEvery { metadataDao.getStarredArtistsFlow(50) } returns artistsFlow
-        coEvery { radioFavoriteDao.getAllFlow() } returns kotlinx.coroutines.flow.flowOf(
+        every { metadataDao.getStarredAlbumsFlow(50) } returns albumsFlow
+        every { metadataDao.getStarredArtistsFlow(50) } returns artistsFlow
+        every { radioFavoriteDao.getAllFlow() } returns kotlinx.coroutines.flow.flowOf(
             listOf(
                 com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity(
                     stationId = "st-1",
@@ -274,8 +288,12 @@ class FavoritesViewModelTest {
                 ),
             ),
         )
+        every { trackDao.getDislikedFlow(50) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        every { metadataDao.getDislikedAlbumsFlow(50) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        every { metadataDao.getDislikedArtistsFlow(50) } returns kotlinx.coroutines.flow.flowOf(emptyList())
 
-        viewModel.observe()
+        // Recreate so init.observe picks up the stubs above.
+        viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
         advanceUntilIdle()
 
         assertEquals(1, viewModel.state.value.tracks.size)
@@ -285,5 +303,58 @@ class FavoritesViewModelTest {
         artistsFlow.value = listOf(com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-1", name = "Neon Circuit"))
         advanceUntilIdle()
         assertEquals(1, viewModel.state.value.artists.size)
+    }
+
+    @Test
+    fun `setMode switches Liked and Disliked`() = runTest {
+        assertEquals(FavoritesMode.LIKED, viewModel.state.value.mode)
+        viewModel.setMode(FavoritesMode.DISLIKED)
+        assertEquals(FavoritesMode.DISLIKED, viewModel.state.value.mode)
+        viewModel.setMode(FavoritesMode.LIKED)
+        assertEquals(FavoritesMode.LIKED, viewModel.state.value.mode)
+    }
+
+    @Test
+    fun `load populates disliked lists`() = runTest {
+        coEvery { trackDao.getDisliked(50) } returns listOf(
+            TrackEntity(id = "d1", title = "Downer", isDisliked = true, dislikedAt = 100L),
+        )
+        coEvery { metadataDao.getDislikedAlbums(50) } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.AlbumEntity(
+                id = "al-d",
+                name = "Bad Album",
+                isDisliked = true,
+                dislikedAt = 90L,
+            ),
+        )
+        coEvery { metadataDao.getDislikedArtists(50) } returns emptyList()
+
+        viewModel.load()
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.state.value.dislikedTracks.size)
+        assertEquals("Downer", viewModel.state.value.dislikedTracks[0].title)
+        assertEquals(1, viewModel.state.value.dislikedAlbums.size)
+    }
+
+    @Test
+    fun `clearDislikeTrack removes optimistically and rolls back on failure`() = runTest {
+        coEvery { trackDao.getDisliked(50) } returns listOf(
+            TrackEntity(id = "d1", title = "Downer", isDisliked = true, dislikedAt = 1L),
+            TrackEntity(id = "d2", title = "Worse", isDisliked = true, dislikedAt = 2L),
+        )
+        viewModel.load()
+        advanceUntilIdle()
+
+        coEvery { favoriteRepository.clearDislikeTrack("d1") } throws RuntimeException("db")
+        viewModel.clearDislikeTrack("d1")
+        advanceUntilIdle()
+        assertEquals(2, viewModel.state.value.dislikedTracks.size)
+
+        coEvery { favoriteRepository.clearDislikeTrack("d1") } just Runs
+        viewModel.clearDislikeTrack("d1")
+        advanceUntilIdle()
+        assertEquals(1, viewModel.state.value.dislikedTracks.size)
+        assertEquals("d2", viewModel.state.value.dislikedTracks[0].id)
     }
 }

@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.ui.favorites
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import io.mockk.every
 import io.mockk.mockk
@@ -42,10 +43,45 @@ class FavoritesScreenComposeTest {
         val vm = mockViewModel(FavoritesState())
         render(vm)
 
+        composeRule.onNodeWithText("Liked").assertIsDisplayed()
+        composeRule.onNodeWithText("Disliked").assertIsDisplayed()
         composeRule.onNodeWithText("No favorites yet").assertIsDisplayed()
         composeRule.onNodeWithText(
             "Like any track, album, or artist, or bookmark a radio station to add it here",
         ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `disliked empty state shows thumbs-down copy`() {
+        val vm = mockViewModel(FavoritesState(mode = FavoritesMode.DISLIKED))
+        render(vm)
+
+        composeRule.onNodeWithText("No dislikes yet").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Thumbs-down any track, album, or artist to keep it out of Daily Mixes",
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `disliked track row renders and remove dislike is available`() {
+        val vm = mockViewModel(
+            FavoritesState(
+                mode = FavoritesMode.DISLIKED,
+                dislikedTracks = listOf(
+                    com.lucasdss.ftpmusic.app.data.db.TrackEntity(
+                        id = "d1",
+                        title = "Skip This",
+                        isDisliked = true,
+                        dislikedAt = 10L,
+                    ),
+                ),
+            ),
+        )
+        render(vm)
+
+        composeRule.onNodeWithText("TRACKS").assertIsDisplayed()
+        composeRule.onNodeWithText("Skip This").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Remove dislike").assertIsDisplayed()
     }
 
     @Test

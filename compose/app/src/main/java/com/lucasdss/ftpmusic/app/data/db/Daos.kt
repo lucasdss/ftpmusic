@@ -62,7 +62,7 @@ interface TrackDao {
      *  for these; preserve the existing tracks-table values instead of overwriting
      *  valid album/artist associations established by the album-track sync. */
     @Query(
-        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked) SELECT cgs.id, '' as server_id, cgs.title, COALESCE(cgs.artist, t.artist), COALESCE(cgs.album_id, t.album_id), COALESCE(cgs.artist_id, t.artist_id), cgs.genre, cgs.duration, cgs.track_number, cgs.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0) FROM cached_genre_songs cgs LEFT JOIN tracks t ON cgs.id = t.id",
+        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at) SELECT cgs.id, '' as server_id, cgs.title, COALESCE(cgs.artist, t.artist), COALESCE(cgs.album_id, t.album_id), COALESCE(cgs.artist_id, t.artist_id), cgs.genre, cgs.duration, cgs.track_number, cgs.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at FROM cached_genre_songs cgs LEFT JOIN tracks t ON cgs.id = t.id",
     )
     suspend fun populateGenresFromCachedGenreSongs()
 
@@ -72,7 +72,7 @@ interface TrackDao {
      *  tracks-table values when the album source lacks them (defensive; keeps the
      *  two populate* queries idempotent regardless of execution order). */
     @Query(
-        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, 1 as disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0) FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
+        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, 1 as disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
     )
     suspend fun populateAllTrackGenres()
 
@@ -95,9 +95,19 @@ interface TrackDao {
     @Query("UPDATE tracks SET user_rating = :rating WHERE id = :trackId")
     suspend fun setRating(trackId: String, rating: Int)
 
-    /** v41: set the local dislike flag for a track. */
-    @Query("UPDATE tracks SET is_disliked = :disliked WHERE id = :trackId")
-    suspend fun setDisliked(trackId: String, disliked: Boolean)
+    /** v41/v55: set local dislike + disliked_at (null when clearing). */
+    @Query(
+        "UPDATE tracks SET is_disliked = :disliked, " +
+            "disliked_at = CASE WHEN :disliked = 1 THEN :at ELSE NULL END WHERE id = :trackId",
+    )
+    suspend fun setDisliked(trackId: String, disliked: Boolean, at: Long = System.currentTimeMillis())
+
+    /** v55: disliked tracks for Favorites Disliked segment (newest first). */
+    @Query("SELECT * FROM tracks WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
+    suspend fun getDisliked(limit: Int = 50): List<TrackEntity>
+
+    @Query("SELECT * FROM tracks WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
+    fun getDislikedFlow(limit: Int = 50): Flow<List<TrackEntity>>
 
     /** v41: ids of disliked tracks among the given set. */
     @Query("SELECT id FROM tracks WHERE id IN (:ids) AND is_disliked = 1")
@@ -795,13 +805,33 @@ interface CachedMetadataDao {
     @Query("SELECT id FROM artists WHERE starred_at IS NOT NULL")
     suspend fun getStarredArtistIds(): List<String>
 
-    /** v43: local dislike for an album. Clears any like (= star) first. */
-    @Query("UPDATE albums SET is_disliked = :disliked WHERE id = :albumId")
-    suspend fun setAlbumDisliked(albumId: String, disliked: Boolean)
+    /** v43/v55: local dislike for an album + disliked_at. */
+    @Query(
+        "UPDATE albums SET is_disliked = :disliked, " +
+            "disliked_at = CASE WHEN :disliked = 1 THEN :at ELSE NULL END WHERE id = :albumId",
+    )
+    suspend fun setAlbumDisliked(albumId: String, disliked: Boolean, at: Long = System.currentTimeMillis())
 
-    /** v43: local dislike for an artist. Clears any like (= star) first. */
-    @Query("UPDATE artists SET is_disliked = :disliked WHERE id = :artistId")
-    suspend fun setArtistDisliked(artistId: String, disliked: Boolean)
+    /** v43/v55: local dislike for an artist + disliked_at. */
+    @Query(
+        "UPDATE artists SET is_disliked = :disliked, " +
+            "disliked_at = CASE WHEN :disliked = 1 THEN :at ELSE NULL END WHERE id = :artistId",
+    )
+    suspend fun setArtistDisliked(artistId: String, disliked: Boolean, at: Long = System.currentTimeMillis())
+
+    /** v55: disliked albums for Favorites Disliked segment. */
+    @Query("SELECT * FROM albums WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
+    suspend fun getDislikedAlbums(limit: Int = 50): List<AlbumEntity>
+
+    @Query("SELECT * FROM albums WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
+    fun getDislikedAlbumsFlow(limit: Int = 50): Flow<List<AlbumEntity>>
+
+    /** v55: disliked artists for Favorites Disliked segment. */
+    @Query("SELECT * FROM artists WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
+    suspend fun getDislikedArtists(limit: Int = 50): List<ArtistEntity>
+
+    @Query("SELECT * FROM artists WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
+    fun getDislikedArtistsFlow(limit: Int = 50): Flow<List<ArtistEntity>>
 
     @Query("SELECT id FROM albums WHERE is_disliked = 1")
     suspend fun getDislikedAlbumIds(): List<String>
@@ -848,7 +878,7 @@ interface CachedMetadataDao {
     // ── Ledger population (runs at the end of syncAlbums/syncArtists) ────────
     // Copies metadata into albums/artists without touching the favorite state:
     // INSERT OR IGNORE adds new rows, then a correlated UPDATE refreshes
-    // metadata on existing rows — starred_at, user_rating, is_disliked survive.
+    // metadata on existing rows — starred_at, user_rating, is_disliked, disliked_at survive.
 
     @Query(
         "INSERT OR IGNORE INTO albums (id, server_id, artist_id, name, artist, year, cover_art_url, genre, created_at) SELECT id, '', artist_id, name, artist, year, cover_art, genre, cached_at FROM cached_albums",

@@ -46,7 +46,7 @@ class FavoriteRepositoryTest {
 
         // Local-first: dislike cleared and star written locally BEFORE the server call
         coVerifyOrder {
-            trackDao.setDisliked("t1", false)
+            trackDao.setDisliked("t1", false, any())
             trackDao.setStarredAt("t1", any())
             api.star(any(), id = "t1")
         }
@@ -63,7 +63,7 @@ class FavoriteRepositoryTest {
 
         // Local write persists even though the server mirror failed
         coVerify { trackDao.setStarredAt("t1", any()) }
-        coVerify { trackDao.setDisliked("t1", false) }
+        coVerify { trackDao.setDisliked("t1", false, any()) }
     }
 
     // ── v44: pending-unstar markers (local intent vs server mirror) ──────
@@ -151,7 +151,7 @@ class FavoriteRepositoryTest {
         r.dislikeTrack("t1")
 
         coVerify { trackDao.setStarredAt("t1", null) }
-        coVerify { trackDao.setDisliked("t1", true) }
+        coVerify { trackDao.setDisliked("t1", true, any()) }
     }
 
     @Test
@@ -164,7 +164,7 @@ class FavoriteRepositoryTest {
 
         coVerify { api.unstar(any(), id = "t1") }
         coVerify { trackDao.setStarredAt("t1", null) }
-        coVerify { trackDao.setDisliked("t1", true) }
+        coVerify { trackDao.setDisliked("t1", true, any()) }
     }
 
     @Test
@@ -174,7 +174,7 @@ class FavoriteRepositoryTest {
 
         r.clearDislikeTrack("t1")
 
-        coVerify { trackDao.setDisliked("t1", false) }
+        coVerify { trackDao.setDisliked("t1", false, any()) }
         coVerify(exactly = 0) { trackDao.setStarredAt(any(), any()) }
     }
 
@@ -240,7 +240,7 @@ class FavoriteRepositoryTest {
 
         // Local-first: clear dislike → ensure ledger row → local star → server
         coVerifyOrder {
-            metadataDao.setAlbumDisliked("al-1", false)
+            metadataDao.setAlbumDisliked("al-1", false, any())
             metadataDao.ensureAlbumLedgerRow("al-1")
             metadataDao.setAlbumStarredAt("al-1", any())
             api.star(any(), albumId = "al-1")
@@ -258,7 +258,7 @@ class FavoriteRepositoryTest {
 
         coVerify { metadataDao.ensureAlbumLedgerRow("al-1") }
         coVerify { metadataDao.setAlbumStarredAt("al-1", any()) }
-        coVerify { metadataDao.setAlbumDisliked("al-1", false) }
+        coVerify { metadataDao.setAlbumDisliked("al-1", false, any()) }
     }
 
     @Test
@@ -271,7 +271,7 @@ class FavoriteRepositoryTest {
         coVerifyOrder {
             metadataDao.ensureAlbumLedgerRow("al-1")
             metadataDao.setAlbumStarredAt("al-1", null)
-            metadataDao.setAlbumDisliked("al-1", true)
+            metadataDao.setAlbumDisliked("al-1", true, any())
         }
     }
 
@@ -285,7 +285,7 @@ class FavoriteRepositoryTest {
 
         // Local-first: clear dislike → ensure ledger row → local star → server
         coVerifyOrder {
-            metadataDao.setArtistDisliked("ar-1", false)
+            metadataDao.setArtistDisliked("ar-1", false, any())
             metadataDao.ensureArtistLedgerRow("ar-1")
             metadataDao.setArtistStarredAt("ar-1", any())
             api.star(any(), artistId = "ar-1")
@@ -302,7 +302,7 @@ class FavoriteRepositoryTest {
         r.dislikeArtist("ar-1")
 
         coVerify { metadataDao.ensureArtistLedgerRow("ar-1") }
-        coVerify { metadataDao.setArtistDisliked("ar-1", true) }
+        coVerify { metadataDao.setArtistDisliked("ar-1", true, any()) }
         coVerify { metadataDao.setArtistStarredAt("ar-1", null) }
     }
 
@@ -328,7 +328,7 @@ class FavoriteRepositoryTest {
         r.dislikeAlbum("al-1")
 
         coVerify { metadataDao.setAlbumStarredAt("al-1", null) }
-        coVerify { metadataDao.setAlbumDisliked("al-1", true) }
+        coVerify { metadataDao.setAlbumDisliked("al-1", true, any()) }
     }
 
     @Test
@@ -338,7 +338,7 @@ class FavoriteRepositoryTest {
 
         r.clearDislikeAlbum("al-1")
 
-        coVerify { metadataDao.setAlbumDisliked("al-1", false) }
+        coVerify { metadataDao.setAlbumDisliked("al-1", false, any()) }
         coVerify(exactly = 0) { metadataDao.setAlbumStarredAt(any(), any()) }
     }
 
@@ -352,7 +352,7 @@ class FavoriteRepositoryTest {
 
         // Local-first: clear dislike → ensure ledger row → local star → server
         coVerifyOrder {
-            metadataDao.setArtistDisliked("ar-1", false)
+            metadataDao.setArtistDisliked("ar-1", false, any())
             metadataDao.ensureArtistLedgerRow("ar-1")
             metadataDao.setArtistStarredAt("ar-1", any())
             api.star(any(), artistId = "ar-1")
@@ -381,7 +381,7 @@ class FavoriteRepositoryTest {
         r.dislikeArtist("ar-1")
 
         coVerify { metadataDao.setArtistStarredAt("ar-1", null) }
-        coVerify { metadataDao.setArtistDisliked("ar-1", true) }
+        coVerify { metadataDao.setArtistDisliked("ar-1", true, any()) }
     }
 
     // ── v43: Radio bookmarks (local-only Room persistence) ───────────────

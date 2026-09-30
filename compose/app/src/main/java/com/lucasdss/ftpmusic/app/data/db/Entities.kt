@@ -30,6 +30,8 @@ data class ArtistEntity(
     @ColumnInfo(name = "starred_at") val starredAt: Long? = null,
     // v43: Local dislike (thumbs down). Mutually exclusive with like (= starred_at).
     @ColumnInfo(name = "is_disliked", defaultValue = "0") val isDisliked: Boolean = false,
+    // v55: When the dislike was set (ms). Drives Favorites Disliked sort (newest first).
+    @ColumnInfo(name = "disliked_at") val dislikedAt: Long? = null,
     // v44: Local-first intent marker (see TrackEntity.pendingUnstarAt).
     @ColumnInfo(name = "pending_unstar_at") val pendingUnstarAt: Long? = null,
 )
@@ -56,6 +58,8 @@ data class AlbumEntity(
     @ColumnInfo(name = "created_at") val createdAt: Long? = null,
     // v43: Local dislike (thumbs down). Mutually exclusive with like (= starred_at).
     @ColumnInfo(name = "is_disliked", defaultValue = "0") val isDisliked: Boolean = false,
+    // v55: When the dislike was set (ms). Drives Favorites Disliked sort (newest first).
+    @ColumnInfo(name = "disliked_at") val dislikedAt: Long? = null,
     // v44: Local-first intent marker (see TrackEntity.pendingUnstarAt).
     @ColumnInfo(name = "pending_unstar_at") val pendingUnstarAt: Long? = null,
 )
@@ -117,6 +121,9 @@ data class TrackEntity(
 
     // v41: Local dislike (thumbs down). Mutually exclusive with like (= starred_at).
     @ColumnInfo(name = "is_disliked", defaultValue = "0") val isDisliked: Boolean = false,
+
+    // v55: When the dislike was set (ms). Drives Favorites Disliked sort (newest first).
+    @ColumnInfo(name = "disliked_at") val dislikedAt: Long? = null,
 
     // v44: Local-first intent marker — set when the user unstars/dislikes while
     // offline. The star mirror skips re-starring these rows and pushes the

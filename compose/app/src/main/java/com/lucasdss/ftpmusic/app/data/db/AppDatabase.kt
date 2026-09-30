@@ -38,7 +38,7 @@ import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
     ],
-    version = 54,
+    version = 55,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -956,5 +956,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_54 = ALL_MIGRATIONS_53 + MIGRATION_53_54
+
+        // Migration 54→55: disliked_at on tracks/albums/artists for Favorites
+        // Disliked segment (newest-first, mirrors starred_at).
+        val MIGRATION_54_55 = object : Migration(54, 55) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE tracks ADD COLUMN disliked_at INTEGER")
+                database.execSQL("ALTER TABLE albums ADD COLUMN disliked_at INTEGER")
+                database.execSQL("ALTER TABLE artists ADD COLUMN disliked_at INTEGER")
+                // Backfill existing dislikes so they appear on the Disliked list.
+                database.execSQL(
+                    "UPDATE tracks SET disliked_at = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE is_disliked = 1",
+                )
+                database.execSQL(
+                    "UPDATE albums SET disliked_at = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE is_disliked = 1",
+                )
+                database.execSQL(
+                    "UPDATE artists SET disliked_at = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE is_disliked = 1",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_55 = ALL_MIGRATIONS_54 + MIGRATION_54_55
     }
 }

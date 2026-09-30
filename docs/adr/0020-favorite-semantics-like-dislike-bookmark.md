@@ -3,7 +3,13 @@
 Date: 2026-08-23
 Status: Accepted
 Related: ADR 0009 (pending scrobbles removal),
-`docs/adr/0013-local-first-architecture-and-offline-playback.md`
+`docs/adr/0013-local-first-architecture-and-offline-playback.md`,
+`docs/DISLIKES_BEHAVIOR_REPORT.md`
+
+> **Status note (2026-09-30):** Favorites tab gains **Liked | Disliked** segment.
+> Disliked lists tracks/albums/artists (no radio) ordered by new `disliked_at`
+> (migration 54→55), newest first, LIMIT 50 — mirrors `starred_at` organization.
+> Clear via ThumbDown → `clearDislike*`. Dislikes remain local-only.
 
 ## Context
 

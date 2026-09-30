@@ -476,7 +476,7 @@ class MetadataSyncWorker(
             // (fresh install / genuinely empty server).
             metadataDao.replaceAlbums(allAlbums)
             // Repopulate the albums ledger (favorites table) — ON CONFLICT DO
-            // UPDATE preserves starred_at/user_rating/is_disliked across wipes.
+            // UPDATE preserves starred_at/user_rating/is_disliked/disliked_at across wipes.
             try {
                 metadataDao.syncAlbumLedger()
                 metadataDao.pruneAlbumLedger()
@@ -555,7 +555,7 @@ class MetadataSyncWorker(
             Log.d(TAG, "Cached ${allArtists.size} artists")
         }
         // Repopulate the artists ledger (favorites table) — ON CONFLICT DO
-        // UPDATE preserves starred_at/is_disliked across wipes.
+        // UPDATE preserves starred_at/is_disliked/disliked_at across wipes.
         try {
             metadataDao.syncArtistLedger()
             metadataDao.pruneArtistLedger()

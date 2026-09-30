@@ -58,7 +58,7 @@ class FavoriteRepository @Inject constructor(
 
     /** Thumbs up: like == starred on Navidrome. Clears any local dislike first. */
     suspend fun likeTrack(trackId: String) {
-        trackDao.setDisliked(trackId, false)
+        trackDao.setDisliked(trackId, false, at = 0L)
         starTrack(trackId)
     }
 
@@ -70,14 +70,14 @@ class FavoriteRepository @Inject constructor(
     /** Thumbs down: local-only dislike. Clears like (star) — best-effort server unstar. */
     suspend fun dislikeTrack(trackId: String) {
         trackDao.setStarredAt(trackId, null)
-        trackDao.setDisliked(trackId, true)
+        trackDao.setDisliked(trackId, true, at = System.currentTimeMillis())
         trackDao.setPendingUnstar(trackId, System.currentTimeMillis())
         mirrorStar { api.unstar(authParams(), id = trackId) }
     }
 
     /** Remove thumbs down (keep any star state). */
     suspend fun clearDislikeTrack(trackId: String) {
-        trackDao.setDisliked(trackId, false)
+        trackDao.setDisliked(trackId, false, at = 0L)
     }
 
     // ── v43: Albums / Artists — same local-first semantics ──────────────────
@@ -111,7 +111,7 @@ class FavoriteRepository @Inject constructor(
     /** Thumbs up on an album: local star first, best-effort server mirror.
      *  starAlbum ensures the ledger row exists. */
     suspend fun likeAlbum(albumId: String) {
-        metadataDao.setAlbumDisliked(albumId, false)
+        metadataDao.setAlbumDisliked(albumId, false, at = 0L)
         starAlbum(albumId)
     }
 
@@ -123,19 +123,19 @@ class FavoriteRepository @Inject constructor(
     suspend fun dislikeAlbum(albumId: String) {
         metadataDao.ensureAlbumLedgerRow(albumId)
         metadataDao.setAlbumStarredAt(albumId, null)
-        metadataDao.setAlbumDisliked(albumId, true)
+        metadataDao.setAlbumDisliked(albumId, true, at = System.currentTimeMillis())
         metadataDao.setAlbumPendingUnstar(albumId, System.currentTimeMillis())
         mirrorStar { api.unstar(authParams(), albumId = albumId) }
     }
 
     suspend fun clearDislikeAlbum(albumId: String) {
-        metadataDao.setAlbumDisliked(albumId, false)
+        metadataDao.setAlbumDisliked(albumId, false, at = 0L)
     }
 
     /** Thumbs up on an artist: local star first, best-effort server mirror.
      *  starArtist ensures the ledger row exists. */
     suspend fun likeArtist(artistId: String) {
-        metadataDao.setArtistDisliked(artistId, false)
+        metadataDao.setArtistDisliked(artistId, false, at = 0L)
         starArtist(artistId)
     }
 
@@ -147,13 +147,13 @@ class FavoriteRepository @Inject constructor(
     suspend fun dislikeArtist(artistId: String) {
         metadataDao.ensureArtistLedgerRow(artistId)
         metadataDao.setArtistStarredAt(artistId, null)
-        metadataDao.setArtistDisliked(artistId, true)
+        metadataDao.setArtistDisliked(artistId, true, at = System.currentTimeMillis())
         metadataDao.setArtistPendingUnstar(artistId, System.currentTimeMillis())
         mirrorStar { api.unstar(authParams(), artistId = artistId) }
     }
 
     suspend fun clearDislikeArtist(artistId: String) {
-        metadataDao.setArtistDisliked(artistId, false)
+        metadataDao.setArtistDisliked(artistId, false, at = 0L)
     }
 
     // ── v43: Radio bookmarks (local-only Room persistence) ──────────────────

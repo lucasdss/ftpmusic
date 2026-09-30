@@ -495,9 +495,25 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 54 to 55 adds disliked_at and backfills`() {
+        run(AppDatabase.MIGRATION_54_55)
+        verify { db.execSQL("ALTER TABLE tracks ADD COLUMN disliked_at INTEGER") }
+        verify { db.execSQL("ALTER TABLE albums ADD COLUMN disliked_at INTEGER") }
+        verify { db.execSQL("ALTER TABLE artists ADD COLUMN disliked_at INTEGER") }
+        verify {
+            db.execSQL(
+                match {
+                    it.contains("UPDATE tracks SET disliked_at") && it.contains("is_disliked = 1")
+                },
+            )
+        }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
         assertEquals(54, AppDatabase.ALL_MIGRATIONS_54.last().endVersion)
+        assertEquals(55, AppDatabase.ALL_MIGRATIONS_55.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -522,9 +538,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_48, AppDatabase.ALL_MIGRATIONS_49,
             AppDatabase.ALL_MIGRATIONS_50, AppDatabase.ALL_MIGRATIONS_51,
             AppDatabase.ALL_MIGRATIONS_52, AppDatabase.ALL_MIGRATIONS_53,
-            AppDatabase.ALL_MIGRATIONS_54,
+            AppDatabase.ALL_MIGRATIONS_54, AppDatabase.ALL_MIGRATIONS_55,
         )
-        assertEquals(45, all.size)
+        assertEquals(46, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }
