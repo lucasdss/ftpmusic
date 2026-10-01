@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
 
 /**
  * Cast button — adaptively sized circle per design v4.
@@ -35,7 +36,7 @@ fun CastButton(modifier: Modifier = Modifier) {
             .clip(CircleShape)
             .background(
                 if (isCasting) {
-                    Color(0xFF00C8B4).copy(alpha = 0.15f)
+                    BrandTeal.copy(alpha = 0.15f)
                 } else {
                     Color.White.copy(alpha = 0.06f)
                 },
@@ -43,7 +44,7 @@ fun CastButton(modifier: Modifier = Modifier) {
             .border(
                 width = adp(1f),
                 color = if (isCasting) {
-                    Color(0xFF00C8B4).copy(alpha = 0.30f)
+                    BrandTeal.copy(alpha = 0.30f)
                 } else {
                     Color.White.copy(alpha = 0.08f)
                 },
@@ -57,7 +58,7 @@ fun CastButton(modifier: Modifier = Modifier) {
         Icon(
             imageVector = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
             contentDescription = if (isCasting) "Disconnect Cast" else "Cast to device",
-            tint = if (isCasting) Color(0xFF00C8B4) else Color(0xFF666666),
+            tint = if (isCasting) BrandTeal else Color(0xFF666666),
             modifier = Modifier.size(adp(15f)),
         )
     }

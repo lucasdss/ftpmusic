@@ -43,11 +43,18 @@ import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 import com.lucasdss.ftpmusic.app.ui.playlist.AddSongsPickerContent
 import kotlinx.coroutines.flow.first
@@ -97,7 +104,7 @@ fun LibraryContent(
     val context = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
 
-    Column(Modifier.background(Color(0xFF12121E))) {
+    Column(Modifier.background(Background)) {
         // Server config/reachability warning (stale proxy URL, unreachable server)
         com.lucasdss.ftpmusic.app.ui.components.ServerErrorBanner(
             configWarning = shell.configWarning,
@@ -111,30 +118,14 @@ fun LibraryContent(
                 viewModel.loadFavorites()
             }
         }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingS()),
-            horizontalArrangement = Arrangement.spacedBy(spacingXS()),
-        ) {
+        SegmentedChipRow {
             LibraryTab.entries.forEach { tab ->
-                val selected = selectedTab == tab
-                Box(
-                    Modifier.weight(
-                        1f,
-                    ).clip(
-                        RoundedCornerShape(10.dp),
-                    ).background(if (selected) Color(0xFF2A2A2A) else Color(0xFF1C1C1C)).clickable {
-                        selectedTab =
-                            tab
-                    }.padding(vertical = spacingS()),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        tab.label,
-                        color = if (selected) Color.White else Color(0xFF666666),
-                        fontSize = textBodyM(),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                SegmentedChip(
+                    label = tab.label,
+                    selected = selectedTab == tab,
+                    onClick = { selectedTab = tab },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
         // Contextual search bar
@@ -142,13 +133,13 @@ fun LibraryContent(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             placeholder = { Text("Search ${selectedTab.label}…", color = Color(0xFF666666)) },
-            leadingIcon = { Icon(Icons.Default.Search, null, tint = Color(0xFF555555)) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = NavUnselected) },
             trailingIcon = if (searchQuery.isNotEmpty()) {
                 {
                     Icon(
                         Icons.Default.Close,
                         "Clear",
-                        tint = Color(0xFF555555),
+                        tint = NavUnselected,
                         modifier = Modifier.clickable {
                             searchQuery = ""
                         },
@@ -164,7 +155,7 @@ fun LibraryContent(
                 unfocusedBorderColor = Color.Transparent,
                 focusedContainerColor = Color(0xFF1C1C1C),
                 unfocusedContainerColor = Color(0xFF1C1C1C),
-                cursorColor = Color(0xFF00C8B4),
+                cursorColor = BrandTeal,
             ),
             modifier = Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
             shape = RoundedCornerShape(cornerM()), singleLine = true,
@@ -173,7 +164,7 @@ fun LibraryContent(
         // loader must never leave the screen spinning forever.
         if (shell.isLoading && !shell.hasLoadedOnce) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color(0xFF00C8B4))
+                CircularProgressIndicator(color = BrandTeal)
             }
         } else {
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -443,7 +434,7 @@ fun LibraryContent(
                                                         Icon(
                                                             Icons.Default.QueueMusic,
                                                             null,
-                                                            tint = Color(0xFF555555),
+                                                            tint = NavUnselected,
                                                             modifier = Modifier.size(24.dp),
                                                         )
                                                     }
@@ -451,7 +442,7 @@ fun LibraryContent(
                                                     Icon(
                                                         Icons.Default.QueueMusic,
                                                         null,
-                                                        tint = Color(0xFF555555),
+                                                        tint = NavUnselected,
                                                         modifier = Modifier.size(24.dp),
                                                     )
                                                 }
@@ -474,7 +465,7 @@ fun LibraryContent(
                                                     if (pl.isSynced) {
                                                         Spacer(Modifier.width(8.dp))
                                                         Surface(
-                                                            color = Color(0xFF00C8B4).copy(alpha = 0.12f),
+                                                            color = BrandTeal.copy(alpha = 0.12f),
                                                             shape = RoundedCornerShape(4.dp),
                                                         ) {
                                                             Text(
@@ -483,7 +474,7 @@ fun LibraryContent(
                                                                     horizontal = 5.dp,
                                                                     vertical = 1.dp,
                                                                 ),
-                                                                color = Color(0xFF00C8B4),
+                                                                color = BrandTeal,
                                                                 fontSize = 10.sp,
                                                                 fontWeight = FontWeight.SemiBold,
                                                             )
@@ -492,7 +483,7 @@ fun LibraryContent(
                                                     if (pl.isDownloaded) {
                                                         Spacer(Modifier.width(8.dp))
                                                         Surface(
-                                                            color = Color(0xFFB040E8).copy(alpha = 0.12f),
+                                                            color = BrandPurple.copy(alpha = 0.12f),
                                                             shape = RoundedCornerShape(4.dp),
                                                         ) {
                                                             Text(
@@ -501,7 +492,7 @@ fun LibraryContent(
                                                                     horizontal = 5.dp,
                                                                     vertical = 1.dp,
                                                                 ),
-                                                                color = Color(0xFFB040E8),
+                                                                color = BrandPurple,
                                                                 fontSize = 10.sp,
                                                                 fontWeight = FontWeight.SemiBold,
                                                             )
@@ -535,7 +526,7 @@ fun LibraryContent(
                                         }
                                     }
                                     HorizontalDivider(
-                                        color = Color(0xFF1C1C2E),
+                                        color = Surface,
                                         modifier = Modifier.padding(horizontal = spacingL()),
                                     )
                                 }
@@ -550,7 +541,7 @@ fun LibraryContent(
                                     showCreatePlaylistSheet = true
                                 },
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                                containerColor = Color(0xFF00C8B4),
+                                containerColor = BrandTeal,
                             ) {
                                 Icon(Icons.Default.Add, null, tint = Color.White)
                             }
@@ -594,14 +585,14 @@ fun LibraryContent(
                                         Icon(
                                             Icons.Default.SettingsInputAntenna,
                                             null,
-                                            tint = Color(0xFF00C8B4),
+                                            tint = BrandTeal,
                                             modifier = Modifier.size(iconMicro()),
                                         )
                                         Spacer(Modifier.width(8.dp))
                                         Text("Internet Radio", color = Color(0xFF888888), fontSize = textLabelM())
                                     }
                                     HorizontalDivider(
-                                        color = Color(0xFF1C1C2E),
+                                        color = Surface,
                                         modifier = Modifier.padding(horizontal = spacingL()),
                                     )
                                 }
@@ -621,7 +612,7 @@ fun LibraryContent(
                                             Icon(
                                                 Icons.Default.SettingsInputAntenna,
                                                 null,
-                                                tint = Color(0xFF00C8B4),
+                                                tint = BrandTeal,
                                                 modifier = Modifier.size(24.dp),
                                             )
                                         }
@@ -661,9 +652,9 @@ fun LibraryContent(
                                             tint = if (station.id in
                                                 state.bookmarkedStationIds
                                             ) {
-                                                Color(0xFF00C8B4)
+                                                BrandTeal
                                             } else {
-                                                Color(0xFF555555)
+                                                NavUnselected
                                             },
                                             modifier = Modifier.size(18.dp).clickable {
                                                 viewModel.toggleRadioBookmark(station)
@@ -673,19 +664,19 @@ fun LibraryContent(
                                         Box(
                                             Modifier.size(
                                                 36.dp,
-                                            ).clip(CircleShape).background(Color(0xFF00C8B4).copy(alpha = 0.15f)),
+                                            ).clip(CircleShape).background(BrandTeal.copy(alpha = 0.15f)),
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             Icon(
                                                 Icons.Filled.PlayArrow,
                                                 null,
-                                                tint = Color(0xFF00C8B4),
+                                                tint = BrandTeal,
                                                 modifier = Modifier.size(18.dp),
                                             )
                                         }
                                     }
                                     HorizontalDivider(
-                                        color = Color(0xFF1C1C2E),
+                                        color = Surface,
                                         modifier = Modifier.padding(horizontal = spacingL()),
                                     )
                                 }
@@ -748,7 +739,7 @@ fun LibraryContent(
                     }
                 }
             },
-            containerColor = Color(0xFF1C1C2E),
+            containerColor = Surface,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         ) {
             when (createStep) {
@@ -771,13 +762,13 @@ fun LibraryContent(
                         Icon(
                             Icons.Default.CloudDownload,
                             null,
-                            tint = Color(0xFF00C8B4),
+                            tint = BrandTeal,
                             modifier = Modifier.size(22.dp),
                         )
                         Spacer(Modifier.width(12.dp))
                         FittingText(
                             text = "Import from Server",
-                            color = Color(0xFF00C8B4),
+                            color = BrandTeal,
                             fontSize = 14.sp,
                             minFontSize = textMicro(),
                             modifier = Modifier.weight(1f),
@@ -812,11 +803,11 @@ fun LibraryContent(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF00C8B4),
+                            focusedBorderColor = BrandTeal,
                             unfocusedBorderColor = Color(0xFF333344),
                             focusedContainerColor = Color(0xFF252538),
                             unfocusedContainerColor = Color(0xFF252538),
-                            cursorColor = Color(0xFF00C8B4),
+                            cursorColor = BrandTeal,
                         ),
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                         shape = RoundedCornerShape(12.dp),
@@ -869,7 +860,7 @@ fun LibraryContent(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f).height(48.dp)
                                 .background(
-                                    Brush.linearGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                    Brush.linearGradient(listOf(BrandTeal, BrandPurple)),
                                     RoundedCornerShape(12.dp),
                                 ),
                         ) {
@@ -953,7 +944,7 @@ fun LibraryContent(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f).height(48.dp)
                                 .background(
-                                    Brush.linearGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                    Brush.linearGradient(listOf(BrandTeal, BrandPurple)),
                                     RoundedCornerShape(12.dp),
                                 ),
                         ) { Text("Add Songs", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
@@ -985,7 +976,7 @@ fun LibraryContent(
         LaunchedEffect(Unit) { viewModel.loadServerPlaylists() }
         ModalBottomSheet(
             onDismissRequest = { showAddFromServerSheet = false },
-            containerColor = Color(0xFF1C1C2E),
+            containerColor = Surface,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         ) {
             Column(Modifier.padding(bottom = 32.dp)) {
@@ -1021,7 +1012,7 @@ fun LibraryContent(
                                     Icon(
                                         Icons.Default.CloudDownload,
                                         null,
-                                        tint = Color(0xFF00C8B4),
+                                        tint = BrandTeal,
                                         modifier = Modifier.size(22.dp),
                                     )
                                     Spacer(Modifier.width(12.dp))
@@ -1050,7 +1041,7 @@ private fun StarRating(rating: Int) {
             Icon(
                 imageVector = if (i <= rating) Icons.Default.Star else Icons.Default.StarBorder,
                 contentDescription = null,
-                tint = if (i <= rating) Color(0xFF00C8B4) else Color(0xFF444444),
+                tint = if (i <= rating) BrandTeal else Color(0xFF444444),
                 modifier = Modifier.size(iconMicro()),
             )
         }
@@ -1082,7 +1073,7 @@ private fun AnimatedEqBars() {
                     .width(4.dp)
                     .height((16 * anim).dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFF00C8B4)),
+                    .background(BrandTeal),
             )
         }
     }

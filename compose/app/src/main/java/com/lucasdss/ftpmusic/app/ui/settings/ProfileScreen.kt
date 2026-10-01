@@ -30,7 +30,14 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.lucasdss.ftpmusic.app.data.db.TopCountRow
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.SurfaceChip
+import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 
 @Composable
 fun ProfileScreen(
@@ -52,9 +59,7 @@ fun ProfileScreen(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
-            }
+            DetailBackButton(onBack = onBack, inset = false)
             Text("Profile", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
 
@@ -80,7 +85,7 @@ fun ProfileScreen(
 
             if (state.isLoading && state.summary.plays == 0) {
                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF00C8B4), modifier = Modifier.size(32.dp))
+                    CircularProgressIndicator(color = BrandTeal, modifier = Modifier.size(32.dp))
                 }
             } else {
                 val s = state.summary
@@ -103,13 +108,13 @@ fun ProfileScreen(
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Text(
                     if (streak <= 0) "No streak yet" else "$streak-day streak",
-                    color = if (streak <= 0) Color(0xFF666666) else Color(0xFF00C8B4),
+                    color = if (streak <= 0) Color(0xFF666666) else BrandTeal,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                 )
                 Text(
                     "All time",
-                    color = Color(0xFF555555),
+                    color = NavUnselected,
                     fontSize = 12.sp,
                 )
             }
@@ -146,7 +151,7 @@ fun ProfileScreen(
                     Icon(
                         Icons.Filled.MusicNote,
                         null,
-                        tint = Color(0xFF555555),
+                        tint = NavUnselected,
                         modifier = Modifier.size(24.dp),
                     )
                     Spacer(Modifier.width(12.dp))
@@ -168,7 +173,7 @@ fun ProfileScreen(
                     }
                     Text(
                         formatDuration(track.durationSeconds ?: 0),
-                        color = Color(0xFF555555),
+                        color = NavUnselected,
                         fontSize = 13.sp,
                     )
                 }
@@ -179,39 +184,32 @@ fun ProfileScreen(
 
 @Composable
 private fun PeriodChips(selected: StatsPeriod, onSelect: (StatsPeriod) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        PeriodChip("Week", StatsPeriod.WEEK, selected, onSelect)
-        PeriodChip("Month", StatsPeriod.MONTH, selected, onSelect)
-        PeriodChip("Year", StatsPeriod.YEAR, selected, onSelect)
-        PeriodChip("All time", StatsPeriod.ALL_TIME, selected, onSelect)
+    SegmentedChipRow {
+        SegmentedChip(
+            label = "Week",
+            selected = selected == StatsPeriod.WEEK,
+            onClick = { onSelect(StatsPeriod.WEEK) },
+            modifier = Modifier.weight(1f),
+        )
+        SegmentedChip(
+            label = "Month",
+            selected = selected == StatsPeriod.MONTH,
+            onClick = { onSelect(StatsPeriod.MONTH) },
+            modifier = Modifier.weight(1f),
+        )
+        SegmentedChip(
+            label = "Year",
+            selected = selected == StatsPeriod.YEAR,
+            onClick = { onSelect(StatsPeriod.YEAR) },
+            modifier = Modifier.weight(1f),
+        )
+        SegmentedChip(
+            label = "All time",
+            selected = selected == StatsPeriod.ALL_TIME,
+            onClick = { onSelect(StatsPeriod.ALL_TIME) },
+            modifier = Modifier.weight(1f),
+        )
     }
-}
-
-@Composable
-private fun RowScope.PeriodChip(
-    label: String,
-    period: StatsPeriod,
-    selected: StatsPeriod,
-    onSelect: (StatsPeriod) -> Unit,
-) {
-    val active = selected == period
-    FittingText(
-        text = label,
-        color = if (active) Color.Black else Color.White,
-        fontSize = 13.sp,
-        minFontSize = textMicro(),
-        fontWeight = FontWeight.SemiBold,
-        textAlign = TextAlign.Center,
-        modifier = Modifier
-            .weight(1f)
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (active) Color(0xFF00C8B4) else Color(0xFF1A1A24))
-            .clickable { onSelect(period) }
-            .padding(vertical = 8.dp),
-    )
 }
 
 @Composable
@@ -219,7 +217,7 @@ private fun TopSection(title: String, rows: List<TopCountRow>) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         if (rows.isEmpty()) {
-            Text("—", color = Color(0xFF555555), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            Text("—", color = NavUnselected, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
         } else {
             rows.forEachIndexed { index, row ->
                 Row(
@@ -228,7 +226,7 @@ private fun TopSection(title: String, rows: List<TopCountRow>) {
                 ) {
                     Text(
                         "${index + 1}",
-                        color = Color(0xFF00C8B4),
+                        color = BrandTeal,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.width(24.dp),
@@ -260,10 +258,10 @@ private fun RowScope.StatCard(icon: ImageVector, value: String, label: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF00C8B4).copy(alpha = 0.15f)),
+            Modifier.size(48.dp).clip(CircleShape).background(BrandTeal.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(20.dp))
+            Icon(icon, null, tint = BrandTeal, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.height(6.dp))
         FittingText(

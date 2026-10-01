@@ -37,6 +37,12 @@ import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
@@ -77,20 +83,20 @@ fun AlbumDetailScreen(
     ) ?: state.album?.coverArt?.let { viewModel.buildCoverArtUrl(it) }
 
     if (state.isLoading) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF12121E)), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color(0xFF00C8B4))
+        Box(Modifier.fillMaxSize().background(Background), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = BrandTeal)
         }
         return
     }
 
     if (state.error != null) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF12121E)), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Background), contentAlignment = Alignment.Center) {
             Text("Error: ${state.error}", color = Color.White)
         }
         return
     }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF12121E))) {
+    Box(Modifier.fillMaxSize().background(Background)) {
         LazyColumn {
             // ═══ Hero section — full-width art with gradient overlay ═══
             item {
@@ -116,23 +122,11 @@ fun AlbumDetailScreen(
                     Box(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
-                                listOf(Color(0xFF12121E).copy(alpha = 0.3f), Color(0xFF12121E).copy(alpha = 0.98f)),
+                                listOf(Background.copy(alpha = 0.3f), Background.copy(alpha = 0.98f)),
                             ),
                         ),
                     )
-                    // Back button
-                    Box(
-                        Modifier.padding(top = spacingL(), start = spacingL()).size(36.dp).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.5f)).clickable { onBack() },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.ChevronLeft,
-                            "Back",
-                            tint = Color.White,
-                            modifier = Modifier.size(iconSmall()),
-                        )
-                    }
+                    DetailBackButton(onBack = onBack)
                     // Download badge top-right
                     val albumStatus = viewModel.getAlbumDownloadStatus()
                     if (albumStatus != "none") {
@@ -140,7 +134,7 @@ fun AlbumDetailScreen(
                             Modifier.align(Alignment.TopEnd).padding(top = spacingL(), end = spacingL())
                                 .clip(RoundedCornerShape(50)).background(
                                     if (albumStatus == "downloaded") {
-                                        Color(0xFFB040E8).copy(alpha = 0.85f)
+                                        BrandPurple.copy(alpha = 0.85f)
                                     } else {
                                         Color(0xFF1E1E30).copy(alpha = 0.85f)
                                     },
@@ -177,7 +171,7 @@ fun AlbumDetailScreen(
                         state.album?.artist?.let {
                             Text(
                                 it,
-                                color = Color(0xFF00C8B4),
+                                color = BrandTeal,
                                 fontSize = textHeadingS(),
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
@@ -203,7 +197,7 @@ fun AlbumDetailScreen(
                                                 Icon(
                                                     if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
                                                     null,
-                                                    tint = if (i <= r) Color(0xFF00C8B4) else Color(0xFF444444),
+                                                    tint = if (i <= r) BrandTeal else Color(0xFF444444),
                                                     modifier = Modifier.size(iconMicro())
                                                         .clickable { viewModel.rateAlbum(albumId, i) },
                                                 )
@@ -271,7 +265,7 @@ fun AlbumDetailScreen(
                             Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
                                 .background(
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                                        listOf(BrandTeal, BrandPurple),
                                         start = androidx.compose.ui.geometry.Offset(0f, 0f),
                                         end = androidx.compose.ui.geometry.Offset(
                                             Float.POSITIVE_INFINITY,
@@ -299,7 +293,7 @@ fun AlbumDetailScreen(
                                 .background(Color(0xFF252538))
                                 .border(
                                     1.dp,
-                                    Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                    Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                     RoundedCornerShape(cornerM()),
                                 )
                                 .clickable { viewModel.shuffle() },
@@ -376,7 +370,7 @@ fun AlbumDetailScreen(
                         Column(Modifier.weight(1f)) {
                             FittingText(
                                 text = track.title,
-                                color = if (isActive) Color(0xFF00C8B4) else Color.White,
+                                color = if (isActive) BrandTeal else Color.White,
                                 fontSize = textHeadingS(),
                                 minFontSize = textMicro(),
                                 fontWeight = FontWeight.Medium,
@@ -389,7 +383,7 @@ fun AlbumDetailScreen(
                                     Icon(
                                         if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
                                         null,
-                                        tint = if (i <= r) Color(0xFF00C8B4) else Color(0xFF444444),
+                                        tint = if (i <= r) BrandTeal else Color(0xFF444444),
                                         modifier = Modifier.size(11.dp).clickable { viewModel.rateTrack(track.id, i) },
                                     )
                                 }
@@ -405,7 +399,7 @@ fun AlbumDetailScreen(
                     Icon(
                         Icons.Filled.ThumbUp,
                         contentDescription = if (isLiked) "Unlike" else "Like",
-                        tint = if (isLiked) Color(0xFF00C8B4) else Color(0xFF444444),
+                        tint = if (isLiked) BrandTeal else Color(0xFF444444),
                         modifier = Modifier.size(knobSize()).clickable { viewModel.toggleTrackLike(track.id) },
                     )
                     Spacer(Modifier.width(6.dp))
@@ -587,7 +581,7 @@ private fun AnimatedEqBars() {
         bars.forEach { anim ->
             Box(
                 Modifier.weight(1f).fillMaxHeight(fraction = 0.35f + anim.value * 0.65f)
-                    .clip(RoundedCornerShape(1.dp)).background(Color(0xFF00C8B4)),
+                    .clip(RoundedCornerShape(1.dp)).background(BrandTeal),
             )
         }
     }
@@ -606,7 +600,7 @@ private fun TrackActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -629,7 +623,7 @@ private fun TrackActionSheet(
                         Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS())).background(Color(0xFF1E1E1E)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Default.MusicNote, null, tint = Color(0xFF555555), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(18.dp))
                     }
                 }
                 Spacer(Modifier.width(12.dp))
@@ -669,7 +663,7 @@ private fun TrackActionSheet(
                 "Play Next",
                 "Insert at top of Priority Queue",
                 Icons.Default.ArrowUpward,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onPlayNext,
             )
             SheetAction(
@@ -683,7 +677,7 @@ private fun TrackActionSheet(
                 "Add to Playlist",
                 "Save to an existing playlist",
                 Icons.AutoMirrored.Filled.PlaylistAdd,
-                Color(0xFFB040E8),
+                BrandPurple,
                 onAddToPlaylist,
             )
             SheetAction("Download", "Save for offline playback", Icons.Default.Download, Color(0xFF888888), onDownload)
@@ -706,7 +700,7 @@ private fun AlbumActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -727,7 +721,7 @@ private fun AlbumActionSheet(
                         Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS())).background(Color(0xFF1E1E1E)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Default.Album, null, tint = Color(0xFF555555), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Album, null, tint = NavUnselected, modifier = Modifier.size(18.dp))
                     }
                 }
                 Spacer(Modifier.width(12.dp))
@@ -759,7 +753,7 @@ private fun AlbumActionSheet(
                 "Play Next",
                 "Insert $trackCount tracks after current",
                 Icons.Default.ArrowUpward,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onPlayNextAll,
             )
             SheetAction(
@@ -773,7 +767,7 @@ private fun AlbumActionSheet(
                 "Add to Playlist",
                 "Save album to a playlist",
                 Icons.AutoMirrored.Filled.PlaylistAdd,
-                Color(0xFFB040E8),
+                BrandPurple,
                 onAddAllToPlaylist,
             )
             SheetAction(
@@ -799,7 +793,7 @@ private fun PlaylistPickerSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -820,15 +814,15 @@ private fun PlaylistPickerSheet(
                 }.padding(horizontal = spacingL(), vertical = spacingM())
                     .clip(
                         RoundedCornerShape(cornerM()),
-                    ).border(1.dp, Color(0xFF00C8B4).copy(alpha = 0.3f), RoundedCornerShape(cornerM()))
+                    ).border(1.dp, BrandTeal.copy(alpha = 0.3f), RoundedCornerShape(cornerM()))
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Add, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Add, null, tint = BrandTeal, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(12.dp))
                 Text(
                     "New Playlist…",
-                    color = Color(0xFF00C8B4),
+                    color = BrandTeal,
                     fontSize = textBodyM(),
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -840,7 +834,7 @@ private fun PlaylistPickerSheet(
                 }.padding(horizontal = spacingL(), vertical = spacingM()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.CloudDownload, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.CloudDownload, null, tint = BrandTeal, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(12.dp))
                 Text("Add from Server", color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Medium)
             }
@@ -929,7 +923,7 @@ private fun CreatePlaylistDialog(onCreate: (String) -> Unit, onDismiss: () -> Un
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(horizontal = spacingXL(), vertical = spacingM())) {
@@ -950,11 +944,11 @@ private fun CreatePlaylistDialog(onCreate: (String) -> Unit, onDismiss: () -> Un
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color(0xFF00C8B4),
+                    focusedBorderColor = BrandTeal,
                     unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
                     focusedContainerColor = Color(0xFF252538),
                     unfocusedContainerColor = Color(0xFF252538),
-                    cursorColor = Color(0xFF00C8B4),
+                    cursorColor = BrandTeal,
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(cornerM()),
@@ -980,7 +974,7 @@ private fun CreatePlaylistDialog(onCreate: (String) -> Unit, onDismiss: () -> Un
                         disabledContainerColor = Color.Transparent.copy(alpha = 0.4f),
                     ),
                     modifier = Modifier.weight(1f).height(adp(48f)).background(
-                        Brush.linearGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                        Brush.linearGradient(listOf(BrandTeal, BrandPurple)),
                         RoundedCornerShape(cornerM()),
                     ),
                 ) {
@@ -1014,7 +1008,7 @@ fun AddFromServerSheet(onImport: (String, String) -> Unit, onDismiss: () -> Unit
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -1051,7 +1045,7 @@ fun AddFromServerSheet(onImport: (String, String) -> Unit, onDismiss: () -> Unit
                                 Icon(
                                     Icons.Default.CloudDownload,
                                     null,
-                                    tint = Color(0xFF00C8B4),
+                                    tint = BrandTeal,
                                     modifier = Modifier.size(iconSmall()),
                                 )
                                 Spacer(Modifier.width(spacingM()))

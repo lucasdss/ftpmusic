@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFiles
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
 /**
@@ -106,7 +107,7 @@ fun ArtistAvatar(artistName: String, coverArtId: String?, size: Dp, modifier: Mo
                 },
             )
         } else {
-            Icon(Icons.Default.Person, null, tint = Color(0xFF555555), modifier = Modifier.size(size / 2.5f))
+            Icon(Icons.Default.Person, null, tint = NavUnselected, modifier = Modifier.size(size / 2.5f))
         }
     }
 }

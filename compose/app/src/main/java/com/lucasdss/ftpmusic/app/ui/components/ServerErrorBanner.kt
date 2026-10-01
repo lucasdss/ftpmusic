@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.textMicro
 
 /**
@@ -84,7 +85,7 @@ fun ServerErrorBanner(
         )
         Text(
             "Fix",
-            color = Color(0xFF00C8B4),
+            color = BrandTeal,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier

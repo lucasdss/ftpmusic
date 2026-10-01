@@ -37,14 +37,21 @@ import com.lucasdss.ftpmusic.app.playback.PlaybackViewModel
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import com.lucasdss.ftpmusic.app.playback.QueueRevisionTracker
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.SurfaceElevated
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
- * Full-screen queue view showing all queued tracks.
- * Currently playing item is highlighted.
- * Supports tap-to-jump, swipe-to-remove, and drag-to-reorder.
+ * Full-screen queue view for unit/instrumentation tests and legacy callers.
+ *
+ * **Production UI** is the in-player bottom sheet in [PlayerBar] (`queue_sheet`).
+ * Keep section semantics (Queue / Continue Playing / Autoplay) and brand tokens
+ * aligned with that sheet so tests do not drift from shipping chrome.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,35 +97,43 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
     )
 
     Scaffold(
+        containerColor = SurfaceElevated,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Queue (${playbackState.queueSize})")
+                        Text("Queue (${playbackState.queueSize})", color = Color.White)
                         if (playbackState.isCasting && playbackState.castDeviceName != null) {
                             Text(
                                 "Casting to ${playbackState.castDeviceName}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = BrandTeal,
                             )
                         }
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.Close, "Close")
+                        Icon(Icons.Default.Close, "Close", tint = Color.White)
                     }
                 },
                 actions = {
                     TextButton(
                         onClick = { viewModel.clearPriorityQueue() },
                         enabled = playbackState.priorityQueueSize > 0,
+                        colors = ButtonDefaults.textButtonColors(contentColor = BrandTeal),
                     ) {
                         Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Clear")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = SurfaceElevated,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = BrandTeal,
+                ),
             )
         },
     ) { padding ->
@@ -162,7 +177,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                         Text(
                             "Queue · ${queueRows.size}",
                             style = MaterialTheme.typography.labelLarge,
-                            color = Color(0xFFB040E8),
+                            color = BrandPurple,
                             modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                         )
                     }
@@ -225,12 +240,12 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                                 "Autoplay · journal when queue ends"
                             },
                             style = MaterialTheme.typography.labelLarge,
-                            color = Color(0xFF00C8B4),
+                            color = BrandTeal,
                             modifier = Modifier.weight(1f),
                         )
                         if (autoplayRows.isNotEmpty()) {
                             TextButton(onClick = { viewModel.clearAutoplayQueue() }) {
-                                Text("Clear", color = Color(0xFF00C8B4))
+                                Text("Clear", color = BrandTeal)
                             }
                         }
                         Switch(
@@ -241,7 +256,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF00C8B4),
+                                checkedTrackColor = BrandTeal,
                             ),
                         )
                     }
@@ -324,7 +339,7 @@ private fun QueueItemRow(
 ) {
     val bgColor = when {
         isDragging -> MaterialTheme.colorScheme.surfaceVariant
-        item.isCurrent -> Color(0xFF00C8B4).copy(alpha = 0.08f)
+        item.isCurrent -> BrandTeal.copy(alpha = 0.08f)
         else -> Color.Transparent
     }
 
@@ -358,7 +373,7 @@ private fun QueueItemRow(
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MusicNote, null, tint = Color(0xFF555555), modifier = Modifier.size(adp(16f)))
+                    Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(adp(16f)))
                 }
             }
             if (item.isCurrent && isPlaying) {
@@ -385,7 +400,7 @@ private fun QueueItemRow(
                             Box(
                                 Modifier.width(
                                     adp(3f),
-                                ).fillMaxHeight(anim).clip(RoundedCornerShape(adp(1f))).background(Color(0xFF00C8B4)),
+                                ).fillMaxHeight(anim).clip(RoundedCornerShape(adp(1f))).background(BrandTeal),
                             )
                         }
                     }
@@ -400,7 +415,7 @@ private fun QueueItemRow(
                 text = item.title,
                 fontSize = MaterialTheme.typography.bodyLarge.fontSize,
                 minFontSize = textMicro(),
-                color = if (item.isCurrent) Color(0xFF00C8B4) else Color.White,
+                color = if (item.isCurrent) BrandTeal else Color.White,
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -425,7 +440,7 @@ private fun QueueItemRow(
                                 Icons.Default.StarBorder
                             },
                             contentDescription = null,
-                            tint = if (i <= (item.userRating ?: 0)) Color(0xFF00C8B4) else Color(0xFF444444),
+                            tint = if (i <= (item.userRating ?: 0)) BrandTeal else Color(0xFF444444),
                             modifier = Modifier.size(adp(11f)),
                         )
                     }

@@ -43,6 +43,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -140,9 +144,7 @@ fun PlaylistDetailScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
-                    }
+                    DetailBackButton(onBack = onBack, inset = false)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
@@ -154,7 +156,7 @@ fun PlaylistDetailScreen(
 
             if (state.isLoading && state.playlist == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF00C8B4))
+                    CircularProgressIndicator(color = BrandTeal)
                 }
             } else if (state.error != null && state.playlist == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -162,7 +164,7 @@ fun PlaylistDetailScreen(
                         Text("Error: ${state.error}", color = Color(0xFF888888))
                         Spacer(Modifier.height(spacingS()))
                         TextButton(onClick = { viewModel.loadPlaylist(playlistId) }) {
-                            Text("Retry", color = Color(0xFF00C8B4))
+                            Text("Retry", color = BrandTeal)
                         }
                     }
                 }
@@ -202,7 +204,7 @@ fun PlaylistDetailScreen(
                                 }
                             }
                             TextButton(onClick = { viewModel.syncToServer() }) {
-                                Text("Retry Sync", color = Color(0xFF00C8B4), fontSize = 12.sp)
+                                Text("Retry Sync", color = BrandTeal, fontSize = 12.sp)
                             }
                         }
                     }
@@ -244,7 +246,7 @@ fun PlaylistDetailScreen(
                                     Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
                                         .background(
                                             Brush.linearGradient(
-                                                listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                                                listOf(BrandTeal, BrandPurple),
                                                 start = androidx.compose.ui.geometry.Offset(0f, 0f),
                                                 end = androidx.compose.ui.geometry.Offset(
                                                     Float.POSITIVE_INFINITY,
@@ -277,7 +279,7 @@ fun PlaylistDetailScreen(
                                         .background(Color(0xFF252538))
                                         .border(
                                             1.dp,
-                                            Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                            Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                             RoundedCornerShape(cornerM()),
                                         )
                                         .clickable { viewModel.shuffle() },
@@ -321,7 +323,7 @@ fun PlaylistDetailScreen(
                                     .background(Color(0xFF252538))
                                     .border(
                                         1.dp,
-                                        Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                        Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                         RoundedCornerShape(cornerM()),
                                     )
                                     .clickable { showAddSongsSheet = true },
@@ -331,7 +333,7 @@ fun PlaylistDetailScreen(
                                     Icon(
                                         Icons.AutoMirrored.Filled.PlaylistAdd,
                                         null,
-                                        tint = Color(0xFF00C8B4),
+                                        tint = BrandTeal,
                                         modifier = Modifier.size(knobSize()),
                                     )
                                     Spacer(Modifier.width(spacingS()))
@@ -374,7 +376,7 @@ fun PlaylistDetailScreen(
                                     Box(
                                         Modifier.height(adp(42f)).clip(RoundedCornerShape(cornerM()))
                                             .background(
-                                                Brush.linearGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                                Brush.linearGradient(listOf(BrandTeal, BrandPurple)),
                                             )
                                             .clickable { showAddSongsSheet = true }
                                             .padding(horizontal = spacingXL()),
@@ -416,7 +418,7 @@ fun PlaylistDetailScreen(
                                         "${index + 1}. ${track.title}",
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        color = if (isActive) Color(0xFF00C8B4) else Color.White,
+                                        color = if (isActive) BrandTeal else Color.White,
                                     )
                                 },
                                 leadingContent = if (isActive) {
@@ -459,7 +461,7 @@ fun PlaylistDetailScreen(
                                                         tint = if (i <=
                                                             track.userRating!!
                                                         ) {
-                                                            Color(0xFF00C8B4)
+                                                            BrandTeal
                                                         } else {
                                                             Color(0xFF444444)
                                                         },
@@ -480,7 +482,7 @@ fun PlaylistDetailScreen(
                                             },
                                             contentDescription = null,
                                             tint = when {
-                                                isDownloaded -> Color(0xFFB040E8)
+                                                isDownloaded -> BrandPurple
                                                 else -> Color(0xFF888888)
                                             },
                                             modifier = Modifier.size(iconSmall()),
@@ -802,7 +804,7 @@ private fun PlaylistActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -818,21 +820,21 @@ private fun PlaylistActionSheet(
                 "Add Songs",
                 "Add tracks to this playlist",
                 Icons.Default.Add,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onAddSongs,
             )
             PlaylistSheetAction(
                 "Play Next",
                 "Insert all tracks after current",
                 Icons.Default.ArrowUpward,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onPlayNextAll,
             )
             PlaylistSheetAction(
                 "Add to Queue",
                 "Add all tracks to play queue",
                 Icons.AutoMirrored.Filled.QueueMusic,
-                Color(0xFFB040E8),
+                BrandPurple,
                 onAddToQueue,
             )
             PlaylistSheetAction(
@@ -846,14 +848,14 @@ private fun PlaylistActionSheet(
                 "Download All",
                 "Save all tracks for offline listening",
                 Icons.Default.Download,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onDownloadAll,
             )
             PlaylistSheetAction(
                 "Sync from Server",
                 "Download tracks for offline",
                 Icons.Outlined.Sync,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onSyncFromServer,
             )
             PlaylistSheetAction(
@@ -952,7 +954,7 @@ private fun AnimatedEqBars() {
         bars.forEach { anim ->
             Box(
                 Modifier.weight(1f).fillMaxHeight(fraction = 0.35f + anim.value * 0.65f)
-                    .clip(RoundedCornerShape(1.dp)).background(Color(0xFF00C8B4)),
+                    .clip(RoundedCornerShape(1.dp)).background(BrandTeal),
             )
         }
     }

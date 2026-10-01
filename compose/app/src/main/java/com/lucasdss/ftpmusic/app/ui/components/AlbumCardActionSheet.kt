@@ -20,6 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.Surface
 
 /**
  * Bottom sheet shown on long-press of an album card.
@@ -40,7 +43,7 @@ fun AlbumCardActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -74,11 +77,11 @@ fun AlbumCardActionSheet(
             // Actions
             AlbumSheetAction("Play", Icons.Default.PlayArrow, Color.White, onPlay)
             AlbumSheetAction("Shuffle", Icons.Default.Shuffle, Color(0xFFCCCCCC), onShuffle)
-            AlbumSheetAction("Add to Queue", Icons.AutoMirrored.Filled.QueueMusic, Color(0xFF00C8B4), onAddToQueue)
+            AlbumSheetAction("Add to Queue", Icons.AutoMirrored.Filled.QueueMusic, BrandTeal, onAddToQueue)
             AlbumSheetAction(
                 "Add to Playlist",
                 Icons.AutoMirrored.Filled.PlaylistAdd,
-                Color(0xFFB040E8),
+                BrandPurple,
                 onAddToPlaylist,
             )
             AlbumSheetAction("Download", Icons.Default.Download, Color(0xFF888888), onDownload)

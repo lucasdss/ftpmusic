@@ -20,6 +20,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.Surface
 
 /**
  * Overwrite protection dialog per design spec.
@@ -43,7 +46,7 @@ fun OverwriteModal(contextName: String, onKeepQueue: () -> Unit, onClearAndPlay:
             modifier = Modifier
                 .padding(horizontal = spacing2XL())
                 .clip(RoundedCornerShape(cornerL()))
-                .background(Color(0xFF1C1C2E))
+                .background(Surface)
                 .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(cornerL()))
                 .padding(spacing2XL()),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -51,7 +54,7 @@ fun OverwriteModal(contextName: String, onKeepQueue: () -> Unit, onClearAndPlay:
             Icon(
                 Icons.Default.QueueMusic,
                 contentDescription = null,
-                tint = Color(0xFFB040E8),
+                tint = BrandPurple,
                 modifier = Modifier.size(18.dp),
             )
 
@@ -106,7 +109,7 @@ fun OverwriteModal(contextName: String, onKeepQueue: () -> Unit, onClearAndPlay:
                     .clip(RoundedCornerShape(cornerM()))
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                            listOf(BrandTeal, BrandPurple),
                         ),
                     )
                     .clickable { onClearAndPlay() }

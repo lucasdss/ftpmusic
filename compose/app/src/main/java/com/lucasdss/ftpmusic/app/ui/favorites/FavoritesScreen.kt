@@ -39,8 +39,15 @@ import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.SurfaceChip
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -274,7 +281,7 @@ fun FavoritesScreen(
 
     val hasAnything = if (state.mode == FavoritesMode.LIKED) likedHasAnything else dislikedHasAnything
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF12121E))) {
+    Column(Modifier.fillMaxSize().background(Background)) {
         FavoritesModeChips(
             selected = state.mode,
             onSelect = viewModel::setMode,
@@ -342,46 +349,20 @@ fun FavoritesScreen(
 
 @Composable
 private fun FavoritesModeChips(selected: FavoritesMode, onSelect: (FavoritesMode) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacingL(), vertical = spacingS())
-            .testTag("favorites_mode_chips"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ModeChip("Liked", FavoritesMode.LIKED, selected, onSelect, Modifier.weight(1f).testTag("favorites_mode_liked"))
-        ModeChip(
-            "Disliked",
-            FavoritesMode.DISLIKED,
-            selected,
-            onSelect,
-            Modifier.weight(1f).testTag("favorites_mode_disliked"),
+    SegmentedChipRow(Modifier.testTag("favorites_mode_chips")) {
+        SegmentedChip(
+            label = "Liked",
+            selected = selected == FavoritesMode.LIKED,
+            onClick = { onSelect(FavoritesMode.LIKED) },
+            modifier = Modifier.weight(1f).testTag("favorites_mode_liked"),
+        )
+        SegmentedChip(
+            label = "Disliked",
+            selected = selected == FavoritesMode.DISLIKED,
+            onClick = { onSelect(FavoritesMode.DISLIKED) },
+            modifier = Modifier.weight(1f).testTag("favorites_mode_disliked"),
         )
     }
-}
-
-@Composable
-private fun ModeChip(
-    label: String,
-    mode: FavoritesMode,
-    selected: FavoritesMode,
-    onSelect: (FavoritesMode) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val active = selected == mode
-    FittingText(
-        text = label,
-        color = if (active) Color.Black else Color.White,
-        fontSize = 13.sp,
-        minFontSize = textMicro(),
-        fontWeight = FontWeight.SemiBold,
-        textAlign = TextAlign.Center,
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (active) Color(0xFF00C8B4) else Color(0xFF1A1A24))
-            .clickable { onSelect(mode) }
-            .padding(vertical = 8.dp),
-    )
 }
 
 @Composable
@@ -404,7 +385,7 @@ private fun LikedFavoritesList(
                     track = track,
                     isActive = currentTrackId != null && track.id == currentTrackId,
                     actionIcon = Icons.Filled.ThumbUp,
-                    actionTint = Color(0xFF00C8B4),
+                    actionTint = BrandTeal,
                     actionCd = "Unlike",
                     onRowClick = { onTrackClick(track) },
                     onAction = { viewModel.unstarTrack(track.id) },
@@ -417,7 +398,7 @@ private fun LikedFavoritesList(
                 ArtistFavoriteRow(
                     artist = artist,
                     actionIcon = Icons.Filled.ThumbUp,
-                    actionTint = Color(0xFF00C8B4),
+                    actionTint = BrandTeal,
                     actionCd = "Unlike artist",
                     onRowClick = { onArtistClick(artist) },
                     onAction = { viewModel.unlikeArtist(artist.id) },
@@ -431,7 +412,7 @@ private fun LikedFavoritesList(
                     album = album,
                     isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying,
                     actionIcon = Icons.Filled.ThumbUp,
-                    actionTint = Color(0xFF00C8B4),
+                    actionTint = BrandTeal,
                     actionCd = "Unlike album",
                     onRowClick = { onAlbumClick(album) },
                     onAction = { viewModel.unlikeAlbum(album.id) },
@@ -542,7 +523,7 @@ private fun TrackFavoriteRow(
                 Icon(
                     Icons.Default.MusicNote,
                     null,
-                    tint = Color(0xFF555555),
+                    tint = NavUnselected,
                     modifier = Modifier.size(iconSmall()),
                 )
             }
@@ -551,7 +532,7 @@ private fun TrackFavoriteRow(
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = track.title,
-                color = if (isActive) Color(0xFF00C8B4) else Color.White,
+                color = if (isActive) BrandTeal else Color.White,
                 fontSize = textBodyM(),
                 minFontSize = textMicro(),
                 modifier = Modifier.fillMaxWidth(),
@@ -659,7 +640,7 @@ private fun AlbumFavoriteRow(
                 Icon(
                     Icons.Default.Album,
                     null,
-                    tint = Color(0xFF555555),
+                    tint = NavUnselected,
                     modifier = Modifier.size(iconSmall()),
                 )
             }
@@ -672,7 +653,7 @@ private fun AlbumFavoriteRow(
                         listOf(0.4f, 0.7f, 1.0f).forEachIndexed { i, h ->
                             Box(
                                 Modifier.width(2.dp).height((16 * h).dp)
-                                    .clip(RoundedCornerShape(1.dp)).background(Color(0xFF00C8B4)),
+                                    .clip(RoundedCornerShape(1.dp)).background(BrandTeal),
                             )
                             if (i < 2) Spacer(Modifier.width(2.dp))
                         }
@@ -684,7 +665,7 @@ private fun AlbumFavoriteRow(
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = album.name,
-                color = if (isActive) Color(0xFF00C8B4) else Color.White,
+                color = if (isActive) BrandTeal else Color.White,
                 fontSize = textBodyM(),
                 minFontSize = textMicro(),
                 modifier = Modifier.fillMaxWidth(),
@@ -724,7 +705,7 @@ private fun RadioFavoriteRow(station: RadioFavoriteEntity, onRowClick: () -> Uni
             Icon(
                 Icons.Default.SettingsInputAntenna,
                 null,
-                tint = Color(0xFF00C8B4),
+                tint = BrandTeal,
                 modifier = Modifier.size(22.dp),
             )
         }
@@ -741,7 +722,7 @@ private fun RadioFavoriteRow(station: RadioFavoriteEntity, onRowClick: () -> Uni
                 Icon(
                     Icons.Default.SettingsInputAntenna,
                     null,
-                    tint = Color(0xFF00C8B4),
+                    tint = BrandTeal,
                     modifier = Modifier.size(10.dp),
                 )
                 Spacer(Modifier.width(4.dp))
@@ -757,18 +738,18 @@ private fun RadioFavoriteRow(station: RadioFavoriteEntity, onRowClick: () -> Uni
         Icon(
             Icons.Filled.Bookmark,
             contentDescription = "Unbookmark station",
-            tint = Color(0xFF00C8B4),
+            tint = BrandTeal,
             modifier = Modifier.size(16.dp).clickable(onClick = onUnbookmark),
         )
         Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(32.dp).clip(CircleShape).background(Color(0xFF00C8B4).copy(alpha = 0.15f)),
+            Modifier.size(32.dp).clip(CircleShape).background(BrandTeal.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Filled.PlayArrow,
                 null,
-                tint = Color(0xFF00C8B4),
+                tint = BrandTeal,
                 modifier = Modifier.size(14.dp),
             )
         }
@@ -781,7 +762,7 @@ private fun RadioFavoriteRow(station: RadioFavoriteEntity, onRowClick: () -> Uni
 
 /** Teal uppercase section header with a favorite icon — design's SectionHead. */
 @Composable
-private fun FavoriteSectionHeader(label: String, icon: ImageVector, tint: Color = Color(0xFF00C8B4)) {
+private fun FavoriteSectionHeader(label: String, icon: ImageVector, tint: Color = BrandTeal) {
     Row(
         Modifier.padding(start = spacingL(), end = spacingL(), top = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

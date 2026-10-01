@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandBg
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 
 /**
@@ -45,13 +47,13 @@ fun AppHeader(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF101018))
-                .border(1.dp, Color(0xFF00C8B4).copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                .background(BrandBg)
+                .border(1.dp, BrandTeal.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
                 .shadow(
                     elevation = spacingXS(),
                     shape = RoundedCornerShape(16.dp),
-                    ambientColor = Color(0xFF00C8B4),
-                    spotColor = Color(0xFF00C8B4),
+                    ambientColor = BrandTeal,
+                    spotColor = BrandTeal,
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -79,7 +81,7 @@ fun AppHeader(modifier: Modifier = Modifier) {
             )
             Text(
                 text = "Flow Tempo Pulse",
-                color = Color(0xFF00C8B4),
+                color = BrandTeal,
                 fontSize = textLabelM(),
                 fontWeight = FontWeight.Medium,
                 fontFamily = outfitFontFamily(),

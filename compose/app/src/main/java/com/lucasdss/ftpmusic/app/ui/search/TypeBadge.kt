@@ -11,11 +11,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 private val TYPE_COLORS = mapOf(
-    "artist" to Color(0xFF00C8B4),
-    "album" to Color(0xFFB040E8),
+    "artist" to BrandTeal,
+    "album" to BrandPurple,
     "song" to Color(0xFF5B8DEE),
     "playlist" to Color(0xFFF0A040),
 )

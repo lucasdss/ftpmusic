@@ -1,6 +1,8 @@
 package com.lucasdss.ftpmusic.app.ui.player
 
 import androidx.compose.ui.graphics.Color
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
 
 /** One rendered waveform bar: position, height, color. */
 internal data class WaveformBarSpec(val x: Float, val top: Float, val height: Float, val color: Color)
@@ -33,7 +35,7 @@ internal fun computeWaveformBarSpecs(
         val height = maxOf(minBarHeightPx, safeAmp * maxBarHeightPx)
         val color = when {
             i < playedIndex ->
-                lerpColor(Color(0xFF00C8B4), Color(0xFFB040E8), i.toFloat() / count)
+                lerpColor(BrandTeal, BrandPurple, i.toFloat() / count)
 
             i == playedIndex -> Color.White.copy(alpha = 0.7f)
 

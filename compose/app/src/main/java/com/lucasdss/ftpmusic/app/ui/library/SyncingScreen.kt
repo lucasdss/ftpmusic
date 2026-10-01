@@ -31,6 +31,9 @@ import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.SyncStatus
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
 import com.lucasdss.ftpmusic.app.ui.textLabelM
@@ -307,7 +310,7 @@ fun SyncingScreen(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             // Logo pulse (unchanged)
-            Text("♫", fontSize = 48.sp, color = Color(0xFF00C8B4).copy(alpha = pulse))
+            Text("♫", fontSize = 48.sp, color = BrandTeal.copy(alpha = pulse))
             Spacer(Modifier.height(24.dp))
             Text("Syncing your library…", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
@@ -364,7 +367,7 @@ fun SyncingScreen(
                         } else {
                             Text(
                                 "Ready! 🎵",
-                                color = Color(0xFF00C8B4),
+                                color = BrandTeal,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -372,7 +375,7 @@ fun SyncingScreen(
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = onComplete,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8B4)),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
                             shape = RoundedCornerShape(12.dp),
                         ) {
                             Text("OK", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -390,7 +393,7 @@ private fun SyncRowCard(row: SyncStatus.Row) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF1C1C2E))
+            .background(Surface)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -416,7 +419,7 @@ private fun SyncRowCard(row: SyncStatus.Row) {
                 LinearProgressIndicator(
                     progress = { if (row.total > 0) row.progress.toFloat() / row.total else 0f },
                     modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                    color = Color(0xFF00C8B4),
+                    color = BrandTeal,
                     trackColor = Color.White.copy(alpha = 0.1f),
                 )
             }
@@ -433,9 +436,9 @@ private fun SyncRowCard(row: SyncStatus.Row) {
 }
 
 private fun statusColor(icon: String) = when (icon) {
-    "✓" -> Color(0xFF00C8B4)
+    "✓" -> BrandTeal
     "⟳" -> Color(0xFFFFA726)
-    else -> Color(0xFF555555)
+    else -> NavUnselected
 }
 
 private fun formatNumber(n: Int): String = if (n >= 1000) "%,d".format(java.util.Locale.US, n) else n.toString()

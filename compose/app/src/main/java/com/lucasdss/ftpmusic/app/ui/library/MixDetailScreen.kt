@@ -53,6 +53,10 @@ import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -99,9 +103,7 @@ fun MixDetailScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
-                }
+                DetailBackButton(onBack = onBack, inset = false)
                 FittingText(
                     text = mixName,
                     color = Color.White,
@@ -114,7 +116,7 @@ fun MixDetailScreen(
 
             if (state.isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF00C8B4))
+                    CircularProgressIndicator(color = BrandTeal)
                 }
             } else if (state.tracks.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -136,7 +138,7 @@ fun MixDetailScreen(
                                     .clip(RoundedCornerShape(cornerM()))
                                     .background(
                                         Brush.linearGradient(
-                                            listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                                            listOf(BrandTeal, BrandPurple),
                                             start = androidx.compose.ui.geometry.Offset(0f, 0f),
                                             end = androidx.compose.ui.geometry.Offset(
                                                 Float.POSITIVE_INFINITY,
@@ -213,7 +215,7 @@ fun MixDetailScreen(
                                     Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
                                         .background(
                                             Brush.linearGradient(
-                                                listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                                                listOf(BrandTeal, BrandPurple),
                                                 start = androidx.compose.ui.geometry.Offset(0f, 0f),
                                                 end = androidx.compose.ui.geometry.Offset(
                                                     Float.POSITIVE_INFINITY,
@@ -260,7 +262,7 @@ fun MixDetailScreen(
                                         .background(Color(0xFF252538))
                                         .border(
                                             1.dp,
-                                            Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                            Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                             RoundedCornerShape(cornerM()),
                                         )
                                         .clickable {
@@ -363,7 +365,7 @@ fun MixDetailScreen(
                             ) {
                                 FittingText(
                                     text = track.title,
-                                    color = if (isActive) Color(0xFF00C8B4) else Color.White,
+                                    color = if (isActive) BrandTeal else Color.White,
                                     fontSize = 15.sp,
                                     minFontSize = textMicro(),
                                     fontWeight = FontWeight.Medium,
@@ -386,7 +388,7 @@ fun MixDetailScreen(
                                         Icon(
                                             if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
                                             null,
-                                            tint = if (i <= r) Color(0xFF00C8B4) else Color(0xFF444444),
+                                            tint = if (i <= r) BrandTeal else Color(0xFF444444),
                                             modifier = Modifier.size(11.dp).clickable {
                                                 viewModel.rateTrack(track.id, i)
                                             },
@@ -403,7 +405,7 @@ fun MixDetailScreen(
                             Icon(
                                 if (isLiked) Icons.Filled.ThumbUp else Icons.Filled.ThumbUp,
                                 contentDescription = if (isLiked) "Unlike" else "Like",
-                                tint = if (isLiked) Color(0xFF00C8B4) else Color(0xFF444444),
+                                tint = if (isLiked) BrandTeal else Color(0xFF444444),
                                 modifier = Modifier.size(knobSize()).clickable { viewModel.toggleTrackLike(track.id) },
                             )
                             Spacer(Modifier.width(6.dp))
@@ -543,7 +545,7 @@ fun MixDetailScreen(
 
             if (state.isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF00C8B4))
+                    CircularProgressIndicator(color = BrandTeal)
                 }
             }
         }
@@ -887,7 +889,7 @@ private fun MixActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -905,7 +907,7 @@ private fun MixActionSheet(
                 "Play Next",
                 "Insert $trackCount tracks after current",
                 Icons.Default.ArrowUpward,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onPlayNextAll,
             )
             MixSheetAction(
@@ -922,7 +924,7 @@ private fun MixActionSheet(
                 Color(0xFF888888),
                 onDownloadAll,
             )
-            MixSheetAction("Refresh Mix", "Regenerate this mix", Icons.Default.Refresh, Color(0xFF00C8B4), onRefresh)
+            MixSheetAction("Refresh Mix", "Regenerate this mix", Icons.Default.Refresh, BrandTeal, onRefresh)
         }
     }
 }
@@ -939,7 +941,7 @@ private fun MixTrackActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -975,7 +977,7 @@ private fun MixTrackActionSheet(
                 "Play Next",
                 "Insert at top of Priority Queue",
                 Icons.Default.ArrowUpward,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onPlayNext,
             )
             MixSheetAction(
@@ -1077,7 +1079,7 @@ private fun AnimatedEqBarsMix() {
         bars.forEach { anim ->
             Box(
                 Modifier.weight(1f).fillMaxHeight(fraction = 0.35f + anim.value * 0.65f)
-                    .clip(RoundedCornerShape(1.dp)).background(Color(0xFF00C8B4)),
+                    .clip(RoundedCornerShape(1.dp)).background(BrandTeal),
             )
         }
     }

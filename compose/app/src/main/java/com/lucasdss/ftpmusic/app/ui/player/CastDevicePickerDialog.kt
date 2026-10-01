@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.android.gms.cast.CastDevice
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.Surface
 
 /**
  * Cast device picker — ModalBottomSheet per design spec.
@@ -48,7 +50,7 @@ fun CastDevicePickerDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFF333333)) },
     ) {
         Column(modifier = Modifier.padding(bottom = spacing3XL())) {
@@ -59,10 +61,10 @@ fun CastDevicePickerDialog(
             ) {
                 Box(
                     Modifier.size(adp(36f)).clip(CircleShape)
-                        .background(Color(0xFF00C8B4).copy(alpha = 0.15f)),
+                        .background(BrandTeal.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.Cast, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(adp(18f)))
+                    Icon(Icons.Default.Cast, null, tint = BrandTeal, modifier = Modifier.size(adp(18f)))
                 }
                 Spacer(Modifier.width(spacingM()))
                 Column {
@@ -89,7 +91,7 @@ fun CastDevicePickerDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CircularProgressIndicator(
-                        color = Color(0xFF00C8B4),
+                        color = BrandTeal,
                         modifier = Modifier.size(adp(20f)),
                         strokeWidth = adp(2f),
                     )
@@ -110,7 +112,7 @@ fun CastDevicePickerDialog(
                     horizontalArrangement = Arrangement.Center,
                 ) {
                     CircularProgressIndicator(
-                        color = Color(0xFF00C8B4),
+                        color = BrandTeal,
                         modifier = Modifier.size(adp(32f)),
                         strokeWidth = adp(2f),
                     )
@@ -193,14 +195,14 @@ private fun DeviceRow(device: CastDevice, isConnected: Boolean, onClick: () -> U
     ) {
         Box(
             Modifier.size(adp(36f)).clip(CircleShape)
-                .background(Color(0xFF00C8B4).copy(alpha = 0.15f)),
+                .background(BrandTeal.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = if (isConnected) Icons.Default.CastConnected else deviceIcon,
                 contentDescription = null,
                 modifier = Modifier.size(adp(16f)),
-                tint = Color(0xFF00C8B4),
+                tint = BrandTeal,
             )
         }
         Spacer(Modifier.width(spacingM()))
@@ -226,7 +228,7 @@ private fun DeviceRow(device: CastDevice, isConnected: Boolean, onClick: () -> U
         if (isConnected) {
             Text(
                 "connected",
-                color = Color(0xFF00C8B4),
+                color = BrandTeal,
                 fontSize = textLabelM(),
                 fontWeight = FontWeight.SemiBold,
             )

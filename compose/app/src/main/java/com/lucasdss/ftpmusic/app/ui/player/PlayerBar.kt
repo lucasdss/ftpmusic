@@ -70,6 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.SurfaceElevated
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
@@ -341,7 +346,7 @@ private fun PlayerMiniBar(
                     if (miniProgress > 0f) {
                         Box(
                             Modifier.weight(miniProgress).fillMaxHeight()
-                                .background(Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8)))),
+                                .background(Brush.horizontalGradient(listOf(BrandTeal, BrandPurple))),
                         )
                     }
                     if (miniProgress < 1f) {
@@ -389,7 +394,7 @@ private fun PlayerMiniBar(
                             modifier = Modifier
                                 .size(adp(6f))
                                 .clip(CircleShape)
-                                .background(Color(0xFF00C8B4))
+                                .background(BrandTeal)
                                 .align(Alignment.BottomEnd),
                         )
                     }
@@ -416,14 +421,14 @@ private fun PlayerMiniBar(
                                     Box(
                                         Modifier.width(2.dp).height(adp(h.toFloat() * 1.5f))
                                             .clip(RoundedCornerShape(1.dp))
-                                            .background(if (!isQueueSynced) Color(0xFFF0A040) else Color(0xFF00C8B4)),
+                                            .background(if (!isQueueSynced) Color(0xFFF0A040) else BrandTeal),
                                     )
                                 }
                             }
                             Spacer(Modifier.width(4.dp))
                             FittingText(
                                 text = castDeviceName!!,
-                                color = if (!isQueueSynced) Color(0xFFF0A040) else Color(0xFF00C8B4),
+                                color = if (!isQueueSynced) Color(0xFFF0A040) else BrandTeal,
                                 fontSize = 10.sp,
                                 minFontSize = textMicro(),
                                 fontWeight = FontWeight.SemiBold,
@@ -442,11 +447,11 @@ private fun PlayerMiniBar(
                         }
                         if (priorityQueueSize > 0) {
                             Spacer(Modifier.width(4.dp))
-                            Surface(color = Color(0xFFB040E8).copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                            Surface(color = BrandPurple.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
                                 Text(
                                     "+$priorityQueueSize",
                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                                    color = Color(0xFFB040E8),
+                                    color = BrandPurple,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -494,15 +499,15 @@ private fun PlayerFullHeader(
         if (isCasting) {
             Row(
                 Modifier.fillMaxWidth()
-                    .background(Color(0xFF00C8B4).copy(alpha = 0.12f))
+                    .background(BrandTeal.copy(alpha = 0.12f))
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Cast, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(12.dp))
+                Icon(Icons.Default.Cast, null, tint = BrandTeal, modifier = Modifier.size(12.dp))
                 Spacer(Modifier.width(8.dp))
                 FittingText(
                     text = if (castDeviceName != null) "Casting to $castDeviceName" else "Casting…",
-                    color = Color(0xFF00C8B4),
+                    color = BrandTeal,
                     fontSize = 11.sp,
                     minFontSize = textMicro(),
                     fontWeight = FontWeight.SemiBold,
@@ -530,15 +535,15 @@ private fun PlayerFullHeader(
             if (remainingSec > 0L) {
                 Row(
                     Modifier.fillMaxWidth()
-                        .background(Color(0xFF00C8B4).copy(alpha = 0.10f))
+                        .background(BrandTeal.copy(alpha = 0.10f))
                         .padding(horizontal = 20.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Timer, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(12.dp))
+                    Icon(Icons.Default.Timer, null, tint = BrandTeal, modifier = Modifier.size(12.dp))
                     Spacer(Modifier.width(8.dp))
                     FittingText(
                         text = "Sleep timer — ${formatPlayerBarTime(remainingSec * 1000)}",
-                        color = Color(0xFF00C8B4),
+                        color = BrandTeal,
                         fontSize = 11.sp,
                         minFontSize = textMicro(),
                         fontWeight = FontWeight.SemiBold,
@@ -568,12 +573,12 @@ private fun PlayerFullHeader(
                     if (artist != null) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color(0xFF00C8B4).copy(alpha = 0.15f),
+                            color = BrandTeal.copy(alpha = 0.15f),
                             modifier = Modifier.padding(top = spacingXS()).clickable { onArtistClick() },
                         ) {
                             Text(
                                 artist ?: "",
-                                color = Color(0xFF00C8B4),
+                                color = BrandTeal,
                                 fontSize = textMicro(),
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
@@ -696,8 +701,8 @@ private fun ColumnScope.PlayerMainBody(
                         )
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color(0xFF00C8B4).copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, Color(0xFF00C8B4).copy(alpha = 0.25f)),
+                            color = BrandTeal.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.25f)),
                             modifier = Modifier.padding(start = spacingXS()).clickable { onShowLyrics() },
                         ) {
                             Row(
@@ -707,13 +712,13 @@ private fun ColumnScope.PlayerMainBody(
                                 Icon(
                                     Icons.Filled.Mic,
                                     null,
-                                    tint = Color(0xFF00C8B4),
+                                    tint = BrandTeal,
                                     modifier = Modifier.size(adp(10f)),
                                 )
                                 Spacer(Modifier.width(adp(3f)))
                                 Text(
                                     "LYRICS",
-                                    color = Color(0xFF00C8B4),
+                                    color = BrandTeal,
                                     fontSize = asp(10f),
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -721,7 +726,7 @@ private fun ColumnScope.PlayerMainBody(
                         }
                         ReactionCircle(
                             active = isStarred,
-                            activeColor = Color(0xFF00C8B4),
+                            activeColor = BrandTeal,
                             icon = { tint ->
                                 Icon(
                                     Icons.Filled.ThumbUp,
@@ -754,7 +759,7 @@ private fun ColumnScope.PlayerMainBody(
                             Icon(
                                 imageVector = if (i <= trackRating) Icons.Filled.Star else Icons.Default.StarBorder,
                                 contentDescription = "Rate $i",
-                                tint = if (i <= trackRating) Color(0xFF00C8B4) else Color(0xFF444444),
+                                tint = if (i <= trackRating) BrandTeal else Color(0xFF444444),
                                 modifier = Modifier.size(adp(11f)).padding(end = adp(1f)).clickable { onRate(i) },
                             )
                         }
@@ -827,7 +832,7 @@ private fun ColumnScope.PlayerMainBody(
                                 },
                         )
                         val trackColor = Color.White.copy(alpha = 0.15f)
-                        val gradientBrush = Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8)))
+                        val gradientBrush = Brush.horizontalGradient(listOf(BrandTeal, BrandPurple))
                         Box(Modifier.fillMaxWidth().height(adp(16f))) {
                             Box(
                                 Modifier.fillMaxWidth().height(
@@ -883,7 +888,7 @@ private fun ColumnScope.PlayerMainBody(
                     Icon(
                         Icons.Default.Shuffle,
                         "Shuffle",
-                        tint = if (shuffleModeEnabled) Color(0xFF00C8B4) else Color.White.copy(alpha = 0.4f),
+                        tint = if (shuffleModeEnabled) BrandTeal else Color.White.copy(alpha = 0.4f),
                         modifier = Modifier.size(iconSmall()),
                     )
                 }
@@ -902,7 +907,7 @@ private fun ColumnScope.PlayerMainBody(
                         RoundedCornerShape(32.dp),
                     ).background(
                         Brush.linearGradient(
-                            listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                            listOf(BrandTeal, BrandPurple),
                             start = androidx.compose.ui.geometry.Offset(0f, 0f),
                             end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
                         ),
@@ -935,7 +940,7 @@ private fun ColumnScope.PlayerMainBody(
                         tint = if (repeatMode >
                             0
                         ) {
-                            Color(0xFF00C8B4)
+                            BrandTeal
                         } else {
                             Color.White.copy(alpha = 0.4f)
                         },
@@ -1011,7 +1016,7 @@ private fun ColumnScope.PlayerMainBody(
                         modifier = Modifier.weight(1f),
                         colors = SliderDefaults.colors(
                             thumbColor = Color.White,
-                            activeTrackColor = Color(0xFF00C8B4),
+                            activeTrackColor = BrandTeal,
                             inactiveTrackColor = Color.White.copy(alpha = 0.2f),
                         ),
                     )
@@ -1122,7 +1127,7 @@ private fun BoxScope.PlayerQueuePanel(
                         } else {
                             "End of queue"
                         },
-                        color = Color(0xFF555555),
+                        color = NavUnselected,
                         fontSize = textMicro(),
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp,
@@ -1155,7 +1160,7 @@ private fun BoxScope.PlayerQueuePanel(
                         Icon(
                             Icons.Default.KeyboardArrowUp,
                             "Expand queue",
-                            tint = Color(0xFF555555),
+                            tint = NavUnselected,
                             modifier = Modifier.size(adp(18f)),
                         )
                     }
@@ -1173,7 +1178,7 @@ private fun BoxScope.PlayerQueuePanel(
             ) {
                 Column(
                     Modifier.fillMaxSize().testTag("queue_sheet")
-                        .background(Color(0xFF161622))
+                        .background(SurfaceElevated)
                         .clip(RoundedCornerShape(topStart = cornerL(), topEnd = cornerL()))
                         .border(
                             1.dp,
@@ -1259,10 +1264,10 @@ private fun BoxScope.PlayerQueuePanel(
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingS())
                                         .clip(RoundedCornerShape(cornerM()))
-                                        .background(Color(0xFF00C8B4).copy(alpha = 0.07f))
+                                        .background(BrandTeal.copy(alpha = 0.07f))
                                         .border(
                                             1.dp,
-                                            Color(0xFF00C8B4).copy(alpha = 0.18f),
+                                            BrandTeal.copy(alpha = 0.18f),
                                             RoundedCornerShape(cornerM()),
                                         )
                                         .padding(horizontal = spacingM(), vertical = spacingS()),
@@ -1271,14 +1276,14 @@ private fun BoxScope.PlayerQueuePanel(
                                     Icon(
                                         Icons.Default.CastConnected,
                                         null,
-                                        tint = Color(0xFF00C8B4),
+                                        tint = BrandTeal,
                                         modifier = Modifier.size(adp(11f)),
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     FittingText(
                                         text = "Queue → Continue Playing order flattened " +
                                             "into a Cast receiver timeline.",
-                                        color = Color(0xFF00C8B4),
+                                        color = BrandTeal,
                                         fontSize = textLabelS(),
                                         minFontSize = textMicro(),
                                         maxLines = 2,
@@ -1293,8 +1298,8 @@ private fun BoxScope.PlayerQueuePanel(
                             Column(
                                 Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingS())
                                     .clip(RoundedCornerShape(cornerM()))
-                                    .border(1.dp, Color(0xFF00C8B4).copy(alpha = 0.25f), RoundedCornerShape(cornerM()))
-                                    .background(Color(0xFF00C8B4).copy(alpha = 0.05f)),
+                                    .border(1.dp, BrandTeal.copy(alpha = 0.25f), RoundedCornerShape(cornerM()))
+                                    .background(BrandTeal.copy(alpha = 0.05f)),
                             ) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingM(), vertical = spacingXS()),
@@ -1323,7 +1328,7 @@ private fun BoxScope.PlayerQueuePanel(
                                                         adp(3f),
                                                     ).fillMaxHeight(
                                                         anim,
-                                                    ).clip(RoundedCornerShape(adp(1f))).background(Color(0xFF00C8B4)),
+                                                    ).clip(RoundedCornerShape(adp(1f))).background(BrandTeal),
                                                 )
                                             }
                                         }
@@ -1331,7 +1336,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
                                         "NOW PLAYING",
-                                        color = Color(0xFF00C8B4),
+                                        color = BrandTeal,
                                         fontSize = asp(10f),
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 1.sp,
@@ -1340,7 +1345,7 @@ private fun BoxScope.PlayerQueuePanel(
                                 Spacer(
                                     Modifier.height(
                                         adp(1f),
-                                    ).fillMaxWidth().background(Color(0xFF00C8B4).copy(alpha = 0.15f)),
+                                    ).fillMaxWidth().background(BrandTeal.copy(alpha = 0.15f)),
                                 )
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingM(), vertical = spacingS()),
@@ -1363,7 +1368,7 @@ private fun BoxScope.PlayerQueuePanel(
                                             Icon(
                                                 Icons.Default.MusicNote,
                                                 null,
-                                                tint = Color(0xFF555555),
+                                                tint = NavUnselected,
                                                 modifier = Modifier.size(adp(20f)),
                                             )
                                         }
@@ -1470,20 +1475,20 @@ private fun BoxScope.PlayerQueuePanel(
                                             vertical = spacingXS(),
                                         ).clip(RoundedCornerShape(cornerS()))
                                             .background(
-                                                Color(0xFF00C8B4).copy(alpha = 0.1f),
+                                                BrandTeal.copy(alpha = 0.1f),
                                             ).padding(horizontal = spacingS(), vertical = 3.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Icon(
                                             Icons.Default.Wifi,
                                             null,
-                                            tint = Color(0xFF00C8B4),
+                                            tint = BrandTeal,
                                             modifier = Modifier.size(adp(10f)),
                                         )
                                         Spacer(Modifier.width(4.dp))
                                         Text(
                                             "Synced",
-                                            color = Color(0xFF00C8B4),
+                                            color = BrandTeal,
                                             fontSize = textMicro(),
                                             fontWeight = FontWeight.SemiBold,
                                         )
@@ -1518,7 +1523,7 @@ private fun BoxScope.PlayerQueuePanel(
                                 Icon(
                                     Icons.Default.Shuffle,
                                     "Shuffle Queue",
-                                    tint = Color(0xFF555555),
+                                    tint = NavUnselected,
                                     modifier = Modifier.size(knobSize()).padding(end = spacingS()).clickable {
                                         onShuffleQueue()
                                     },
@@ -1526,7 +1531,7 @@ private fun BoxScope.PlayerQueuePanel(
                                 Icon(
                                     Icons.Default.Share,
                                     "Share Queue",
-                                    tint = Color(0xFF555555),
+                                    tint = NavUnselected,
                                     modifier = Modifier.size(knobSize()).padding(end = spacingS()).clickable {
                                         onShareQueue()
                                     },
@@ -1547,7 +1552,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     Text("Clear", color = Color(0xFFE84040), fontSize = textLabelM())
                                 }
                                 Spacer(Modifier.width(8.dp))
-                                Text("$queueSize tracks", color = Color(0xFF555555), fontSize = textLabelM())
+                                Text("$queueSize tracks", color = NavUnselected, fontSize = textLabelM())
                             }
                         }
                         // Queue (manual) then Continue Playing — industry dual-section
@@ -1559,10 +1564,10 @@ private fun BoxScope.PlayerQueuePanel(
                                         .clip(RoundedCornerShape(cornerM()))
                                         .border(
                                             1.dp,
-                                            Color(0xFFB040E8).copy(alpha = 0.3f),
+                                            BrandPurple.copy(alpha = 0.3f),
                                             RoundedCornerShape(cornerM()),
                                         )
-                                        .background(Color(0xFFB040E8).copy(alpha = 0.04f)),
+                                        .background(BrandPurple.copy(alpha = 0.04f)),
                                 ) {
                                     Row(
                                         Modifier.fillMaxWidth().padding(
@@ -1574,13 +1579,13 @@ private fun BoxScope.PlayerQueuePanel(
                                         Icon(
                                             Icons.AutoMirrored.Filled.QueueMusic,
                                             null,
-                                            tint = Color(0xFFB040E8),
+                                            tint = BrandPurple,
                                             modifier = Modifier.size(adp(12f)),
                                         )
                                         Spacer(Modifier.width(spacingS()))
                                         Text(
                                             "Queue · $priorityQueueSize",
-                                            color = Color(0xFFB040E8),
+                                            color = BrandPurple,
                                             fontSize = textLabelS(),
                                             fontWeight = FontWeight.Bold,
                                             letterSpacing = 0.5.sp,
@@ -1596,7 +1601,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     Spacer(
                                         Modifier.height(
                                             adp(1f),
-                                        ).fillMaxWidth().background(Color(0xFFB040E8).copy(alpha = 0.15f)),
+                                        ).fillMaxWidth().background(BrandPurple.copy(alpha = 0.15f)),
                                     )
                                 }
                             }
@@ -1660,13 +1665,13 @@ private fun BoxScope.PlayerQueuePanel(
                                     Icon(
                                         Icons.AutoMirrored.Filled.QueueMusic,
                                         null,
-                                        tint = Color(0xFF00C8B4),
+                                        tint = BrandTeal,
                                         modifier = Modifier.size(adp(12f)),
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
                                         "Autoplay · ${autoplayTracks.size}",
-                                        color = Color(0xFF00C8B4),
+                                        color = BrandTeal,
                                         fontSize = textLabelS(),
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 0.5.sp,
@@ -1701,7 +1706,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     Spacer(Modifier.height(spacingXS()))
                                     Text(
                                         "Use \"Play Next\" or \"Add to Queue\" from any track",
-                                        color = Color(0xFF555555),
+                                        color = NavUnselected,
                                         fontSize = textLabelM(),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                     )
@@ -1739,7 +1744,7 @@ private fun PlayerLyricsOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Mic, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(adp(15f)))
+                        Icon(Icons.Filled.Mic, null, tint = BrandTeal, modifier = Modifier.size(adp(15f)))
                         Spacer(Modifier.width(spacingS()))
                         Text("Lyrics", color = Color.White, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
                     }
@@ -1911,7 +1916,7 @@ private fun QueueTrackStarRating(rating: Int) {
             Icon(
                 imageVector = if (i <= rating) Icons.Default.Star else Icons.Default.StarBorder,
                 contentDescription = null,
-                tint = if (i <= rating) Color(0xFF00C8B4) else Color(0xFF444444),
+                tint = if (i <= rating) BrandTeal else Color(0xFF444444),
                 modifier = Modifier.size(iconMicro()),
             )
         }
@@ -1950,7 +1955,7 @@ private fun SwipeableAlbumArt(
     val scope = rememberCoroutineScope()
 
     val albumArtShape = RoundedCornerShape(16.dp)
-    val albumArtGlowColor = Color(0xFF00C8B4).copy(alpha = if (isCasting) 0.45f else 0.30f)
+    val albumArtGlowColor = BrandTeal.copy(alpha = if (isCasting) 0.45f else 0.30f)
     val albumArtElevation = if (isCasting) 30.dp else 24.dp
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -2092,7 +2097,7 @@ private fun ReactionCircle(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        icon(if (active) activeColor else Color(0xFF555555))
+        icon(if (active) activeColor else NavUnselected)
     }
 }
 
@@ -2125,7 +2130,7 @@ private fun QueueTrackRow(
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MusicNote, null, tint = Color(0xFF555555), modifier = Modifier.size(adp(16f)))
+                    Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(adp(16f)))
                 }
             }
             // EQ bars animate only while actually playing
@@ -2153,7 +2158,7 @@ private fun QueueTrackRow(
                             Box(
                                 Modifier.width(
                                     adp(3f),
-                                ).fillMaxHeight(anim).clip(RoundedCornerShape(adp(1f))).background(Color(0xFF00C8B4)),
+                                ).fillMaxHeight(anim).clip(RoundedCornerShape(adp(1f))).background(BrandTeal),
                             )
                         }
                     }
@@ -2172,7 +2177,7 @@ private fun QueueTrackRow(
             track.artist?.let {
                 FittingText(
                     text = it,
-                    color = if (dimmed) Color(0xFF555555) else Color(0xFF666666),
+                    color = if (dimmed) NavUnselected else Color(0xFF666666),
                     fontSize = textLabelM(),
                     minFontSize = textMicro(),
                     modifier = Modifier.fillMaxWidth(),
@@ -2184,7 +2189,7 @@ private fun QueueTrackRow(
                 if (track.durationMs > 0) {
                     Text(
                         formatPlayerBarTime(track.durationMs),
-                        color = Color(0xFF555555),
+                        color = NavUnselected,
                         fontSize = textLabelS(),
                         fontFamily = interFontFamily(),
                     )
@@ -2255,7 +2260,7 @@ private fun LyricsContent(
 
     Column(modifier = modifier.padding(horizontal = spacingL())) {
         Row(Modifier.padding(vertical = spacingS()), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Mic, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(13.dp))
+            Icon(Icons.Default.Mic, null, tint = BrandTeal, modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(6.dp))
             Text(
                 if (isSynced) "Synced lyrics" else "Lyrics",
@@ -2292,7 +2297,7 @@ private fun LyricsContent(
                                                 .width(adp(3f))
                                                 .fillMaxHeight(0.6f)
                                                 .clip(RoundedCornerShape(adp(1.5f)))
-                                                .background(Color(0xFF00C8B4)),
+                                                .background(BrandTeal),
                                         )
                                     }
                                 }
@@ -2343,7 +2348,7 @@ private fun LyricsContent(
                         if (isLoading) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator(
-                                    color = Color(0xFF00C8B4),
+                                    color = BrandTeal,
                                     modifier = Modifier.size(adp(32f)),
                                     strokeWidth = adp(3f),
                                 )

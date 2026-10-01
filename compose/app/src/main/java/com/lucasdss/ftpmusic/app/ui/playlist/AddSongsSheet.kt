@@ -30,6 +30,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import kotlinx.coroutines.delay
@@ -55,7 +59,7 @@ fun AddSongsSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         AddSongsPickerContent(
@@ -141,13 +145,13 @@ fun AddSongsPickerContent(
             value = query,
             onValueChange = { query = it },
             placeholder = { Text("Search songs…", color = Color(0xFF666666)) },
-            leadingIcon = { Icon(Icons.Default.Search, null, tint = Color(0xFF555555)) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = NavUnselected) },
             trailingIcon = if (query.isNotEmpty()) {
                 {
                     Icon(
                         Icons.Default.Close,
                         "Clear",
-                        tint = Color(0xFF555555),
+                        tint = NavUnselected,
                         modifier = Modifier.clickable {
                             query =
                                 ""
@@ -164,7 +168,7 @@ fun AddSongsPickerContent(
                 unfocusedBorderColor = Color.Transparent,
                 focusedContainerColor = Color(0xFF252538),
                 unfocusedContainerColor = Color(0xFF252538),
-                cursorColor = Color(0xFF00C8B4),
+                cursorColor = BrandTeal,
             ),
             modifier = Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
             shape = RoundedCornerShape(cornerM()), singleLine = true,
@@ -175,7 +179,7 @@ fun AddSongsPickerContent(
 
         if (isSearching) {
             Box(Modifier.fillMaxWidth().height(adp(160f)), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color(0xFF00C8B4), modifier = Modifier.size(iconMedium()))
+                CircularProgressIndicator(color = BrandTeal, modifier = Modifier.size(iconMedium()))
             }
         } else if (rows.isEmpty()) {
             Box(Modifier.fillMaxWidth().padding(spacing3XL()), contentAlignment = Alignment.Center) {
@@ -222,7 +226,7 @@ fun AddSongsPickerContent(
                                 Icon(
                                     Icons.Default.MusicNote,
                                     null,
-                                    tint = Color(0xFF555555),
+                                    tint = NavUnselected,
                                     modifier = Modifier.size(adp(18f)),
                                 )
                             }
@@ -261,12 +265,12 @@ fun AddSongsPickerContent(
                         }
                         Spacer(Modifier.width(spacingS()))
                         when {
-                            isAdded -> Text("Added", color = Color(0xFF555555), fontSize = textLabelM())
+                            isAdded -> Text("Added", color = NavUnselected, fontSize = textLabelM())
 
                             isSelected -> Icon(
                                 Icons.Filled.CheckCircle,
                                 null,
-                                tint = Color(0xFF00C8B4),
+                                tint = BrandTeal,
                                 modifier = Modifier.size(iconSmall()),
                             )
 
@@ -286,7 +290,7 @@ fun AddSongsPickerContent(
         Spacer(Modifier.height(spacingM()))
         // Actions: Cancel + Add N songs
         val addGradient = if (selection.isNotEmpty()) {
-            Brush.linearGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8)))
+            Brush.linearGradient(listOf(BrandTeal, BrandPurple))
         } else {
             Brush.linearGradient(listOf(Color(0xFF2A2A3E), Color(0xFF2A2A3E)))
         }

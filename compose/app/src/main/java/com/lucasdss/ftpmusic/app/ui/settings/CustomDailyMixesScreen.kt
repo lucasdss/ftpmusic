@@ -63,6 +63,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.data.repository.CustomMix
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.data.repository.MixFilters
+import com.lucasdss.ftpmusic.app.ui.BrandBg
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.textBodyM
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
@@ -71,13 +77,13 @@ import com.lucasdss.ftpmusic.app.ui.textLabelM
 import com.lucasdss.ftpmusic.app.ui.textLabelS
 import com.lucasdss.ftpmusic.app.ui.textMicro
 
-private val TEAL = Color(0xFF00C8B4)
+private val TEAL = BrandTeal
 private val ORANGE = Color(0xFFFFA726)
-private val PURPLE = Color(0xFFB040E8)
+private val PURPLE = BrandPurple
 private val RED = Color(0xFFE84040)
-private val ROW_BG = Color(0xFF1C1C2E)
+private val ROW_BG = Surface
 private val MUTED = Color(0xFF888888)
-private val DIM = Color(0xFF555555)
+private val DIM = NavUnselected
 
 /** Settings page: manage up to 20 named Custom Daily Mixes with composite
  *  filters (genres + decades + artists). */
@@ -95,7 +101,7 @@ fun CustomDailyMixesScreen(onBack: () -> Unit = {}, viewModel: CustomDailyMixesV
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF101018))) {
+    Box(Modifier.fillMaxSize().background(BrandBg)) {
         val editor = state.editor
         if (editor != null) {
             MixEditor(editor = editor, state = state, viewModel = viewModel)
@@ -114,9 +120,7 @@ private fun MixList(state: CustomDailyMixesUiState, onBack: () -> Unit, viewMode
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFCCCCCC))
-            }
+            DetailBackButton(onBack = onBack, inset = false)
             Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                 FittingText(
                     text = "Custom Daily Mixes",
@@ -137,7 +141,7 @@ private fun MixList(state: CustomDailyMixesUiState, onBack: () -> Unit, viewMode
                 enabled = !state.atCapacity,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = TEAL,
-                    contentColor = Color(0xFF101018),
+                    contentColor = BrandBg,
                     disabledContainerColor = Color(0x14FFFFFF),
                     disabledContentColor = Color(0xFF444444),
                 ),
@@ -323,9 +327,7 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = viewModel::closeEditor) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFCCCCCC))
-            }
+            DetailBackButton(onBack = viewModel::closeEditor, inset = false)
             FittingText(
                 text = if (editor.isNew) "New Mix" else "Edit Mix",
                 color = Color.White,
@@ -559,7 +561,7 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
             enabled = viewModel.canSave(editor) && !state.isSaving,
             colors = ButtonDefaults.buttonColors(
                 containerColor = TEAL,
-                contentColor = Color(0xFF101018),
+                contentColor = BrandBg,
                 disabledContainerColor = Color(0x14FFFFFF),
                 disabledContentColor = Color(0xFF444444),
             ),
@@ -811,7 +813,7 @@ private fun androidx.compose.foundation.layout.RowScope.SourceTab(
     tag: String,
 ) {
     val bg = if (selected) color else ROW_BG
-    val fg = if (selected) Color(0xFF101018) else MUTED
+    val fg = if (selected) BrandBg else MUTED
     Box(
         Modifier.weight(1f)
             .clip(RoundedCornerShape(12.dp))
@@ -828,7 +830,7 @@ private fun androidx.compose.foundation.layout.RowScope.SourceTab(
 @Composable
 private fun PickChip(text: String, color: Color, selected: Boolean, onClick: () -> Unit, tag: String) {
     val bg = if (selected) color else ROW_BG
-    val fg = if (selected) Color(0xFF101018) else Color(0xFFBBBBBB)
+    val fg = if (selected) BrandBg else Color(0xFFBBBBBB)
     Box(
         Modifier.clip(RoundedCornerShape(20.dp))
             .background(bg)
@@ -850,7 +852,7 @@ private fun SuggestionChip(text: String, selected: Boolean, onClick: () -> Unit)
     ) {
         Text(
             text,
-            color = if (selected) Color(0xFF101018) else Color(0xFFAAAAAA),
+            color = if (selected) BrandBg else Color(0xFFAAAAAA),
             fontSize = textLabelM(),
             fontWeight = FontWeight.SemiBold,
         )

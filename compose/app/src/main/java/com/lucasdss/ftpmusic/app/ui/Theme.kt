@@ -20,6 +20,10 @@ val BrandBg = Color(0xFF101018)
 val Background = Color(0xFF12121E)
 val Surface = Color(0xFF1C1C2E)
 val Surface2 = Color(0xFF252538)
+val SurfaceElevated = Color(0xFF161622)
+val SurfaceChip = Color(0xFF1A1A24)
+val SurfaceChipIdle = Color(0xFF1C1C1C)
+val NavUnselected = Color(0xFF555555)
 
 // ── Text colors ──────────────────────────────────────────────────
 val Foreground = Color(0xFFE8E8F0)
@@ -27,8 +31,8 @@ val Muted = Color(0xFF7A7A9A)
 val Dimmed = Color(0xFF666666)
 
 // ── Semantic colors ──────────────────────────────────────────────
-val CastActive = Color(0xFF00C8B4)
-val CastIdle = Color(0xFF666666)
+val CastActive = BrandTeal
+val CastIdle = Dimmed
 val OfflineYellow = Color(0xFFFFC800)
 val DestructiveRed = Color(0xFFE84040)
 

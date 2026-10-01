@@ -31,6 +31,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
@@ -67,18 +71,16 @@ fun GenreDetailScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
-                    }
+                    DetailBackButton(onBack = onBack, inset = false)
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF12121E)),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Background),
             )
         },
-        containerColor = Color(0xFF12121E),
+        containerColor = Background,
     ) { padding ->
         if (state.isLoading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color(0xFF00C8B4))
+                CircularProgressIndicator(color = BrandTeal)
             }
         } else if (state.error != null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -193,7 +195,7 @@ fun GenreDetailScreen(
                                 item {
                                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                                         CircularProgressIndicator(
-                                            color = Color(0xFF00C8B4),
+                                            color = BrandTeal,
                                             modifier = Modifier.size(24.dp),
                                         )
                                     }
@@ -247,7 +249,7 @@ fun GenreDetailScreen(
                                                 Icon(
                                                     Icons.Default.Person,
                                                     null,
-                                                    tint = Color(0xFF555555),
+                                                    tint = NavUnselected,
                                                     modifier = Modifier.size(iconSmall()),
                                                 )
                                             }
@@ -275,7 +277,7 @@ fun GenreDetailScreen(
                                 item {
                                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                                         CircularProgressIndicator(
-                                            color = Color(0xFF00C8B4),
+                                            color = BrandTeal,
                                             modifier = Modifier.size(24.dp),
                                         )
                                     }

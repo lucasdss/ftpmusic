@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
 
 /** Round 24dp favorite thumb (like/dislike) used on album cards and artist
  *  rows. The whole circle is the touch target (a11y); the icon carries
@@ -23,7 +24,7 @@ fun FavoriteThumbButton(
     active: Boolean,
     contentDescription: String,
     onClick: () -> Unit,
-    activeTint: Color = Color(0xFF00C8B4),
+    activeTint: Color = BrandTeal,
     modifier: Modifier = Modifier,
 ) {
     Box(

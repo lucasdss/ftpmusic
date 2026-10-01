@@ -31,6 +31,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandBg
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 
 @Composable
@@ -50,7 +56,7 @@ fun SettingsScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF12121E))
+            .background(Background)
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
@@ -61,7 +67,7 @@ fun SettingsScreen(
                     Modifier.size(miniPlayerHeight()).clip(RoundedCornerShape(32.dp))
                         .background(
                             Brush.linearGradient(
-                                listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                                listOf(BrandTeal, BrandPurple),
                                 start = androidx.compose.ui.geometry.Offset.Zero,
                                 end = androidx.compose.ui.geometry.Offset.Infinite,
                             ),
@@ -92,7 +98,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = settingsTextFieldColors(),
                     shape = RoundedCornerShape(cornerS()),
-                    placeholder = { Text("https://your-server.com", color = Color(0xFF555555)) },
+                    placeholder = { Text("https://your-server.com", color = NavUnselected) },
                 )
                 // Warn about device-local (stale dev proxy) addresses
                 if (com.lucasdss.ftpmusic.app.di.isLoopbackUrl(state.serverUrl)) {
@@ -152,7 +158,7 @@ fun SettingsScreen(
                             if (viewModel.saveServerSettings()) onServerSettingsSaved()
                         },
                         modifier = Modifier.weight(1f).testTag("settings_server_save"),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8B4)),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
                         shape = RoundedCornerShape(cornerS()),
                     ) { Text("Save", color = Color.White) }
                     OutlinedButton(
@@ -162,12 +168,12 @@ fun SettingsScreen(
                     ) {
                         if (state.isTesting) {
                             CircularProgressIndicator(
-                                color = Color(0xFF00C8B4),
+                                color = BrandTeal,
                                 modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Text("Test Connection", color = Color(0xFF00C8B4))
+                            Text("Test Connection", color = BrandTeal)
                         }
                     }
                 }
@@ -175,7 +181,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(
                         result,
-                        color = if (result.startsWith("✓")) Color(0xFF00C8B4) else Color(0xFFFF6B6B),
+                        color = if (result.startsWith("✓")) BrandTeal else Color(0xFFFF6B6B),
                         fontSize = textLabelM(),
                     )
                 }
@@ -223,7 +229,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = spacingM()),
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF00C8B4),
+                    activeTrackColor = BrandTeal,
                     inactiveTrackColor = Color.White.copy(alpha = 0.2f),
                 ),
             )
@@ -256,7 +262,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = spacingM()),
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF00C8B4),
+                    activeTrackColor = BrandTeal,
                     inactiveTrackColor = Color.White.copy(alpha = 0.2f),
                 ),
             )
@@ -271,7 +277,7 @@ fun SettingsScreen(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacingS())) {
             SectionCard(Modifier.weight(1f).clickable { showClearCacheConfirm = true }) {
                 Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Storage, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(iconSmall()))
+                    Icon(Icons.Default.Storage, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
                     Spacer(Modifier.height(4.dp))
                     Text("Clear cache", color = Color.White, fontSize = textLabelL())
                     Text(formatBytes(state.autoCacheBytes), color = Color(0xFF888888), fontSize = textLabelS())
@@ -343,7 +349,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = spacingM()),
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF00C8B4),
+                    activeTrackColor = BrandTeal,
                     inactiveTrackColor = Color.White.copy(alpha = 0.2f),
                 ),
             )
@@ -354,7 +360,7 @@ fun SettingsScreen(
                 journalCapOptions.forEach { cap ->
                     Text(
                         "$cap",
-                        color = if (state.journalCap == cap) Color(0xFF00C8B4) else Color(0xFF555555),
+                        color = if (state.journalCap == cap) BrandTeal else NavUnselected,
                         fontSize = textLabelS(),
                     )
                 }
@@ -528,18 +534,18 @@ fun SettingsScreen(
                             )
                         }
                     },
-                    placeholder = { Text("from last.fm/api", color = Color(0xFF555555)) },
+                    placeholder = { Text("from last.fm/api", color = NavUnselected) },
                 )
                 if (state.lastFmKeySaved) {
                     Spacer(Modifier.height(4.dp))
-                    Text("Key saved", color = Color(0xFF00C8B4), fontSize = textLabelS())
+                    Text("Key saved", color = BrandTeal, fontSize = textLabelS())
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacingS())) {
                     Button(
                         onClick = { viewModel.setLastFmApiKey(lastFmDraft) },
                         modifier = Modifier.weight(1f).testTag("settings_lastfm_save"),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8B4)),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
                         shape = RoundedCornerShape(cornerS()),
                     ) { Text("Save", color = Color.White) }
                     OutlinedButton(
@@ -549,7 +555,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.weight(1f).testTag("settings_lastfm_clear"),
                         shape = RoundedCornerShape(cornerS()),
-                    ) { Text("Clear", color = Color(0xFF00C8B4)) }
+                    ) { Text("Clear", color = BrandTeal) }
                 }
             }
         }
@@ -702,7 +708,7 @@ fun SettingsScreen(
                     TextButton(onClick = {
                         viewModel.setCustomHeaders(state.customHeaders + ("" to ""))
                     }) {
-                        Text("+ Add header", color = Color(0xFF00C8B4))
+                        Text("+ Add header", color = BrandTeal)
                     }
                 }
             }
@@ -718,14 +724,14 @@ fun SettingsScreen(
                 Modifier.clickable { onProfile() }.padding(16.dp).testTag("settings_profile_row"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.Person, null, tint = Color(0xFFB040E8), modifier = Modifier.size(iconSmall()))
+                Icon(Icons.Filled.Person, null, tint = BrandPurple, modifier = Modifier.size(iconSmall()))
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("Profile", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.SemiBold)
                     Text("My Listening stats & Recently Played", color = Color(0xFF888888), fontSize = textLabelM())
                 }
             }
-            Divider(color = Color(0xFF1C1C2E), thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
+            Divider(color = Surface, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
             Row(
                 Modifier
                     .then(if (!state.isResyncing) Modifier.clickable { onResyncLibrary() } else Modifier)
@@ -734,12 +740,12 @@ fun SettingsScreen(
             ) {
                 if (state.isResyncing) {
                     CircularProgressIndicator(
-                        color = Color(0xFF00C8B4),
+                        color = BrandTeal,
                         modifier = Modifier.size(iconSmall()),
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Icon(Icons.Default.Sync, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(iconSmall()))
+                    Icon(Icons.Default.Sync, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
@@ -777,12 +783,12 @@ fun SettingsScreen(
                     )
                 }
             }
-            Divider(color = Color(0xFF1C1C2E), thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
+            Divider(color = Surface, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
             Row(
                 Modifier.clickable { onCustomMixes() }.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Tune, null, tint = Color(0xFFB040E8), modifier = Modifier.size(iconSmall()))
+                Icon(Icons.Default.Tune, null, tint = BrandPurple, modifier = Modifier.size(iconSmall()))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -798,7 +804,7 @@ fun SettingsScreen(
                     )
                 }
             }
-            Divider(color = Color(0xFF1C1C2E), thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
+            Divider(color = Surface, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
             Row(
                 Modifier.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -822,7 +828,7 @@ fun SettingsScreen(
                 Box {
                     Text(
                         "${state.syncIntervalHours}h",
-                        color = Color(0xFF00C8B4),
+                        color = BrandTeal,
                         fontSize = textHeadingS(),
                         modifier = Modifier.clickable { expanded = true }.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
@@ -926,7 +932,7 @@ fun SettingsScreen(
                     .testTag("settings_share_diagnostics"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Share, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(iconSmall()))
+                Icon(Icons.Default.Share, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
@@ -976,18 +982,18 @@ fun SettingsScreen(
             androidx.compose.foundation.Image(
                 painterResource(R.drawable.play_store_icon_512),
                 "FTP Music",
-                Modifier.size(140.dp).clip(RoundedCornerShape(cornerL())).background(Color(0xFF101018))
-                    .border(1.5.dp, Color(0xFF00C8B4).copy(alpha = 0.20f), RoundedCornerShape(cornerL()))
+                Modifier.size(140.dp).clip(RoundedCornerShape(cornerL())).background(BrandBg)
+                    .border(1.5.dp, BrandTeal.copy(alpha = 0.20f), RoundedCornerShape(cornerL()))
                     .shadow(
                         elevation = spacingS(),
                         shape = RoundedCornerShape(cornerL()),
-                        ambientColor = Color(0xFF00C8B4),
-                        spotColor = Color(0xFFB040E8),
+                        ambientColor = BrandTeal,
+                        spotColor = BrandPurple,
                     ),
             )
             Spacer(Modifier.height(12.dp))
             Text("FTP Music", color = Color.White, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
-            Text("Flow Tempo Pulse", color = Color(0xFF00C8B4), fontSize = textBodyM())
+            Text("Flow Tempo Pulse", color = BrandTeal, fontSize = textBodyM())
             Text(
                 "v${com.lucasdss.ftpmusic.app.BuildConfig.VERSION_NAME} · Navidrome / Subsonic API",
                 color = Color(0xFF666666),
@@ -1007,8 +1013,8 @@ private fun settingsTextFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedContainerColor = Color(0xFF0D0D0D),
     focusedBorderColor = Color(0xFF333333),
     unfocusedBorderColor = Color(0xFF222222),
-    cursorColor = Color(0xFF00C8B4),
-    focusedLabelColor = Color(0xFF00C8B4),
+    cursorColor = BrandTeal,
+    focusedLabelColor = BrandTeal,
     unfocusedLabelColor = Color(0xFF888888),
 )
 
@@ -1026,7 +1032,7 @@ private fun SectionLabel(title: String) {
 @Composable
 private fun SectionCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C1C2E)),
+        modifier.clip(RoundedCornerShape(16.dp)).background(Surface),
         content = content,
     )
 }
@@ -1085,7 +1091,7 @@ private fun SectionToggleRow(label: String, subtitle: String, checked: Boolean, 
             Modifier
                 .size(44.dp, spacing2XL())
                 .clip(RoundedCornerShape(cornerM()))
-                .background(if (checked) Color(0xFF00C8B4) else Color(0xFF333333))
+                .background(if (checked) BrandTeal else Color(0xFF333333))
                 .clickable { onToggle(!checked) }
                 .testTag("settings_toggle_${label.replace(" ", "_")}"),
             contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
@@ -1109,19 +1115,19 @@ private fun OverwriteBehaviorOption(label: String, subtitle: String, selected: B
         // Radio circle
         Box(
             Modifier.size(18.dp).clip(CircleShape)
-                .border(2.dp, if (selected) Color(0xFF00C8B4) else Color(0xFF444444), CircleShape)
+                .border(2.dp, if (selected) BrandTeal else Color(0xFF444444), CircleShape)
                 .padding(3.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (selected) {
-                Box(Modifier.fillMaxSize().clip(CircleShape).background(Color(0xFF00C8B4)))
+                Box(Modifier.fillMaxSize().clip(CircleShape).background(BrandTeal))
             }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = label,
-                color = if (selected) Color(0xFF00C8B4) else Color.White,
+                color = if (selected) BrandTeal else Color.White,
                 fontSize = textHeadingS(),
                 minFontSize = textMicro(),
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
@@ -1208,7 +1214,7 @@ private fun ConfirmationSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(horizontal = spacingL(), vertical = spacingXL())) {

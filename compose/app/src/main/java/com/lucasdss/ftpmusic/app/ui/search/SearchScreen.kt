@@ -44,6 +44,11 @@ import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.data.model.Playlist
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
@@ -53,8 +58,8 @@ import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
 import kotlinx.coroutines.flow.*
 
 private val GENRE_COLORS = listOf(
-    Color(0xFF00C8B4), // teal
-    Color(0xFF7C4DFF), // purple
+    BrandTeal, // teal
+    BrandPurple, // purple
     Color(0xFF448AFF), // blue
     Color(0xFFFF4081), // pink
     Color(0xFFFF9100), // orange
@@ -134,7 +139,7 @@ fun SearchScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFF12121E),
+        containerColor = Background,
     ) { padding ->
         val listState = rememberLazyListState()
         LaunchedEffect(listState) {
@@ -169,11 +174,11 @@ fun SearchScreen(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                focusedContainerColor = Color(0xFF1C1C2E),
-                                unfocusedContainerColor = Color(0xFF1C1C2E),
-                                focusedBorderColor = Color(0xFF00C8B4).copy(alpha = 0.4f),
+                                focusedContainerColor = Surface,
+                                unfocusedContainerColor = Surface,
+                                focusedBorderColor = BrandTeal.copy(alpha = 0.4f),
                                 unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
-                                cursorColor = Color(0xFF00C8B4),
+                                cursorColor = BrandTeal,
                             ),
                             leadingIcon = {
                                 Icon(
@@ -208,15 +213,15 @@ fun SearchScreen(
                                 .clip(RoundedCornerShape(cornerM()))
                                 .background(
                                     if (showOptions || state.filterDownloaded) {
-                                        Color(0xFF00C8B4).copy(alpha = 0.15f)
+                                        BrandTeal.copy(alpha = 0.15f)
                                     } else {
-                                        Color(0xFF1C1C2E)
+                                        Surface
                                     },
                                 )
                                 .border(
                                     1.dp,
                                     if (showOptions || state.filterDownloaded) {
-                                        Color(0xFF00C8B4).copy(alpha = 0.35f)
+                                        BrandTeal.copy(alpha = 0.35f)
                                     } else {
                                         Color.White.copy(alpha = 0.08f)
                                     },
@@ -231,7 +236,7 @@ fun SearchScreen(
                                 tint = if (showOptions ||
                                     state.filterDownloaded
                                 ) {
-                                    Color(0xFF00C8B4)
+                                    BrandTeal
                                 } else {
                                     Color(0xFF666666)
                                 },
@@ -241,7 +246,7 @@ fun SearchScreen(
                                 Box(
                                     Modifier.size(
                                         8.dp,
-                                    ).align(Alignment.TopEnd).background(Color(0xFFB040E8), CircleShape),
+                                    ).align(Alignment.TopEnd).background(BrandPurple, CircleShape),
                                 )
                             }
                         }
@@ -251,13 +256,13 @@ fun SearchScreen(
                         Column(
                             Modifier.padding(top = 48.dp).fillMaxWidth()
                                 .clip(RoundedCornerShape(cornerM()))
-                                .background(Color(0xFF1C1C2E))
+                                .background(Surface)
                                 .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(cornerM())),
                         ) {
                             // "SEARCH OPTIONS" label
                             Text(
                                 "SEARCH OPTIONS",
-                                color = Color(0xFF555555),
+                                color = NavUnselected,
                                 fontSize = textMicro(),
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(start = spacingL(), top = spacingM(), bottom = spacingXS()),
@@ -287,16 +292,14 @@ fun SearchScreen(
                                         val active = state.filterType == type
                                         Text(
                                             label,
-                                            color = if (active) Color(0xFF00C8B4) else Color(0xFF666666),
+                                            color = if (active) BrandTeal else Color(0xFF666666),
                                             fontSize = textLabelM(),
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(cornerS()))
                                                 .background(
                                                     if (active) {
-                                                        Color(
-                                                            0xFF00C8B4,
-                                                        ).copy(alpha = 0.20f)
+                                                        BrandTeal.copy(alpha = 0.20f)
                                                     } else {
                                                         Color(0xFF252538)
                                                     },
@@ -304,9 +307,7 @@ fun SearchScreen(
                                                 .border(
                                                     1.dp,
                                                     if (active) {
-                                                        Color(
-                                                            0xFF00C8B4,
-                                                        ).copy(alpha = 0.4f)
+                                                        BrandTeal.copy(alpha = 0.4f)
                                                     } else {
                                                         Color.Transparent
                                                     },
@@ -332,7 +333,7 @@ fun SearchScreen(
                                 Icon(
                                     Icons.Default.CheckCircle,
                                     null,
-                                    tint = if (state.filterDownloaded) Color(0xFFB040E8) else Color(0xFF555555),
+                                    tint = if (state.filterDownloaded) BrandPurple else NavUnselected,
                                     modifier = Modifier.size(16.dp),
                                 )
                                 Spacer(Modifier.width(10.dp))
@@ -348,7 +349,7 @@ fun SearchScreen(
                                 Box(
                                     Modifier.size(36.dp, spacingXL()).clip(RoundedCornerShape(10.dp))
                                         .background(
-                                            if (state.filterDownloaded) Color(0xFFB040E8) else Color(0xFF333333),
+                                            if (state.filterDownloaded) BrandPurple else Color(0xFF333333),
                                         ),
                                     contentAlignment =
                                         if (state.filterDownloaded) Alignment.CenterEnd else Alignment.CenterStart,
@@ -368,8 +369,8 @@ fun SearchScreen(
                     ) {
                         Column(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(cornerM()))
-                                .background(Color(0xFF1C1C2E))
-                                .border(1.dp, Color(0xFF00C8B4).copy(alpha = 0.25f), RoundedCornerShape(cornerM())),
+                                .background(Surface)
+                                .border(1.dp, BrandTeal.copy(alpha = 0.25f), RoundedCornerShape(cornerM())),
                         ) {
                             if (state.query.isEmpty()) {
                                 Row(
@@ -379,7 +380,7 @@ fun SearchScreen(
                                 ) {
                                     Text(
                                         "Recent searches",
-                                        color = Color(0xFF555555),
+                                        color = NavUnselected,
                                         fontSize = textLabelM(),
                                         fontWeight = FontWeight.SemiBold,
                                     )
@@ -424,7 +425,7 @@ fun SearchScreen(
                                                     )
                                                     Text(
                                                         term.substring(matchIndex, matchIndex + query.length),
-                                                        color = Color(0xFF00C8B4),
+                                                        color = BrandTeal,
                                                         fontSize = textBodyM(),
                                                         fontWeight = FontWeight.SemiBold,
                                                     )
@@ -487,20 +488,18 @@ fun SearchScreen(
                             val active = state.filterType == type
                             Text(
                                 label,
-                                color = if (active) Color(0xFF00C8B4) else Color(0xFF777777),
+                                color = if (active) BrandTeal else Color(0xFF777777),
                                 fontSize = textBodyM(),
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
                                     .background(
-                                        if (active) Color(0xFF00C8B4).copy(alpha = 0.20f) else Color(0xFF1C1C2E),
+                                        if (active) BrandTeal.copy(alpha = 0.20f) else Surface,
                                     )
                                     .border(
                                         1.dp,
                                         if (active) {
-                                            Color(
-                                                0xFF00C8B4,
-                                            ).copy(alpha = 0.5f)
+                                            BrandTeal.copy(alpha = 0.5f)
                                         } else {
                                             Color.White.copy(alpha = 0.08f)
                                         },
@@ -620,7 +619,7 @@ fun SearchScreen(
                                     ) {
                                         Box(
                                             Modifier.size(80.dp).clip(CircleShape)
-                                                .border(2.dp, Color(0xFF00C8B4).copy(alpha = 0.3f), CircleShape)
+                                                .border(2.dp, BrandTeal.copy(alpha = 0.3f), CircleShape)
                                                 .background(Color(0xFF1E1E1E)),
                                             contentAlignment = Alignment.Center,
                                         ) {
@@ -639,7 +638,7 @@ fun SearchScreen(
                                                 Icon(
                                                     Icons.Default.Person,
                                                     null,
-                                                    tint = Color(0xFF555555),
+                                                    tint = NavUnselected,
                                                     modifier = Modifier.size(32.dp),
                                                 )
                                             }
@@ -659,15 +658,15 @@ fun SearchScreen(
                                         Spacer(Modifier.height(6.dp))
                                         Text(
                                             "View albums",
-                                            color = Color(0xFF00C8B4),
+                                            color = BrandTeal,
                                             fontSize = textLabelM(),
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(50))
-                                                .background(Color(0xFF00C8B4).copy(alpha = 0.12f))
+                                                .background(BrandTeal.copy(alpha = 0.12f))
                                                 .border(
                                                     1.dp,
-                                                    Color(0xFF00C8B4).copy(alpha = 0.3f),
+                                                    BrandTeal.copy(alpha = 0.3f),
                                                     RoundedCornerShape(50),
                                                 )
                                                 .padding(horizontal = spacingM(), vertical = spacingXS()),
@@ -706,7 +705,7 @@ fun SearchScreen(
                                         Icon(
                                             Icons.Default.Person,
                                             null,
-                                            tint = Color(0xFF555555),
+                                            tint = NavUnselected,
                                             modifier = Modifier.size(iconSmall()),
                                         )
                                     }
@@ -812,7 +811,7 @@ fun SearchScreen(
                                             Icon(
                                                 if (i <= r) Icons.Default.Star else Icons.Default.Star,
                                                 null,
-                                                tint = if (i <= r) Color(0xFF00C8B4) else Color(0xFF444444),
+                                                tint = if (i <= r) BrandTeal else Color(0xFF444444),
                                                 modifier = Modifier.size(iconMicro()),
                                             )
                                         }
@@ -856,7 +855,7 @@ fun SearchScreen(
                                     Icon(
                                         Icons.Default.MusicNote,
                                         null,
-                                        tint = Color(0xFF555555),
+                                        tint = NavUnselected,
                                         modifier = Modifier.size(18.dp),
                                     )
                                 }
@@ -961,7 +960,7 @@ fun SearchScreen(
                             Icon(
                                 Icons.Default.CheckCircle,
                                 null,
-                                tint = Color(0xFFB040E8),
+                                tint = BrandPurple,
                                 modifier = Modifier.size(iconMicro()),
                             )
                             TypeBadge("playlist")

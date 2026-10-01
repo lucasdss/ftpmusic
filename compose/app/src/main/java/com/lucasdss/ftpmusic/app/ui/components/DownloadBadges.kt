@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
 
 /** Inline download status indicator — design v3 DownloadDot component. */
 @Composable
@@ -24,7 +25,7 @@ fun DownloadDot(status: String, modifier: Modifier = Modifier) {
         "downloaded" -> Icon(
             Icons.Filled.CheckCircle,
             "downloaded",
-            tint = Color(0xFFB040E8),
+            tint = BrandPurple,
             modifier = modifier.size(knobSize()),
         )
 

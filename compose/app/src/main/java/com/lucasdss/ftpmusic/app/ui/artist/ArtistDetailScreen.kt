@@ -46,6 +46,12 @@ import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
@@ -81,7 +87,7 @@ fun ArtistDetailScreen(
     var showPlaylistPicker by remember { mutableStateOf(false) }
     var playlistTrackIds by remember { mutableStateOf(emptyList<String>()) }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF12121E))) {
+    Box(Modifier.fillMaxSize().background(Background)) {
         Column(Modifier.fillMaxSize()) {
             // ═══ Hero section — artist art with gradient overlay (Album pattern) ═══
             // Half the Album hero height (260/2 = 130dp) — compact header so more
@@ -108,23 +114,11 @@ fun ArtistDetailScreen(
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
-                            listOf(Color(0xFF12121E).copy(alpha = 0.3f), Color(0xFF12121E).copy(alpha = 0.98f)),
+                            listOf(Background.copy(alpha = 0.3f), Background.copy(alpha = 0.98f)),
                         ),
                     ),
                 )
-                // Back button
-                Box(
-                    Modifier.padding(top = spacingL(), start = spacingL()).size(36.dp).clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f)).clickable { onBack() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Default.ChevronLeft,
-                        "Back",
-                        tint = Color.White,
-                        modifier = Modifier.size(iconSmall()),
-                    )
-                }
+                DetailBackButton(onBack = onBack)
                 // Artist name at bottom
                 Column(
                     Modifier.align(Alignment.BottomStart).padding(horizontal = spacingXL(), vertical = spacingL()),
@@ -192,7 +186,7 @@ fun ArtistDetailScreen(
                         Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF00C8B4), Color(0xFFB040E8)),
+                                    listOf(BrandTeal, BrandPurple),
                                     start = androidx.compose.ui.geometry.Offset(0f, 0f),
                                     end = androidx.compose.ui.geometry.Offset(
                                         Float.POSITIVE_INFINITY,
@@ -225,7 +219,7 @@ fun ArtistDetailScreen(
                             .background(Color(0xFF252538))
                             .border(
                                 1.dp,
-                                Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                 RoundedCornerShape(cornerM()),
                             )
                             .clickable(enabled = state.tracks.isNotEmpty()) { viewModel.shuffle() },
@@ -299,7 +293,7 @@ fun ArtistDetailScreen(
                                 ) {
                                     Text(
                                         sa.name.take(1).uppercase(),
-                                        color = Color(0xFF00C8B4),
+                                        color = BrandTeal,
                                         fontSize = textHeadingL(),
                                         fontWeight = FontWeight.Bold,
                                     )
@@ -319,8 +313,8 @@ fun ArtistDetailScreen(
                 // Tab row
                 TabRow(
                     selectedTabIndex = selectedTab,
-                    containerColor = Color(0xFF12121E),
-                    contentColor = Color(0xFF00C8B4),
+                    containerColor = Background,
+                    contentColor = BrandTeal,
                 ) {
                     Tab(
                         selected = selectedTab == 0,
@@ -442,7 +436,7 @@ fun ArtistDetailScreen(
                         showPlaylistPicker = false
                         playlistTrackIds = emptyList()
                     },
-                    containerColor = Color(0xFF1C1C2E),
+                    containerColor = Surface,
                     shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
                 ) {
                     Column(Modifier.padding(bottom = spacing3XL())) {
@@ -548,7 +542,7 @@ private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
                 ) {
                     if (state.isLoadingMoreTracks) {
                         CircularProgressIndicator(
-                            color = Color(0xFF00C8B4),
+                            color = BrandTeal,
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
                         )
@@ -616,7 +610,7 @@ private fun TrackRow(
                     Icon(
                         if (i <= rating) Icons.Default.Star else Icons.Default.StarBorder,
                         null,
-                        tint = if (i <= rating) Color(0xFF00C8B4) else Color(0xFF444444),
+                        tint = if (i <= rating) BrandTeal else Color(0xFF444444),
                         modifier = Modifier.size(11.dp).clickable { onRate(i) },
                     )
                 }
@@ -627,7 +621,7 @@ private fun TrackRow(
         Icon(
             if (isLiked) Icons.Filled.ThumbUp else Icons.Filled.ThumbUp,
             contentDescription = if (isLiked) "Unlike" else "Like",
-            tint = if (isLiked) Color(0xFF00C8B4) else Color(0xFF444444),
+            tint = if (isLiked) BrandTeal else Color(0xFF444444),
             modifier = Modifier.size(knobSize()).clickable { onToggleLike() },
         )
         Spacer(Modifier.width(6.dp))
@@ -670,7 +664,7 @@ private fun ArtistActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -688,7 +682,7 @@ private fun ArtistActionSheet(
                 "Play Next",
                 "Insert $trackCount tracks after current",
                 Icons.Default.ArrowUpward,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onPlayNextAll,
             )
             ArtistSheetAction(
@@ -702,7 +696,7 @@ private fun ArtistActionSheet(
                 "Add to Playlist",
                 "Save artist tracks to a playlist",
                 Icons.AutoMirrored.Filled.PlaylistAdd,
-                Color(0xFFB040E8),
+                BrandPurple,
                 onAddAllToPlaylist,
             )
             ArtistSheetAction(
@@ -729,7 +723,7 @@ private fun ArtistTrackActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C2E),
+        containerColor = Surface,
         shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
     ) {
         Column(Modifier.padding(bottom = spacing3XL())) {
@@ -750,7 +744,7 @@ private fun ArtistTrackActionSheet(
                         Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS())).background(Color(0xFF1E1E1E)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Default.MusicNote, null, tint = Color(0xFF555555), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(18.dp))
                     }
                 }
                 Spacer(Modifier.width(12.dp))
@@ -782,7 +776,7 @@ private fun ArtistTrackActionSheet(
                 "Play Next",
                 "Insert at top of Priority Queue",
                 Icons.Default.ArrowUpward,
-                Color(0xFF00C8B4),
+                BrandTeal,
                 onPlayNext,
             )
             ArtistSheetAction(
@@ -796,7 +790,7 @@ private fun ArtistTrackActionSheet(
                 "Add to Playlist",
                 "Save to an existing playlist",
                 Icons.AutoMirrored.Filled.PlaylistAdd,
-                Color(0xFFB040E8),
+                BrandPurple,
                 onAddToPlaylist,
             )
             ArtistSheetAction(

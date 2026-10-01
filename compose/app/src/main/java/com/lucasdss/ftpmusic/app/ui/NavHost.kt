@@ -299,7 +299,7 @@ fun FtpmusicNavHost() {
                 }
                 if (showBottomBar) {
                     NavigationBar(
-                        containerColor = Color(0xFF12121E),
+                        containerColor = Background,
                         tonalElevation = 0.dp,
                         modifier = Modifier.drawBehind {
                             drawLine(
@@ -369,10 +369,10 @@ fun FtpmusicNavHost() {
                                     }
                                 },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color(0xFF00C8B4),
-                                    selectedTextColor = Color(0xFF00C8B4),
-                                    unselectedIconColor = Color(0xFF555555),
-                                    unselectedTextColor = Color(0xFF555555),
+                                    selectedIconColor = BrandTeal,
+                                    selectedTextColor = BrandTeal,
+                                    unselectedIconColor = NavUnselected,
+                                    unselectedTextColor = NavUnselected,
                                     indicatorColor = Color.Transparent,
                                 ),
                             )
@@ -384,9 +384,9 @@ fun FtpmusicNavHost() {
     ) { padding ->
         Column(Modifier.padding(padding)) {
             val route = navBackStackEntry?.destination?.route
-            val showHeader =
-                route != null && route !in listOf("splash", "connect", "nowplaying", "syncing", "rebuildmix") &&
-                    !route.startsWith("album/") && !route.startsWith("syncing")
+            // AppHeader on primary tabs only — detail routes use their own back chrome
+            // (avoids stacked logo + TopAppBar). See ADR-0054.
+            val showHeader = showAppHeaderForRoute(route)
 
             if (showHeader) {
                 AppHeader()
@@ -426,7 +426,7 @@ fun FtpmusicNavHost() {
                         nav.navigate(targetRoute) { popUpTo("splash") { inclusive = true } }
                     }
                     Box(
-                        Modifier.fillMaxSize().background(Color(0xFF12121E)),
+                        Modifier.fillMaxSize().background(Background),
                         contentAlignment = Alignment.Center,
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -436,7 +436,7 @@ fun FtpmusicNavHost() {
                                 modifier = Modifier.size(120.dp),
                             )
                             Spacer(Modifier.height(16.dp))
-                            CircularProgressIndicator(color = Color(0xFF00C8B4), modifier = Modifier.size(32.dp))
+                            CircularProgressIndicator(color = BrandTeal, modifier = Modifier.size(32.dp))
                         }
                     }
                 }

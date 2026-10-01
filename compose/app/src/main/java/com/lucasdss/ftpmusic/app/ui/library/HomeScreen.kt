@@ -52,6 +52,11 @@ import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.Background
+import com.lucasdss.ftpmusic.app.ui.BrandPurple
+import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
@@ -95,7 +100,7 @@ fun HomeScreen(
         }
     }
 
-    Column(Modifier.background(Color(0xFF12121E))) {
+    Column(Modifier.background(Background)) {
         // Server config/reachability warning (stale proxy URL, unreachable server)
         com.lucasdss.ftpmusic.app.ui.components.ServerErrorBanner(
             configWarning = state.configWarning,
@@ -106,7 +111,7 @@ fun HomeScreen(
         // content render; a stalled loader must never leave Home spinning.
         if (state.isLoading && !state.hasLoadedOnce) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color(0xFF00C8B4))
+                CircularProgressIndicator(color = BrandTeal)
             }
         } else {
             // Hoisted: recomputed only when the playlist list changes, not on
@@ -124,7 +129,7 @@ fun HomeScreen(
                             .background(Color(0xFF1E1E2E))
                             .border(
                                 2.dp,
-                                Brush.horizontalGradient(listOf(Color(0xFF00C8B4), Color(0xFFB040E8))),
+                                Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                 RoundedCornerShape(16.dp),
                             )
                             .clickable { viewModel.playSurpriseMe() },
@@ -192,7 +197,7 @@ fun HomeScreen(
                                 Icon(
                                     Icons.Default.Refresh,
                                     "Refresh mixes",
-                                    tint = Color(0xFF00C8B4),
+                                    tint = BrandTeal,
                                     modifier = Modifier.size(18.dp),
                                 )
                             }
@@ -227,7 +232,7 @@ fun HomeScreen(
                     item {
                         Text(
                             "Daily Mixes will appear after sync completes",
-                            color = Color(0xFF555555),
+                            color = NavUnselected,
                             fontSize = textBodyM(),
                             modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
                         )
@@ -252,7 +257,7 @@ fun HomeScreen(
                             )
                             Text(
                                 "See all",
-                                color = Color(0xFF00C8B4),
+                                color = BrandTeal,
                                 fontSize = textLabelM(),
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clickable { onPlaylistsClick() },
@@ -295,7 +300,7 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.ThumbUp,
                                 null,
-                                tint = Color(0xFF00C8B4),
+                                tint = BrandTeal,
                                 modifier = Modifier.size(14.dp),
                             )
                         }
@@ -351,7 +356,7 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.ThumbUp,
                                 null,
-                                tint = Color(0xFF00C8B4),
+                                tint = BrandTeal,
                                 modifier = Modifier.size(14.dp),
                             )
                         }
@@ -405,7 +410,7 @@ fun HomeScreen(
                                     )
                                     Text(
                                         album.artist ?: "Unknown artist",
-                                        color = Color(0xFF555555),
+                                        color = NavUnselected,
                                         fontSize = textLabelM(),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -435,7 +440,7 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.Bookmark,
                                 null,
-                                tint = Color(0xFF00C8B4),
+                                tint = BrandTeal,
                                 modifier = Modifier.size(14.dp),
                             )
                         }
@@ -486,7 +491,7 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.ChevronRight,
                                 null,
-                                tint = Color(0xFF555555),
+                                tint = NavUnselected,
                                 modifier = Modifier.size(18.dp),
                             )
                         }
@@ -498,8 +503,8 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(spacingS()),
                         ) {
                             val genreColors = listOf(
-                                Color(0xFF00C8B4),
-                                Color(0xFFB040E8),
+                                BrandTeal,
+                                BrandPurple,
                                 Color(0xFF5B8DEE),
                                 Color(0xFFE84090),
                                 Color(0xFFF0A040),
@@ -552,13 +557,13 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.Refresh,
                                 null,
-                                tint = Color(0xFF555555),
+                                tint = NavUnselected,
                                 modifier = Modifier.size(18.dp),
                             )
                             Icon(
                                 Icons.Default.ChevronRight,
                                 null,
-                                tint = Color(0xFF555555),
+                                tint = NavUnselected,
                                 modifier = Modifier.size(18.dp),
                             )
                         }
@@ -721,7 +726,7 @@ private fun StarRating(rating: Int) {
             Icon(
                 imageVector = if (i <= rating) Icons.Default.Star else Icons.Default.StarBorder,
                 contentDescription = null,
-                tint = if (i <= rating) Color(0xFF00C8B4) else Color(0xFF444444),
+                tint = if (i <= rating) BrandTeal else Color(0xFF444444),
                 modifier = Modifier.size(iconMicro()),
             )
         }
@@ -840,7 +845,7 @@ private fun HomePlaylistCard(playlist: PlaylistView, montageCovers: List<String>
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(10.dp))
+            Icon(Icons.Filled.CheckCircle, null, tint = BrandTeal, modifier = Modifier.size(10.dp))
             Spacer(Modifier.width(4.dp))
             Text(
                 playlist.name,
@@ -853,7 +858,7 @@ private fun HomePlaylistCard(playlist: PlaylistView, montageCovers: List<String>
         }
         Text(
             "${playlist.trackCount} track${if (playlist.trackCount == 1) "" else "s"}",
-            color = Color(0xFF555555),
+            color = NavUnselected,
             fontSize = textLabelM(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -868,7 +873,7 @@ private fun HomeRadioPill(name: String, onClick: () -> Unit) {
     Row(
         Modifier
             .clip(RoundedCornerShape(cornerM()))
-            .background(Color(0xFF1C1C2E))
+            .background(Surface)
             .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(cornerM()))
             .clickable { onClick() }
             .padding(horizontal = 10.dp, vertical = 10.dp),
@@ -878,7 +883,7 @@ private fun HomeRadioPill(name: String, onClick: () -> Unit) {
             Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF1E1E1E)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.SettingsInputAntenna, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.SettingsInputAntenna, null, tint = BrandTeal, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.width(88.dp)) {
@@ -891,9 +896,9 @@ private fun HomeRadioPill(name: String, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.SettingsInputAntenna, null, tint = Color(0xFF00C8B4), modifier = Modifier.size(9.dp))
+                Icon(Icons.Default.SettingsInputAntenna, null, tint = BrandTeal, modifier = Modifier.size(9.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Live", color = Color(0xFF555555), fontSize = 10.sp)
+                Text("Live", color = NavUnselected, fontSize = 10.sp)
             }
         }
     }
@@ -924,7 +929,7 @@ private fun AnimatedEqBars() {
                     .width(4.dp)
                     .fillMaxHeight(anim)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFF00C8B4)),
+                    .background(BrandTeal),
             )
         }
     }
@@ -969,7 +974,7 @@ private fun TrackRow(
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MusicNote, null, tint = Color(0xFF555555), modifier = Modifier.size(iconSmall()))
+                    Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(iconSmall()))
                 }
             }
         }
@@ -977,7 +982,7 @@ private fun TrackRow(
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = track.title,
-                color = if (isActive) Color(0xFF00C8B4) else Color.White,
+                color = if (isActive) BrandTeal else Color.White,
                 fontSize = textHeadingS(),
                 minFontSize = textMicro(),
                 modifier = Modifier.fillMaxWidth(),
@@ -1010,7 +1015,7 @@ private fun TrackRow(
                     Box(
                         Modifier.width(
                             3.dp,
-                        ).fillMaxHeight(anim).clip(RoundedCornerShape(1.dp)).background(Color(0xFF00C8B4)),
+                        ).fillMaxHeight(anim).clip(RoundedCornerShape(1.dp)).background(BrandTeal),
                     )
                     if (i < 2) Spacer(Modifier.width(2.dp))
                 }
