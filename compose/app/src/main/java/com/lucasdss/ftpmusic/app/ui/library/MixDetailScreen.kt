@@ -582,6 +582,9 @@ class MixDetailViewModel @Inject constructor(
     /** Mix id the auto-generation attempt belongs to (VM reuse across ids). */
     private var autoGenMixId: Long? = null
 
+    /** Currently loaded mix id — used for queue journal sourceId (ADR-0053). */
+    private var loadedMixId: Long? = null
+
     /** Display name of the loaded mix (title + playback context source name). */
     private val _mixName = kotlinx.coroutines.flow.MutableStateFlow("Daily Mix")
     val mixName: kotlinx.coroutines.flow.StateFlow<String> = _mixName.asStateFlow()
@@ -608,10 +611,12 @@ class MixDetailViewModel @Inject constructor(
     fun playAll() {
         val (tracks, urls) = toPlayable()
         if (tracks.isEmpty()) return
+        val mixId = loadedMixId?.toString() ?: autoGenMixId?.toString() ?: "unknown"
         val started = playbackManager.tryStartContext(
             tracks,
             urls,
             sourceType = "genremix",
+            sourceId = mixId,
             sourceName = _mixName.value,
         )
         if (!started) _showOverwriteModal.value = true
@@ -628,10 +633,12 @@ class MixDetailViewModel @Inject constructor(
     fun shuffle() {
         val (tracks, urls) = toPlayable()
         if (tracks.isEmpty()) return
+        val mixId = loadedMixId?.toString() ?: autoGenMixId?.toString() ?: "unknown"
         val started = playbackManager.tryShuffleContext(
             tracks,
             urls,
             sourceType = "genremix",
+            sourceId = mixId,
             sourceName = _mixName.value,
         )
         if (!started) _showOverwriteModal.value = true
@@ -769,6 +776,7 @@ class MixDetailViewModel @Inject constructor(
     }
 
     fun loadMix(mixId: Long) {
+        loadedMixId = mixId
         if (autoGenMixId != mixId) {
             autoGenMixId = mixId
             autoGenAttempted.set(false)

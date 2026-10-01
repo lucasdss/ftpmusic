@@ -40,6 +40,25 @@ class QueueProjectionTest {
         assertTrue(result.isCurrent)
         assertEquals(0, result.entryId)
         assertFalse(result.isPriority)
+        assertFalse(result.isAutoplay)
+    }
+
+    @Test
+    fun `projects isAutoplay from callback`() {
+        val plain = MediaItem.Builder().setMediaId("p").setMediaMetadata(
+            MediaMetadata.Builder().setTitle("P").build(),
+        ).build()
+        val fromCb = QueueProjection.project(
+            player(plain),
+            0,
+            { null },
+            { false },
+            { true },
+        ).single()
+        assertTrue(fromCb.isAutoplay)
+        assertFalse(
+            QueueProjection.project(player(plain), 0, { null }).single().isAutoplay,
+        )
     }
 
     @Test

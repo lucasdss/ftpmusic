@@ -1245,9 +1245,10 @@ private fun BoxScope.PlayerQueuePanel(
                     // except the handle scrolls. LazyColumn: only visible rows
                     // compose (the old verticalScroll Column froze the sheet open
                     // with large queues — H1).
-                    // Industry: manual Queue (PRIORITY) before Continue Playing (CONTEXT remainder).
+                    // Industry: Queue (PRIORITY) → Continue Playing → Autoplay (ADR-0053).
                     val priorityTracks = nextTracks.filter { it.isPriority }
-                    val contextTracks = nextTracks.filter { !it.isPriority }
+                    val continueTracks = nextTracks.filter { !it.isPriority && !it.isAutoplay }
+                    val autoplayTracks = nextTracks.filter { !it.isPriority && it.isAutoplay }
                     LazyColumn(
                         state = rememberLazyListState(),
                         modifier = Modifier.weight(1f).fillMaxWidth().testTag("queue_scroll"),
@@ -1612,7 +1613,7 @@ private fun BoxScope.PlayerQueuePanel(
                             item { Spacer(Modifier.height(spacingS())) }
                         }
 
-                        if (contextTracks.isNotEmpty()) {
+                        if (continueTracks.isNotEmpty()) {
                             item {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingXS()),
@@ -1627,9 +1628,9 @@ private fun BoxScope.PlayerQueuePanel(
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
                                         if (contextSource != null) {
-                                            "Continue Playing · $contextSource · ${contextTracks.size}"
+                                            "Continue Playing · $contextSource · ${continueTracks.size}"
                                         } else {
-                                            "Continue Playing · ${contextTracks.size}"
+                                            "Continue Playing · ${continueTracks.size}"
                                         },
                                         color = Color(0xFF666666),
                                         fontSize = textLabelS(),
@@ -1638,7 +1639,42 @@ private fun BoxScope.PlayerQueuePanel(
                                     )
                                 }
                             }
-                            itemsIndexed(contextTracks, key = { _, track -> "cq-${track.queueIndex}" }) { _, track ->
+                            itemsIndexed(continueTracks, key = { _, track -> "cq-${track.queueIndex}" }) { _, track ->
+                                QueueTrackRow(
+                                    track.queueIndex,
+                                    track,
+                                    isPlaying,
+                                    onPlayQueueItem,
+                                    onRemoveFromQueue,
+                                    downloadedTrackIds,
+                                )
+                            }
+                        }
+
+                        if (autoplayTracks.isNotEmpty()) {
+                            item {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingXS()),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.QueueMusic,
+                                        null,
+                                        tint = Color(0xFF00C8B4),
+                                        modifier = Modifier.size(adp(12f)),
+                                    )
+                                    Spacer(Modifier.width(spacingS()))
+                                    Text(
+                                        "Autoplay · ${autoplayTracks.size}",
+                                        color = Color(0xFF00C8B4),
+                                        fontSize = textLabelS(),
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            itemsIndexed(autoplayTracks, key = { _, track -> "aq-${track.queueIndex}" }) { _, track ->
                                 QueueTrackRow(
                                     track.queueIndex,
                                     track,

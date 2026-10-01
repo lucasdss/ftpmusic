@@ -17,6 +17,8 @@ data class QueueProjectionItem(
     val isCurrent: Boolean,
     val entryId: Int = 0,
     val isPriority: Boolean = false,
+    /** Continuous Play autoplay-tail (ADR-0053). */
+    val isAutoplay: Boolean = false,
 )
 
 /** Converts the canonical Player timeline into immutable Queue UI values. */
@@ -25,13 +27,21 @@ object QueueProjection {
         player: Player,
         currentIndex: Int,
         trackLookup: (String) -> QueueTrackMetadata?,
-    ): List<QueueProjectionItem> = project(player, currentIndex, trackLookup) { false }
+    ): List<QueueProjectionItem> = project(player, currentIndex, trackLookup, { false }, { false })
 
     fun project(
         player: Player,
         currentIndex: Int,
         trackLookup: (String) -> QueueTrackMetadata?,
         isPriorityAt: (Int) -> Boolean,
+    ): List<QueueProjectionItem> = project(player, currentIndex, trackLookup, isPriorityAt, { false })
+
+    fun project(
+        player: Player,
+        currentIndex: Int,
+        trackLookup: (String) -> QueueTrackMetadata?,
+        isPriorityAt: (Int) -> Boolean,
+        isAutoplayAt: (Int) -> Boolean,
     ): List<QueueProjectionItem> = (0 until player.mediaItemCount).map { index ->
         val item = player.getMediaItemAt(index)
         val cached = trackLookup(item.mediaId)
@@ -49,6 +59,8 @@ object QueueProjection {
             isCurrent = index == currentIndex,
             entryId = item.queueEntryId(),
             isPriority = isPriorityAt(index),
+            isAutoplay = isAutoplayAt(index) ||
+                extras?.getBoolean("is_autoplay", false) == true,
         )
     }
 }

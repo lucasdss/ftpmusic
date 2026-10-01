@@ -369,7 +369,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(4.dp))
             SectionToggleRow(
                 label = "Continuous Play",
-                subtitle = "Auto-append journal picks to context when queue runs out",
+                subtitle = "Auto-append journal picks to context when queue runs out (also in Queue · Autoplay)",
                 checked = state.continuousPlayEnabled,
                 onToggle = { viewModel.setContinuousPlayEnabled(it) },
             )

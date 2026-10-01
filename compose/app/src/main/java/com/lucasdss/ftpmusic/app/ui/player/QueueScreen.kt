@@ -61,6 +61,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
     val mediaItems = remember(queueRevision, queuePlayer, queueCount, currentIndex) {
         if (queueCount > 0 && queuePlayer != null) {
             val flags = viewModel.isPriorityFlags()
+            val autoplay = viewModel.isAutoplayFlags()
             QueueProjection.project(
                 queuePlayer,
                 currentIndex,
@@ -69,7 +70,9 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                         QueueTrackMetadata(it.title, it.artist, it.album)
                     }
                 },
-            ) { index -> flags.getOrElse(index) { false } }
+                { index -> flags.getOrElse(index) { false } },
+                { index -> autoplay.getOrElse(index) { false } },
+            )
         } else {
             emptyList()
         }
@@ -142,8 +145,12 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                 }
             }
         } else {
+            var continuousPlayOn by remember {
+                mutableStateOf(viewModel.isContinuousPlayEnabled())
+            }
             val queueRows = mediaItems.filter { it.isPriority }
-            val continueRows = mediaItems.filter { !it.isPriority }
+            val continueRows = mediaItems.filter { !it.isPriority && !it.isAutoplay }
+            val autoplayRows = mediaItems.filter { !it.isPriority && it.isAutoplay }
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -189,6 +196,58 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                         )
                     }
                     items(continueRows, key = { if (it.entryId > 0) it.entryId else it.index }) { item ->
+                        val rowKey = if (item.entryId > 0) item.entryId else item.index
+                        ReorderableItem(state = reorderableState, key = rowKey) { isDragging ->
+                            QueueDismissRow(
+                                item = item,
+                                isDragging = isDragging,
+                                isPlaying = playbackState.isPlaying,
+                                viewModel = viewModel,
+                                dragHandleModifier = Modifier.draggableHandle(
+                                    onDragStarted = { viewModel.beginQueueReorder(item.entryId, item.index) },
+                                    onDragStopped = { viewModel.commitQueueReorder() },
+                                ),
+                            )
+                        }
+                    }
+                }
+                item(key = "hdr-autoplay") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacingL(), vertical = spacingS()),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (autoplayRows.isNotEmpty()) {
+                                "Autoplay · ${autoplayRows.size}"
+                            } else {
+                                "Autoplay · journal when queue ends"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color(0xFF00C8B4),
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (autoplayRows.isNotEmpty()) {
+                            TextButton(onClick = { viewModel.clearAutoplayQueue() }) {
+                                Text("Clear", color = Color(0xFF00C8B4))
+                            }
+                        }
+                        Switch(
+                            checked = continuousPlayOn,
+                            onCheckedChange = {
+                                continuousPlayOn = it
+                                viewModel.setContinuousPlayEnabled(it)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF00C8B4),
+                            ),
+                        )
+                    }
+                }
+                if (autoplayRows.isNotEmpty()) {
+                    items(autoplayRows, key = { if (it.entryId > 0) it.entryId else it.index }) { item ->
                         val rowKey = if (item.entryId > 0) item.entryId else item.index
                         ReorderableItem(state = reorderableState, key = rowKey) { isDragging ->
                             QueueDismissRow(

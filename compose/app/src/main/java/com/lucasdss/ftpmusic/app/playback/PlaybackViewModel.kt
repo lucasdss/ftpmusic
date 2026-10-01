@@ -169,6 +169,19 @@ class PlaybackViewModel @Inject constructor(
 
     /** Clear manual Queue only (Spotify / Apple Clear) — keep Continue Playing. */
     fun clearPriorityQueue() = playbackManager.clearPriorityQueue()
+
+    /** Clear Continuous Play Autoplay tail only (ADR-0053). */
+    fun clearAutoplayQueue() = playbackManager.clearAutoplayQueue()
+
+    fun isAutoplayFlags(): List<Boolean> = playbackManager.isAutoplayFlags()
+
+    fun setContinuousPlayEnabled(enabled: Boolean) {
+        playbackManager.setContinuousPlayEnabled(enabled)
+        storage.put(SecureStorage.KEY_CONTINUOUS_PLAY_ENABLED, enabled.toString())
+    }
+
+    fun isContinuousPlayEnabled(): Boolean = playbackManager.continuousPlayEnabled
+
     fun playStream(url: String, title: String) = playbackManager.playStream(url, title)
     fun persistQueue() {
         playbackManager.persistCurrentQueue()
@@ -452,6 +465,7 @@ class PlaybackViewModel @Inject constructor(
         val start = 0
         val end = minOf(currentIndex + count, queuePlayer.mediaItemCount)
         val priorityFlags = playbackManager.isPriorityFlags()
+        val autoplayFlags = playbackManager.isAutoplayFlags()
         return (start until end).mapNotNull { i ->
             val item = player.getMediaItemAt(i) ?: return@mapNotNull null
             val title = item.mediaMetadata.title?.toString() ?: return@mapNotNull null
@@ -468,6 +482,7 @@ class PlaybackViewModel @Inject constructor(
                 trackId = item.mediaId.takeIf { it.isNotEmpty() },
                 queueIndex = i,
                 isPriority = priorityFlags.getOrElse(i) { false },
+                isAutoplay = autoplayFlags.getOrElse(i) { false } || item.isAutoplay(),
             )
         }
     }
@@ -484,4 +499,5 @@ data class UpcomingTrack(
     val trackId: String? = null,
     val queueIndex: Int = 0,
     val isPriority: Boolean = false,
+    val isAutoplay: Boolean = false,
 )

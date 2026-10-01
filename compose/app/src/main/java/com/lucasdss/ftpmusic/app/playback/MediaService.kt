@@ -490,6 +490,8 @@ class MediaService : MediaLibraryService() {
     private var playerErrorCount = 0
     private var hasLoadedContinuation = false
 
+    @Volatile private var continuousPlayInFlight = false
+
     /** Serializes fast-forward seeks so overlapping seeks can't interleave with a transition. */
     private val seekCoalescer = SeekCoalescer()
 
@@ -671,6 +673,19 @@ class MediaService : MediaLibraryService() {
                         PlayerHolder.player?.currentMediaItem?.mediaMetadata,
                     )
                 }
+                // Empty journal / offline miss left hasLoadedContinuation false —
+                // retry Continuous Play when the last item truly ends (ADR-0053).
+                val p = PlayerHolder.player
+                if (p != null && p.mediaItemCount > 0 &&
+                    p.currentMediaItemIndex >= p.mediaItemCount - 1
+                ) {
+                    maybeLoadContinuousPlay(
+                        player = p,
+                        previousTrackId = trackId,
+                        mediaId = trackId,
+                        forceRetry = true,
+                    )
+                }
             }
         }
 
@@ -737,77 +752,13 @@ class MediaService : MediaLibraryService() {
                     "[DEBUG-aud] mediaItem.uri=${mediaItem.localConfiguration?.uri} player=${PlayerHolder.player}",
                 )
 
-                // Continuous play: journal-based smart track selection
+                // Continuous play: journal-based smart track selection (ADR-0053)
                 if (player != null) {
-                    // Reset continuation flag when a new track starts (mediaId changed)
-                    if (ContinuousPlayGate.shouldResetContinuation(previousTrackId, mediaItem.mediaId)) {
-                        hasLoadedContinuation = false
-                    }
-                    if (ContinuousPlayGate.shouldLoadContinuation(
-                            isCasting = PlayerHolder.isCasting,
-                            currentIndex = player.currentMediaItemIndex,
-                            mediaItemCount = player.mediaItemCount,
-                            hasLoadedContinuation = hasLoadedContinuation,
-                            continuousPlayEnabled = playbackManager.continuousPlayEnabled,
-                        )
-                    ) {
-                        hasLoadedContinuation = true
-                        scope.launch {
-                            try {
-                                val entries = queueJournalDao.getAllRecent()
-                                if (entries.isNotEmpty()) {
-                                    val currentTrackIds = (0 until player.mediaItemCount).mapNotNull {
-                                        player.getMediaItemAt(it)?.mediaId
-                                    }.toSet()
-
-                                    val selected = JournalTrackSelector.select(entries, currentTrackIds)
-
-                                    selected.forEach { trackId ->
-                                        try {
-                                            val entity = trackDao.getTrack(trackId)
-                                            if (entity == null) {
-                                                android.util.Log.d(
-                                                    "ftpmusic-playback",
-                                                    "Continuous play: track $trackId not in local DB, skipping",
-                                                )
-                                                return@forEach
-                                            }
-                                            val track = Track(
-                                                id = entity.id,
-                                                title = entity.title,
-                                                artist = entity.artist,
-                                                album = null,
-                                                artistId = entity.artistId,
-                                                albumId = entity.albumId,
-                                                duration = entity.durationSeconds,
-                                                coverArt = entity.coverArtUrl,
-                                            )
-                                            val url = SubsonicAuthHelper().buildStreamUrl(
-                                                DynamicBaseUrl.url,
-                                                track.id,
-                                                SubsonicCredentials.username,
-                                                SubsonicCredentials.password,
-                                            )
-                                            // Continuous play is a continuation of the current mix —
-                                            // append to CONTEXT (not user-added priority) so the
-                                            // context/priority split stays correct after disconnect.
-                                            playbackManager.appendToContext(listOf(track), listOf(url))
-                                        } catch (e: Exception) {
-                                            android.util.Log.w(
-                                                "ftpmusic-playback",
-                                                "Continuous play: skip track $trackId: ${e.message}",
-                                            )
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.w(
-                                    "ftpmusic-playback",
-                                    "Continuous play: journal load failed: ${e.message}",
-                                )
-                            }
-                        }
-                    }
+                    maybeLoadContinuousPlay(
+                        player = player,
+                        previousTrackId = previousTrackId,
+                        mediaId = mediaItem.mediaId,
+                    )
                 }
 
                 // Lazy-load more tracks when approaching end of window.
@@ -1848,6 +1799,88 @@ class MediaService : MediaLibraryService() {
         player.prepare()
         player.play()
         android.util.Log.d("ftpmusic", "[MediaService] Playing ${items.size} items for search query")
+    }
+
+    /**
+     * Journal → context Autoplay append. Sets [hasLoadedContinuation] only after
+     * ≥1 track appended so empty/offline misses can retry (ADR-0053).
+     */
+    private fun maybeLoadContinuousPlay(
+        player: Player,
+        previousTrackId: String?,
+        mediaId: String,
+        forceRetry: Boolean = false,
+    ) {
+        if (ContinuousPlayGate.shouldResetContinuation(previousTrackId, mediaId)) {
+            hasLoadedContinuation = false
+        }
+        if (forceRetry) hasLoadedContinuation = false
+        if (!ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = PlayerHolder.isCasting,
+                currentIndex = player.currentMediaItemIndex,
+                mediaItemCount = player.mediaItemCount,
+                hasLoadedContinuation = hasLoadedContinuation,
+                continuousPlayEnabled = playbackManager.continuousPlayEnabled,
+            )
+        ) {
+            return
+        }
+        if (continuousPlayInFlight) return
+        continuousPlayInFlight = true
+        val snapshotCount = player.mediaItemCount
+        val currentTrackIds = (0 until snapshotCount).mapNotNull {
+            player.getMediaItemAt(it)?.mediaId
+        }.toSet()
+        scope.launch(Dispatchers.IO) {
+            try {
+                val entries = queueJournalDao.getAllRecent()
+                if (entries.isEmpty()) {
+                    android.util.Log.d("ftpmusic-playback", "Continuous play: empty journal")
+                    return@launch
+                }
+                val selected = JournalTrackSelector.select(entries, currentTrackIds)
+                val localOnly = com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy.isLocalOnly(
+                    offlineModeManager.isOffline.value,
+                )
+                val auth = SubsonicAuthHelper()
+                val base = DynamicBaseUrl.url
+                val user = SubsonicCredentials.username
+                val pass = SubsonicCredentials.password
+                val entityById = selected.associateWith { id -> trackDao.getTrack(id) }
+                val candidates = ContinuousPlayLoader.resolve(
+                    selectedIds = selected,
+                    localOnly = localOnly,
+                    loadTrack = { entityById[it] },
+                    buildStreamUrl = { id -> auth.buildStreamUrl(base, id, user, pass) },
+                )
+                if (candidates.isEmpty()) {
+                    android.util.Log.d(
+                        "ftpmusic-playback",
+                        "Continuous play: no eligible candidates (localOnly=$localOnly selected=${selected.size})",
+                    )
+                    return@launch
+                }
+                withContext(Dispatchers.Main) {
+                    playbackManager.appendToContext(
+                        candidates.map { it.track },
+                        candidates.map { it.streamUrl },
+                        asAutoplay = true,
+                    )
+                    hasLoadedContinuation = true
+                    android.util.Log.d(
+                        "ftpmusic-playback",
+                        "Continuous play: appended ${candidates.size} autoplay tracks",
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "ftpmusic-playback",
+                    "Continuous play: journal load failed: ${e.message}",
+                )
+            } finally {
+                continuousPlayInFlight = false
+            }
+        }
     }
 
     internal object QueueAutoLoader {

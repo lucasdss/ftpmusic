@@ -191,14 +191,18 @@ class MixDetailViewModelTest {
 
     @Test fun `playAll starts the context and shows overwrite modal when rejected`() = runTest(testDispatcher) {
         loadMixIntoTracks()
-        coEvery { playbackManager.tryStartContext(any(), any(), sourceType = any(), sourceName = any()) } returns false
+        coEvery {
+            playbackManager.tryStartContext(any(), any(), sourceType = any(), sourceId = any(), sourceName = any())
+        } returns false
         viewModel.playAll()
         assertTrue(viewModel.showOverwriteModal.value)
     }
 
     @Test fun `playAll starts the context without modal when accepted`() = runTest(testDispatcher) {
         loadMixIntoTracks()
-        coEvery { playbackManager.tryStartContext(any(), any(), sourceType = any(), sourceName = any()) } returns true
+        coEvery {
+            playbackManager.tryStartContext(any(), any(), sourceType = any(), sourceId = any(), sourceName = any())
+        } returns true
         viewModel.playAll()
         assertFalse(viewModel.showOverwriteModal.value)
     }
@@ -215,7 +219,9 @@ class MixDetailViewModelTest {
 
     @Test fun `shuffle requests a shuffle context`() = runTest(testDispatcher) {
         loadMixIntoTracks()
-        coEvery { playbackManager.tryShuffleContext(any(), any(), sourceType = any(), sourceName = any()) } returns true
+        coEvery {
+            playbackManager.tryShuffleContext(any(), any(), sourceType = any(), sourceId = any(), sourceName = any())
+        } returns true
         viewModel.shuffle()
         coVerify {
             playbackManager.tryShuffleContext(
@@ -224,6 +230,7 @@ class MixDetailViewModelTest {
                 },
                 any(),
                 sourceType = "genremix",
+                sourceId = "5",
                 sourceName = any(),
             )
         }
@@ -276,7 +283,9 @@ class MixDetailViewModelTest {
     @Test fun `resolveOverwrite forwards the decision and hides the modal`() = runTest(testDispatcher) {
         // Trigger the modal via a rejected start
         loadMixIntoTracks()
-        coEvery { playbackManager.tryStartContext(any(), any(), sourceType = any(), sourceName = any()) } returns false
+        coEvery {
+            playbackManager.tryStartContext(any(), any(), sourceType = any(), sourceId = any(), sourceName = any())
+        } returns false
         viewModel.playAll()
         assertTrue(viewModel.showOverwriteModal.value)
 

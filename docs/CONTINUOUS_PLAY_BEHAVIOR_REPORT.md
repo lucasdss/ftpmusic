@@ -1,55 +1,55 @@
 # Continuous Play — Behavior Report
 
-Date: 2026-09-30
-Related: ADR-0052, `docs/SURPRISE_ME_BEHAVIOR_REPORT.md`, ADR-0039 (dual queue)
+Date: 2026-10-01
+Related: ADR-0052, ADR-0053, `docs/SURPRISE_ME_BEHAVIOR_REPORT.md`, ADR-0039
 
 ## Scope
 
-When the playing timeline reaches its **last** item and Continuous Play is ON, append up to 10 journal-selected tracks to **CONTEXT** (never Priority). Separate from Surprise Me.
+When playback reaches the **last** timeline item (or `STATE_ENDED` on last) and
+Continuous Play is ON, append up to 10 journal-selected tracks to **CONTEXT**
+stamped as **Autoplay** (`is_autoplay`). Never Priority. Separate from Surprise Me.
 
-## Settings
+## Settings + Queue UI
 
 | Control | Storage | Runtime |
 |---|---|---|
 | Continuous Play toggle | `KEY_CONTINUOUS_PLAY_ENABLED` | `PlaybackManager.continuousPlayEnabled` |
 | Journal history size | `KEY_QUEUE_JOURNAL_CAP` | `PlaybackManager.setJournalCap` |
+| Queue · Autoplay Switch | same key | `PlaybackViewModel.setContinuousPlayEnabled` |
+| Clear Autoplay | — | `clearAutoplayQueue()` removes `is_autoplay` rows only |
 
 Hydrated at boot via `PreferenceBootstrap.hydrateJournalAndContinuousPlay()`.
 
 ## Journal write
 
-Upsert on sourced context start (`playAlbum`, `shuffleAlbum`, `pushContext`, `playSingleTrack` with source). Unique on `(source_type, source_id)`. Evict oldest when over cap.
+Upsert on sourced context start when **both** `sourceType` + `sourceId` set:
+`playAlbum`, `shuffleAlbum`, `pushContext`, `playSingleTrack`, Surprise Me,
+**genre mixes** (`genremix` / mix id).
 
-**Not journaled:** add-to-queue, play-next, radio `playStream`, Continuous Play appends themselves.
-
-Surprise Me **is** journaled (`random`/`surprise-me`) — eligible for later selection.
+**Not journaled:** add-to-queue, play-next, radio, Continuous Play appends.
 
 ## Trigger (MediaService)
 
-On `onMediaItemTransition` (local player, not Cast):
+`maybeLoadContinuousPlay`:
 
-1. Reset `hasLoadedContinuation` when `mediaId != previousTrackId`.
-2. Fire when `ContinuousPlayGate.shouldLoadContinuation(...)` true:
-   - not casting
-   - `currentIndex >= mediaItemCount - 1`
-   - `!hasLoadedContinuation`
-   - `continuousPlayEnabled`
-3. Set flag → IO: `queueJournalDao.getAllRecent()` → `JournalTrackSelector.select` (≤10, exclude current queue IDs) → resolve `trackDao` → `playbackManager.appendToContext`.
+1. Gate via `ContinuousPlayGate` (!cast, enabled, last index, !already loaded).
+2. IO: journal → `JournalTrackSelector` → `ContinuousPlayLoader.resolve`
+   (offline: downloaded/cached only).
+3. Empty candidates → **do not** set `hasLoadedContinuation` (retry on
+   STATE_ENDED / later transition).
+4. Main: one `appendToContext(..., asAutoplay=true)` → then set flag.
 
-Missing DB rows skipped. Empty journal → no append → natural end.
+## Queue sections (ADR-0053)
 
-## Dual-queue rule
-
-Continuation = **context tail only**. User Priority untouched.
-
-## Coexistence
-
-`QueueAutoLoader` may also `appendToContext` for windowed album restore (not gated by Continuous Play). Selector excludes IDs already in the timeline.
+1. **Queue** — Priority  
+2. **Continue Playing** — context `!isAutoplay`  
+3. **Autoplay** — context `isAutoplay` + toggle
 
 ## Cast
 
-Continuous Play and QueueAutoLoader skipped while casting.
+Continuous Play skipped while casting.
 
 ## Tests
 
-`ContinuousPlayTest`, `JournalTrackSelectorTest`, `QueueJournalTest`, `ContinuousPlayGate` unit tests.
+`ContinuousPlayLoaderTest`, `ContinuousPlayGateTest`, `ContinuousPlayTest`,
+`QueueJournalTest`, QueueProjection autoplay flags.

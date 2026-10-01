@@ -602,10 +602,15 @@ class PlaybackManager @Inject constructor(
      * extend the current mix, so the context/priority split (contextSize)
      * stays correct across a Cast disconnect (a continuation is context, not
      * user-added priority).
+     *
+     * @param asAutoplay when true, stamps [IS_AUTOPLAY_EXTRA] so Queue UI can
+     *   render an Autoplay section separate from Continue Playing (ADR-0053).
      */
-    fun appendToContext(tracks: List<Track>, streamUrls: List<String>) {
+    fun appendToContext(tracks: List<Track>, streamUrls: List<String>, asAutoplay: Boolean = false) {
         if (tracks.isEmpty()) return
-        val items = buildMediaItems(tracks, streamUrls).map { it.ensureEntryId() }
+        val items = buildMediaItems(tracks, streamUrls)
+            .map { it.ensureEntryId() }
+            .map { if (asAutoplay) it.withAutoplay(true) else it }
         optimist.snapshot()
         dualQueue.addAllToContext(items)
         if (!PlayerHolder.isCasting) {
@@ -619,6 +624,41 @@ class PlaybackManager @Inject constructor(
         persistenceSave(allTracks, allUrls, currentCanonicalIndex())
         // Bi-directional sync during Cast — append at the end of the remote queue.
         emitCastAddsOrCommit(items)
+    }
+
+    /** Per merged index: Continuous Play autoplay-tail rows. */
+    fun isAutoplayFlags(): List<Boolean> = dualQueue.getMerged().map { it.isAutoplay() }
+
+    /**
+     * Remove only Autoplay-stamped CONTEXT rows (Keep Queue + Continue Playing).
+     */
+    fun clearAutoplayQueue() {
+        val merged = dualQueue.getMerged()
+        val removeIndices = merged.mapIndexedNotNull { i, item ->
+            if (item.isAutoplay()) i else null
+        }.asReversed()
+        if (removeIndices.isEmpty()) return
+        optimist.snapshot()
+        for (i in removeIndices) {
+            dualQueue.remove(i)
+        }
+        if (!PlayerHolder.isCasting) {
+            val player = PlayerHolder.player
+            if (player != null) {
+                for (i in removeIndices) {
+                    if (i in 0 until player.mediaItemCount) player.removeMediaItem(i)
+                }
+            }
+        } else {
+            syncDualQueueToPlayer()
+        }
+        val (tracks, urls) = buildQueueStateFromDual()
+        if (tracks.isEmpty()) {
+            scope.launch { persistenceManager.clear() }
+        } else {
+            persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
+        }
+        emitClearAndPlayOrCommit(dualQueue.getMerged(), currentCanonicalIndex().coerceAtLeast(0))
     }
 
     fun addToQueue(track: Track, streamUrl: String) {
