@@ -54,13 +54,13 @@ fun CastMiniController(
                 Column(Modifier.weight(1f)) {
                     FittingText(
                         text = trackTitle ?: "Connected",
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                        fontSize = textHeadingS(),
                         minFontSize = textMicro(),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     FittingText(
                         text = "Casting to $deviceName",
-                        fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                        fontSize = textLabelM(),
                         minFontSize = textMicro(),
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth(),

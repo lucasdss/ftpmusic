@@ -181,14 +181,14 @@ fun PlaylistDetailScreen(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("⚠", fontSize = 16.sp)
+                            Text("⚠", fontSize = textHeadingS())
                             Spacer(Modifier.width(8.dp))
                             Column(Modifier.weight(1f)) {
                                 FittingText(
                                     text = "Sync Conflict",
                                     color = Color(0xFFFF8C00),
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
+                                    fontSize = textLabelL(),
                                     minFontSize = textMicro(),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
@@ -196,7 +196,7 @@ fun PlaylistDetailScreen(
                                     FittingText(
                                         text = it,
                                         color = Color(0x88FFFFFF),
-                                        fontSize = 11.sp,
+                                        fontSize = textLabelS(),
                                         minFontSize = textMicro(),
                                         maxLines = 3,
                                         modifier = Modifier.fillMaxWidth(),
@@ -204,7 +204,7 @@ fun PlaylistDetailScreen(
                                 }
                             }
                             TextButton(onClick = { viewModel.syncToServer() }) {
-                                Text("Retry Sync", color = BrandTeal, fontSize = 12.sp)
+                                Text("Retry Sync", color = BrandTeal, fontSize = textLabelM())
                             }
                         }
                     }
@@ -414,11 +414,14 @@ fun PlaylistDetailScreen(
                             ListItem(
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 headlineContent = {
-                                    Text(
-                                        "${index + 1}. ${track.title}",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                    FittingText(
+                                        text = "${index + 1}. ${track.title}",
                                         color = if (isActive) BrandTeal else Color.White,
+                                        fontSize = textHeadingS(),
+                                        minFontSize = textMicro(),
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 },
                                 leadingContent = if (isActive) {
@@ -432,7 +435,7 @@ fun PlaylistDetailScreen(
                                             Text(
                                                 it,
                                                 color = Color(0xFF888888),
-                                                fontSize = textLabelL(),
+                                                fontSize = textLabelM(),
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f, fill = false),

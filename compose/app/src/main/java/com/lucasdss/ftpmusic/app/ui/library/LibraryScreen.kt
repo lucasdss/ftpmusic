@@ -475,7 +475,7 @@ fun LibraryContent(
                                                                     vertical = 1.dp,
                                                                 ),
                                                                 color = BrandTeal,
-                                                                fontSize = 10.sp,
+                                                                fontSize = textMicro(),
                                                                 fontWeight = FontWeight.SemiBold,
                                                             )
                                                         }
@@ -493,7 +493,7 @@ fun LibraryContent(
                                                                     vertical = 1.dp,
                                                                 ),
                                                                 color = BrandPurple,
-                                                                fontSize = 10.sp,
+                                                                fontSize = textMicro(),
                                                                 fontWeight = FontWeight.SemiBold,
                                                             )
                                                         }
@@ -769,7 +769,7 @@ fun LibraryContent(
                         FittingText(
                             text = "Import from Server",
                             color = BrandTeal,
-                            fontSize = 14.sp,
+                            fontSize = textBodyM(),
                             minFontSize = textMicro(),
                             modifier = Modifier.weight(1f),
                             fillMaxWidth = false,
@@ -787,7 +787,7 @@ fun LibraryContent(
                     Text(
                         "Create Playlist",
                         color = Color.White,
-                        fontSize = 16.sp,
+                        fontSize = textHeadingS(),
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                     )
@@ -817,7 +817,7 @@ fun LibraryContent(
                         FittingText(
                             text = state.createPlaylistError!!,
                             color = Color(0xFFFF5252),
-                            fontSize = 12.sp,
+                            fontSize = textLabelM(),
                             minFontSize = textMicro(),
                             maxLines = 3,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
@@ -875,7 +875,7 @@ fun LibraryContent(
                                     Text(
                                         "Syncing…",
                                         color = Color.White,
-                                        fontSize = 13.sp,
+                                        fontSize = textLabelL(),
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                 }
@@ -883,7 +883,7 @@ fun LibraryContent(
                                 Text(
                                     "Create & Sync",
                                     color = Color.White,
-                                    fontSize = 13.sp,
+                                    fontSize = textLabelL(),
                                     fontWeight = FontWeight.SemiBold,
                                 )
                             }
@@ -893,7 +893,7 @@ fun LibraryContent(
                     Text(
                         "Synced via createPlaylist + savePlayQueue",
                         color = Color(0xFF666666),
-                        fontSize = 11.sp,
+                        fontSize = textLabelS(),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     )
@@ -912,14 +912,14 @@ fun LibraryContent(
                     Text(
                         "Playlist Created",
                         color = Color.White,
-                        fontSize = 16.sp,
+                        fontSize = textHeadingS(),
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                     )
                     Text(
                         "\"${state.createdPlaylist?.name ?: ""}\" is ready. Add songs now or finish later.",
                         color = Color(0xFF888888),
-                        fontSize = 13.sp,
+                        fontSize = textLabelL(),
                         modifier = Modifier.padding(horizontal = 20.dp),
                     )
                     Spacer(Modifier.height(20.dp))
@@ -947,7 +947,14 @@ fun LibraryContent(
                                     Brush.linearGradient(listOf(BrandTeal, BrandPurple)),
                                     RoundedCornerShape(12.dp),
                                 ),
-                        ) { Text("Add Songs", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+                        ) {
+                            Text(
+                                "Add Songs",
+                                color = Color.White,
+                                fontSize = textLabelL(),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
 
@@ -986,7 +993,7 @@ fun LibraryContent(
                 Text(
                     "Add from Server",
                     color = Color.White,
-                    fontSize = 16.sp,
+                    fontSize = textHeadingS(),
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
                 )
@@ -1019,11 +1026,11 @@ fun LibraryContent(
                                     FittingText(
                                         text = pl.name,
                                         color = Color.White,
-                                        fontSize = 14.sp,
+                                        fontSize = textBodyM(),
                                         minFontSize = textMicro(),
                                         modifier = Modifier.weight(1f),
                                     )
-                                    Text("${pl.trackCount} tracks", color = Color(0xFF888888), fontSize = 12.sp)
+                                    Text("${pl.trackCount} tracks", color = Color(0xFF888888), fontSize = textLabelM())
                                 }
                             }
                         }

@@ -404,7 +404,7 @@ private fun PlayerMiniBar(
                 Column(modifier = Modifier.weight(1f)) {
                     FittingText(
                         text = title ?: "No track",
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                        fontSize = textHeadingS(),
                         minFontSize = textMicro(),
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.fillMaxWidth(),
@@ -429,7 +429,7 @@ private fun PlayerMiniBar(
                             FittingText(
                                 text = castDeviceName!!,
                                 color = if (!isQueueSynced) Color(0xFFF0A040) else BrandTeal,
-                                fontSize = 10.sp,
+                                fontSize = textMicro(),
                                 minFontSize = textMicro(),
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.weight(1f, fill = false),
@@ -438,7 +438,7 @@ private fun PlayerMiniBar(
                         } else {
                             FittingText(
                                 text = artistLine.ifEmpty { "" },
-                                fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                                fontSize = textLabelM(),
                                 minFontSize = textMicro(),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f, fill = false),
@@ -452,7 +452,7 @@ private fun PlayerMiniBar(
                                     "+$priorityQueueSize",
                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
                                     color = BrandPurple,
-                                    fontSize = 10.sp,
+                                    fontSize = textMicro(),
                                     fontWeight = FontWeight.Bold,
                                 )
                             }
@@ -508,7 +508,7 @@ private fun PlayerFullHeader(
                 FittingText(
                     text = if (castDeviceName != null) "Casting to $castDeviceName" else "Casting…",
                     color = BrandTeal,
-                    fontSize = 11.sp,
+                    fontSize = textLabelS(),
                     minFontSize = textMicro(),
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
@@ -544,7 +544,7 @@ private fun PlayerFullHeader(
                     FittingText(
                         text = "Sleep timer — ${formatPlayerBarTime(remainingSec * 1000)}",
                         color = BrandTeal,
-                        fontSize = 11.sp,
+                        fontSize = textLabelS(),
                         minFontSize = textMicro(),
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
@@ -2170,8 +2170,9 @@ private fun QueueTrackRow(
             FittingText(
                 text = track.title,
                 color = if (dimmed) Color(0xFF999999) else Color.White,
-                fontSize = textBodyM(),
+                fontSize = textHeadingS(),
                 minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {

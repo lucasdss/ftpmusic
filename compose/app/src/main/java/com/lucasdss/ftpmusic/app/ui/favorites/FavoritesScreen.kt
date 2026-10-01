@@ -533,8 +533,9 @@ private fun TrackFavoriteRow(
             FittingText(
                 text = track.title,
                 color = if (isActive) BrandTeal else Color.White,
-                fontSize = textBodyM(),
+                fontSize = textHeadingS(),
                 minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {

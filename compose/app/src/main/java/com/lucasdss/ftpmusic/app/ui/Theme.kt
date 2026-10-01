@@ -50,9 +50,11 @@ private val DarkColorScheme = darkColorScheme(
 @Composable
 fun FtpmusicTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val colorScheme = DarkColorScheme // always dark per design spec
+    val typography = ftpTypography()
 
     MaterialTheme(
         colorScheme = colorScheme,
+        typography = typography,
         content = content,
     )
 }

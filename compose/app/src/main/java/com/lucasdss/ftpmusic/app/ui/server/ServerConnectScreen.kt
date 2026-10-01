@@ -48,7 +48,7 @@ fun ServerConnectScreen(onConnected: () -> Unit = {}, viewModel: ServerConnectVi
                     text = "HTTP sends your music-server credentials without transport encryption. " +
                         "Use only on a trusted private network.",
                     color = MaterialTheme.colorScheme.error,
-                    fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                    fontSize = textLabelL(),
                     minFontSize = textMicro(),
                     maxLines = 4,
                     modifier = Modifier.fillMaxWidth(),
@@ -103,7 +103,7 @@ fun ServerConnectScreen(onConnected: () -> Unit = {}, viewModel: ServerConnectVi
                 FittingText(
                     text = it,
                     color = MaterialTheme.colorScheme.error,
-                    fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                    fontSize = textLabelL(),
                     minFontSize = textMicro(),
                     maxLines = 4,
                     modifier = Modifier.fillMaxWidth(),

@@ -587,21 +587,23 @@ private fun TrackRow(
             modifier = Modifier.width(28.dp),
         )
         Column(Modifier.weight(1f)) {
-            Text(
-                track.title,
+            FittingText(
+                text = track.title,
                 color = Color.White,
-                fontSize = textBodyM(),
+                fontSize = textHeadingS(),
+                minFontSize = textMicro(),
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {
-                Text(
-                    it,
+                FittingText(
+                    text = it,
                     color = Color(0xFF888888),
                     fontSize = textLabelM(),
+                    minFontSize = textMicro(),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             // Star rating (parity with Album detail)

@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -413,8 +414,9 @@ private fun QueueItemRow(
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = item.title,
-                fontSize = MaterialTheme.typography.bodyLarge.fontSize,
+                fontSize = textHeadingS(),
                 minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
                 color = if (item.isCurrent) BrandTeal else Color.White,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -423,7 +425,7 @@ private fun QueueItemRow(
                     FittingText(
                         text = a,
                         color = Color(0xFF888888),
-                        fontSize = asp(12f),
+                        fontSize = textLabelM(),
                         minFontSize = textMicro(),
                         modifier = Modifier.weight(1f, fill = false),
                         fillMaxWidth = false,

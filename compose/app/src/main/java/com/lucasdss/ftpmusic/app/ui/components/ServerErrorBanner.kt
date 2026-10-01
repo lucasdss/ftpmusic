@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.textLabelM
 import com.lucasdss.ftpmusic.app.ui.textMicro
 
 /**
@@ -78,7 +79,7 @@ fun ServerErrorBanner(
         FittingText(
             text = message,
             color = Color(0xFFE8C766),
-            fontSize = 12.sp,
+            fontSize = textLabelM(),
             minFontSize = textMicro(),
             maxLines = 3,
             modifier = Modifier.weight(1f),
@@ -86,7 +87,7 @@ fun ServerErrorBanner(
         Text(
             "Fix",
             color = BrandTeal,
-            fontSize = 12.sp,
+            fontSize = textLabelM(),
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clickable { onOpenServerSettings() }

@@ -35,7 +35,12 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.textBodyM
+import com.lucasdss.ftpmusic.app.ui.textDisplay
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
+import com.lucasdss.ftpmusic.app.ui.textHeadingM
+import com.lucasdss.ftpmusic.app.ui.textHeadingS
+import com.lucasdss.ftpmusic.app.ui.textLabelL
 import com.lucasdss.ftpmusic.app.ui.textLabelM
 import com.lucasdss.ftpmusic.app.ui.textMicro
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -312,9 +317,9 @@ fun SyncingScreen(
             // Logo pulse (unchanged)
             Text("♫", fontSize = 48.sp, color = BrandTeal.copy(alpha = pulse))
             Spacer(Modifier.height(24.dp))
-            Text("Syncing your library…", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text("Syncing your library…", color = Color.White, fontSize = textDisplay(), fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            Text("Keep the app open while we fetch your music", color = Color(0xFF666666), fontSize = 14.sp)
+            Text("Keep the app open while we fetch your music", color = Color(0xFF666666), fontSize = textBodyM())
 
             Spacer(Modifier.height(32.dp))
 
@@ -336,7 +341,7 @@ fun SyncingScreen(
                     Text(
                         "Elapsed ${formatSyncDuration(status.elapsedMs)}",
                         color = Color(0xFF888888),
-                        fontSize = 14.sp,
+                        fontSize = textBodyM(),
                     )
                     if (status.isRunning) {
                         Spacer(Modifier.width(8.dp))
@@ -354,21 +359,21 @@ fun SyncingScreen(
                             Text(
                                 "Sync failed",
                                 color = Color(0xFFE84040),
-                                fontSize = 18.sp,
+                                fontSize = textHeadingM(),
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "Server connection lost or API error.\nCheck your connection and try again.",
                                 color = Color(0xFF888888),
-                                fontSize = 14.sp,
+                                fontSize = textBodyM(),
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             )
                         } else {
                             Text(
                                 "Ready! 🎵",
                                 color = BrandTeal,
-                                fontSize = 18.sp,
+                                fontSize = textHeadingM(),
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
@@ -378,7 +383,7 @@ fun SyncingScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
                             shape = RoundedCornerShape(12.dp),
                         ) {
-                            Text("OK", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("OK", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -400,7 +405,7 @@ private fun SyncRowCard(row: SyncStatus.Row) {
         // Status icon
         Text(
             row.icon,
-            fontSize = 16.sp,
+            fontSize = textHeadingS(),
             color = statusColor(row.icon),
             modifier = Modifier.width(24.dp),
         )
@@ -410,7 +415,7 @@ private fun SyncRowCard(row: SyncStatus.Row) {
             FittingText(
                 text = row.label,
                 color = Color.White,
-                fontSize = 14.sp,
+                fontSize = textBodyM(),
                 minFontSize = textMicro(),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -431,7 +436,7 @@ private fun SyncRowCard(row: SyncStatus.Row) {
         } else {
             formatNumber(row.progress)
         }
-        Text(countText, color = Color(0xFF888888), fontSize = 13.sp)
+        Text(countText, color = Color(0xFF888888), fontSize = textLabelL())
     }
 }
 

@@ -107,7 +107,7 @@ fun MixDetailScreen(
                 FittingText(
                     text = mixName,
                     color = Color.White,
-                    fontSize = 20.sp,
+                    fontSize = textHeadingL(),
                     minFontSize = textMicro(),
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
@@ -198,7 +198,12 @@ fun MixDetailScreen(
                                         }
                                     }
                                 } else {
-                                    Text(mixName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        mixName,
+                                        color = Color.White,
+                                        fontSize = textDisplay(),
+                                        fontWeight = FontWeight.Bold,
+                                    )
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
@@ -348,7 +353,7 @@ fun MixDetailScreen(
                                     Text(
                                         "${track.trackNumber ?: indexOfTrack(state.tracks, track) + 1}",
                                         color = Color(0xFF666666),
-                                        fontSize = 14.sp,
+                                        fontSize = textBodyM(),
                                         fontWeight = FontWeight.Medium,
                                     )
                                 }
@@ -366,7 +371,7 @@ fun MixDetailScreen(
                                 FittingText(
                                     text = track.title,
                                     color = if (isActive) BrandTeal else Color.White,
-                                    fontSize = 15.sp,
+                                    fontSize = textHeadingS(),
                                     minFontSize = textMicro(),
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.fillMaxWidth(),
@@ -376,7 +381,7 @@ fun MixDetailScreen(
                                     FittingText(
                                         text = it,
                                         color = Color(0xFF888888),
-                                        fontSize = 13.sp,
+                                        fontSize = textLabelM(),
                                         minFontSize = textMicro(),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
@@ -425,7 +430,7 @@ fun MixDetailScreen(
                                 Text(
                                     "${d / 60}:${(d % 60).toString().padStart(2, '0')}",
                                     color = Color(0xFF888888),
-                                    fontSize = 13.sp,
+                                    fontSize = textLabelL(),
                                 )
                             }
                             Spacer(Modifier.width(4.dp))

@@ -19,8 +19,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.data.waveform.WaveformDecimator
+import com.lucasdss.ftpmusic.app.ui.interFontFamily
+import com.lucasdss.ftpmusic.app.ui.textLabelM
 
 @Composable
 fun WaveformScrubber(
@@ -134,15 +135,17 @@ fun WaveformScrubber(
             Text(
                 formatWaveformTime(position),
                 color = Color(0xFF666666),
-                fontSize = 12.sp,
+                fontSize = textLabelM(),
                 fontWeight = FontWeight.Medium,
+                fontFamily = interFontFamily(),
                 modifier = Modifier.padding(start = 4.dp),
             )
             Text(
                 "-${formatWaveformTime(duration - position)}",
                 color = Color(0xFF666666),
-                fontSize = 12.sp,
+                fontSize = textLabelM(),
                 fontWeight = FontWeight.Medium,
+                fontFamily = interFontFamily(),
                 modifier = Modifier.padding(end = 4.dp),
             )
         }

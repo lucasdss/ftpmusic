@@ -60,7 +60,7 @@ fun ProfileScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             DetailBackButton(onBack = onBack, inset = false)
-            Text("Profile", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("Profile", color = Color.White, fontSize = textHeadingL(), fontWeight = FontWeight.Bold)
         }
 
         Column(
@@ -78,7 +78,7 @@ fun ProfileScreen(
             Text(
                 "My Listening",
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = textHeadingM(),
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
@@ -109,13 +109,13 @@ fun ProfileScreen(
                 Text(
                     if (streak <= 0) "No streak yet" else "$streak-day streak",
                     color = if (streak <= 0) Color(0xFF666666) else BrandTeal,
-                    fontSize = 14.sp,
+                    fontSize = textBodyM(),
                     fontWeight = FontWeight.Medium,
                 )
                 Text(
                     "All time",
                     color = NavUnselected,
-                    fontSize = 12.sp,
+                    fontSize = textLabelM(),
                 )
             }
 
@@ -127,7 +127,7 @@ fun ProfileScreen(
             Text(
                 "Recently Played",
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = textHeadingM(),
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
@@ -135,7 +135,7 @@ fun ProfileScreen(
                 Text(
                     "Nothing played yet",
                     color = Color(0xFF666666),
-                    fontSize = 14.sp,
+                    fontSize = textBodyM(),
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
@@ -159,14 +159,14 @@ fun ProfileScreen(
                         FittingText(
                             text = track.title,
                             color = Color.White,
-                            fontSize = 15.sp,
+                            fontSize = textBodyL(),
                             minFontSize = textMicro(),
                             modifier = Modifier.fillMaxWidth(),
                         )
                         FittingText(
                             text = track.artist ?: "Unknown",
                             color = Color(0xFF888888),
-                            fontSize = 13.sp,
+                            fontSize = textLabelL(),
                             minFontSize = textMicro(),
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -174,7 +174,7 @@ fun ProfileScreen(
                     Text(
                         formatDuration(track.durationSeconds ?: 0),
                         color = NavUnselected,
-                        fontSize = 13.sp,
+                        fontSize = textLabelL(),
                     )
                 }
             }
@@ -215,9 +215,9 @@ private fun PeriodChips(selected: StatsPeriod, onSelect: (StatsPeriod) -> Unit) 
 @Composable
 private fun TopSection(title: String, rows: List<TopCountRow>) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = Color.White, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
         if (rows.isEmpty()) {
-            Text("—", color = NavUnselected, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            Text("—", color = NavUnselected, fontSize = textLabelL(), modifier = Modifier.padding(top = 6.dp))
         } else {
             rows.forEachIndexed { index, row ->
                 Row(
@@ -227,21 +227,21 @@ private fun TopSection(title: String, rows: List<TopCountRow>) {
                     Text(
                         "${index + 1}",
                         color = BrandTeal,
-                        fontSize = 14.sp,
+                        fontSize = textBodyM(),
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.width(24.dp),
                     )
                     FittingText(
                         text = row.label?.takeIf { it.isNotBlank() } ?: row.itemKey,
                         color = Color.White,
-                        fontSize = 14.sp,
+                        fontSize = textBodyM(),
                         minFontSize = textMicro(),
                         modifier = Modifier.weight(1f),
                     )
                     Text(
                         "${row.playCount}",
                         color = Color(0xFF888888),
-                        fontSize = 13.sp,
+                        fontSize = textLabelL(),
                     )
                 }
             }
@@ -267,13 +267,13 @@ private fun RowScope.StatCard(icon: ImageVector, value: String, label: String) {
         FittingText(
             text = value,
             color = Color.White,
-            fontSize = 16.sp,
+            fontSize = textHeadingS(),
             minFontSize = textMicro(),
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Text(label, color = Color(0xFF888888), fontSize = 12.sp)
+        Text(label, color = Color(0xFF888888), fontSize = textLabelM())
     }
 }
 

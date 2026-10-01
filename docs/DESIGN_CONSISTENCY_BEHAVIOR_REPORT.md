@@ -31,4 +31,6 @@ BrandTeal/Purple/surfaces; AppHeader uses Foreground + OfflineYellow.
 
 ## Out of scope
 
-Full hex purge; typography migration; AppHeader off playback recompose hoist.
+Full hex purge; typography migration — **done ADR-0057** (see
+docs/TYPOGRAPHY_BEHAVIOR_REPORT.md); AppHeader off playback recompose hoist.
+

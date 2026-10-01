@@ -153,7 +153,7 @@ fun HomeScreen(
                                 FittingText(
                                     text = "Surprise Me",
                                     color = Color.White,
-                                    fontSize = 20.sp,
+                                    fontSize = textHeadingL(),
                                     minFontSize = textMicro(),
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.fillMaxWidth(),
@@ -162,7 +162,7 @@ fun HomeScreen(
                                 FittingText(
                                     text = "Random music from your library",
                                     color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = 13.sp,
+                                    fontSize = textLabelL(),
                                     minFontSize = textMicro(),
                                     maxLines = 2,
                                     modifier = Modifier.fillMaxWidth(),
@@ -898,7 +898,7 @@ private fun HomeRadioPill(name: String, onClick: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.SettingsInputAntenna, null, tint = BrandTeal, modifier = Modifier.size(9.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Live", color = NavUnselected, fontSize = 10.sp)
+                Text("Live", color = NavUnselected, fontSize = textMicro())
             }
         }
     }
@@ -985,13 +985,14 @@ private fun TrackRow(
                 color = if (isActive) BrandTeal else Color.White,
                 fontSize = textHeadingS(),
                 minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {
                 FittingText(
                     text = it,
                     color = Color(0xFF888888),
-                    fontSize = textBodyM(),
+                    fontSize = textLabelM(),
                     minFontSize = textMicro(),
                     modifier = Modifier.fillMaxWidth(),
                 )

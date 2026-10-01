@@ -126,7 +126,7 @@ fun MiniPlayer(
                     ) {
                         FittingText(
                             text = title ?: "",
-                            fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                            fontSize = textHeadingS(),
                             minFontSize = textMicro(),
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.fillMaxWidth(),
@@ -134,7 +134,7 @@ fun MiniPlayer(
                         if (!subtitle.isNullOrBlank()) {
                             FittingText(
                                 text = subtitle,
-                                fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                                fontSize = textLabelM(),
                                 minFontSize = textMicro(),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.fillMaxWidth(),
