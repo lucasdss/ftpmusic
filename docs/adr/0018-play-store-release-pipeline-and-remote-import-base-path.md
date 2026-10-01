@@ -3,10 +3,9 @@
 Date: 2026-08-19
 Status: Accepted
 
-> **Status note (2026-09-29):** verified on 1.2.0 (versionCode 4) — signed AAB
-> rebuilt for Play Internal testing; unit suite green; `lintVitalRelease` gate
-> required before upload. Prior note (2026-08-25) referred to an interim
-> rebuild still labeled 1.1.0 / code 3 in Gradle.
+> **Status note (2026-10-01):** verified on 1.3.0 (versionCode 5) — signed AAB
+> for Play Internal testing; unit suite + `lintVitalRelease` required before
+> upload. Prior note (2026-09-29) referred to 1.2.0 / code 4.
 
 ## Context
 
