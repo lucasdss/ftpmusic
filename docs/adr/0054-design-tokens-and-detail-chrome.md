@@ -39,4 +39,4 @@ by tests.
 
 - One visual language for colors, segmented controls, and detail back chrome.
 - Nested logo + back bar no longer stacks on drill-downs.
-- Navbar IA still diverges from market until an explicit Phase-2 approval.
+- Navbar IA shipped in ADR-0055; Settings stack-back + 48dp in ADR-0056.

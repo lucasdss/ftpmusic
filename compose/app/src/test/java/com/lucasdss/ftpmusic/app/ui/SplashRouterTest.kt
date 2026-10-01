@@ -12,8 +12,8 @@ class SplashRouterTest {
     }
 
     @Test
-    fun `credentials but no metadata routes to syncing`() {
-        assertEquals("syncing", SplashRouter.resolveRoute(hasCredentials = true, albumCount = 0))
+    fun `credentials but no metadata routes to syncing with returnTo home`() {
+        assertEquals(syncingRoute("home"), SplashRouter.resolveRoute(hasCredentials = true, albumCount = 0))
     }
 
     @Test

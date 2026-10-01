@@ -77,7 +77,7 @@ import kotlinx.coroutines.withContext
 object SplashRouter {
     fun resolveRoute(hasCredentials: Boolean, albumCount: Int): String = when {
         !hasCredentials -> "connect"
-        albumCount == 0 -> "syncing"
+        albumCount == 0 -> syncingRoute("home")
         else -> "home"
     }
 }
@@ -197,7 +197,7 @@ fun FtpmusicNavHost() {
         vibrant = if (nowPlayingColors.hasColors) nowPlayingColors.vibrant else null,
     )
 
-    val tabs = bottomNavItems()
+    val tabs = BottomNavItems
     val showBottomBar = currentRoute != "connect" // hide on login screen
     val isFullPlayer = currentRoute == "nowplaying"
     val isLoginScreen = currentRoute == "connect"
@@ -384,13 +384,9 @@ fun FtpmusicNavHost() {
 
             if (showHeader) {
                 AppHeader(
-                    settingsSelected = currentRoute?.startsWith("settings") == true,
+                    settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
                     onSettingsClick = {
-                        navController.navigate("settings") {
-                            popUpTo("home") { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        navController.navigateToSettings()
                     },
                 )
             }
@@ -447,11 +443,13 @@ fun FtpmusicNavHost() {
                     val connectVm: com.lucasdss.ftpmusic.app.ui.library.LibraryViewModel = hiltViewModel()
                     ServerConnectScreen(onConnected = {
                         // First login — show sync progress then navigate home
-                        navController.navigate("syncing") { popUpTo("connect") { inclusive = true } }
+                        navController.navigate(syncingRoute("home")) {
+                            popUpTo("connect") { inclusive = true }
+                        }
                     })
                 }
                 composable(
-                    "syncing?returnTo={returnTo}",
+                    SYNCING_ROUTE_PATTERN,
                     arguments = listOf(navArgument("returnTo") { defaultValue = "home" }),
                 ) { backStackEntry ->
                     val returnTo = backStackEntry.arguments?.getString("returnTo") ?: "home"
@@ -459,7 +457,9 @@ fun FtpmusicNavHost() {
                         userTriggered = returnTo != "home",
                         rebuildOnly = false,
                         onComplete = {
-                            navController.navigate(returnTo) { popUpTo("syncing") { inclusive = true } }
+                            navController.navigate(returnTo) {
+                                popUpTo(SYNCING_ROUTE_PATTERN) { inclusive = true }
+                            }
                         },
                     )
                 }
@@ -497,7 +497,7 @@ fun FtpmusicNavHost() {
                         currentAlbumId = playbackState.albumId,
                         isPlaying = playbackState.isPlaying,
                         onOpenServerSettings = {
-                            navController.navigate("settings") { launchSingleTop = true }
+                            navController.navigateToSettings()
                         },
                     )
                 }
@@ -546,7 +546,7 @@ fun FtpmusicNavHost() {
                         currentAlbumId = playbackState.albumId,
                         isPlaying = playbackState.isPlaying,
                         onOpenServerSettings = {
-                            navController.navigate("settings") { launchSingleTop = true }
+                            navController.navigateToSettings()
                         },
                     )
                 }
@@ -641,7 +641,7 @@ fun FtpmusicNavHost() {
                             ) {
                                 return@SettingsScreen
                             }
-                            navController.navigate("syncing?returnTo=settings")
+                            navController.navigate(syncingRoute("settings"))
                         },
                         onRebuildMixes = { navController.navigate("rebuildmix") },
                         onCustomMixes = { navController.navigate("customMixes") },

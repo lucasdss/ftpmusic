@@ -14,13 +14,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
+import com.lucasdss.ftpmusic.app.ui.adp
 import com.lucasdss.ftpmusic.app.ui.iconSmall
 import com.lucasdss.ftpmusic.app.ui.spacingL
+
+/** Material minimum touch target (dp) for back / gear chrome (ADR-0056). */
+const val MIN_TOUCH_TARGET_DP = 48f
+
+@Composable
+fun minTouchTarget(): Dp = adp(MIN_TOUCH_TARGET_DP)
 
 /**
  * Canonical floating back control for detail screens (album/artist/playlist/…).
  * Circle + ChevronLeft — same affordance everywhere AppHeader is hidden.
+ *
+ * Outer hit box is ≥48dp (Material). Visual disc may match the hit box.
  *
  * @param inset when true (default), applies top/start [spacingL] for overlay on heroes.
  *              Set false when embedding in a TopAppBar / custom title row.
@@ -34,9 +44,10 @@ fun DetailBackButton(onBack: () -> Unit, modifier: Modifier = Modifier, inset: B
     }
     Box(
         base
-            .size(36.dp)
+            .size(minTouchTarget())
             .clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.5f))
+            .testTag("detail_back_button")
             .clickable(onClick = onBack),
         contentAlignment = Alignment.Center,
     ) {

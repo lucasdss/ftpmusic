@@ -33,7 +33,9 @@ import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandBg
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.Foreground
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.OfflineYellow
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 
 /**
@@ -85,7 +87,7 @@ fun AppHeader(
         Column(modifier = Modifier.weight(2f)) {
             Text(
                 text = "FTP Music",
-                color = Color(0xFFE8E8F0),
+                color = Foreground,
                 fontSize = textHeadingM(),
                 fontWeight = FontWeight.Bold,
                 fontFamily = outfitFontFamily(),
@@ -112,21 +114,21 @@ fun AppHeader(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color(0xFFFFC800).copy(alpha = 0.12f))
-                    .border(1.dp, Color(0xFFFFC800).copy(alpha = 0.30f), RoundedCornerShape(50))
+                    .background(OfflineYellow.copy(alpha = 0.12f))
+                    .border(1.dp, OfflineYellow.copy(alpha = 0.30f), RoundedCornerShape(50))
                     .padding(horizontal = spacingS(), vertical = spacingXS()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     Icons.Default.CloudOff,
                     null,
-                    tint = Color(0xFFFFC800),
+                    tint = OfflineYellow,
                     modifier = Modifier.size(adp(10f)),
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
                     "Server unreachable",
-                    color = Color(0xFFFFC800),
+                    color = OfflineYellow,
                     fontSize = textMicro(),
                     fontWeight = FontWeight.Medium,
                 )
@@ -137,7 +139,7 @@ fun AppHeader(
         if (onSettingsClick != null) {
             Box(
                 Modifier
-                    .size(adp(36f))
+                    .size(minTouchTarget())
                     .clip(CircleShape)
                     .testTag("app_header_settings")
                     .semantics { contentDescription = "Settings" }
