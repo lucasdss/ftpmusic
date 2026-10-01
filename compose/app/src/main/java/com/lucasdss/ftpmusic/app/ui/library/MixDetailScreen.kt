@@ -902,7 +902,7 @@ private fun MixActionSheet(
                 Box(Modifier.width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)))
             }
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Mix · $trackCount tracks", color = Color(0xFF888888), fontSize = textBodyM())
+                Text("Mix · $trackCount tracks", color = Color(0xFF888888), fontSize = textLabelM())
             }
             HorizontalDivider(
                 color = Color.White.copy(alpha = 0.06f),
@@ -960,14 +960,14 @@ private fun MixTrackActionSheet(
                         color = Color.White,
                         fontSize = textHeadingS(),
                         minFontSize = textMicro(),
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Medium,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     track.artist?.let {
                         FittingText(
                             text = it,
                             color = Color(0xFF888888),
-                            fontSize = textBodyM(),
+                            fontSize = textLabelM(),
                             minFontSize = textMicro(),
                             modifier = Modifier.fillMaxWidth(),
                         )

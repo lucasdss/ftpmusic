@@ -406,6 +406,7 @@ private fun PlayerMiniBar(
                         text = title ?: "No track",
                         fontSize = textHeadingS(),
                         minFontSize = textMicro(),
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.fillMaxWidth(),
                     )

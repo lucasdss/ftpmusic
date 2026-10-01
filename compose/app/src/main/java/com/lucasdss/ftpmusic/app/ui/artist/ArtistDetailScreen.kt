@@ -674,7 +674,7 @@ private fun ArtistActionSheet(
                 Box(Modifier.width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)))
             }
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Artist · $trackCount tracks", color = Color(0xFF888888), fontSize = textBodyM())
+                Text("Artist · $trackCount tracks", color = Color(0xFF888888), fontSize = textLabelM())
             }
             HorizontalDivider(
                 color = Color.White.copy(alpha = 0.06f),
@@ -755,7 +755,7 @@ private fun ArtistTrackActionSheet(
                         track.title,
                         color = Color.White,
                         fontSize = textHeadingS(),
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -763,7 +763,7 @@ private fun ArtistTrackActionSheet(
                         Text(
                             it,
                             color = Color(0xFF888888),
-                            fontSize = textBodyM(),
+                            fontSize = textLabelM(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

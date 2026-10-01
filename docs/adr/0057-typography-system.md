@@ -2,7 +2,8 @@
 
 Date: 2026-10-01
 Status: Accepted
-Related: ADR-0054 (design tokens), docs/TYPOGRAPHY_BEHAVIOR_REPORT.md
+Related: ADR-0054 (design tokens), ADR-0058 (correctness follow-up),
+docs/TYPOGRAPHY_BEHAVIOR_REPORT.md
 
 ## Context
 
@@ -23,6 +24,8 @@ Market music apps: one UI face, list primary ~15–17sp Medium, captions for tim
 4. **Section titles** = `textHeadingM()` Bold (heroes may use `textDisplay()`).
 5. **Policy constants** in `TypographyPolicy` for tests (base sp / font names).
 6. Outfit gains Regular; Inter gains Medium.
+
+See **ADR-0058** for no baked colors, scaled lineHeight, and remember.
 
 ## Consequences
 

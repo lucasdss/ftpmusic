@@ -262,6 +262,7 @@ fun GenreDetailScreen(
                                             color = Color.White,
                                             fontSize = textHeadingS(),
                                             minFontSize = textMicro(),
+                                            fontWeight = FontWeight.Medium,
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                     }

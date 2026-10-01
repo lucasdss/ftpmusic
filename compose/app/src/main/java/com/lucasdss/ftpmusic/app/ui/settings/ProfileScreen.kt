@@ -159,14 +159,15 @@ fun ProfileScreen(
                         FittingText(
                             text = track.title,
                             color = Color.White,
-                            fontSize = textBodyL(),
+                            fontSize = textHeadingS(),
                             minFontSize = textMicro(),
+                            fontWeight = FontWeight.Medium,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         FittingText(
                             text = track.artist ?: "Unknown",
                             color = Color(0xFF888888),
-                            fontSize = textLabelL(),
+                            fontSize = textLabelM(),
                             minFontSize = textMicro(),
                             modifier = Modifier.fillMaxWidth(),
                         )

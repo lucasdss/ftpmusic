@@ -339,6 +339,7 @@ fun LibraryContent(
                                                 color = Color.White,
                                                 fontSize = textHeadingS(),
                                                 minFontSize = textMicro(),
+                                                fontWeight = FontWeight.Medium,
                                                 modifier = Modifier.fillMaxWidth(),
                                             )
                                             artist.albumCount?.let {
@@ -454,6 +455,7 @@ fun LibraryContent(
                                                     color = Color.White,
                                                     fontSize = textHeadingS(),
                                                     minFontSize = textMicro(),
+                                                    fontWeight = FontWeight.Medium,
                                                     modifier = Modifier.fillMaxWidth(),
                                                 )
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -623,6 +625,7 @@ fun LibraryContent(
                                                 color = Color.White,
                                                 fontSize = textHeadingS(),
                                                 minFontSize = textMicro(),
+                                                fontWeight = FontWeight.Medium,
                                                 modifier = Modifier.fillMaxWidth(),
                                             )
                                             FittingText(

@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
@@ -56,6 +57,7 @@ fun CastMiniController(
                         text = trackTitle ?: "Connected",
                         fontSize = textHeadingS(),
                         minFontSize = textMicro(),
+                        fontWeight = FontWeight.Medium,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     FittingText(

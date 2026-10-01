@@ -717,13 +717,14 @@ fun SearchScreen(
                                         color = Color.White,
                                         fontSize = textHeadingS(),
                                         minFontSize = textMicro(),
+                                        fontWeight = FontWeight.Medium,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                     a.albumCount?.let {
                                         FittingText(
                                             text = "$it albums",
                                             color = Color(0xFF888888),
-                                            fontSize = textBodyM(),
+                                            fontSize = textLabelM(),
                                             minFontSize = textMicro(),
                                             modifier = Modifier.fillMaxWidth(),
                                         )
@@ -785,6 +786,7 @@ fun SearchScreen(
                                     color = Color.White,
                                     fontSize = textHeadingS(),
                                     minFontSize = textMicro(),
+                                    fontWeight = FontWeight.Medium,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 val subtitle = buildString {
@@ -798,7 +800,7 @@ fun SearchScreen(
                                     FittingText(
                                         text = subtitle,
                                         color = Color(0xFF888888),
-                                        fontSize = textBodyM(),
+                                        fontSize = textLabelM(),
                                         minFontSize = textMicro(),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
@@ -867,6 +869,7 @@ fun SearchScreen(
                                     color = Color.White,
                                     fontSize = textHeadingS(),
                                     minFontSize = textMicro(),
+                                    fontWeight = FontWeight.Medium,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 val subtitle = buildString {
@@ -880,7 +883,7 @@ fun SearchScreen(
                                     FittingText(
                                         text = subtitle,
                                         color = Color(0xFF888888),
-                                        fontSize = textBodyM(),
+                                        fontSize = textLabelM(),
                                         minFontSize = textMicro(),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
@@ -947,12 +950,13 @@ fun SearchScreen(
                                     color = Color.White,
                                     fontSize = textHeadingS(),
                                     minFontSize = textMicro(),
+                                    fontWeight = FontWeight.Medium,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 FittingText(
                                     text = "${pl.songCount} tracks",
                                     color = Color(0xFF888888),
-                                    fontSize = textBodyM(),
+                                    fontSize = textLabelM(),
                                     minFontSize = textMicro(),
                                     modifier = Modifier.fillMaxWidth(),
                                 )

@@ -22,6 +22,9 @@ object TypographyPolicy {
     const val UI_FONT = "Outfit"
     const val CAPTION_FONT = "Inter"
 
+    /** lineHeight = fontBase * LINE_HEIGHT_MULT * widthFactor (pairs with asp). */
+    const val LINE_HEIGHT_MULT = 1.35f
+
     fun trackTitleBaseSp(): Float = TRACK_TITLE_BASE_SP
 
     fun sectionTitleBaseSp(): Float = SECTION_TITLE_BASE_SP
@@ -30,10 +33,17 @@ object TypographyPolicy {
 
     fun trackSubtitleBaseSp(): Float = TRACK_SUBTITLE_BASE_SP
 
+    fun lineHeightMult(): Float = LINE_HEIGHT_MULT
+
+    fun scaledLineHeightBase(fontBaseSp: Float): Float = fontBaseSp * LINE_HEIGHT_MULT
+
     fun uiFontFamilyName(): String = UI_FONT
 
     fun captionFontFamilyName(): String = CAPTION_FONT
 
     /** Compare two base sizes (used by tests for hierarchy checks). */
     fun isLargerSp(a: Float, b: Float): Boolean = a > b
+
+    /** ADR-0058: theme TextStyles must not set color. */
+    fun themeStylesOmitColor(): Boolean = true
 }
