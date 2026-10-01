@@ -6,7 +6,7 @@ Caveman terse. Phone-first shell. Post ADR-0049 harden + nav label center fix.
 
 - Root: `MainActivity` → `FtpmusicNavHost` Scaffold.
 - Bottom `NavigationBar` only. No NavigationRail / WindowSizeClass.
-- Tabs: home, library, favorites, search, settings.
+- Tabs: home, search, library, favorites (Settings = AppHeader gear; ADR-0055).
 - Hide labels pref: `KEY_NAV_HIDE_LABELS` (default OFF). ON → `label = null`; icon `contentDescription = tab.label`. OFF → labels shown; icon CD null (avoid double announce).
 
 ## Scale

@@ -197,13 +197,7 @@ fun FtpmusicNavHost() {
         vibrant = if (nowPlayingColors.hasColors) nowPlayingColors.vibrant else null,
     )
 
-    val tabs = listOf(
-        BottomNavItem("home", "Home", Icons.Filled.BarChart, Icons.Outlined.BarChart),
-        BottomNavItem("library", "Library", Icons.Filled.MusicNote, Icons.Outlined.MusicNote),
-        BottomNavItem("favorites", "Favorites", Icons.Filled.Favorite, Icons.Outlined.FavoriteBorder),
-        BottomNavItem("search", "Search", Icons.Filled.Search, Icons.Outlined.Search),
-        BottomNavItem("settings", "Settings", Icons.Filled.Settings, Icons.Outlined.Settings),
-    )
+    val tabs = bottomNavItems()
     val showBottomBar = currentRoute != "connect" // hide on login screen
     val isFullPlayer = currentRoute == "nowplaying"
     val isLoginScreen = currentRoute == "connect"
@@ -389,7 +383,16 @@ fun FtpmusicNavHost() {
             val showHeader = showAppHeaderForRoute(route)
 
             if (showHeader) {
-                AppHeader()
+                AppHeader(
+                    settingsSelected = currentRoute?.startsWith("settings") == true,
+                    onSettingsClick = {
+                        navController.navigate("settings") {
+                            popUpTo("home") { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
             }
 
             NavHost(

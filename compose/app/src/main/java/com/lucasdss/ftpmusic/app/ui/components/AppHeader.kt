@@ -2,10 +2,14 @@ package com.lucasdss.ftpmusic.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,7 +21,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,16 +33,23 @@ import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandBg
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 
 /**
- * Shared persistent app header — used across all 5 main tabs.
+ * Shared persistent app header — primary tabs + settings route.
  *
  * Layout (left → right):
- * [ Logo 56×56 | "FTP Music" / "Flow Tempo Pulse" (2/3 width) ]  [ Server unreachable? ]  [ Cast button ]
+ * [ Logo | branding ]  [ Server unreachable? ]  [ Settings gear ]  [ Cast ]
+ *
+ * Settings lives here (not bottom nav) per ADR-0055. Search remains a bottom tab (ADR-0014).
  */
 @Composable
-fun AppHeader(modifier: Modifier = Modifier) {
+fun AppHeader(
+    modifier: Modifier = Modifier,
+    settingsSelected: Boolean = false,
+    onSettingsClick: (() -> Unit)? = null,
+) {
     val isReachable by ReachabilityStateHolder.isReachable.collectAsState()
 
     Row(
@@ -115,6 +129,26 @@ fun AppHeader(modifier: Modifier = Modifier) {
                     color = Color(0xFFFFC800),
                     fontSize = textMicro(),
                     fontWeight = FontWeight.Medium,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+
+        if (onSettingsClick != null) {
+            Box(
+                Modifier
+                    .size(adp(36f))
+                    .clip(CircleShape)
+                    .testTag("app_header_settings")
+                    .semantics { contentDescription = "Settings" }
+                    .clickable(onClick = onSettingsClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (settingsSelected) Icons.Filled.Settings else Icons.Outlined.Settings,
+                    contentDescription = null,
+                    tint = if (settingsSelected) BrandTeal else NavUnselected,
+                    modifier = Modifier.size(adp(22f)),
                 )
             }
             Spacer(Modifier.width(8.dp))

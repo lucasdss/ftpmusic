@@ -33,8 +33,7 @@ by tests.
 
 ## Non-goals (this ADR)
 
-- Bottom nav tab order / icons / Settings placement — gated separately
-  (navbar proposal; Favorites stays a tab). No `tabs = listOf` change here.
+- Bottom nav tab order / icons / Settings placement — **ADR-0055** (Home→Search→Library→Favorites; Settings = header gear).
 
 ## Consequences
 
