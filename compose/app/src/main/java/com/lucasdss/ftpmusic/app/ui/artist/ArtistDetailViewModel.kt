@@ -283,7 +283,7 @@ class ArtistDetailViewModel @Inject constructor(
                     hasMoreTracks = newEntities.size >= TRACKS_PAGE_SIZE,
                     isLoadingMoreTracks = false,
                 )
-                loadReactions(newEntities.map { it.id }, merge = true)
+                loadReactions(newEntities.map { it.id })
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoadingMoreTracks = false)
             }
@@ -440,9 +440,9 @@ class ArtistDetailViewModel @Inject constructor(
 
     fun getTrackRating(trackId: String): Int = _trackRatings.value[trackId] ?: 0
 
-    /** Load persisted like (starred_at) + dislike flags for the given track ids.
-     *  [merge]=true keeps prior page reactions (load-more); false replaces (first page). */
-    private fun loadReactions(trackIds: List<String>, merge: Boolean = false) {
+    /** Load persisted like/dislike for [trackIds], always merging into existing sets
+     *  so a slow first-page job cannot wipe a later page-2 merge. */
+    private fun loadReactions(trackIds: List<String>) {
         if (trackIds.isEmpty()) return
         viewModelScope.launch {
             try {
@@ -450,8 +450,8 @@ class ArtistDetailViewModel @Inject constructor(
                 val roomLiked = entities.filter { it.starredAt != null }.map { it.id }.toSet()
                 val roomDisliked = entities.filter { it.isDisliked }.map { it.id }.toSet()
                 val idSet = trackIds.toSet()
-                val likedBase = if (merge) (_likedTrackIds.value - idSet) + roomLiked else roomLiked
-                val dislikedBase = if (merge) (_dislikedTrackIds.value - idSet) + roomDisliked else roomDisliked
+                val likedBase = (_likedTrackIds.value - idSet) + roomLiked
+                val dislikedBase = (_dislikedTrackIds.value - idSet) + roomDisliked
                 trackPending.reconcile(likedBase, dislikedBase)
                 _likedTrackIds.value = trackPending.mergeLiked(likedBase)
                 _dislikedTrackIds.value = trackPending.mergeDisliked(dislikedBase)

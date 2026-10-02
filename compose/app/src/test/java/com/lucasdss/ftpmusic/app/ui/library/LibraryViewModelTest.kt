@@ -2532,6 +2532,58 @@ class LibraryViewModelTest {
         assertTrue(vm.state.value.likedAlbumIds.contains("al-keep"))
     }
 
+    @Test
+    fun `unlike fail restores starred album row and keeps unrelated id`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        coEvery { favRepo.unlikeAlbum("al-1") } throws RuntimeException("offline")
+        coEvery { metadataDao.getStarredAlbums(50, 0) } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "al-1", name = "Album One"),
+            com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "al-keep", name = "Keep"),
+        )
+        coEvery { metadataDao.getStarredAlbumIds() } returns listOf("al-1", "al-keep")
+        coEvery { metadataDao.getStarredArtistIds() } returns emptyList()
+        coEvery { metadataDao.getDislikedAlbumIds() } returns emptyList()
+        coEvery { metadataDao.getDislikedArtistIds() } returns emptyList()
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+        vm.loadFavorites()
+        advanceUntilIdle()
+        assertEquals(2, vm.state.value.starredAlbums.size)
+
+        vm.toggleAlbumLike("al-1") // unlike
+        assertTrue(vm.state.value.starredAlbums.none { it.id == "al-1" })
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-1"))
+        assertTrue(vm.state.value.starredAlbums.any { it.id == "al-1" && it.name == "Album One" })
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-keep"))
+        assertTrue(vm.state.value.starredAlbums.any { it.id == "al-keep" })
+    }
+
+    @Test
+    fun `like fail restores cleared dislike id`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        coEvery { favRepo.likeAlbum("al-d") } throws RuntimeException("offline")
+        coEvery { metadataDao.getStarredAlbums(50, 0) } returns emptyList()
+        coEvery { metadataDao.getStarredArtists(50, 0) } returns emptyList()
+        coEvery { metadataDao.getStarredAlbumIds() } returns emptyList()
+        coEvery { metadataDao.getStarredArtistIds() } returns emptyList()
+        coEvery { metadataDao.getDislikedAlbumIds() } returns listOf("al-d")
+        coEvery { metadataDao.getDislikedArtistIds() } returns emptyList()
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+        vm.loadFavorites()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.dislikedAlbumIds.contains("al-d"))
+
+        vm.toggleAlbumLike("al-d") // like clears dislike optimistically
+        assertFalse(vm.state.value.dislikedAlbumIds.contains("al-d"))
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.likedAlbumIds.contains("al-d"))
+        assertTrue(vm.state.value.dislikedAlbumIds.contains("al-d"))
+    }
+
     // ── Playlist create + Add Songs flow ───────────────────────────────────
 
     private fun playlistVm(repo: PlaylistRepository = playlistRepo): LibraryViewModel = LibraryViewModel(

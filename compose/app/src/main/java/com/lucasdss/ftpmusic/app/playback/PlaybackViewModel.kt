@@ -266,9 +266,9 @@ class PlaybackViewModel @Inject constructor(
                     }
                 }
             } catch (_: Exception) {
-                if (provider.playbackState.value.currentTrackId == mutationTrackId &&
-                    mutationGeneration.get() == myGen
-                ) {
+                // Always restore this mutation's baseline when still on same track —
+                // even if a newer generation is in flight (stale fail must not stick).
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
                     _isStarred.value = isStarred
                     _isDisliked.value = isDisliked
                 }
@@ -314,9 +314,7 @@ class PlaybackViewModel @Inject constructor(
                     }
                 }
             } catch (_: Exception) {
-                if (provider.playbackState.value.currentTrackId == mutationTrackId &&
-                    mutationGeneration.get() == myGen
-                ) {
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
                     _isDisliked.value = isDisliked
                     _isStarred.value = isStarred
                 }
@@ -348,9 +346,7 @@ class PlaybackViewModel @Inject constructor(
                     _trackRating.value = clamped
                 }
             } catch (_: Exception) {
-                if (provider.playbackState.value.currentTrackId == mutationTrackId &&
-                    mutationGeneration.get() == myGen
-                ) {
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
                     _trackRating.value = previous
                 }
             } finally {

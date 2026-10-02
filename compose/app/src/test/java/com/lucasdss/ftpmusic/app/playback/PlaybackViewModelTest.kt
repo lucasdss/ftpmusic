@@ -218,4 +218,25 @@ class PlaybackViewModelTest {
         assertTrue(viewModel.state.value.isDisliked)
         assertFalse(viewModel.state.value.isStarred)
     }
+
+    @Test
+    fun `like fail while dislike in flight ends as dislike not stuck star`() = runTest {
+        coEvery { favoriteRepo.likeTrack("t1") } coAnswers {
+            kotlinx.coroutines.delay(200)
+            throw RuntimeException("offline")
+        }
+        coEvery { favoriteRepo.dislikeTrack("t1") } coAnswers {
+            kotlinx.coroutines.delay(500)
+        }
+        provider.emit(PlaybackState(currentTrackId = "t1", title = "One"))
+        viewModel.state.value
+        advanceUntilIdle()
+        viewModel.toggleLike()
+        viewModel.toggleDislike()
+        assertTrue(viewModel.state.value.isDisliked)
+        assertFalse(viewModel.state.value.isStarred)
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.isDisliked)
+        assertFalse(viewModel.state.value.isStarred)
+    }
 }

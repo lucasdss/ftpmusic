@@ -645,11 +645,11 @@ class AlbumDetailViewModel @Inject constructor(
 
     fun toggleAlbumLike(albumId: String) {
         val liked = _state.value.likedAlbumIds.contains(albumId)
-        val previous = _state.value
+        val wasDisliked = _state.value.dislikedAlbumIds.contains(albumId)
         albumPending.set(albumId, if (liked) FavoritePendingKind.Neutral else FavoritePendingKind.Liked)
         _state.value = _state.value.copy(
-            likedAlbumIds = if (liked) previous.likedAlbumIds - albumId else previous.likedAlbumIds + albumId,
-            dislikedAlbumIds = previous.dislikedAlbumIds - albumId,
+            likedAlbumIds = if (liked) _state.value.likedAlbumIds - albumId else _state.value.likedAlbumIds + albumId,
+            dislikedAlbumIds = _state.value.dislikedAlbumIds - albumId,
         )
         viewModelScope.launch {
             try {
@@ -659,23 +659,33 @@ class AlbumDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-album", "toggleAlbumLike failed — rolled back", e)
                 albumPending.clear(albumId)
-                _state.value = previous
+                _state.value = _state.value.copy(
+                    likedAlbumIds = if (liked) {
+                        _state.value.likedAlbumIds + albumId
+                    } else {
+                        _state.value.likedAlbumIds - albumId
+                    },
+                    dislikedAlbumIds = if (wasDisliked) {
+                        _state.value.dislikedAlbumIds + albumId
+                    } else {
+                        _state.value.dislikedAlbumIds
+                    },
+                )
             }
         }
     }
 
     fun toggleAlbumDislike(albumId: String) {
         val disliked = _state.value.dislikedAlbumIds.contains(albumId)
-        val previous = _state.value
+        val wasLiked = _state.value.likedAlbumIds.contains(albumId)
         albumPending.set(albumId, if (disliked) FavoritePendingKind.Neutral else FavoritePendingKind.Disliked)
         _state.value = _state.value.copy(
             dislikedAlbumIds = if (disliked) {
-                previous.dislikedAlbumIds - albumId
+                _state.value.dislikedAlbumIds - albumId
             } else {
-                previous.dislikedAlbumIds +
-                    albumId
+                _state.value.dislikedAlbumIds + albumId
             },
-            likedAlbumIds = previous.likedAlbumIds - albumId,
+            likedAlbumIds = _state.value.likedAlbumIds - albumId,
         )
         viewModelScope.launch {
             try {
@@ -689,7 +699,18 @@ class AlbumDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-album", "toggleAlbumDislike failed — rolled back", e)
                 albumPending.clear(albumId)
-                _state.value = previous
+                _state.value = _state.value.copy(
+                    dislikedAlbumIds = if (disliked) {
+                        _state.value.dislikedAlbumIds + albumId
+                    } else {
+                        _state.value.dislikedAlbumIds - albumId
+                    },
+                    likedAlbumIds = if (wasLiked) {
+                        _state.value.likedAlbumIds + albumId
+                    } else {
+                        _state.value.likedAlbumIds
+                    },
+                )
             }
         }
     }

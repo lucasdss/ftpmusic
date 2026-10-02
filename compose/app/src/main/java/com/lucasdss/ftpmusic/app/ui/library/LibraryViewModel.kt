@@ -447,6 +447,8 @@ class LibraryViewModel @Inject constructor(
 
     fun toggleAlbumLike(albumId: String) {
         val liked = _state.value.likedAlbumIds.contains(albumId)
+        val wasDisliked = _state.value.dislikedAlbumIds.contains(albumId)
+        val removedRow = _state.value.starredAlbums.firstOrNull { it.id == albumId }
         albumPending.set(albumId, if (liked) FavoritePendingKind.Neutral else FavoritePendingKind.Liked)
         _state.value = _state.value.copy(
             likedAlbumIds = if (liked) _state.value.likedAlbumIds - albumId else _state.value.likedAlbumIds + albumId,
@@ -467,17 +469,21 @@ class LibraryViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-home", "toggleAlbumLike failed — rolled back", e)
                 albumPending.clear(albumId)
-                // Id-scoped rollback — do not stomp unrelated concurrent Flow/toggles.
                 _state.value = _state.value.copy(
                     likedAlbumIds = if (liked) {
                         _state.value.likedAlbumIds + albumId
                     } else {
                         _state.value.likedAlbumIds - albumId
                     },
-                    dislikedAlbumIds = if (!liked) {
-                        _state.value.dislikedAlbumIds
+                    dislikedAlbumIds = if (wasDisliked) {
+                        _state.value.dislikedAlbumIds + albumId
                     } else {
                         _state.value.dislikedAlbumIds
+                    },
+                    starredAlbums = if (liked && removedRow != null) {
+                        (_state.value.starredAlbums + removedRow).distinctBy { it.id }
+                    } else {
+                        _state.value.starredAlbums
                     },
                 )
             }
@@ -487,6 +493,7 @@ class LibraryViewModel @Inject constructor(
     fun toggleAlbumDislike(albumId: String) {
         val disliked = _state.value.dislikedAlbumIds.contains(albumId)
         val wasLiked = _state.value.likedAlbumIds.contains(albumId)
+        val removedRow = _state.value.starredAlbums.firstOrNull { it.id == albumId }
         albumPending.set(albumId, if (disliked) FavoritePendingKind.Neutral else FavoritePendingKind.Disliked)
         _state.value = _state.value.copy(
             dislikedAlbumIds = if (disliked) {
@@ -517,6 +524,11 @@ class LibraryViewModel @Inject constructor(
                     } else {
                         _state.value.likedAlbumIds
                     },
+                    starredAlbums = if (wasLiked && removedRow != null) {
+                        (_state.value.starredAlbums + removedRow).distinctBy { it.id }
+                    } else {
+                        _state.value.starredAlbums
+                    },
                 )
             }
         }
@@ -526,6 +538,8 @@ class LibraryViewModel @Inject constructor(
 
     fun toggleArtistLike(artistId: String) {
         val liked = _state.value.likedArtistIds.contains(artistId)
+        val wasDisliked = _state.value.dislikedArtistIds.contains(artistId)
+        val removedRow = _state.value.starredArtists.firstOrNull { it.id == artistId }
         artistPending.set(artistId, if (liked) FavoritePendingKind.Neutral else FavoritePendingKind.Liked)
         _state.value = _state.value.copy(
             likedArtistIds = if (liked) {
@@ -556,6 +570,16 @@ class LibraryViewModel @Inject constructor(
                     } else {
                         _state.value.likedArtistIds - artistId
                     },
+                    dislikedArtistIds = if (wasDisliked) {
+                        _state.value.dislikedArtistIds + artistId
+                    } else {
+                        _state.value.dislikedArtistIds
+                    },
+                    starredArtists = if (liked && removedRow != null) {
+                        (_state.value.starredArtists + removedRow).distinctBy { it.id }
+                    } else {
+                        _state.value.starredArtists
+                    },
                 )
             }
         }
@@ -564,6 +588,7 @@ class LibraryViewModel @Inject constructor(
     fun toggleArtistDislike(artistId: String) {
         val disliked = _state.value.dislikedArtistIds.contains(artistId)
         val wasLiked = _state.value.likedArtistIds.contains(artistId)
+        val removedRow = _state.value.starredArtists.firstOrNull { it.id == artistId }
         artistPending.set(artistId, if (disliked) FavoritePendingKind.Neutral else FavoritePendingKind.Disliked)
         _state.value = _state.value.copy(
             dislikedArtistIds = if (disliked) {
@@ -594,6 +619,11 @@ class LibraryViewModel @Inject constructor(
                         _state.value.likedArtistIds + artistId
                     } else {
                         _state.value.likedArtistIds
+                    },
+                    starredArtists = if (wasLiked && removedRow != null) {
+                        (_state.value.starredArtists + removedRow).distinctBy { it.id }
+                    } else {
+                        _state.value.starredArtists
                     },
                 )
             }

@@ -69,4 +69,17 @@ class FavoritePendingStoreTest {
         assertTrue(store.isEmpty())
         assertFalse(store.mergeLiked(emptySet()).contains("x"))
     }
+
+    @Test
+    fun neutralSurvivesLikedOnlyReconcileUntilBothSidesMatch() {
+        val store = FavoritePendingStore()
+        store.set("ghost", FavoritePendingKind.Neutral)
+        // Liked-window refresh that passes empty liked + leftover disliked must keep Neutral
+        // (premature clear caused ghost unstar rows).
+        store.reconcile(roomLiked = emptySet(), roomDisliked = setOf("ghost"))
+        assertEquals(FavoritePendingKind.Neutral, store.get("ghost"))
+        // Both sides match Neutral (!liked && !disliked) → clear
+        store.reconcile(roomLiked = emptySet(), roomDisliked = emptySet())
+        assertNull(store.get("ghost"))
+    }
 }

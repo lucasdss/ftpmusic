@@ -805,6 +805,33 @@ class AlbumDetailViewModelTest {
     }
 
     @Test
+    fun `album like fail restores dislike and leaves unrelated liked id`() = runTest {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns
+            kotlinx.coroutines.flow.MutableStateFlow(listOf("al-keep"))
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(listOf("al-d"))
+        coEvery { favoriteRepository.likeAlbum("al-d") } throws RuntimeException("offline")
+        viewModel =
+            AlbumDetailViewModel(
+                repository, storage, playbackManager, cacheService, downloadManager,
+                cacheQueueDao, playlistDao, pendingChangeDao, syncWorker, playlistRepo,
+                metadataDao, favoriteRepository, api,
+                musicBrainzService = musicBrainzService,
+                offlineModeManager = offlineModeManager,
+                trackDao = trackDao,
+            )
+        advanceUntilIdle()
+        assertTrue("al-keep" in viewModel.state.value.likedAlbumIds)
+        assertTrue("al-d" in viewModel.state.value.dislikedAlbumIds)
+
+        viewModel.toggleAlbumLike("al-d")
+        advanceUntilIdle()
+
+        assertFalse("al-d" in viewModel.state.value.likedAlbumIds)
+        assertTrue("al-d" in viewModel.state.value.dislikedAlbumIds)
+        assertTrue("al-keep" in viewModel.state.value.likedAlbumIds)
+    }
+
+    @Test
     fun `rateAlbum zero clears displayed rating`() = runTest {
         coEvery { repository.getAlbum("al-zero", any(), any()) } returns
             AlbumWithTracks(Album("al-zero", "Z", rating = 4), emptyList())

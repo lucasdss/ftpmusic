@@ -164,9 +164,10 @@ class FavoritesViewModel @Inject constructor(
     }
 
     private fun loadMoreLiked() {
-        if (!_state.value.hasMoreLiked) return
+        if (!_state.value.hasMoreLiked || _state.value.isLoadingMoreLiked) return
         viewModelScope.launch {
             try {
+                _state.value = _state.value.copy(isLoadingMoreLiked = true)
                 windowMutex.withLock {
                     if (!_state.value.hasMoreLiked) return@withLock
                     val page = FavoritesPaging.PAGE_SIZE
@@ -219,14 +220,17 @@ class FavoritesViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-fav", "loadMoreLiked failed", e)
+            } finally {
+                _state.value = _state.value.copy(isLoadingMoreLiked = false)
             }
         }
     }
 
     private fun loadMoreDisliked() {
-        if (!_state.value.hasMoreDisliked) return
+        if (!_state.value.hasMoreDisliked || _state.value.isLoadingMoreDisliked) return
         viewModelScope.launch {
             try {
+                _state.value = _state.value.copy(isLoadingMoreDisliked = true)
                 windowMutex.withLock {
                     if (!_state.value.hasMoreDisliked) return@withLock
                     val page = FavoritesPaging.PAGE_SIZE
@@ -272,6 +276,8 @@ class FavoritesViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-fav", "loadMoreDisliked failed", e)
+            } finally {
+                _state.value = _state.value.copy(isLoadingMoreDisliked = false)
             }
         }
     }
@@ -291,9 +297,13 @@ class FavoritesViewModel @Inject constructor(
         val tracks = trackDao.getStarred(loadedLikedTracks, 0)
         val albums = metadataDao.getStarredAlbums(loadedLikedAlbums, 0)
         val artists = metadataDao.getStarredArtists(loadedLikedArtists, 0)
-        trackPending.reconcile(tracks.map { it.id }.toSet(), emptySet())
-        albumPending.reconcile(albums.map { it.id }.toSet(), emptySet())
-        artistPending.reconcile(artists.map { it.id }.toSet(), emptySet())
+        // Both sets required so Neutral pending is not cleared prematurely.
+        val dislikedTrackIds = trackDao.getDislikedIds().toSet()
+        val dislikedAlbumIds = metadataDao.getDislikedAlbumIds().toSet()
+        val dislikedArtistIds = metadataDao.getDislikedArtistIds().toSet()
+        trackPending.reconcile(tracks.map { it.id }.toSet(), dislikedTrackIds)
+        albumPending.reconcile(albums.map { it.id }.toSet(), dislikedAlbumIds)
+        artistPending.reconcile(artists.map { it.id }.toSet(), dislikedArtistIds)
         // Probe one more row past the loaded window.
         val probeTracks = trackDao.getStarred(1, tracks.size)
         val probeAlbums = metadataDao.getStarredAlbums(1, albums.size)
@@ -325,10 +335,12 @@ class FavoritesViewModel @Inject constructor(
         val tracks = trackDao.getDisliked(loadedDislikedTracks, 0)
         val albums = metadataDao.getDislikedAlbums(loadedDislikedAlbums, 0)
         val artists = metadataDao.getDislikedArtists(loadedDislikedArtists, 0)
-        // Neutral pending = clear dislike (removed from disliked list)
-        trackPending.reconcile(emptySet(), tracks.map { it.id }.toSet())
-        albumPending.reconcile(emptySet(), albums.map { it.id }.toSet())
-        artistPending.reconcile(emptySet(), artists.map { it.id }.toSet())
+        val starredTrackIds = trackDao.getStarredIds().map { it.id }.toSet()
+        val starredAlbumIds = metadataDao.getStarredAlbumIds().toSet()
+        val starredArtistIds = metadataDao.getStarredArtistIds().toSet()
+        trackPending.reconcile(starredTrackIds, tracks.map { it.id }.toSet())
+        albumPending.reconcile(starredAlbumIds, albums.map { it.id }.toSet())
+        artistPending.reconcile(starredArtistIds, artists.map { it.id }.toSet())
         val probeTracks = trackDao.getDisliked(1, tracks.size)
         val probeAlbums = metadataDao.getDislikedAlbums(1, albums.size)
         val probeArtists = metadataDao.getDislikedArtists(1, artists.size)
@@ -516,6 +528,8 @@ data class FavoritesState(
     val hasMoreDislikedTracks: Boolean = false,
     val hasMoreDislikedAlbums: Boolean = false,
     val hasMoreDislikedArtists: Boolean = false,
+    val isLoadingMoreLiked: Boolean = false,
+    val isLoadingMoreDisliked: Boolean = false,
     val showFavArtistsSection: Boolean = true,
     val showFavAlbumsSection: Boolean = true,
     val showFavRadioSection: Boolean = true,
@@ -654,14 +668,24 @@ private fun LikedFavoritesList(
     isPlaying: Boolean,
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(listState, state.hasMoreLiked) {
+    // Re-key on loaded sizes so near-end stays true after append still triggers another loadMore.
+    LaunchedEffect(
+        listState,
+        state.hasMoreLiked,
+        state.tracks.size,
+        state.albums.size,
+        state.artists.size,
+        state.isLoadingMoreLiked,
+    ) {
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = info.totalItemsCount
             total > 0 && last >= total - 3
         }.collect { nearEnd ->
-            if (nearEnd && state.hasMoreLiked) viewModel.loadMore()
+            if (nearEnd && state.hasMoreLiked && !state.isLoadingMoreLiked) {
+                viewModel.loadMore()
+            }
         }
     }
     LazyColumn(Modifier.testTag("favorites_liked_list"), state = listState) {
@@ -745,14 +769,23 @@ private fun DislikedFavoritesList(
 ) {
     val dislikeTint = Color(0xFFE84040)
     val listState = rememberLazyListState()
-    LaunchedEffect(listState, state.hasMoreDisliked) {
+    LaunchedEffect(
+        listState,
+        state.hasMoreDisliked,
+        state.dislikedTracks.size,
+        state.dislikedAlbums.size,
+        state.dislikedArtists.size,
+        state.isLoadingMoreDisliked,
+    ) {
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = info.totalItemsCount
             total > 0 && last >= total - 3
         }.collect { nearEnd ->
-            if (nearEnd && state.hasMoreDisliked) viewModel.loadMore()
+            if (nearEnd && state.hasMoreDisliked && !state.isLoadingMoreDisliked) {
+                viewModel.loadMore()
+            }
         }
     }
     LazyColumn(Modifier.testTag("favorites_disliked_list"), state = listState) {

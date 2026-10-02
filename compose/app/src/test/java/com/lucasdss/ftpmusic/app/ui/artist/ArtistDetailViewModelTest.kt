@@ -316,8 +316,43 @@ class ArtistDetailViewModelTest {
         assertEquals("Track 060", more.tracks[59].title)
         assertFalse("hasMoreTracks must be false after short page", more.hasMoreTracks)
         coVerify { trackDao.getTracksByArtistIdAfter("ar-1", "Track 050", 50) }
-        // Reactions loaded for the new page (merge=true path)
+        // Reactions loaded for the new page (merge-always path)
         coVerify { trackDao.getTracksByIds(match { it.contains("t51") }) }
+    }
+
+    @Test
+    fun `slow page1 reactions do not wipe page2 liked ids`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        val firstPage = (1..50).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
+        val secondPage = (51..60).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
+        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns firstPage
+        coEvery { trackDao.getTracksByArtistIdAfter("ar-1", "Track 050", 50) } returns secondPage
+        // Page1 reactions hang; page2 returns liked t51 quickly.
+        coEvery { trackDao.getTracksByIds(match { ids -> ids.contains("t1") && ids.size == 50 }) } coAnswers {
+            kotlinx.coroutines.delay(5_000)
+            firstPage
+        }
+        coEvery { trackDao.getTracksByIds(match { ids -> ids.contains("t51") }) } coAnswers {
+            secondPage.map { t ->
+                if (t.id == "t51") t.copy(starredAt = 1L) else t
+            }
+        }
+
+        viewModel.loadArtist("ar-1")
+        viewModel.state.first { !it.isLoading && it.tracks.size == 50 }
+        viewModel.loadMoreTracks()
+        viewModel.state.first { !it.isLoadingMoreTracks && it.tracks.size == 60 }
+        // Complete only ready work (page2 reactions); do not drain the 5s page1 delay.
+        testDispatcher.scheduler.runCurrent()
+        assertTrue("page2 liked id must survive before slow page1 finishes", viewModel.isTrackLiked("t51"))
+
+        testDispatcher.scheduler.advanceTimeBy(5_000)
+        testDispatcher.scheduler.runCurrent()
+        assertTrue("slow page1 must not wipe page2 likes", viewModel.isTrackLiked("t51"))
     }
 
     @Test
