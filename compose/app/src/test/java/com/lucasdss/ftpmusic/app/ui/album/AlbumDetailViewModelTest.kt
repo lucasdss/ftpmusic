@@ -298,6 +298,20 @@ class AlbumDetailViewModelTest {
     }
 
     @Test
+    fun `rapid opposite track toggles both land without stuck optimistic`() = runTest {
+        coEvery { favoriteRepository.likeTrack("t-race") } just Runs
+        coEvery { favoriteRepository.unlikeTrack("t-race") } just Runs
+        viewModel.toggleTrackLike("t-race")
+        assertTrue(viewModel.isTrackLiked("t-race"))
+        viewModel.toggleTrackLike("t-race")
+        assertFalse(viewModel.isTrackLiked("t-race"))
+        advanceUntilIdle()
+        assertFalse(viewModel.isTrackLiked("t-race"))
+        coVerify { favoriteRepository.likeTrack("t-race") }
+        coVerify { favoriteRepository.unlikeTrack("t-race") }
+    }
+
+    @Test
     fun `getTrackRating returns 0 for unrated track`() {
         assertEquals(0, viewModel.getTrackRating("t1"))
     }

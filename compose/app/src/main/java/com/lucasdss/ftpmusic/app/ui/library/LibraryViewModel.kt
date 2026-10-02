@@ -23,6 +23,9 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingKind
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingStore
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritesPaging
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.model.Track
@@ -176,6 +179,10 @@ class LibraryViewModel @Inject constructor(
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
 
+    /** Optimistic overlays so Room Flow cannot clobber in-flight album/artist thumbs. */
+    private val albumPending = FavoritePendingStore()
+    private val artistPending = FavoritePendingStore()
+
     val libraryShellUi: StateFlow<LibraryShellUi> = _state
         .map {
             LibraryShellUi(
@@ -316,25 +323,41 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Reactive favorites: Room Flow observation so Home/Library/Favorites
-     *  update live whenever ANY screen writes the favorites tables — no
-     *  resume/recomposition dependency. */
+    /** Reactive favorites: Room Flow observation so Home/Library update live.
+     *  Home rows use first page only (preview); thumb id sets use uncapped IdsFlow. */
     fun observeFavorites() {
         viewModelScope.launch {
             try {
-                kotlinx.coroutines.flow.combine(
-                    metadataDao.getStarredAlbumsFlow(50),
-                    metadataDao.getStarredArtistsFlow(50),
+                val page = FavoritesPaging.PAGE_SIZE
+                val lists = kotlinx.coroutines.flow.combine(
+                    metadataDao.getStarredAlbumsFlow(page, 0),
+                    metadataDao.getStarredArtistsFlow(page, 0),
+                    radioFavoriteDao.getAllFlow(),
+                ) { albums, artists, radio ->
+                    Triple(albums, artists, radio)
+                }
+                val ids = kotlinx.coroutines.flow.combine(
+                    metadataDao.getStarredAlbumIdsFlow(),
+                    metadataDao.getStarredArtistIdsFlow(),
                     metadataDao.getDislikedAlbumIdsFlow(),
                     metadataDao.getDislikedArtistIdsFlow(),
-                    radioFavoriteDao.getAllFlow(),
-                ) { albums, artists, dislikedAlbums, dislikedArtists, radio ->
-                    FavoritesSnapshot(
-                        albums = albums,
-                        artists = artists,
-                        radio = radio,
+                ) { likedAlbums, likedArtists, dislikedAlbums, dislikedArtists ->
+                    FavoritesIdSets(
+                        likedAlbums = likedAlbums.toSet(),
+                        likedArtists = likedArtists.toSet(),
                         dislikedAlbums = dislikedAlbums.toSet(),
                         dislikedArtists = dislikedArtists.toSet(),
+                    )
+                }
+                lists.combine(ids) { triple, idSets ->
+                    FavoritesSnapshot(
+                        albums = triple.first,
+                        artists = triple.second,
+                        radio = triple.third,
+                        likedAlbumIds = idSets.likedAlbums,
+                        likedArtistIds = idSets.likedArtists,
+                        dislikedAlbums = idSets.dislikedAlbums,
+                        dislikedArtists = idSets.dislikedArtists,
                     )
                 }.collect { applyFavoritesSnapshot(it) }
             } catch (e: Exception) {
@@ -344,36 +367,47 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    private data class FavoritesIdSets(
+        val likedAlbums: Set<String>,
+        val likedArtists: Set<String>,
+        val dislikedAlbums: Set<String>,
+        val dislikedArtists: Set<String>,
+    )
+
     private data class FavoritesSnapshot(
         val albums: List<AlbumEntity>,
         val artists: List<ArtistEntity>,
         val radio: List<RadioFavoriteEntity>,
+        val likedAlbumIds: Set<String>,
+        val likedArtistIds: Set<String>,
         val dislikedAlbums: Set<String>,
         val dislikedArtists: Set<String>,
     )
 
     private suspend fun readFavoritesSnapshot(): FavoritesSnapshot {
-        val albums = metadataDao.getStarredAlbums(50)
-        val artists = metadataDao.getStarredArtists(50)
-        val radio = radioFavoriteDao.getAll()
+        val page = FavoritesPaging.PAGE_SIZE
         return FavoritesSnapshot(
-            albums = albums,
-            artists = artists,
-            radio = radio,
+            albums = metadataDao.getStarredAlbums(page, 0),
+            artists = metadataDao.getStarredArtists(page, 0),
+            radio = radioFavoriteDao.getAll(),
+            likedAlbumIds = metadataDao.getStarredAlbumIds().toSet(),
+            likedArtistIds = metadataDao.getStarredArtistIds().toSet(),
             dislikedAlbums = metadataDao.getDislikedAlbumIds().toSet(),
             dislikedArtists = metadataDao.getDislikedArtistIds().toSet(),
         )
     }
 
     private fun applyFavoritesSnapshot(s: FavoritesSnapshot) {
+        albumPending.reconcile(s.likedAlbumIds, s.dislikedAlbums)
+        artistPending.reconcile(s.likedArtistIds, s.dislikedArtists)
         _state.value = _state.value.copy(
             starredAlbums = s.albums,
             starredArtists = s.artists,
             bookmarkedRadio = s.radio,
-            likedAlbumIds = s.albums.map { it.id }.toSet(),
-            dislikedAlbumIds = s.dislikedAlbums,
-            likedArtistIds = s.artists.map { it.id }.toSet(),
-            dislikedArtistIds = s.dislikedArtists,
+            likedAlbumIds = albumPending.mergeLiked(s.likedAlbumIds),
+            dislikedAlbumIds = albumPending.mergeDisliked(s.dislikedAlbums),
+            likedArtistIds = artistPending.mergeLiked(s.likedArtistIds),
+            dislikedArtistIds = artistPending.mergeDisliked(s.dislikedArtists),
             bookmarkedStationIds = s.radio.map { it.stationId }.toSet(),
             hasLoadedOnce = true,
         )
@@ -414,6 +448,7 @@ class LibraryViewModel @Inject constructor(
     fun toggleAlbumLike(albumId: String) {
         val liked = _state.value.likedAlbumIds.contains(albumId)
         val previous = _state.value
+        albumPending.set(albumId, if (liked) FavoritePendingKind.Neutral else FavoritePendingKind.Liked)
         _state.value = _state.value.copy(
             likedAlbumIds = if (liked) previous.likedAlbumIds - albumId else previous.likedAlbumIds + albumId,
             dislikedAlbumIds = previous.dislikedAlbumIds - albumId,
@@ -425,9 +460,9 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     favoriteRepository.likeAlbum(albumId)
                 }
-                loadFavorites()
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-home", "toggleAlbumLike failed — rolled back", e)
+                albumPending.clear(albumId)
                 _state.value = previous // rollback
             }
         }
@@ -436,6 +471,7 @@ class LibraryViewModel @Inject constructor(
     fun toggleAlbumDislike(albumId: String) {
         val disliked = _state.value.dislikedAlbumIds.contains(albumId)
         val previous = _state.value
+        albumPending.set(albumId, if (disliked) FavoritePendingKind.Neutral else FavoritePendingKind.Disliked)
         _state.value = _state.value.copy(
             dislikedAlbumIds = if (disliked) {
                 previous.dislikedAlbumIds - albumId
@@ -452,8 +488,8 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     favoriteRepository.dislikeAlbum(albumId)
                 }
-                loadFavorites()
             } catch (e: Exception) {
+                albumPending.clear(albumId)
                 _state.value = previous
             }
         }
@@ -464,6 +500,7 @@ class LibraryViewModel @Inject constructor(
     fun toggleArtistLike(artistId: String) {
         val liked = _state.value.likedArtistIds.contains(artistId)
         val previous = _state.value
+        artistPending.set(artistId, if (liked) FavoritePendingKind.Neutral else FavoritePendingKind.Liked)
         _state.value = _state.value.copy(
             likedArtistIds = if (liked) previous.likedArtistIds - artistId else previous.likedArtistIds + artistId,
             dislikedArtistIds = previous.dislikedArtistIds - artistId,
@@ -475,9 +512,9 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     favoriteRepository.likeArtist(artistId)
                 }
-                loadFavorites()
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-home", "toggleArtistLike failed — rolled back", e)
+                artistPending.clear(artistId)
                 _state.value = previous
             }
         }
@@ -486,6 +523,7 @@ class LibraryViewModel @Inject constructor(
     fun toggleArtistDislike(artistId: String) {
         val disliked = _state.value.dislikedArtistIds.contains(artistId)
         val previous = _state.value
+        artistPending.set(artistId, if (disliked) FavoritePendingKind.Neutral else FavoritePendingKind.Disliked)
         _state.value = _state.value.copy(
             dislikedArtistIds = if (disliked) {
                 previous.dislikedArtistIds - artistId
@@ -502,9 +540,9 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     favoriteRepository.dislikeArtist(artistId)
                 }
-                loadFavorites()
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-home", "toggleArtistDislike failed — rolled back", e)
+                artistPending.clear(artistId)
                 _state.value = previous
             }
         }

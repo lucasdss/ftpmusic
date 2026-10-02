@@ -38,5 +38,5 @@ Invariant: Room write succeeds → then best-effort mirror. Offline / API fail �
 ## Known limits
 
 - Radio cannot sync to Navidrome (no radio star API).
-- Favorites lists LIMIT 50.
+- Favorites lists are **paged** (`FavoritesPaging.PAGE_SIZE = 50`); Home shows page 1 only — see `docs/FAVORITES_PAGING_BEHAVIOR_REPORT.md`.
 - Search/Queue/Playlist: stars display-only; no thumbs this pass.

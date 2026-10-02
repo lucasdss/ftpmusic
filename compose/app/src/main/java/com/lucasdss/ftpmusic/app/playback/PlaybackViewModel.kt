@@ -70,12 +70,14 @@ class PlaybackViewModel @Inject constructor(
     val positionMs: StateFlow<Long> = provider.positionMs
 
     /**
-     * True while a reaction mutation (like/dislike/rate) is in flight. The
-     * track-change reaction loader checks this before applying a stale DB read
-     * so it never clobbers the user's just-set optimistic value.
+     * True while a reaction mutation (like/dislike/rate) is in flight for
+     * [mutationTrackId]. Track-change loader only skips DB apply for that id.
      */
     @Volatile
     private var reactionMutationInFlight = false
+
+    @Volatile
+    private var mutationTrackId: String? = null
 
     init {
         // Restore the sleep timer from the persisted DAO — NOT PlayerHolder,
@@ -123,10 +125,9 @@ class PlaybackViewModel @Inject constructor(
                     if (trackId != null) {
                         try {
                             val entity = trackDao.getTrack(trackId)
-                            // Skip applying when a reaction mutation is in flight —
-                            // the toggle/rate already set the optimistic value and a
-                            // stale DB read must not clobber it.
-                            if (reactionMutationInFlight) return@collect
+                            // Skip applying only when THIS track still has an in-flight
+                            // mutation — never blanket-skip (would leave next track blank).
+                            if (trackId == mutationTrackId && reactionMutationInFlight) return@collect
                             starred = entity?.starredAt != null
                             disliked = entity?.isDisliked == true
                             rating = entity?.userRating ?: 0
@@ -233,28 +234,44 @@ class PlaybackViewModel @Inject constructor(
 
     /** Toggle thumbs-up (like). Like == star on Navidrome; clears dislike. */
     fun toggleLike() {
-        val trackId = provider.playbackState.value.currentTrackId ?: return
+        val mutationTrackId = provider.playbackState.value.currentTrackId ?: return
         val isStarred = _isStarred.value
         val isDisliked = _isDisliked.value
+        // Optimistic UI before repo (ADR UI contract).
+        if (isStarred) {
+            _isStarred.value = false
+        } else {
+            _isStarred.value = true
+            if (isDisliked) _isDisliked.value = false
+        }
+        syncExtraState()
+        this.mutationTrackId = mutationTrackId
         reactionMutationInFlight = true
         viewModelScope.launch {
             try {
                 if (isStarred) {
-                    favoriteRepository.unlikeTrack(trackId)
-                    _isStarred.value = false
+                    favoriteRepository.unlikeTrack(mutationTrackId)
                 } else {
-                    favoriteRepository.likeTrack(trackId)
-                    _isStarred.value = true
-                    // Mutual exclusion: liking clears dislike
-                    if (isDisliked) _isDisliked.value = false
+                    favoriteRepository.likeTrack(mutationTrackId)
+                }
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
+                    if (isStarred) {
+                        _isStarred.value = false
+                    } else {
+                        _isStarred.value = true
+                        if (isDisliked) _isDisliked.value = false
+                    }
                 }
             } catch (_: Exception) {
-                // Restore BOTH on failure — likeTrack may have cleared dislike
-                // locally before the server star failed.
-                _isStarred.value = isStarred
-                _isDisliked.value = isDisliked
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
+                    _isStarred.value = isStarred
+                    _isDisliked.value = isDisliked
+                }
             } finally {
-                reactionMutationInFlight = false
+                if (this@PlaybackViewModel.mutationTrackId == mutationTrackId) {
+                    reactionMutationInFlight = false
+                    this@PlaybackViewModel.mutationTrackId = null
+                }
             }
             syncExtraState()
         }
@@ -262,26 +279,43 @@ class PlaybackViewModel @Inject constructor(
 
     /** Toggle thumbs-down (dislike). Local-only; clears like (star) on server best-effort. */
     fun toggleDislike() {
-        val trackId = provider.playbackState.value.currentTrackId ?: return
+        val mutationTrackId = provider.playbackState.value.currentTrackId ?: return
         val isStarred = _isStarred.value
         val isDisliked = _isDisliked.value
+        if (isDisliked) {
+            _isDisliked.value = false
+        } else {
+            _isDisliked.value = true
+            if (isStarred) _isStarred.value = false
+        }
+        syncExtraState()
+        this.mutationTrackId = mutationTrackId
         reactionMutationInFlight = true
         viewModelScope.launch {
             try {
                 if (isDisliked) {
-                    favoriteRepository.clearDislikeTrack(trackId)
-                    _isDisliked.value = false
+                    favoriteRepository.clearDislikeTrack(mutationTrackId)
                 } else {
-                    favoriteRepository.dislikeTrack(trackId)
-                    _isDisliked.value = true
-                    // Mutual exclusion: disliking clears like (star)
-                    if (isStarred) _isStarred.value = false
+                    favoriteRepository.dislikeTrack(mutationTrackId)
+                }
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
+                    if (isDisliked) {
+                        _isDisliked.value = false
+                    } else {
+                        _isDisliked.value = true
+                        if (isStarred) _isStarred.value = false
+                    }
                 }
             } catch (_: Exception) {
-                _isDisliked.value = isDisliked
-                _isStarred.value = isStarred
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
+                    _isDisliked.value = isDisliked
+                    _isStarred.value = isStarred
+                }
             } finally {
-                reactionMutationInFlight = false
+                if (this@PlaybackViewModel.mutationTrackId == mutationTrackId) {
+                    reactionMutationInFlight = false
+                    this@PlaybackViewModel.mutationTrackId = null
+                }
             }
             syncExtraState()
         }
@@ -289,18 +323,30 @@ class PlaybackViewModel @Inject constructor(
 
     /** Rate the current track 0-5. Local-first write, then best-effort server sync. */
     fun rateCurrent(rating: Int) {
-        val trackId = provider.playbackState.value.currentTrackId ?: return
+        val mutationTrackId = provider.playbackState.value.currentTrackId ?: return
         val clamped = rating.coerceIn(0, 5)
+        val previous = _trackRating.value
         _trackRating.value = clamped
         syncExtraState()
+        this.mutationTrackId = mutationTrackId
         reactionMutationInFlight = true
         viewModelScope.launch {
             try {
-                favoriteRepository.rateTrack(trackId, clamped)
+                favoriteRepository.rateTrack(mutationTrackId, clamped)
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
+                    _trackRating.value = clamped
+                }
             } catch (_: Exception) {
+                if (provider.playbackState.value.currentTrackId == mutationTrackId) {
+                    _trackRating.value = previous
+                }
             } finally {
-                reactionMutationInFlight = false
+                if (this@PlaybackViewModel.mutationTrackId == mutationTrackId) {
+                    reactionMutationInFlight = false
+                    this@PlaybackViewModel.mutationTrackId = null
+                }
             }
+            syncExtraState()
         }
     }
 

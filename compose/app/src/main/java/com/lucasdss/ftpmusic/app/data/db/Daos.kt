@@ -21,12 +21,12 @@ interface TrackDao {
     )
     suspend fun getRecentlyPlayed(limit: Int = 20): List<TrackEntity>
 
-    @Query("SELECT * FROM tracks WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit")
-    suspend fun getStarred(limit: Int = 50): List<TrackEntity>
+    @Query("SELECT * FROM tracks WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit OFFSET :offset")
+    suspend fun getStarred(limit: Int = 50, offset: Int = 0): List<TrackEntity>
 
-    /** Reactive variant — Favorites tab observes this so likes update live. */
-    @Query("SELECT * FROM tracks WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit")
-    fun getStarredFlow(limit: Int = 50): Flow<List<TrackEntity>>
+    /** Reactive first-page variant — Favorites tab observes page 0 live. */
+    @Query("SELECT * FROM tracks WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit OFFSET :offset")
+    fun getStarredFlow(limit: Int = 50, offset: Int = 0): Flow<List<TrackEntity>>
 
     /** Lightweight: returns only IDs + rating for starred tracks. Used by buildWeightMap. */
     @Query("SELECT id, 5 AS user_rating FROM tracks WHERE starred_at IS NOT NULL")
@@ -103,11 +103,11 @@ interface TrackDao {
     suspend fun setDisliked(trackId: String, disliked: Boolean, at: Long = System.currentTimeMillis())
 
     /** v55: disliked tracks for Favorites Disliked segment (newest first). */
-    @Query("SELECT * FROM tracks WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
-    suspend fun getDisliked(limit: Int = 50): List<TrackEntity>
+    @Query("SELECT * FROM tracks WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit OFFSET :offset")
+    suspend fun getDisliked(limit: Int = 50, offset: Int = 0): List<TrackEntity>
 
-    @Query("SELECT * FROM tracks WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
-    fun getDislikedFlow(limit: Int = 50): Flow<List<TrackEntity>>
+    @Query("SELECT * FROM tracks WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit OFFSET :offset")
+    fun getDislikedFlow(limit: Int = 50, offset: Int = 0): Flow<List<TrackEntity>>
 
     /** v41: ids of disliked tracks among the given set. */
     @Query("SELECT id FROM tracks WHERE id IN (:ids) AND is_disliked = 1")
@@ -807,23 +807,23 @@ interface CachedMetadataDao {
 
     // ── Starred/disliked reads (ledger tables) ───────────────────────────────
 
-    @Query("SELECT * FROM albums WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit")
-    suspend fun getStarredAlbums(limit: Int = 50): List<AlbumEntity>
+    @Query("SELECT * FROM albums WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit OFFSET :offset")
+    suspend fun getStarredAlbums(limit: Int = 50, offset: Int = 0): List<AlbumEntity>
 
-    /** Reactive variant — Home/Favorites observe this so sections update live. */
-    @Query("SELECT * FROM albums WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit")
-    fun getStarredAlbumsFlow(limit: Int = 50): Flow<List<AlbumEntity>>
+    /** Reactive first-page variant — Home/Favorites observe page 0 live. */
+    @Query("SELECT * FROM albums WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit OFFSET :offset")
+    fun getStarredAlbumsFlow(limit: Int = 50, offset: Int = 0): Flow<List<AlbumEntity>>
 
-    @Query("SELECT * FROM artists WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit")
-    suspend fun getStarredArtists(limit: Int = 50): List<ArtistEntity>
+    @Query("SELECT * FROM artists WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit OFFSET :offset")
+    suspend fun getStarredArtists(limit: Int = 50, offset: Int = 0): List<ArtistEntity>
 
     /** v47: ALL liked artists (no cap) — Favorite Artists mix source pool. */
     @Query("SELECT * FROM artists WHERE starred_at IS NOT NULL ORDER BY starred_at DESC")
     suspend fun getAllStarredArtists(): List<ArtistEntity>
 
-    /** Reactive variant — Home/Favorites observe this so sections update live. */
-    @Query("SELECT * FROM artists WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit")
-    fun getStarredArtistsFlow(limit: Int = 50): Flow<List<ArtistEntity>>
+    /** Reactive first-page variant — Home/Favorites observe page 0 live. */
+    @Query("SELECT * FROM artists WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit OFFSET :offset")
+    fun getStarredArtistsFlow(limit: Int = 50, offset: Int = 0): Flow<List<ArtistEntity>>
 
     @Query("SELECT id FROM albums WHERE starred_at IS NOT NULL")
     suspend fun getStarredAlbumIds(): List<String>
@@ -867,18 +867,18 @@ interface CachedMetadataDao {
     suspend fun setArtistDisliked(artistId: String, disliked: Boolean, at: Long = System.currentTimeMillis())
 
     /** v55: disliked albums for Favorites Disliked segment. */
-    @Query("SELECT * FROM albums WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
-    suspend fun getDislikedAlbums(limit: Int = 50): List<AlbumEntity>
+    @Query("SELECT * FROM albums WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit OFFSET :offset")
+    suspend fun getDislikedAlbums(limit: Int = 50, offset: Int = 0): List<AlbumEntity>
 
-    @Query("SELECT * FROM albums WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
-    fun getDislikedAlbumsFlow(limit: Int = 50): Flow<List<AlbumEntity>>
+    @Query("SELECT * FROM albums WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit OFFSET :offset")
+    fun getDislikedAlbumsFlow(limit: Int = 50, offset: Int = 0): Flow<List<AlbumEntity>>
 
     /** v55: disliked artists for Favorites Disliked segment. */
-    @Query("SELECT * FROM artists WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
-    suspend fun getDislikedArtists(limit: Int = 50): List<ArtistEntity>
+    @Query("SELECT * FROM artists WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit OFFSET :offset")
+    suspend fun getDislikedArtists(limit: Int = 50, offset: Int = 0): List<ArtistEntity>
 
-    @Query("SELECT * FROM artists WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit")
-    fun getDislikedArtistsFlow(limit: Int = 50): Flow<List<ArtistEntity>>
+    @Query("SELECT * FROM artists WHERE is_disliked = 1 ORDER BY disliked_at DESC LIMIT :limit OFFSET :offset")
+    fun getDislikedArtistsFlow(limit: Int = 50, offset: Int = 0): Flow<List<ArtistEntity>>
 
     @Query("SELECT id FROM albums WHERE is_disliked = 1")
     suspend fun getDislikedAlbumIds(): List<String>

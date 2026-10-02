@@ -716,4 +716,39 @@ class DaosRoomTest {
         tracks.setDisliked("t-ghost", true, at = 100L)
         assertTrue(tracks.isTrackDisliked("t-ghost"))
     }
+
+    @Test
+    fun `starred paging page0 and page1 are disjoint and short page clears hasMore`() = runBlocking {
+        val tracks = db.trackDao()
+        val base = 1_700_000_000_000L
+        // 3 starred tracks — page size 2 → page0=[newest,next], page1=[oldest], page2=[]
+        for (i in 0 until 3) {
+            val id = "page-t-$i"
+            tracks.ensureTrackRow(id)
+            tracks.setStarredAt(id, base + i)
+        }
+        val page0 = tracks.getStarred(limit = 2, offset = 0)
+        val page1 = tracks.getStarred(limit = 2, offset = 2)
+        val page2 = tracks.getStarred(limit = 2, offset = 4)
+        assertEquals(2, page0.size)
+        assertEquals(1, page1.size)
+        assertEquals(0, page2.size)
+        val ids0 = page0.map { it.id }.toSet()
+        val ids1 = page1.map { it.id }.toSet()
+        assertTrue(ids0.intersect(ids1).isEmpty())
+        assertTrue(page1.size < 2) // hasMore false when short page
+
+        val meta = db.cachedMetadataDao()
+        for (i in 0 until 3) {
+            val id = "page-al-$i"
+            meta.upsertAlbums(listOf(CachedAlbumEntity(id = id, name = "A$i")))
+            meta.ensureAlbumLedgerRow(id)
+            meta.setAlbumStarredAt(id, base + i)
+        }
+        val al0 = meta.getStarredAlbums(2, 0)
+        val al1 = meta.getStarredAlbums(2, 2)
+        assertEquals(2, al0.size)
+        assertEquals(1, al1.size)
+        assertTrue(al0.map { it.id }.toSet().intersect(al1.map { it.id }.toSet()).isEmpty())
+    }
 }

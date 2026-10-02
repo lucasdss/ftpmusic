@@ -2211,12 +2211,14 @@ class LibraryViewModelTest {
     fun `loadFavorites populates starred entities and id sets`() = runTest(testDispatcher) {
         val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
         val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
-        coEvery { metadataDao.getStarredAlbums(50) } returns listOf(
+        coEvery { metadataDao.getStarredAlbums(50, 0) } returns listOf(
             com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "al-1", name = "Album One", artist = "Artist One"),
         )
-        coEvery { metadataDao.getStarredArtists(50) } returns listOf(
+        coEvery { metadataDao.getStarredArtists(50, 0) } returns listOf(
             com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-1", name = "Artist One"),
         )
+        coEvery { metadataDao.getStarredAlbumIds() } returns listOf("al-1")
+        coEvery { metadataDao.getStarredArtistIds() } returns listOf("ar-1")
         coEvery { radioDao.getAll() } returns listOf(
             com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity(
                 stationId = "st-1",
@@ -2270,9 +2272,11 @@ class LibraryViewModelTest {
     @Test
     fun `toggleAlbumDislike clears a like`() = runTest(testDispatcher) {
         val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
-        coEvery { metadataDao.getStarredAlbums(50) } returns listOf(
+        coEvery { metadataDao.getStarredAlbums(50, 0) } returns listOf(
             com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "al-9", name = "Album Nine"),
         )
+        coEvery { metadataDao.getStarredAlbumIds() } returns listOf("al-9")
+        coEvery { metadataDao.getStarredArtistIds() } returns emptyList()
         val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
         val vm = favoritesVm(favRepo, radioDao)
         vm.loadFavorites()
@@ -2421,12 +2425,14 @@ class LibraryViewModelTest {
     fun `observeFavorites updates state live when flows emit`() = runTest(testDispatcher) {
         val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
         val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
-        coEvery { metadataDao.getStarredAlbumsFlow(50) } returns kotlinx.coroutines.flow.flowOf(
+        coEvery { metadataDao.getStarredAlbumsFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(
             listOf(com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "al-1", name = "Album One", artist = "Artist A")),
         )
-        coEvery { metadataDao.getStarredArtistsFlow(50) } returns kotlinx.coroutines.flow.flowOf(
+        coEvery { metadataDao.getStarredArtistsFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(
             listOf(com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-1", name = "Artist A")),
         )
+        coEvery { metadataDao.getStarredAlbumIdsFlow() } returns kotlinx.coroutines.flow.flowOf(listOf("al-1"))
+        coEvery { metadataDao.getStarredArtistIdsFlow() } returns kotlinx.coroutines.flow.flowOf(listOf("ar-1"))
         coEvery { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
         coEvery { metadataDao.getDislikedArtistIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
         coEvery { radioDao.getAllFlow() } returns kotlinx.coroutines.flow.flowOf(
@@ -2456,8 +2462,11 @@ class LibraryViewModelTest {
         val albumsFlow = kotlinx.coroutines.flow.MutableStateFlow<List<com.lucasdss.ftpmusic.app.data.db.AlbumEntity>>(
             emptyList(),
         )
-        coEvery { metadataDao.getStarredAlbumsFlow(50) } returns albumsFlow
-        coEvery { metadataDao.getStarredArtistsFlow(50) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        val albumIdsFlow = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+        coEvery { metadataDao.getStarredAlbumsFlow(50, 0) } returns albumsFlow
+        coEvery { metadataDao.getStarredArtistsFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { metadataDao.getStarredAlbumIdsFlow() } returns albumIdsFlow
+        coEvery { metadataDao.getStarredArtistIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
         coEvery { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
         coEvery { metadataDao.getDislikedArtistIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
         coEvery { radioDao.getAllFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
@@ -2469,10 +2478,42 @@ class LibraryViewModelTest {
         // New emission (e.g. a like from another screen) → state updates without
         // any loadFavorites call.
         albumsFlow.value = listOf(com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "al-2", name = "Album Two"))
+        albumIdsFlow.value = listOf("al-2")
         advanceUntilIdle()
 
         assertEquals(1, vm.state.value.starredAlbums.size)
         assertEquals(setOf("al-2"), vm.state.value.likedAlbumIds)
+    }
+
+    @Test
+    fun `pending album like survives stale observeFavorites emit`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val albumIdsFlow = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+        coEvery { metadataDao.getStarredAlbumsFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { metadataDao.getStarredArtistsFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { metadataDao.getStarredAlbumIdsFlow() } returns albumIdsFlow
+        coEvery { metadataDao.getStarredArtistIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { metadataDao.getDislikedArtistIdsFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { radioDao.getAllFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        // Hang the repo write so pending stays active while Flow re-emits.
+        coEvery { favRepo.likeAlbum("al-pending") } coAnswers {
+            kotlinx.coroutines.delay(10_000)
+        }
+        val vm = favoritesVm(favRepo, radioDao)
+        vm.observeFavorites()
+        advanceUntilIdle()
+        vm.toggleAlbumLike("al-pending")
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-pending"))
+        // Stale Room emission without the id
+        albumIdsFlow.value = emptyList()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-pending"))
+        // Catch-up
+        albumIdsFlow.value = listOf("al-pending")
+        advanceUntilIdle()
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-pending"))
     }
 
     // ── Playlist create + Add Songs flow ───────────────────────────────────

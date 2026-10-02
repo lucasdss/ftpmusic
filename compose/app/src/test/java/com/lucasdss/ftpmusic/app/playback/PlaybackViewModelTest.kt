@@ -2,6 +2,7 @@ package com.lucasdss.ftpmusic.app.playback
 
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
+import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -160,5 +162,41 @@ class PlaybackViewModelTest {
         provider.emit(PlaybackState(currentTrackId = "t1", title = "Test"))
         viewModel.toggleLike()
         assertTrue(provider.updateExtraStateCalled)
+    }
+
+    @Test
+    fun `skip during like loads new track reactions without painting old mutation`() = runTest {
+        val trackDao = mockk<com.lucasdss.ftpmusic.app.data.db.TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack("t1") } returns com.lucasdss.ftpmusic.app.data.db.TrackEntity(
+            id = "t1",
+            title = "One",
+            starredAt = null,
+        )
+        coEvery { trackDao.getTrack("t2") } returns com.lucasdss.ftpmusic.app.data.db.TrackEntity(
+            id = "t2",
+            title = "Two",
+            starredAt = 99L,
+        )
+        coEvery { favoriteRepo.likeTrack("t1") } coAnswers {
+            kotlinx.coroutines.delay(5_000)
+        }
+        val vm = PlaybackViewModel(
+            provider,
+            playbackManager,
+            favoriteRepo,
+            mockk(relaxed = true),
+            trackDao,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+        provider.emit(PlaybackState(currentTrackId = "t1", title = "One"))
+        vm.toggleLike()
+        assertTrue(vm.state.value.isStarred)
+        // Skip to next while like still in flight
+        provider.emit(PlaybackState(currentTrackId = "t2", title = "Two"))
+        advanceUntilIdle()
+        // New track should load its own starred reaction (true), not stuck false from unfinished t1
+        assertTrue(vm.state.value.isStarred)
+        assertEquals("Two", vm.state.value.title)
     }
 }

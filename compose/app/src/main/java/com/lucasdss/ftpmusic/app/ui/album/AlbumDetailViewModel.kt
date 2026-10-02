@@ -15,6 +15,8 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntryEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingKind
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingStore
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.MusicBrainzService
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
@@ -26,12 +28,15 @@ import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class AlbumDetailState(
     val album: com.lucasdss.ftpmusic.app.data.model.Album? = null,
@@ -72,6 +77,12 @@ class AlbumDetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(AlbumDetailState())
     val state: StateFlow<AlbumDetailState> = _state.asStateFlow()
 
+    private val albumPending = FavoritePendingStore()
+    private val trackPending = FavoritePendingStore()
+    private val trackToggleMutexes = ConcurrentHashMap<String, Mutex>()
+
+    private fun trackMutex(trackId: String): Mutex = trackToggleMutexes.getOrPut(trackId) { Mutex() }
+
     private val _showOverwriteModal = MutableStateFlow(false)
     val showOverwriteModal: StateFlow<Boolean> = _showOverwriteModal.asStateFlow()
 
@@ -87,9 +98,10 @@ class AlbumDetailViewModel @Inject constructor(
                     metadataDao.getDislikedAlbumIdsFlow(),
                 ) { liked, disliked -> liked.toSet() to disliked.toSet() }
                     .collect { (liked, disliked) ->
+                        albumPending.reconcile(liked, disliked)
                         _state.value = _state.value.copy(
-                            likedAlbumIds = liked,
-                            dislikedAlbumIds = disliked,
+                            likedAlbumIds = albumPending.mergeLiked(liked),
+                            dislikedAlbumIds = albumPending.mergeDisliked(disliked),
                         )
                     }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -470,28 +482,29 @@ class AlbumDetailViewModel @Inject constructor(
     }
 
     /** Apply a batch of track entities to the cache/like/dislike snapshots
-     *  atomically — avoids per-item recomposition flicker. */
+     *  atomically — merges pending overlays so watcher cannot clobber optimistic UI. */
     private fun applyTrackStatus(entities: List<com.lucasdss.ftpmusic.app.data.db.TrackEntity>) {
         val newCached = mutableListOf<String>()
         val newDownloaded = mutableListOf<String>()
-        val newLiked = mutableListOf<String>()
-        val newDisliked = mutableListOf<String>()
+        val roomLiked = mutableSetOf<String>()
+        val roomDisliked = mutableSetOf<String>()
         for (entity in entities) {
             if (entity.cachedFilePath != null) {
                 newCached.add(entity.id)
                 if (entity.isDownloaded) newDownloaded.add(entity.id)
             }
-            if (entity.starredAt != null) newLiked.add(entity.id)
-            if (entity.isDisliked) newDisliked.add(entity.id)
+            if (entity.starredAt != null) roomLiked.add(entity.id)
+            if (entity.isDisliked) roomDisliked.add(entity.id)
         }
+        trackPending.reconcile(roomLiked, roomDisliked)
         Snapshot.withMutableSnapshot {
             cachedTrackIds.clear()
             cachedTrackIds.addAll(newCached)
             downloadedTrackIds.clear()
             downloadedTrackIds.addAll(newDownloaded)
             _state.value = _state.value.copy(
-                likedTrackIds = newLiked.toSet(),
-                dislikedTrackIds = newDisliked.toSet(),
+                likedTrackIds = trackPending.mergeLiked(roomLiked),
+                dislikedTrackIds = trackPending.mergeDisliked(roomDisliked),
             )
         }
     }
@@ -538,33 +551,40 @@ class AlbumDetailViewModel @Inject constructor(
         }
     }
 
-    private var toggleLikeJob: kotlinx.coroutines.Job? = null
-
     fun toggleTrackLike(trackId: String) {
         val current = _state.value.likedTrackIds
         val disliked = _state.value.dislikedTrackIds
         if (trackId in current) {
-            // Optimistic unlike
+            trackPending.set(trackId, FavoritePendingKind.Neutral)
             _state.value = _state.value.copy(likedTrackIds = current - trackId)
-            toggleLikeJob?.cancel()
-            toggleLikeJob = viewModelScope.launch {
-                try {
-                    favoriteRepository.unlikeTrack(trackId)
-                } catch (
-                    _: Exception,
-                ) {
-                    _state.value = _state.value.copy(likedTrackIds = current)
+            viewModelScope.launch {
+                trackMutex(trackId).withLock {
+                    try {
+                        favoriteRepository.unlikeTrack(trackId)
+                    } catch (_: Exception) {
+                        trackPending.clear(trackId)
+                        _state.value = _state.value.copy(likedTrackIds = _state.value.likedTrackIds + trackId)
+                    }
                 }
             }
         } else {
-            // Optimistic like — mutual exclusion: clear dislike
+            trackPending.set(trackId, FavoritePendingKind.Liked)
             _state.value = _state.value.copy(likedTrackIds = current + trackId, dislikedTrackIds = disliked - trackId)
-            toggleLikeJob?.cancel()
-            toggleLikeJob = viewModelScope.launch {
-                try {
-                    favoriteRepository.likeTrack(trackId)
-                } catch (_: Exception) {
-                    _state.value = _state.value.copy(likedTrackIds = current, dislikedTrackIds = disliked)
+            viewModelScope.launch {
+                trackMutex(trackId).withLock {
+                    try {
+                        favoriteRepository.likeTrack(trackId)
+                    } catch (_: Exception) {
+                        trackPending.clear(trackId)
+                        _state.value = _state.value.copy(
+                            likedTrackIds = _state.value.likedTrackIds - trackId,
+                            dislikedTrackIds = if (trackId in disliked) {
+                                _state.value.dislikedTrackIds + trackId
+                            } else {
+                                _state.value.dislikedTrackIds
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -575,25 +595,36 @@ class AlbumDetailViewModel @Inject constructor(
         val current = _state.value.dislikedTrackIds
         val liked = _state.value.likedTrackIds
         if (trackId in current) {
+            trackPending.set(trackId, FavoritePendingKind.Neutral)
             _state.value = _state.value.copy(dislikedTrackIds = current - trackId)
-            toggleLikeJob?.cancel()
-            toggleLikeJob = viewModelScope.launch {
-                try {
-                    favoriteRepository.clearDislikeTrack(trackId)
-                } catch (
-                    _: Exception,
-                ) {
-                    _state.value = _state.value.copy(dislikedTrackIds = current)
+            viewModelScope.launch {
+                trackMutex(trackId).withLock {
+                    try {
+                        favoriteRepository.clearDislikeTrack(trackId)
+                    } catch (_: Exception) {
+                        trackPending.clear(trackId)
+                        _state.value = _state.value.copy(dislikedTrackIds = _state.value.dislikedTrackIds + trackId)
+                    }
                 }
             }
         } else {
+            trackPending.set(trackId, FavoritePendingKind.Disliked)
             _state.value = _state.value.copy(dislikedTrackIds = current + trackId, likedTrackIds = liked - trackId)
-            toggleLikeJob?.cancel()
-            toggleLikeJob = viewModelScope.launch {
-                try {
-                    favoriteRepository.dislikeTrack(trackId)
-                } catch (_: Exception) {
-                    _state.value = _state.value.copy(dislikedTrackIds = current, likedTrackIds = liked)
+            viewModelScope.launch {
+                trackMutex(trackId).withLock {
+                    try {
+                        favoriteRepository.dislikeTrack(trackId)
+                    } catch (_: Exception) {
+                        trackPending.clear(trackId)
+                        _state.value = _state.value.copy(
+                            dislikedTrackIds = _state.value.dislikedTrackIds - trackId,
+                            likedTrackIds = if (trackId in liked) {
+                                _state.value.likedTrackIds + trackId
+                            } else {
+                                _state.value.likedTrackIds
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -615,6 +646,7 @@ class AlbumDetailViewModel @Inject constructor(
     fun toggleAlbumLike(albumId: String) {
         val liked = _state.value.likedAlbumIds.contains(albumId)
         val previous = _state.value
+        albumPending.set(albumId, if (liked) FavoritePendingKind.Neutral else FavoritePendingKind.Liked)
         _state.value = _state.value.copy(
             likedAlbumIds = if (liked) previous.likedAlbumIds - albumId else previous.likedAlbumIds + albumId,
             dislikedAlbumIds = previous.dislikedAlbumIds - albumId,
@@ -626,6 +658,7 @@ class AlbumDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-album", "toggleAlbumLike failed — rolled back", e)
+                albumPending.clear(albumId)
                 _state.value = previous
             }
         }
@@ -634,6 +667,7 @@ class AlbumDetailViewModel @Inject constructor(
     fun toggleAlbumDislike(albumId: String) {
         val disliked = _state.value.dislikedAlbumIds.contains(albumId)
         val previous = _state.value
+        albumPending.set(albumId, if (disliked) FavoritePendingKind.Neutral else FavoritePendingKind.Disliked)
         _state.value = _state.value.copy(
             dislikedAlbumIds = if (disliked) {
                 previous.dislikedAlbumIds - albumId
@@ -654,6 +688,7 @@ class AlbumDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-album", "toggleAlbumDislike failed — rolled back", e)
+                albumPending.clear(albumId)
                 _state.value = previous
             }
         }

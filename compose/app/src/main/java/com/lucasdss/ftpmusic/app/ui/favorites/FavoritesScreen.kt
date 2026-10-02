@@ -36,6 +36,7 @@ import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritesPaging
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.ui.*
@@ -70,6 +71,12 @@ class FavoritesViewModel @Inject constructor(
     private val _state = MutableStateFlow(FavoritesState())
     val state: StateFlow<FavoritesState> = _state.asStateFlow()
 
+    /** Items loaded beyond the Flow-backed first page (liked). */
+    private var likedAppendedOffset = FavoritesPaging.PAGE_SIZE
+    private var dislikedAppendedOffset = FavoritesPaging.PAGE_SIZE
+    private var loadingMoreLiked = false
+    private var loadingMoreDisliked = false
+
     fun setMode(mode: FavoritesMode) {
         _state.value = _state.value.copy(mode = mode)
     }
@@ -77,14 +84,17 @@ class FavoritesViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             try {
+                val page = FavoritesPaging.PAGE_SIZE
                 _state.value = _state.value.copy(
-                    tracks = trackDao.getStarred(50),
-                    albums = metadataDao.getStarredAlbums(50),
-                    artists = metadataDao.getStarredArtists(50),
+                    tracks = trackDao.getStarred(page, 0),
+                    albums = metadataDao.getStarredAlbums(page, 0),
+                    artists = metadataDao.getStarredArtists(page, 0),
                     radio = radioFavoriteDao.getAll(),
-                    dislikedTracks = trackDao.getDisliked(50),
-                    dislikedAlbums = metadataDao.getDislikedAlbums(50),
-                    dislikedArtists = metadataDao.getDislikedArtists(50),
+                    dislikedTracks = trackDao.getDisliked(page, 0),
+                    dislikedAlbums = metadataDao.getDislikedAlbums(page, 0),
+                    dislikedArtists = metadataDao.getDislikedArtists(page, 0),
+                    hasMoreLiked = true,
+                    hasMoreDisliked = true,
                     showFavArtistsSection =
                         storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ARTISTS)?.toBooleanStrictOrNull() ?: true,
                     showFavAlbumsSection =
@@ -92,31 +102,36 @@ class FavoritesViewModel @Inject constructor(
                     showFavRadioSection =
                         storage.get(SecureStorage.KEY_HOME_SHOW_FAV_RADIO)?.toBooleanStrictOrNull() ?: true,
                 )
+                likedAppendedOffset = FavoritesPaging.PAGE_SIZE
+                dislikedAppendedOffset = FavoritesPaging.PAGE_SIZE
             } catch (_: Exception) {}
         }
     }
 
-    /** Reactive favorites: Room Flow observation so the tab updates live when
-     *  favorites change from any screen — no resume dependency. */
+    /** Reactive first page — Room Flow so the tab updates live. Appended pages
+     *  survive until the next first-page emit resets offsets (user re-taps Load more). */
     fun observe() {
         viewModelScope.launch {
             try {
+                val page = FavoritesPaging.PAGE_SIZE
                 val liked = kotlinx.coroutines.flow.combine(
-                    trackDao.getStarredFlow(50),
-                    metadataDao.getStarredAlbumsFlow(50),
-                    metadataDao.getStarredArtistsFlow(50),
+                    trackDao.getStarredFlow(page, 0),
+                    metadataDao.getStarredAlbumsFlow(page, 0),
+                    metadataDao.getStarredArtistsFlow(page, 0),
                     radioFavoriteDao.getAllFlow(),
                 ) { tracks, albums, artists, radio ->
                     LikedBundle(tracks, albums, artists, radio)
                 }
                 val disliked = kotlinx.coroutines.flow.combine(
-                    trackDao.getDislikedFlow(50),
-                    metadataDao.getDislikedAlbumsFlow(50),
-                    metadataDao.getDislikedArtistsFlow(50),
+                    trackDao.getDislikedFlow(page, 0),
+                    metadataDao.getDislikedAlbumsFlow(page, 0),
+                    metadataDao.getDislikedArtistsFlow(page, 0),
                 ) { tracks, albums, artists ->
                     DislikedBundle(tracks, albums, artists)
                 }
                 liked.combine(disliked) { l, d ->
+                    likedAppendedOffset = FavoritesPaging.PAGE_SIZE
+                    dislikedAppendedOffset = FavoritesPaging.PAGE_SIZE
                     _state.value = _state.value.copy(
                         tracks = l.tracks,
                         albums = l.albums,
@@ -125,11 +140,91 @@ class FavoritesViewModel @Inject constructor(
                         dislikedTracks = d.tracks,
                         dislikedAlbums = d.albums,
                         dislikedArtists = d.artists,
+                        hasMoreLiked = l.tracks.size >= page ||
+                            l.albums.size >= page ||
+                            l.artists.size >= page,
+                        hasMoreDisliked = d.tracks.size >= page ||
+                            d.albums.size >= page ||
+                            d.artists.size >= page,
                     )
                 }.collect { }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-fav", "observe stopped", e)
+            }
+        }
+    }
+
+    /** Append next page for the active mode (Liked or Disliked). */
+    fun loadMore() {
+        if (_state.value.mode == FavoritesMode.LIKED) {
+            loadMoreLiked()
+        } else {
+            loadMoreDisliked()
+        }
+    }
+
+    private fun loadMoreLiked() {
+        if (loadingMoreLiked || !_state.value.hasMoreLiked) return
+        loadingMoreLiked = true
+        viewModelScope.launch {
+            try {
+                val page = FavoritesPaging.PAGE_SIZE
+                val offset = likedAppendedOffset
+                val moreTracks = trackDao.getStarred(page, offset)
+                val moreAlbums = metadataDao.getStarredAlbums(page, offset)
+                val moreArtists = metadataDao.getStarredArtists(page, offset)
+                val existingTrackIds = _state.value.tracks.map { it.id }.toSet()
+                val existingAlbumIds = _state.value.albums.map { it.id }.toSet()
+                val existingArtistIds = _state.value.artists.map { it.id }.toSet()
+                likedAppendedOffset = offset + page
+                _state.value = _state.value.copy(
+                    tracks = _state.value.tracks + moreTracks.filter { it.id !in existingTrackIds },
+                    albums = _state.value.albums + moreAlbums.filter { it.id !in existingAlbumIds },
+                    artists = _state.value.artists + moreArtists.filter { it.id !in existingArtistIds },
+                    hasMoreLiked = moreTracks.size >= page ||
+                        moreAlbums.size >= page ||
+                        moreArtists.size >= page,
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-fav", "loadMoreLiked failed", e)
+            } finally {
+                loadingMoreLiked = false
+            }
+        }
+    }
+
+    private fun loadMoreDisliked() {
+        if (loadingMoreDisliked || !_state.value.hasMoreDisliked) return
+        loadingMoreDisliked = true
+        viewModelScope.launch {
+            try {
+                val page = FavoritesPaging.PAGE_SIZE
+                val offset = dislikedAppendedOffset
+                val moreTracks = trackDao.getDisliked(page, offset)
+                val moreAlbums = metadataDao.getDislikedAlbums(page, offset)
+                val moreArtists = metadataDao.getDislikedArtists(page, offset)
+                val existingTrackIds = _state.value.dislikedTracks.map { it.id }.toSet()
+                val existingAlbumIds = _state.value.dislikedAlbums.map { it.id }.toSet()
+                val existingArtistIds = _state.value.dislikedArtists.map { it.id }.toSet()
+                dislikedAppendedOffset = offset + page
+                _state.value = _state.value.copy(
+                    dislikedTracks = _state.value.dislikedTracks +
+                        moreTracks.filter { it.id !in existingTrackIds },
+                    dislikedAlbums = _state.value.dislikedAlbums +
+                        moreAlbums.filter { it.id !in existingAlbumIds },
+                    dislikedArtists = _state.value.dislikedArtists +
+                        moreArtists.filter { it.id !in existingArtistIds },
+                    hasMoreDisliked = moreTracks.size >= page ||
+                        moreAlbums.size >= page ||
+                        moreArtists.size >= page,
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-fav", "loadMoreDisliked failed", e)
+            } finally {
+                loadingMoreDisliked = false
             }
         }
     }
@@ -245,6 +340,8 @@ data class FavoritesState(
     val dislikedTracks: List<TrackEntity> = emptyList(),
     val dislikedAlbums: List<AlbumEntity> = emptyList(),
     val dislikedArtists: List<ArtistEntity> = emptyList(),
+    val hasMoreLiked: Boolean = false,
+    val hasMoreDisliked: Boolean = false,
     val showFavArtistsSection: Boolean = true,
     val showFavAlbumsSection: Boolean = true,
     val showFavRadioSection: Boolean = true,
@@ -429,6 +526,18 @@ private fun LikedFavoritesList(
                 )
             }
         }
+        if (state.hasMoreLiked) {
+            item {
+                TextButton(
+                    onClick = { viewModel.loadMore() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("favorites_load_more_liked"),
+                ) {
+                    Text("Load more", color = BrandTeal)
+                }
+            }
+        }
         item { Spacer(Modifier.height(16.dp)) }
     }
 }
@@ -485,6 +594,18 @@ private fun DislikedFavoritesList(
                     onRowClick = { onAlbumClick(album) },
                     onAction = { viewModel.clearDislikeAlbum(album.id) },
                 )
+            }
+        }
+        if (state.hasMoreDisliked) {
+            item {
+                TextButton(
+                    onClick = { viewModel.loadMore() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("favorites_load_more_disliked"),
+                ) {
+                    Text("Load more", color = BrandTeal)
+                }
             }
         }
         item { Spacer(Modifier.height(16.dp)) }

@@ -17,7 +17,7 @@ Caveman terse. Favorites tab Disliked segment. ADR-0020 + `disliked_at` v55.
 | Radio | N/A | N/A | bookmarks only on Liked |
 
 - Like ↔ dislike mutually exclusive (`FavoriteRepository`).
-- Disliked list: `ORDER BY disliked_at DESC LIMIT 50` (mirrors starred).
+- Disliked list: `ORDER BY disliked_at DESC` paged with `FavoritesPaging.PAGE_SIZE` + OFFSET (mirrors starred). See `docs/FAVORITES_PAGING_BEHAVIOR_REPORT.md`.
 - Migration 54→55 adds columns + backfills existing `is_disliked = 1`.
 - Ledger sync preserves `disliked_at` (never wiped by metadata refresh).
 
