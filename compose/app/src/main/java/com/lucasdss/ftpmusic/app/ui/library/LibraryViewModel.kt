@@ -6,6 +6,7 @@ import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.AlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
+import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -1048,6 +1049,33 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persist API-visible albums into [cached_albums] without wiping enrichment.
+     * Same Class-A gap as artists: Library can paint getAlbumList2 ahead of sync.
+     */
+    private suspend fun ensureCachedAlbumsForLikes(albums: List<Album>) {
+        if (albums.isEmpty()) return
+        try {
+            metadataDao.insertAlbumsIgnore(
+                albums.map {
+                    CachedAlbumEntity(
+                        id = it.id,
+                        name = it.name,
+                        artist = it.artist,
+                        artistId = it.artistId,
+                        year = it.year,
+                        coverArt = it.coverArt,
+                        songCount = it.songCount,
+                        duration = it.duration,
+                        genre = it.genre,
+                    )
+                },
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "ensureCachedAlbumsForLikes: ${e.message}")
+        }
+    }
+
     // Internal versions that don't set isLoading (used by resyncAll to avoid flag conflicts)
     private suspend fun loadArtistsInternal() {
         try {
@@ -1092,6 +1120,7 @@ class LibraryViewModel @Inject constructor(
                     rating = (m["userRating"] as? Number)?.toInt(),
                 )
             } ?: emptyList()
+            ensureCachedAlbumsForLikes(albums)
             _state.value = _state.value.copy(albums = albums)
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-library", "loadAlbums: ${e.message}")
@@ -1114,6 +1143,7 @@ class LibraryViewModel @Inject constructor(
                     rating = (m["userRating"] as? Number)?.toInt(),
                 )
             } ?: emptyList()
+            ensureCachedAlbumsForLikes(albums)
             _state.value = _state.value.copy(randomAlbums = albums)
             refreshAlbumDownloadStatuses(albums.map { it.id })
         } catch (e: Exception) {
@@ -1272,6 +1302,7 @@ class LibraryViewModel @Inject constructor(
                         duration = it.duration, genre = it.genre,
                     )
                 } + apiAlbums.filter { it.id !in cachedIds }
+                ensureCachedAlbumsForLikes(apiAlbums.filter { it.id !in cachedIds })
                 _state.value = _state.value.copy(albums = merged, isLoading = false, hasLoadedOnce = true)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message, isLoading = false)
@@ -1325,6 +1356,7 @@ class LibraryViewModel @Inject constructor(
                         rating = (m["userRating"] as? Number)?.toInt(),
                     )
                 } ?: emptyList()
+                ensureCachedAlbumsForLikes(albums)
                 _state.value = _state.value.copy(randomAlbums = albums)
                 refreshAlbumDownloadStatuses(albums.map { it.id })
             } catch (e: Exception) {
@@ -1396,6 +1428,7 @@ class LibraryViewModel @Inject constructor(
                         rating = (m["userRating"] as? Number)?.toInt(),
                     )
                 } ?: emptyList()
+                ensureCachedAlbumsForLikes(newAlbums)
                 albumOffset = nextOffset
                 _state.value = _state.value.copy(
                     albums = _state.value.albums + newAlbums,
@@ -1525,6 +1558,7 @@ class LibraryViewModel @Inject constructor(
                     offset += 500
                 }
                 if (allAlbums.isEmpty()) return@launch
+                ensureCachedAlbumsForLikes(allAlbums)
                 alphaAlbums = allAlbums
                 alphaCatalogComplete = true
                 _state.value = _state.value.copy(albums = allAlbums)

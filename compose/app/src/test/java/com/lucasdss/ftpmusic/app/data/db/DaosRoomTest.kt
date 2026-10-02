@@ -673,4 +673,47 @@ class DaosRoomTest {
         meta.setArtistDisliked("ar-keep", true, at = 99L)
         assertTrue(meta.getDislikedArtistIds().contains("ar-keep"))
     }
+
+    @Test
+    fun `insertAlbumsIgnore fills cache so ensureAlbumLedgerRow like sticks`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        meta.upsertAlbums(
+            listOf(
+                CachedAlbumEntity(
+                    id = "al-keep",
+                    name = "Keep",
+                    musicbrainzId = "mbid-al",
+                    publicRating = 3.2,
+                ),
+            ),
+        )
+        meta.insertAlbumsIgnore(
+            listOf(
+                CachedAlbumEntity(id = "al-keep", name = "Overwrite Attempt", musicbrainzId = null),
+                CachedAlbumEntity(id = "al-new", name = "New From API", artist = "X", coverArt = "cov"),
+            ),
+        )
+
+        val kept = meta.getAlbumById("al-keep")!!
+        assertEquals("Keep", kept.name)
+        assertEquals("mbid-al", kept.musicbrainzId)
+
+        val neu = meta.getAlbumById("al-new")!!
+        assertEquals("New From API", neu.name)
+
+        meta.ensureAlbumLedgerRow("al-new")
+        meta.setAlbumStarredAt("al-new", 1_700_000_000_000L)
+        assertTrue(meta.isAlbumStarred("al-new"))
+        assertEquals(1, meta.getStarredAlbums().size)
+    }
+
+    @Test
+    fun `ensureTrackRow lets like stick without prior track sync`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.ensureTrackRow("t-ghost")
+        tracks.setStarredAt("t-ghost", 99L)
+        assertTrue(tracks.isTrackStarred("t-ghost"))
+        tracks.setDisliked("t-ghost", true, at = 100L)
+        assertTrue(tracks.isTrackDisliked("t-ghost"))
+    }
 }

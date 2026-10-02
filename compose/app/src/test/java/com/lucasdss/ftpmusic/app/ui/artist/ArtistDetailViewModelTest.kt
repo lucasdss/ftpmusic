@@ -50,6 +50,10 @@ class ArtistDetailViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { offlineModeManager.isOffline } returns MutableStateFlow(false)
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
         viewModel = ArtistDetailViewModel(
             api, storage, playbackManager, metadataDao, trackDao, offlineModeManager,
             musicBrainzService, lastFmService, cacheService, downloadManager,
@@ -610,8 +614,7 @@ class ArtistDetailViewModelTest {
         viewModel.rateTrack("t-rate", 4)
         advanceUntilIdle()
 
-        coVerify { trackDao.setRating("t-rate", 4) }
-        coVerify { api.setRating(any(), id = "t-rate", rating = 4) }
+        coVerify { favoriteRepository.rateTrack("t-rate", 4) }
         assertEquals("Optimistic rating", 4, viewModel.getTrackRating("t-rate"))
     }
 
@@ -620,7 +623,7 @@ class ArtistDetailViewModelTest {
         viewModel.rateTrack("t-clamp", 9)
         advanceUntilIdle()
 
-        coVerify { trackDao.setRating("t-clamp", 5) }
+        coVerify { favoriteRepository.rateTrack("t-clamp", 5) }
         assertEquals(5, viewModel.getTrackRating("t-clamp"))
     }
 
@@ -638,6 +641,8 @@ class ArtistDetailViewModelTest {
     fun `album reactions populate from room flows`() = runTest(testDispatcher) {
         every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(listOf("al-1"))
         every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(listOf("al-2"))
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
         viewModel = freshViewModel()
 
         advanceUntilIdle()
@@ -1003,6 +1008,8 @@ class ArtistDetailViewModelTest {
             throw RuntimeException("flow broken")
         }
         every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
         viewModel = freshViewModel()
 
         advanceUntilIdle()

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -792,7 +793,7 @@ private fun ArtistResultRow(artist: ArtistOption, selected: Boolean, onToggle: (
             modifier = Modifier.weight(1f),
         )
         if (artist.isFavorite) {
-            Icon(Icons.Default.Star, "Favorite", tint = TEAL, modifier = Modifier.size(14.dp))
+            Icon(Icons.Filled.ThumbUp, "Liked artist", tint = TEAL, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(6.dp))
         }
         Icon(

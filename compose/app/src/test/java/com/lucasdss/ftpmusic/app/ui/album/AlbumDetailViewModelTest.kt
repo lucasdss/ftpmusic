@@ -50,6 +50,8 @@ class AlbumDetailViewModelTest {
         every { cacheService.cacheEventFlow } returns kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, Boolean>>()
         every { playbackManager.tryStartContext(any(), any(), any(), any(), any(), any()) } returns true
         every { offlineModeManager.isOffline } returns kotlinx.coroutines.flow.MutableStateFlow(false)
+        every { metadataDao.getStarredAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
         viewModel =
             AlbumDetailViewModel(
                 repository,
@@ -676,5 +678,133 @@ class AlbumDetailViewModelTest {
 
         assertTrue(viewModel.isTrackDisliked("td1"))
         assertFalse(viewModel.isTrackLiked("td1"))
+    }
+
+    @Test
+    fun `toggleAlbumLike and dislike call repository locally first`() = runTest {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        viewModel =
+            AlbumDetailViewModel(
+                repository, storage, playbackManager, cacheService, downloadManager,
+                cacheQueueDao, playlistDao, pendingChangeDao, syncWorker, playlistRepo,
+                metadataDao, favoriteRepository, api,
+                musicBrainzService = musicBrainzService,
+                offlineModeManager = offlineModeManager,
+                trackDao = trackDao,
+            )
+        advanceUntilIdle()
+
+        viewModel.toggleAlbumLike("al-1")
+        advanceUntilIdle()
+        assertTrue("al-1" in viewModel.state.value.likedAlbumIds)
+        coVerify { favoriteRepository.likeAlbum("al-1") }
+
+        viewModel.toggleAlbumDislike("al-1")
+        advanceUntilIdle()
+        assertTrue("al-1" in viewModel.state.value.dislikedAlbumIds)
+        assertFalse("al-1" in viewModel.state.value.likedAlbumIds)
+        coVerify { favoriteRepository.dislikeAlbum("al-1") }
+    }
+
+    @Test
+    fun `rateAlbum writes via repository and updates state`() = runTest {
+        coEvery { repository.getAlbum("al-rate", any(), any()) } returns
+            AlbumWithTracks(Album("al-rate", "Rated"), emptyList())
+        coEvery { cacheService.getTracksByIds(any()) } returns emptyList()
+        coEvery { trackDao.watchTracksByIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { cacheQueueDao.watchByTrackIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+
+        viewModel.loadAlbum("al-rate", "user", "pass")
+        advanceUntilIdle()
+        viewModel.rateAlbum("al-rate", 5)
+        advanceUntilIdle()
+
+        coVerify { favoriteRepository.rateAlbum("al-rate", 5) }
+        assertEquals(5, viewModel.state.value.albumRating)
+    }
+
+    @Test
+    fun `toggleAlbumLike rolls back when repository throws`() = runTest {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        coEvery { favoriteRepository.likeAlbum(any()) } throws RuntimeException("db")
+        viewModel =
+            AlbumDetailViewModel(
+                repository, storage, playbackManager, cacheService, downloadManager,
+                cacheQueueDao, playlistDao, pendingChangeDao, syncWorker, playlistRepo,
+                metadataDao, favoriteRepository, api,
+                musicBrainzService = musicBrainzService,
+                offlineModeManager = offlineModeManager,
+                trackDao = trackDao,
+            )
+        advanceUntilIdle()
+        viewModel.toggleAlbumLike("al-x")
+        advanceUntilIdle()
+        assertFalse("al-x" in viewModel.state.value.likedAlbumIds)
+    }
+
+    @Test
+    fun `toggleAlbumUnlike and clearDislike when already set`() = runTest {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(listOf("al-1"))
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(listOf("al-2"))
+        viewModel =
+            AlbumDetailViewModel(
+                repository, storage, playbackManager, cacheService, downloadManager,
+                cacheQueueDao, playlistDao, pendingChangeDao, syncWorker, playlistRepo,
+                metadataDao, favoriteRepository, api,
+                musicBrainzService = musicBrainzService,
+                offlineModeManager = offlineModeManager,
+                trackDao = trackDao,
+            )
+        advanceUntilIdle()
+        assertTrue("al-1" in viewModel.state.value.likedAlbumIds)
+        assertTrue("al-2" in viewModel.state.value.dislikedAlbumIds)
+
+        viewModel.toggleAlbumLike("al-1")
+        advanceUntilIdle()
+        coVerify { favoriteRepository.unlikeAlbum("al-1") }
+
+        viewModel.toggleAlbumDislike("al-2")
+        advanceUntilIdle()
+        coVerify { favoriteRepository.clearDislikeAlbum("al-2") }
+    }
+
+    @Test
+    fun `toggleAlbumDislike rolls back when repository throws`() = runTest {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        coEvery { favoriteRepository.dislikeAlbum(any()) } throws RuntimeException("db")
+        viewModel =
+            AlbumDetailViewModel(
+                repository, storage, playbackManager, cacheService, downloadManager,
+                cacheQueueDao, playlistDao, pendingChangeDao, syncWorker, playlistRepo,
+                metadataDao, favoriteRepository, api,
+                musicBrainzService = musicBrainzService,
+                offlineModeManager = offlineModeManager,
+                trackDao = trackDao,
+            )
+        advanceUntilIdle()
+        viewModel.toggleAlbumDislike("al-y")
+        advanceUntilIdle()
+        assertFalse("al-y" in viewModel.state.value.dislikedAlbumIds)
+    }
+
+    @Test
+    fun `rateAlbum zero clears displayed rating`() = runTest {
+        coEvery { repository.getAlbum("al-zero", any(), any()) } returns
+            AlbumWithTracks(Album("al-zero", "Z", rating = 4), emptyList())
+        coEvery { cacheService.getTracksByIds(any()) } returns emptyList()
+        coEvery { trackDao.watchTracksByIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { cacheQueueDao.watchByTrackIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+
+        viewModel.loadAlbum("al-zero", "user", "pass")
+        advanceUntilIdle()
+        viewModel.rateAlbum("al-zero", 0)
+        advanceUntilIdle()
+
+        coVerify { favoriteRepository.rateAlbum("al-zero", 0) }
+        assertEquals(0, viewModel.state.value.albumRating)
+        assertNull(viewModel.state.value.album?.rating)
     }
 }

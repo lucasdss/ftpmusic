@@ -175,8 +175,7 @@ class FavoriteTest {
         viewModel.rateCurrent(4)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify { trackDao.setRating("track-5", 4) }
-        coVerify { api.setRating(any(), id = "track-5", rating = 4) }
+        coVerify { favoriteRepo.rateTrack("track-5", 4) }
         assertEquals("Optimistic rating", 4, viewModel.state.value.trackRating)
     }
 

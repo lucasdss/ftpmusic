@@ -292,7 +292,7 @@ fun FavoritesScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         if (state.mode == FavoritesMode.LIKED) {
-                            Icons.Outlined.FavoriteBorder
+                            Icons.Outlined.ThumbUp
                         } else {
                             Icons.Outlined.ThumbDown
                         },

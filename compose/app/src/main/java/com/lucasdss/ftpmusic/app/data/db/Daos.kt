@@ -113,6 +113,19 @@ interface TrackDao {
     @Query("SELECT id FROM tracks WHERE id IN (:ids) AND is_disliked = 1")
     suspend fun getDislikedIdsByIds(ids: List<String>): List<String>
 
+    /** Ensure a minimal tracks row so like/dislike/rating UPDATEs can stick. */
+    @Query(
+        "INSERT OR IGNORE INTO tracks (id, title, server_id, play_count, is_downloaded, is_auto_cached, is_disliked) " +
+            "VALUES (:trackId, :trackId, '', 0, 0, 0, 0)",
+    )
+    suspend fun ensureTrackRow(trackId: String)
+
+    @Query("SELECT COUNT(*) > 0 FROM tracks WHERE id = :trackId AND starred_at IS NOT NULL")
+    suspend fun isTrackStarred(trackId: String): Boolean
+
+    @Query("SELECT COUNT(*) > 0 FROM tracks WHERE id = :trackId AND is_disliked = 1")
+    suspend fun isTrackDisliked(trackId: String): Boolean
+
     /** v41: ids of all disliked tracks (for the Favorites/Liked screen). */
     @Query("SELECT id FROM tracks WHERE is_disliked = 1")
     suspend fun getDislikedIds(): List<String>
@@ -573,6 +586,14 @@ interface CachedMetadataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAlbums(albums: List<CachedAlbumEntity>)
 
+    /**
+     * Insert albums missing from cache only. Preserves enrichment columns
+     * on existing rows — unlike [upsertAlbums] REPLACE. Used by Library
+     * album list so thumbs can ensure ledger rows for API-visible albums.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAlbumsIgnore(albums: List<CachedAlbumEntity>)
+
     @Query("DELETE FROM cached_albums")
     suspend fun clearAlbums()
 
@@ -807,12 +828,29 @@ interface CachedMetadataDao {
     @Query("SELECT id FROM albums WHERE starred_at IS NOT NULL")
     suspend fun getStarredAlbumIds(): List<String>
 
+    /** True when ledger row exists and is currently starred (post-write verify). */
+    @Query("SELECT COUNT(*) > 0 FROM albums WHERE id = :albumId AND starred_at IS NOT NULL")
+    suspend fun isAlbumStarred(albumId: String): Boolean
+
+    /** True when ledger row exists and is currently disliked. */
+    @Query("SELECT COUNT(*) > 0 FROM albums WHERE id = :albumId AND is_disliked = 1")
+    suspend fun isAlbumDisliked(albumId: String): Boolean
+
     /** Reactive variant — screens observe this so album like state updates live. */
     @Query("SELECT id FROM albums WHERE starred_at IS NOT NULL")
     fun getStarredAlbumIdsFlow(): Flow<List<String>>
 
     @Query("SELECT id FROM artists WHERE starred_at IS NOT NULL")
     suspend fun getStarredArtistIds(): List<String>
+
+    @Query("SELECT id FROM artists WHERE starred_at IS NOT NULL")
+    fun getStarredArtistIdsFlow(): Flow<List<String>>
+
+    @Query("SELECT COUNT(*) > 0 FROM artists WHERE id = :artistId AND starred_at IS NOT NULL")
+    suspend fun isArtistStarred(artistId: String): Boolean
+
+    @Query("SELECT COUNT(*) > 0 FROM artists WHERE id = :artistId AND is_disliked = 1")
+    suspend fun isArtistDisliked(artistId: String): Boolean
 
     /** v43/v55: local dislike for an album + disliked_at. */
     @Query(

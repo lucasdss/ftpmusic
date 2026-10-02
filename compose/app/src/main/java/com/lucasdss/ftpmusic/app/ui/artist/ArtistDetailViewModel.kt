@@ -29,6 +29,8 @@ data class ArtistDetailState(
     val tracks: List<Track> = emptyList(),
     val likedAlbumIds: Set<String> = emptySet(),
     val dislikedAlbumIds: Set<String> = emptySet(),
+    val likedArtistIds: Set<String> = emptySet(),
+    val dislikedArtistIds: Set<String> = emptySet(),
     val isLoading: Boolean = false,
     val isLoadingMoreTracks: Boolean = false,
     val hasMoreTracks: Boolean = true,
@@ -61,20 +63,29 @@ class ArtistDetailViewModel @Inject constructor(
     private var password: String = ""
 
     init {
-        // Reactive album reactions: Room flows keep the Albums-tab thumbs in
-        // sync with every screen (Library / Album detail) without reloads.
+        // Reactive album + artist reactions: Room flows keep thumbs in sync.
         viewModelScope.launch {
             try {
                 kotlinx.coroutines.flow.combine(
                     metadataDao.getStarredAlbumIdsFlow(),
                     metadataDao.getDislikedAlbumIdsFlow(),
-                ) { liked, disliked -> liked.toSet() to disliked.toSet() }
-                    .collect { (liked, disliked) ->
-                        _state.value = _state.value.copy(
-                            likedAlbumIds = liked,
-                            dislikedAlbumIds = disliked,
-                        )
-                    }
+                    metadataDao.getStarredArtistIdsFlow(),
+                    metadataDao.getDislikedArtistIdsFlow(),
+                ) { likedAlbums, dislikedAlbums, likedArtists, dislikedArtists ->
+                    listOf(
+                        likedAlbums.toSet(),
+                        dislikedAlbums.toSet(),
+                        likedArtists.toSet(),
+                        dislikedArtists.toSet(),
+                    )
+                }.collect { sets ->
+                    _state.value = _state.value.copy(
+                        likedAlbumIds = sets[0],
+                        dislikedAlbumIds = sets[1],
+                        likedArtistIds = sets[2],
+                        dislikedArtistIds = sets[3],
+                    )
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -469,10 +480,7 @@ class ArtistDetailViewModel @Inject constructor(
         _trackRatings.value = _trackRatings.value + (trackId to clamped)
         viewModelScope.launch {
             try {
-                // Local-first, then best-effort server sync (parity with Now Playing)
-                trackDao.setRating(trackId, clamped)
-                val authParams = auth.buildAuthParams(username, password)
-                api.setRating(params = authParams, id = trackId, rating = clamped)
+                favoriteRepository.rateTrack(trackId, clamped)
             } catch (_: Exception) {
             }
         }
@@ -530,6 +538,53 @@ class ArtistDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-artist", "toggleAlbumDislike failed — rolled back", e)
+                _state.value = previous
+            }
+        }
+    }
+
+    fun toggleArtistLike(artistId: String) {
+        val liked = _state.value.likedArtistIds.contains(artistId)
+        val previous = _state.value
+        _state.value = _state.value.copy(
+            likedArtistIds = if (liked) previous.likedArtistIds - artistId else previous.likedArtistIds + artistId,
+            dislikedArtistIds = previous.dislikedArtistIds - artistId,
+        )
+        viewModelScope.launch {
+            try {
+                if (liked) favoriteRepository.unlikeArtist(artistId) else favoriteRepository.likeArtist(artistId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-artist", "toggleArtistLike failed — rolled back", e)
+                _state.value = previous
+            }
+        }
+    }
+
+    fun toggleArtistDislike(artistId: String) {
+        val disliked = _state.value.dislikedArtistIds.contains(artistId)
+        val previous = _state.value
+        _state.value = _state.value.copy(
+            dislikedArtistIds = if (disliked) {
+                previous.dislikedArtistIds - artistId
+            } else {
+                previous.dislikedArtistIds +
+                    artistId
+            },
+            likedArtistIds = previous.likedArtistIds - artistId,
+        )
+        viewModelScope.launch {
+            try {
+                if (disliked) {
+                    favoriteRepository.clearDislikeArtist(artistId)
+                } else {
+                    favoriteRepository.dislikeArtist(artistId)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-artist", "toggleArtistDislike failed — rolled back", e)
                 _state.value = previous
             }
         }

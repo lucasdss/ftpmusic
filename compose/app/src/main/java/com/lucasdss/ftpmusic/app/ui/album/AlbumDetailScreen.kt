@@ -44,6 +44,7 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
+import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
@@ -156,6 +157,34 @@ fun AlbumDetailScreen(
                             )
                         }
                     }
+                    // Album like/dislike — top-end (below download badge when present)
+                    Row(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(
+                                top = if (albumStatus != "none") adp(52f) else spacingL(),
+                                end = spacingL(),
+                            ),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        FavoriteThumbButton(
+                            icon = Icons.Filled.ThumbUp,
+                            active = albumId in state.likedAlbumIds,
+                            contentDescription = if (albumId in state.likedAlbumIds) "Unlike album" else "Like album",
+                            onClick = { viewModel.toggleAlbumLike(albumId) },
+                        )
+                        FavoriteThumbButton(
+                            icon = Icons.Filled.ThumbDown,
+                            active = albumId in state.dislikedAlbumIds,
+                            activeTint = Color(0xFFE84040),
+                            contentDescription = if (albumId in state.dislikedAlbumIds) {
+                                "Remove dislike"
+                            } else {
+                                "Dislike album"
+                            },
+                            onClick = { viewModel.toggleAlbumDislike(albumId) },
+                        )
+                    }
                     // Album info at bottom
                     Column(
                         Modifier.align(Alignment.BottomStart).padding(horizontal = spacingXL(), vertical = spacingL()),
@@ -189,39 +218,36 @@ fun AlbumDetailScreen(
                             }
                             Text("${state.tracks.size} tracks", color = Color(0xFF888888), fontSize = textLabelM())
                             state.album?.let { alb ->
-                                alb.rating?.let { r ->
-                                    if (r > 0) {
-                                        Text(" · ", color = Color(0xFF444444), fontSize = textLabelM())
-                                        Row {
-                                            for (i in 1..5) {
-                                                Icon(
-                                                    if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
-                                                    null,
-                                                    tint = if (i <= r) BrandTeal else Color(0xFF444444),
-                                                    modifier = Modifier.size(iconMicro())
-                                                        .clickable { viewModel.rateAlbum(albumId, i) },
-                                                )
-                                            }
+                                val r = state.albumRating.takeIf { it > 0 } ?: (alb.rating ?: 0)
+                                Text(" · ", color = Color(0xFF444444), fontSize = textLabelM())
+                                Row {
+                                    for (i in 1..5) {
+                                        Icon(
+                                            if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
+                                            contentDescription = "Rate album $i of 5",
+                                            tint = if (i <= r) BrandTeal else Color(0xFF444444),
+                                            modifier = Modifier.size(iconMicro())
+                                                .clickable { viewModel.rateAlbum(albumId, i) },
+                                        )
+                                    }
 
-                                            // ── Overwrite Protection ──
-                                            val showOverwrite by
-                                                viewModel.showOverwriteModal.collectAsStateWithLifecycle()
-                                            if (showOverwrite) {
-                                                android.app.AlertDialog.Builder(context).apply {
-                                                    setTitle("Tracks in your queue")
-                                                    setMessage(
-                                                        "You have tracks in your Priority Queue. Do you want to clear them and play this album, or keep them?",
-                                                    )
-                                                    setNegativeButton("Keep Queue") { _, _ ->
-                                                        viewModel.resolveOverwrite(false)
-                                                    }
-                                                    setPositiveButton("Clear & Play") { _, _ ->
-                                                        viewModel.resolveOverwrite(true)
-                                                    }
-                                                    setOnCancelListener { viewModel.resolveOverwrite(false) }
-                                                    show()
-                                                }
+                                    // ── Overwrite Protection ──
+                                    val showOverwrite by
+                                        viewModel.showOverwriteModal.collectAsStateWithLifecycle()
+                                    if (showOverwrite) {
+                                        android.app.AlertDialog.Builder(context).apply {
+                                            setTitle("Tracks in your queue")
+                                            setMessage(
+                                                "You have tracks in your Priority Queue. Do you want to clear them and play this album, or keep them?",
+                                            )
+                                            setNegativeButton("Keep Queue") { _, _ ->
+                                                viewModel.resolveOverwrite(false)
                                             }
+                                            setPositiveButton("Clear & Play") { _, _ ->
+                                                viewModel.resolveOverwrite(true)
+                                            }
+                                            setOnCancelListener { viewModel.resolveOverwrite(false) }
+                                            show()
                                         }
                                     }
                                 }

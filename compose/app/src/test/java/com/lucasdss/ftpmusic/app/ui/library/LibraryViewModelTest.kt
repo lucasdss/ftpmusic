@@ -256,6 +256,49 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `loadAlbums inserts API-only albums into cached_albums for likes`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
+        val albumMaps = listOf(
+            mapOf<String, Any?>("id" to "al-1", "name" to "Album One", "artist" to "A", "coverArt" to "c1"),
+            mapOf<String, Any?>("id" to "al-2", "name" to "Album Two", "artist" to "B", "coverArt" to null),
+        )
+        coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(albumMaps)
+        coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(emptyList())
+        coEvery { metadataDao.insertAlbumsIgnore(any()) } just Runs
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDao,
+                mockk(relaxed = true),
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.state.first { !it.isLoading && it.albums.isNotEmpty() }
+        advanceUntilIdle()
+
+        coVerify {
+            metadataDao.insertAlbumsIgnore(
+                match { list ->
+                    list.size == 2 &&
+                        list.any { it.id == "al-1" && it.name == "Album One" } &&
+                        list.any { it.id == "al-2" && it.name == "Album Two" }
+                },
+            )
+        }
+    }
+
+    @Test
     fun `loadAlbums populates album list`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"

@@ -13,6 +13,9 @@ import javax.inject.Singleton
  * best-effort. Server failures never fail or roll back a local write; the
  * MetadataSyncWorker star mirror re-pushes local-only stars when connectivity
  * returns and protects them from being cleared (clearNonStarredBefore).
+ *
+ * Mirror is skipped when the local ensure/UPDATE did not persist (0-row),
+ * so the server never gets a ghost star without Room truth.
  */
 @Singleton
 class FavoriteRepository @Inject constructor(
@@ -42,22 +45,39 @@ class FavoriteRepository @Inject constructor(
         }
     }
 
+    private suspend fun mirrorRating(block: suspend () -> Unit) {
+        if (offlineModeManager.isOfflineEnabled()) return
+        try {
+            block()
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-fav", "rating sync deferred (kept local): ${e.message}")
+        }
+    }
+
     // ── Tracks: local-first like (= star) / dislike (local-only) ─────────────
 
     suspend fun starTrack(trackId: String) {
+        trackDao.ensureTrackRow(trackId)
         trackDao.setStarredAt(trackId, System.currentTimeMillis())
         trackDao.setPendingUnstar(trackId, null)
+        if (!trackDao.isTrackStarred(trackId)) {
+            android.util.Log.w("ftpmusic-fav", "starTrack local miss — skip server: $trackId")
+            return
+        }
         mirrorStar { api.star(authParams(), id = trackId) }
     }
 
     suspend fun unstarTrack(trackId: String) {
+        trackDao.ensureTrackRow(trackId)
         trackDao.setStarredAt(trackId, null)
         trackDao.setPendingUnstar(trackId, System.currentTimeMillis())
+        // Local clear always attempted; mirror unstar even if row was new/empty.
         mirrorStar { api.unstar(authParams(), id = trackId) }
     }
 
     /** Thumbs up: like == starred on Navidrome. Clears any local dislike first. */
     suspend fun likeTrack(trackId: String) {
+        trackDao.ensureTrackRow(trackId)
         trackDao.setDisliked(trackId, false, at = 0L)
         starTrack(trackId)
     }
@@ -69,9 +89,14 @@ class FavoriteRepository @Inject constructor(
 
     /** Thumbs down: local-only dislike. Clears like (star) — best-effort server unstar. */
     suspend fun dislikeTrack(trackId: String) {
+        trackDao.ensureTrackRow(trackId)
         trackDao.setStarredAt(trackId, null)
         trackDao.setDisliked(trackId, true, at = System.currentTimeMillis())
         trackDao.setPendingUnstar(trackId, System.currentTimeMillis())
+        if (!trackDao.isTrackDisliked(trackId)) {
+            android.util.Log.w("ftpmusic-fav", "dislikeTrack local miss — skip server: $trackId")
+            return
+        }
         mirrorStar { api.unstar(authParams(), id = trackId) }
     }
 
@@ -80,12 +105,24 @@ class FavoriteRepository @Inject constructor(
         trackDao.setDisliked(trackId, false, at = 0L)
     }
 
+    /** 5★ rating: Room first, then best-effort setRating. */
+    suspend fun rateTrack(trackId: String, rating: Int) {
+        val clamped = rating.coerceIn(0, 5)
+        trackDao.ensureTrackRow(trackId)
+        trackDao.setRating(trackId, clamped)
+        mirrorRating { api.setRating(authParams(), id = trackId, rating = clamped) }
+    }
+
     // ── v43: Albums / Artists — same local-first semantics ──────────────────
 
     suspend fun starAlbum(albumId: String) {
         metadataDao.ensureAlbumLedgerRow(albumId)
         metadataDao.setAlbumStarredAt(albumId, System.currentTimeMillis())
         metadataDao.setAlbumPendingUnstar(albumId, null)
+        if (!metadataDao.isAlbumStarred(albumId)) {
+            android.util.Log.w("ftpmusic-fav", "starAlbum local miss — skip server: $albumId")
+            return
+        }
         mirrorStar { api.star(authParams(), albumId = albumId) }
     }
 
@@ -99,6 +136,10 @@ class FavoriteRepository @Inject constructor(
         metadataDao.ensureArtistLedgerRow(artistId)
         metadataDao.setArtistStarredAt(artistId, System.currentTimeMillis())
         metadataDao.setArtistPendingUnstar(artistId, null)
+        if (!metadataDao.isArtistStarred(artistId)) {
+            android.util.Log.w("ftpmusic-fav", "starArtist local miss — skip server: $artistId")
+            return
+        }
         mirrorStar { api.star(authParams(), artistId = artistId) }
     }
 
@@ -108,8 +149,7 @@ class FavoriteRepository @Inject constructor(
         mirrorStar { api.unstar(authParams(), artistId = artistId) }
     }
 
-    /** Thumbs up on an album: local star first, best-effort server mirror.
-     *  starAlbum ensures the ledger row exists. */
+    /** Thumbs up on an album: local star first, best-effort server mirror. */
     suspend fun likeAlbum(albumId: String) {
         metadataDao.setAlbumDisliked(albumId, false, at = 0L)
         starAlbum(albumId)
@@ -125,6 +165,10 @@ class FavoriteRepository @Inject constructor(
         metadataDao.setAlbumStarredAt(albumId, null)
         metadataDao.setAlbumDisliked(albumId, true, at = System.currentTimeMillis())
         metadataDao.setAlbumPendingUnstar(albumId, System.currentTimeMillis())
+        if (!metadataDao.isAlbumDisliked(albumId)) {
+            android.util.Log.w("ftpmusic-fav", "dislikeAlbum local miss — skip server: $albumId")
+            return
+        }
         mirrorStar { api.unstar(authParams(), albumId = albumId) }
     }
 
@@ -132,8 +176,15 @@ class FavoriteRepository @Inject constructor(
         metadataDao.setAlbumDisliked(albumId, false, at = 0L)
     }
 
-    /** Thumbs up on an artist: local star first, best-effort server mirror.
-     *  starArtist ensures the ledger row exists. */
+    /** 5★ album rating: ledger ensure + Room, then best-effort setRating. */
+    suspend fun rateAlbum(albumId: String, rating: Int) {
+        val clamped = rating.coerceIn(0, 5)
+        metadataDao.ensureAlbumLedgerRow(albumId)
+        metadataDao.setAlbumRating(albumId, clamped)
+        mirrorRating { api.setRating(authParams(), id = albumId, rating = clamped) }
+    }
+
+    /** Thumbs up on an artist: local star first, best-effort server mirror. */
     suspend fun likeArtist(artistId: String) {
         metadataDao.setArtistDisliked(artistId, false, at = 0L)
         starArtist(artistId)
@@ -149,6 +200,10 @@ class FavoriteRepository @Inject constructor(
         metadataDao.setArtistStarredAt(artistId, null)
         metadataDao.setArtistDisliked(artistId, true, at = System.currentTimeMillis())
         metadataDao.setArtistPendingUnstar(artistId, System.currentTimeMillis())
+        if (!metadataDao.isArtistDisliked(artistId)) {
+            android.util.Log.w("ftpmusic-fav", "dislikeArtist local miss — skip server: $artistId")
+            return
+        }
         mirrorStar { api.unstar(authParams(), artistId = artistId) }
     }
 
@@ -158,7 +213,7 @@ class FavoriteRepository @Inject constructor(
 
     // ── v43: Radio bookmarks (local-only Room persistence) ──────────────────
 
-    /** Bookmark (favorite) a radio station — local-only persistence. */
+    /** Bookmark (favorite) a radio station — local-only (no Subsonic radio star). */
     suspend fun bookmarkRadio(stationId: String, name: String, streamUrl: String, homePageUrl: String?) {
         radioFavoriteDao.upsert(
             com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity(

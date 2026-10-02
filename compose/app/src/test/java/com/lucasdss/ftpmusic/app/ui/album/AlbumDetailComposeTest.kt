@@ -53,6 +53,7 @@ class AlbumDetailComposeTest {
         every { vm.getTrackRating(any()) } returns 0
         every { vm.getAlbumDownloadStatus() } returns albumStatus
         every { vm.buildCoverArtUrl(any()) } returns ""
+        every { vm.showOverwriteModal } returns MutableStateFlow(false)
         return vm
     }
 

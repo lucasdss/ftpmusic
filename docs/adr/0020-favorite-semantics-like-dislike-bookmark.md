@@ -137,3 +137,26 @@ ADR ensure-row (addendum 2026-08-23) fixed Search→ledger silent loss by
 `CachedMetadataDao.insertArtistsIgnore` (`OnConflictStrategy.IGNORE`) so
 missing rows are filled without REPLACE-wiping enrichment columns. Same
 hook on `loadArtistsInternal`. Ledger ensure path unchanged.
+
+## Review addendum (2026-10-02) — local-first + sync for all reactions
+
+Hard contract (replaces stale “offline failures roll the UI state back” for
+mirror failures — UI rolls back only on **Room** failure):
+
+1. Room ensure + write **first**.
+2. Best-effort server mirror (`star` / `unstar` / `setRating`) **second**.
+3. Offline or network fail → **keep local**; MetadataSyncWorker push-back
+   recovers stars/unstars.
+4. If local write did not persist (0-row) → **do not** call server (no ghost
+   star). `FavoriteRepository` verifies `is*Starred` / `is*Disliked` before
+   `mirrorStar`.
+5. Ratings go through `FavoriteRepository.rateTrack` / `rateAlbum`
+   (`mirrorRating` skips offline like `mirrorStar`).
+6. **Albums Class-A:** Library album API paint paths call
+   `insertAlbumsIgnore` (same pattern as artists).
+7. **Tracks:** `ensureTrackRow` before like/dislike/rating UPDATEs.
+8. **Radio:** still local `radio_favorites` only (no Subsonic radio star);
+   UI stays Bookmark vs thumbs.
+9. UI language: empty Favorites Liked uses ThumbUp (not heart); Daily Mix
+   liked-artist badge uses ThumbUp (not Star). 5★ content = rating, not like.
+10. Album/Artist detail heroes expose entity thumbs.

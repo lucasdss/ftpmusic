@@ -296,12 +296,9 @@ class PlaybackViewModel @Inject constructor(
         reactionMutationInFlight = true
         viewModelScope.launch {
             try {
-                trackDao.setRating(trackId, clamped)
-                val user = storage.get(SecureStorage.KEY_USERNAME) ?: ""
-                val pass = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
-                val auth = authHelper.buildAuthParams(user, pass)
-                api.setRating(auth, id = trackId, rating = clamped)
-            } catch (_: Exception) {} finally {
+                favoriteRepository.rateTrack(trackId, clamped)
+            } catch (_: Exception) {
+            } finally {
                 reactionMutationInFlight = false
             }
         }

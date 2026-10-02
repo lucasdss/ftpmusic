@@ -26,6 +26,12 @@ class FavoriteRepositoryTest {
             every { m.get(SecureStorage.KEY_USERNAME) } returns "user"
             every { m.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         }
+        coEvery { trackDao.isTrackStarred(any()) } returns true
+        coEvery { trackDao.isTrackDisliked(any()) } returns true
+        coEvery { metadataDao.isAlbumStarred(any()) } returns true
+        coEvery { metadataDao.isAlbumDisliked(any()) } returns true
+        coEvery { metadataDao.isArtistStarred(any()) } returns true
+        coEvery { metadataDao.isArtistDisliked(any()) } returns true
         return FavoriteRepository(
             api,
             s,

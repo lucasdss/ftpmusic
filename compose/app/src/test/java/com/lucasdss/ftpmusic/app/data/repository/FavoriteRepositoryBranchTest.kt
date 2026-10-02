@@ -35,6 +35,12 @@ class FavoriteRepositoryBranchTest {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         every { offlineModeManager.isOfflineEnabled() } returns false
+        coEvery { trackDao.isTrackStarred(any()) } returns true
+        coEvery { trackDao.isTrackDisliked(any()) } returns true
+        coEvery { metadataDao.isAlbumStarred(any()) } returns true
+        coEvery { metadataDao.isAlbumDisliked(any()) } returns true
+        coEvery { metadataDao.isArtistStarred(any()) } returns true
+        coEvery { metadataDao.isArtistDisliked(any()) } returns true
         repo = FavoriteRepository(api, storage, offlineModeManager, trackDao, metadataDao, radioFavoriteDao)
     }
 
@@ -87,5 +93,37 @@ class FavoriteRepositoryBranchTest {
 
         repo.dislikeArtist("ar-2")
         coVerify { api.unstar(any(), artistId = "ar-2") }
+    }
+
+    @Test
+    fun `starTrack skips server when local write missed`() = runTest {
+        coEvery { trackDao.isTrackStarred("t-miss") } returns false
+        repo.starTrack("t-miss")
+        coVerify { trackDao.ensureTrackRow("t-miss") }
+        coVerify(exactly = 0) { api.star(any(), id = "t-miss") }
+    }
+
+    @Test
+    fun `rateTrack writes local then mirrors setRating`() = runTest {
+        repo.rateTrack("t1", 4)
+        coVerify { trackDao.ensureTrackRow("t1") }
+        coVerify { trackDao.setRating("t1", 4) }
+        coVerify { api.setRating(any(), id = "t1", rating = 4) }
+    }
+
+    @Test
+    fun `rateAlbum writes ledger rating then mirrors setRating`() = runTest {
+        repo.rateAlbum("al-1", 3)
+        coVerify { metadataDao.ensureAlbumLedgerRow("al-1") }
+        coVerify { metadataDao.setAlbumRating("al-1", 3) }
+        coVerify { api.setRating(any(), id = "al-1", rating = 3) }
+    }
+
+    @Test
+    fun `rateTrack skips server when offline`() = runTest {
+        every { offlineModeManager.isOfflineEnabled() } returns true
+        repo.rateTrack("t1", 5)
+        coVerify { trackDao.setRating("t1", 5) }
+        coVerify(exactly = 0) { api.setRating(any(), id = any(), rating = any()) }
     }
 }

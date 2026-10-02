@@ -119,6 +119,32 @@ fun ArtistDetailScreen(
                     ),
                 )
                 DetailBackButton(onBack = onBack)
+                Row(
+                    Modifier.align(Alignment.TopEnd).padding(spacingL()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FavoriteThumbButton(
+                        icon = Icons.Filled.ThumbUp,
+                        active = state.artistId in state.likedArtistIds,
+                        contentDescription = if (state.artistId in state.likedArtistIds) {
+                            "Unlike artist"
+                        } else {
+                            "Like artist"
+                        },
+                        onClick = { viewModel.toggleArtistLike(state.artistId) },
+                    )
+                    FavoriteThumbButton(
+                        icon = Icons.Filled.ThumbDown,
+                        active = state.artistId in state.dislikedArtistIds,
+                        activeTint = Color(0xFFE84040),
+                        contentDescription = if (state.artistId in state.dislikedArtistIds) {
+                            "Remove dislike"
+                        } else {
+                            "Dislike artist"
+                        },
+                        onClick = { viewModel.toggleArtistDislike(state.artistId) },
+                    )
+                }
                 // Artist name at bottom
                 Column(
                     Modifier.align(Alignment.BottomStart).padding(horizontal = spacingXL(), vertical = spacingL()),

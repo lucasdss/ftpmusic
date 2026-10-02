@@ -772,12 +772,7 @@ class MixDetailViewModel @Inject constructor(
         _trackRatings.value = _trackRatings.value + (trackId to clamped)
         viewModelScope.launch {
             try {
-                // Local-first, then best-effort server sync (parity with Now Playing)
-                trackDao.setRating(trackId, clamped)
-                val username = storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_USERNAME) ?: ""
-                val password = storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_PASSWORD) ?: ""
-                val params = authHelper.buildAuthParams(username, password)
-                api.setRating(params = params, id = trackId, rating = clamped)
+                favoriteRepository.rateTrack(trackId, clamped)
             } catch (_: Exception) {}
         }
     }
