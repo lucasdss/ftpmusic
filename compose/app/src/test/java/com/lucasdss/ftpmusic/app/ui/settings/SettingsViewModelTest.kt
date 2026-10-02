@@ -664,8 +664,17 @@ class SettingsViewModelTest {
         every { offlineModeManager.isQueueEnabled() } returns false
         val snap = viewModel.diagnosticsSnapshot()
         assertTrue(snap.contains("vm-line"))
+        assertTrue(snap.contains("ftpmusic-ui"))
+        assertTrue(snap.contains("share diagnostics"))
         assertTrue(snap.contains(viewModel.appVersionLabel().substringBefore(" (")))
         viewModel.clearDiagnostics()
-        assertEquals(0, com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.lineCount())
+        assertEquals(1, com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.lineCount())
+        val afterClear = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+        )
+        assertTrue(afterClear.contains("cleared diagnostics"))
+        assertFalse(afterClear.contains("vm-line"))
     }
 }

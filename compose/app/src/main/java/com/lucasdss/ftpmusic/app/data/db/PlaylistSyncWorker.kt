@@ -80,6 +80,11 @@ class PlaylistSyncWorker(
                 e: Exception,
             ) {
                 Log.w(TAG, "flushNow failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "flushNow failed",
+                    e,
+                )
             } finally {
                 isFlushing.set(false)
             }
@@ -184,6 +189,10 @@ class PlaylistSyncWorker(
                 updateLastSyncedAt(change.playlistId)
             } catch (e: SocketTimeoutException) {
                 Log.w(TAG, "Timeout flushing ${change.changeType} for ${change.playlistId} — will retry")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "flush timeout change=${change.changeType} playlistId=${change.playlistId}",
+                )
                 anyNetworkFailure = true
             } catch (e: UnknownHostException) {
                 Log.w(TAG, "DNS resolution failed for ${change.changeType} — will retry")
@@ -197,6 +206,11 @@ class PlaylistSyncWorker(
             } catch (e: Exception) {
                 // Permanent error (server rejection, parse error) — mark flushed with conflict
                 Log.w(TAG, "Failed to flush ${change.changeType} for ${change.playlistId}: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "flush fail change=${change.changeType} playlistId=${change.playlistId}",
+                    e,
+                )
                 pendingDao.markFlushed(change.id)
                 val current = playlistDao.getById(change.playlistId)
                 if (current != null) {

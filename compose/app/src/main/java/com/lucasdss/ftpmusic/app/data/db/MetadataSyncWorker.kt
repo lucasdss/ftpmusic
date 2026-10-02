@@ -290,6 +290,7 @@ class MetadataSyncWorker(
                 DiagnosticLog.d(TAG, "sync start mode=$resolvedMode force=$forceTrackResync")
                 syncAlbums(resolvedMode)
                 val albumCount = metadataDao.albumCount()
+                DiagnosticLog.d(TAG, "phase=albums albums=$albumCount mode=$resolvedMode")
                 _status.value = _status.value.copy(
                     albums = albumCount,
                     albumsTotal = albumCount,
@@ -299,6 +300,7 @@ class MetadataSyncWorker(
 
                 syncArtists()
                 val artistCount = metadataDao.artistCount()
+                DiagnosticLog.d(TAG, "phase=artists artists=$artistCount")
                 _status.value = _status.value.copy(
                     artists = artistCount,
                     artistsTotal = artistCount,
@@ -308,6 +310,7 @@ class MetadataSyncWorker(
 
                 syncGenres()
                 val genreCount = genreMixDao.getTopGenres().size
+                DiagnosticLog.d(TAG, "phase=genres genres=$genreCount")
                 _status.value = _status.value.copy(
                     genres = genreCount,
                     genresTotal = genreCount,
@@ -317,6 +320,7 @@ class MetadataSyncWorker(
 
                 // Sync stars and ratings from server (mirror Navidrome favorites)
                 syncStarredAndRatings()
+                DiagnosticLog.d(TAG, "phase=stars")
                 Log.d(TAG, "Starred/ratings sync complete")
 
                 syncAlbumTracks(forceTrackResync)
@@ -341,6 +345,7 @@ class MetadataSyncWorker(
                     if (e is CancellationException) throw e
                 }
                 val finalTrackCount = metadataDao.cachedTrackCount()
+                DiagnosticLog.d(TAG, "phase=tracks tracks=$finalTrackCount")
                 if (_status.value.albumTracksProgress > 0) {
                     trackDao.populateAllTrackGenres()
                     trackDao.populateGenresFromCachedGenreSongs()
@@ -382,7 +387,7 @@ class MetadataSyncWorker(
                 isSyncing.set(false)
                 syncJobs.remove(coroutineContext[kotlinx.coroutines.Job]!!)
                 val phase = _status.value.phase
-                DiagnosticLog.d(TAG, "sync end phase=$phase elapsed=${System.currentTimeMillis() - startMs}ms")
+                DiagnosticLog.d(TAG, "sync end phase=$phase elapsed=${System.currentTimeMillis() - startMs}ms albums=${_status.value.albums} artists=${_status.value.artists} tracks=${_status.value.trackCount}")
             }
         }
         syncJobs.add(job)

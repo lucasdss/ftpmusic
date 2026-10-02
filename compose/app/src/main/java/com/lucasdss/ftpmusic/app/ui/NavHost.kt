@@ -96,6 +96,11 @@ fun FtpmusicNavHost() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    LaunchedEffect(currentRoute) {
+        val route = currentRoute ?: return@LaunchedEffect
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-ui", "route=$route")
+    }
+
     val playbackViewModel: PlaybackViewModel = hiltViewModel()
     // Activity-scoped so SettingsScreen toggle updates the bar live.
     val settingsViewModel: SettingsViewModel = hiltViewModel(
@@ -121,6 +126,7 @@ fun FtpmusicNavHost() {
             // Stale state — CastPlayer would have set deviceName via onDeviceInfoChanged.
             // If not, the session likely died without us noticing.
             android.util.Log.w("ftpmusic-cast", "[NavHost] isCasting=true but no deviceName — force-resetting")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "stale casting heal — force reset")
             playbackViewModel.onCastDisconnected()
         }
     }
@@ -995,6 +1001,10 @@ fun FtpmusicNavHost() {
             },
             onDeviceSelected = { device ->
                 try {
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-ui",
+                        "cast connect requested deviceId=${device.deviceId}",
+                    )
                     // Connect flow is owned by MediaService (registered via
                     // CastButtonState.onConnectRequested): it ends any stale/
                     // desynced session BEFORE route.select() so the select is
@@ -1058,6 +1068,10 @@ fun FtpmusicNavHost() {
                 // CastButtonState.disconnect() fires onDisconnectRequested callback,
                 // which MediaService registered to update state + notification.
                 // CastPlayer then fires onDeviceInfoChanged(remote=false) naturally.
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-ui",
+                    "cast disconnect requested",
+                )
                 CastButtonState.disconnect()
             },
         )

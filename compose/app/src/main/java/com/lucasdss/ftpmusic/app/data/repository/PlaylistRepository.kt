@@ -58,6 +58,10 @@ class PlaylistRepository @Inject constructor(
             ),
         )
         syncWorker.flushNow()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playlist",
+            "create playlistId=$tempId",
+        )
         return tempId
     }
 
@@ -124,6 +128,10 @@ class PlaylistRepository @Inject constructor(
         } else {
             playlistDao.clearEntries(playlistId)
         }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playlist",
+            "import playlistId=$playlistId tracks=${entryEntities.size} autoDownload=$autoDownload",
+        )
     }
 
     private fun buildStreamUrl(trackId: String): String {
@@ -171,5 +179,9 @@ class PlaylistRepository @Inject constructor(
             ),
         )
         syncWorker.flushNow()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playlist",
+            "addToPlaylist playlistId=$playlistId count=${trackIds.size}",
+        )
     }
 }

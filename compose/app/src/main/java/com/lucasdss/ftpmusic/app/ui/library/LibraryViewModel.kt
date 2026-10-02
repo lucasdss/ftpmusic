@@ -815,6 +815,10 @@ class LibraryViewModel @Inject constructor(
             val produced = withContext(ioDispatcher) {
                 dailyMixRepository.generateAll(today, manual = false)
             }
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-dailymix",
+                "maybeGenerateMixes date=$today produced=$produced",
+            )
             if (produced == 0) {
                 // Empty outcome (e.g. no genres populated yet) — suppress
                 // same-day retries so every Home open doesn't re-run generation.

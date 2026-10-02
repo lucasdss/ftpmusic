@@ -177,6 +177,10 @@ class PlaylistDetailViewModel @Inject constructor(
             )
         } catch (_: Exception) {
             android.util.Log.w("ftpmusic-playlist", "Background refresh failed for $playlistId")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "Background refresh failed for $playlistId",
+                )
         }
     }
 
@@ -389,8 +393,17 @@ class PlaylistDetailViewModel @Inject constructor(
                     ),
                 )
                 syncWorker.flushNow()
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-playlist",
+                    "removeFromPlaylist playlistId=${playlist.id} position=$position",
+                )
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "removeFromPlaylist failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "removeFromPlaylist failed",
+                    e,
+                )
             }
         }
     }
@@ -439,6 +452,11 @@ class PlaylistDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "addToPlaylist failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "addToPlaylist failed",
+                    e,
+                )
             }
         }
     }
@@ -505,6 +523,11 @@ class PlaylistDetailViewModel @Inject constructor(
                 refreshCacheStatus(updatedTracks.map { it.id })
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "addTracksToThisPlaylist failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "addTracksToThisPlaylist failed",
+                    e,
+                )
             }
         }
     }
@@ -546,8 +569,17 @@ class PlaylistDetailViewModel @Inject constructor(
                     ),
                 )
                 syncWorker.flushNow()
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-playlist",
+                    "moveTrack playlistId=${playlist.id} from=$fromIndex to=$toIndex",
+                )
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "moveTrack failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "moveTrack failed",
+                    e,
+                )
             }
         }
     }
@@ -568,6 +600,11 @@ class PlaylistDetailViewModel @Inject constructor(
             downloadManager.enqueue(track.id, streamUrl, priority = 1)
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-playlist", "downloadTrackInternal failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "downloadTrackInternal failed",
+                    e,
+                )
         }
     }
 
@@ -621,6 +658,11 @@ class PlaylistDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isSyncing = false)
                 android.util.Log.w("ftpmusic-playlist", "syncToServer failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "syncToServer failed",
+                    e,
+                )
             }
         }
     }
@@ -650,6 +692,11 @@ class PlaylistDetailViewModel @Inject constructor(
                 syncWorker.flushNow()
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "renamePlaylist failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "renamePlaylist failed",
+                    e,
+                )
             }
         }
     }
@@ -673,6 +720,11 @@ class PlaylistDetailViewModel @Inject constructor(
                 onComplete()
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "deletePlaylist failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "deletePlaylist failed",
+                    e,
+                )
                 onComplete() // navigate back even on error — local delete already happened
             }
         }
@@ -694,6 +746,10 @@ class PlaylistDetailViewModel @Inject constructor(
                     android.util.Log.w(
                         "ftpmusic-playlist",
                         "copyPlaylist server error: ${auth.getResponseError(response)}",
+                    )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playlist",
+                        "copyPlaylist server error",
                     )
                     return@launch
                 }
@@ -743,6 +799,11 @@ class PlaylistDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "copyPlaylist failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "copyPlaylist failed",
+                    e,
+                )
             }
         }
     }
@@ -823,6 +884,11 @@ class PlaylistDetailViewModel @Inject constructor(
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("ftpmusic-playlist", "watchCacheStatus($trackId) failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "watchCacheStatus($trackId) failed",
+                    e,
+                )
                 }
             }
             watcherJobs.add(job)
@@ -841,6 +907,11 @@ class PlaylistDetailViewModel @Inject constructor(
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("ftpmusic-playlist", "watchByTrackId($trackId) failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playlist",
+                    "watchByTrackId($trackId) failed",
+                    e,
+                )
                 }
             }
             watcherJobs.add(job)

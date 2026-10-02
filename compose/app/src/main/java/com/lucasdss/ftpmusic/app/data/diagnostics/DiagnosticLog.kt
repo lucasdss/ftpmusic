@@ -7,11 +7,12 @@ import java.time.Instant
 import java.util.ArrayDeque
 
 /**
- * In-process ring buffer for Play testing diagnostics (ADR-0048).
+ * In-process ring buffer for Play testing diagnostics (ADR-0048, ADR-0060).
  * Survives R8 Log stripping — testers export via Settings → Share diagnostics.
+ * Strict fields only: ids/counts/flags — no titles, URLs, or Cast friendlyName.
  */
 object DiagnosticLog {
-    private const val CAP = 500
+    private const val CAP = 1000
     private val lock = Any()
     private val lines = ArrayDeque<String>(CAP + 1)
 
@@ -28,8 +29,8 @@ object DiagnosticLog {
     fun lineCount(): Int = synchronized(lock) { lines.size }
 
     /**
-     * Full export for Share. [offline]/[reachable], and optional sync prefs
-     * timestamps keep the header useful without PII.
+     * Full export for Share. [offline], [reachable], sync prefs timestamps, and
+     * optional library counts keep the header useful without PII.
      */
     fun snapshot(
         context: Context,
@@ -37,6 +38,9 @@ object DiagnosticLog {
         reachable: Boolean,
         lastFullSyncMs: Long = 0L,
         lastDeltaSyncMs: Long = 0L,
+        albums: Int = -1,
+        artists: Int = -1,
+        tracks: Int = -1,
     ): String {
         val header = buildString {
             appendLine("ftpmusic diagnostics")
@@ -44,6 +48,9 @@ object DiagnosticLog {
             appendLine("sdk=${Build.VERSION.SDK_INT} model=${Build.MODEL}")
             appendLine("offline=$offline reachable=$reachable")
             appendLine("lastFullSyncMs=$lastFullSyncMs lastDeltaSyncMs=$lastDeltaSyncMs")
+            if (albums >= 0 || artists >= 0 || tracks >= 0) {
+                appendLine("albums=$albums artists=$artists tracks=$tracks")
+            }
             appendLine("capturedAt=${Instant.now()}")
             appendLine("---")
         }

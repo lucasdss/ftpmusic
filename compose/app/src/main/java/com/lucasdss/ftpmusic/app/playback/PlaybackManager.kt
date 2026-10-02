@@ -565,6 +565,10 @@ class PlaybackManager @Inject constructor(
                 ?.takeIf { it > 0 }
             CastQueueAction.Add(inserted, beforeEntryId)
         }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=playNext trackId=${track.id} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+        )
     }
 
     fun addAllToQueue(tracks: List<Track>, urls: List<String>) {
@@ -594,6 +598,10 @@ class PlaybackManager @Inject constructor(
         }
         // Bi-directional sync during Cast
         emitCastAddsOrCommit(items)
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=addAll count=${items.size} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+        )
     }
 
     /**
@@ -693,6 +701,10 @@ class PlaybackManager @Inject constructor(
         // Bi-directional sync during Cast — -1 appends at the end of the remote
         // queue (mediaItemCount-1 pointed at the pre-append last item).
         emitCastOrCommit { CastQueueAction.Add(item) }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=add trackId=${track.id} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+        )
     }
 
     fun playQueueItem(index: Int) {
@@ -724,6 +736,10 @@ class PlaybackManager @Inject constructor(
         emitCastOrCommit {
             CastQueueAction.Remove(removed.queueEntryId())
         }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=remove idx=$index trackId=${removed.mediaId} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+        )
     }
 
     fun clearQueue() {
@@ -731,6 +747,10 @@ class PlaybackManager @Inject constructor(
         if (player == null) {
             dualQueue.clear()
             scope.launch { persistenceManager.clear() }
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-playback",
+                "queueEdit action=clear casting=false size=0 noPlayer=true",
+            )
             return
         }
         val currentIdx = currentCanonicalIndex()
@@ -755,6 +775,10 @@ class PlaybackManager @Inject constructor(
             }
         }
         scope.launch { persistenceManager.clear() }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=clear casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+        )
     }
 
     private fun journalQueue(
@@ -851,6 +875,10 @@ class PlaybackManager @Inject constructor(
             val beforeEntryId = dualQueue.getMerged().getOrNull(finalIndex + 1)?.queueEntryId()?.takeIf { it > 0 }
             CastQueueAction.Move(moved.queueEntryId(), beforeEntryId)
         }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=reorder from=$reorderOriginIndex to=$finalIndex trackId=${moved.mediaId} casting=${PlayerHolder.isCasting}",
+        )
     }
 
     /**
@@ -885,6 +913,10 @@ class PlaybackManager @Inject constructor(
             val beforeEntryId = dualQueue.getMerged().getOrNull(to + 1)?.queueEntryId()?.takeIf { it > 0 }
             CastQueueAction.Move(moved.queueEntryId(), beforeEntryId)
         }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=move from=$from to=$to trackId=${moved.mediaId} casting=${PlayerHolder.isCasting}",
+        )
     }
 
     fun pause() {
@@ -896,13 +928,26 @@ class PlaybackManager @Inject constructor(
     }
 
     /** Roll back the last optimistic queue mutation if a background operation failed. */
-    fun queueRollback(): Boolean = optimist.rollback()
+    fun queueRollback(): Boolean {
+        val ok = optimist.rollback()
+        if (ok) {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-playback",
+                "queueEdit action=rollback size=${dualQueue.size}",
+            )
+        }
+        return ok
+    }
 
     fun onCastCommandAck(revision: Long, success: Boolean) {
         if (success) {
             optimist.commitIf(revision)
             return
         }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-playback",
+            "queueEdit action=castAckFail revision=$revision",
+        )
         if (optimist.rollbackIf(revision)) {
             syncDualQueueToPlayer()
             val (tracks, urls) = buildQueueStateFromDual()
@@ -947,6 +992,11 @@ class PlaybackManager @Inject constructor(
                     downloadManager.enqueue(tracks[i].id, urls[i], priority = priority)
                 } catch (e: Exception) {
                     logWarn("enqueuePlayQueue", e.message ?: "unknown error")
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-cache",
+                        "enqueuePlayQueue fail trackId=${tracks.getOrNull(i)?.id} priority=${if (i < urgentEnd) 0 else 1}",
+                        e,
+                    )
                 }
             }
         }

@@ -68,6 +68,7 @@ class MixCacheCoordinatorTest {
     @Test
     fun `onGenerated records ownership and enqueues missing tracks`() = runTest {
         stubCredentials()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
         every { cacheService.isStoredInCache("t1") } returns false
         every { cacheService.isStoredInCache("t2") } returns true
         coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
@@ -81,6 +82,14 @@ class MixCacheCoordinatorTest {
         }
         coVerify { downloadManager.enqueue("t1", any(), priority = 2) }
         coVerify(exactly = 0) { downloadManager.enqueue("t2", any(), any()) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            mockk(relaxed = true),
+            offline = false,
+            reachable = true,
+        )
+        org.junit.Assert.assertTrue(snap.contains("mixCache onGenerated mixId=1"))
+        org.junit.Assert.assertTrue(snap.contains("count=2 missing=1"))
+        org.junit.Assert.assertFalse(snap.contains("http"))
     }
 
     @Test

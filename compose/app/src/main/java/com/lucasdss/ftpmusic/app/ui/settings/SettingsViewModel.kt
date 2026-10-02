@@ -434,18 +434,27 @@ class SettingsViewModel @Inject constructor(
 
     /** Build diagnostics export text (no network upload). */
     fun diagnosticsSnapshot(): String {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-ui",
+            "share diagnostics lines=${com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.lineCount()}",
+        )
         val prefs = context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE)
+        val s = _state.value
         return com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             context = context,
-            offline = _state.value.offlineMode || offlineModeManager.isQueueEnabled(),
+            offline = s.offlineMode || offlineModeManager.isQueueEnabled(),
             reachable = com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value,
             lastFullSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, 0),
             lastDeltaSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, 0),
+            albums = s.albumCount,
+            artists = s.artistCount,
+            tracks = s.cachedTrackCount,
         )
     }
 
     fun clearDiagnostics() {
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-ui", "cleared diagnostics")
     }
 
     fun appVersionLabel(): String =

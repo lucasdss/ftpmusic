@@ -92,12 +92,21 @@ class DownloadManager @Inject constructor(
         val existing = cacheQueueDao.getByTrackId(trackId)
         if (existing != null && existing.status in listOf("pending", "processing")) {
             // Upgrade priority if new request is higher
+            var upgraded = false
             if (priority < existing.priority) {
                 cacheQueueDao.updatePriority(existing.id, priority)
+                upgraded = true
             }
             // Upgrade to download even when priority stays (e.g. play-queue item at 0)
             if (isDownload && !existing.isDownload) {
                 cacheQueueDao.markAsDownload(existing.id)
+                upgraded = true
+            }
+            if (upgraded) {
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-download",
+                    "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=dedup_upgrade",
+                )
             }
             return
         }
@@ -109,6 +118,10 @@ class DownloadManager @Inject constructor(
                 cacheService.promoteToDownload(trackId)
             ) {
                 cacheQueueDao.markAsDownload(existing.id)
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-download",
+                    "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=promoted",
+                )
                 return
             }
             // Completed and still on disk → no-op. The play-queue prefetch fires
@@ -119,6 +132,10 @@ class DownloadManager @Inject constructor(
             ) {
                 if (priority < existing.priority) {
                     cacheQueueDao.updatePriority(existing.id, priority)
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-download",
+                        "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=cached_skip_upgrade",
+                    )
                 }
                 return
             }
@@ -128,7 +145,13 @@ class DownloadManager @Inject constructor(
             // into an infinite download-retry loop that pegs CPU/disk and
             // starves the rest of the app. Only an explicit new request
             // (enqueue after the row was cleared) re-attempts a download.
-            if (existing.status == "failed") return
+            if (existing.status == "failed") {
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-download",
+                    "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=failed_terminal",
+                )
+                return
+            }
             cacheQueueDao.updateStatus(existing.id, "pending")
             if (priority < existing.priority) {
                 cacheQueueDao.updatePriority(existing.id, priority)
@@ -136,6 +159,10 @@ class DownloadManager @Inject constructor(
             if (isDownload && !existing.isDownload) {
                 cacheQueueDao.markAsDownload(existing.id)
             }
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-download",
+                "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=requeued",
+            )
             return
         }
         val inserted = cacheQueueDao.insertIgnore(
@@ -152,6 +179,15 @@ class DownloadManager @Inject constructor(
                 if (priority < winner.priority) cacheQueueDao.updatePriority(winner.id, priority)
                 if (isDownload && !winner.isDownload) cacheQueueDao.markAsDownload(winner.id)
             }
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-download",
+                "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=dedup",
+            )
+        } else {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-download",
+                "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=inserted",
+            )
         }
     }
 
@@ -264,15 +300,28 @@ class DownloadManager @Inject constructor(
                 if (success) {
                     cacheQueueDao.updateStatus(item.id, "completed")
                     android.util.Log.d("ftpmusic-download", "[worker] completed: ${item.trackId} (${downloaded}B)")
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-download",
+                        "worker completed trackId=${item.trackId} bytes=$downloaded priority=${item.priority}",
+                    )
                 } else {
                     android.util.Log.w(
                         "ftpmusic-download",
                         "[worker] cache write failed for ${item.trackId} — will retry",
                     )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-download",
+                        "worker write fail trackId=${item.trackId} priority=${item.priority}",
+                    )
                     handleRetry(item)
                 }
             }
         } catch (e: Exception) {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-download",
+                "worker fail trackId=${item.trackId} err=${e.javaClass.simpleName}",
+                e,
+            )
             handleRetry(item)
         } finally {
             // writeCachedTrackFromFile consumes the file on success — anything

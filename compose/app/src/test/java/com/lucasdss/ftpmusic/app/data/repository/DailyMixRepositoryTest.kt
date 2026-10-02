@@ -413,6 +413,7 @@ class DailyMixRepositoryTest {
 
     @Test
     fun `generateAll respects shouldRegenerate for a fresh mix`() = runTest {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
         val rock = mixEntity(id = 1L, genres = "Rock")
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(rock)
@@ -427,6 +428,12 @@ class DailyMixRepositoryTest {
 
         assertEquals(0, produced)
         coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            io.mockk.mockk(relaxed = true),
+            offline = false,
+            reachable = true,
+        )
+        assertTrue(snap.contains("skip regen mixId=1"))
     }
 
     @Test

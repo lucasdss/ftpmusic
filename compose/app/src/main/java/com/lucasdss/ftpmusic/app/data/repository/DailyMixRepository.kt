@@ -283,6 +283,10 @@ class DailyMixRepository @Inject constructor(
             // generation attempt unblocked.
             genreMixDao.deleteDailyMix(context.date, mix.id)
             genreMixDao.deleteDailyMix(context.yesterday, mix.id)
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-dailymix",
+                "empty pool delete mixId=${mix.id} date=${context.date}",
+            )
             return emptyList()
         }
 
@@ -296,8 +300,12 @@ class DailyMixRepository @Inject constructor(
         } else {
             trackDao.getTrackPlayCounts(existingIds).associate { it.id to it.playCount }
         }
+        val listenedCount = if (existingMix != null) {
+            existingIds.count { (playCounts[it] ?: 0) > 0 }
+        } else {
+            0
+        }
         val shouldRegen = if (existingMix != null) {
-            val listenedCount = existingIds.count { (playCounts[it] ?: 0) > 0 }
             DailyMixGenerator.shouldRegenerate(
                 createdAtMs = existingMix.createdAt,
                 totalTracks = existingIds.size,
@@ -307,7 +315,13 @@ class DailyMixRepository @Inject constructor(
         } else {
             true
         }
-        if (!shouldRegen) return emptyList()
+        if (!shouldRegen) {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-dailymix",
+                "skip regen mixId=${mix.id} listened=$listenedCount total=${existingIds.size} manual=$manual",
+            )
+            return emptyList()
+        }
 
         val poolIds = songs.mapTo(mutableSetOf()) { it.id }
         // Default shrink: no Phase-3 fill from other mixes' pools (genre purity).
@@ -343,6 +357,10 @@ class DailyMixRepository @Inject constructor(
             generated.mapIndexed { idx, s -> DailyMixTrackEntity(mixId = 0, trackId = s.id, position = idx) },
         )
         val generatedIds = generated.map { it.id }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-dailymix",
+            "regen persist mixId=${mix.id} count=${generatedIds.size} manual=$manual date=${context.date}",
+        )
         mixCacheCoordinator.onGenerated(mix, generatedIds)
         return generatedIds
     }

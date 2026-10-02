@@ -205,6 +205,10 @@ class CacheService @Inject constructor(
         trackDao.upsert(entity)
 
         android.util.Log.d("ftpmusic-cache", "[writeCached] $trackId ${size}B isDownload=$isDownload")
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-cache",
+            "writeCached trackId=$trackId bytes=$size isDownload=$isDownload",
+        )
         cacheEventFlow.tryEmit(Pair(trackId, isDownload))
         return true
     }
@@ -385,12 +389,25 @@ class CacheService @Inject constructor(
         }
         if (existing?.isDownloaded == true) {
             android.util.Log.i("ftpmusic-cache", "[removeCached] $trackId is a pinned download — refusing to delete")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-cache",
+                "removeCached trackId=$trackId result=refused_pinned",
+            )
             return
         }
         try {
             audioCache.removeResource(trackId)
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-cache",
+                "removeCached trackId=$trackId result=ok",
+            )
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-cache", "[removeCached] $trackId: ${e.message}")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-cache",
+                "removeCached trackId=$trackId result=fail",
+                e,
+            )
         }
         evictor.unpin(trackId)
         trackDao.getTrack(trackId)?.let {

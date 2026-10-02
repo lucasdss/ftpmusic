@@ -254,9 +254,18 @@ class SyncingViewModel @Inject constructor(
                 _status.value = _status.value.copy(dailyMixProgress = done)
                 delay(300) // let UI show progress per mix
             }
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-dailymix",
+                "syncScreen generateAll done date=$today total=$mixTotal manual=$manual",
+            )
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             android.util.Log.w("ftpmusic", "[DailyMix] generation failed: ${e.message}", e)
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.e(
+                "ftpmusic-dailymix",
+                "syncScreen generateAll fail total=$mixTotal manual=$manual",
+                e,
+            )
         } finally {
             _dailyMix.value = _dailyMix.value.copy(buildingDailyMix = false)
             _status.value = _status.value.copy(

@@ -40,6 +40,10 @@ class MixCacheCoordinator @Inject constructor(
         // track this mix still wants.
         customMixDao.upsertCacheTracks(desired.map { CustomMixCacheTrackEntity(customMixId = mix.id, trackId = it) })
         val missing = desired.filter { !cacheService.isStoredInCache(it) }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-cache",
+            "mixCache onGenerated mixId=${mix.id} autoCache=true count=${trackIds.size} missing=${missing.size}",
+        )
         enqueue(missing)
     }
 

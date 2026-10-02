@@ -789,6 +789,10 @@ class MixDetailViewModel @Inject constructor(
                 }
 
                 if (trackIds.isNotEmpty()) {
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-dailymix",
+                        "loadMix hit mixId=$mixId date=${dailyMix?.date} count=${trackIds.size}",
+                    )
                     val playableIds = dailyMixRepository.filterPlayableMixTrackIds(trackIds)
                     val allTracks = if (playableIds.isEmpty()) {
                         emptyList()
@@ -829,6 +833,11 @@ class MixDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-dailymix", "[loadMix] $mixId failed: ${e.message}")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-dailymix",
+                    "loadMix fail mixId=$mixId",
+                    e,
+                )
                 _state.value = State(isLoading = false)
             }
         }

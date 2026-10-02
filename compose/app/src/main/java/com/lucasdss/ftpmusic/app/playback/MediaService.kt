@@ -221,6 +221,7 @@ class MediaService : MediaLibraryService() {
     private val sessionManagerListener = object : SessionManagerListener<CastSession> {
         override fun onSessionSuspended(session: CastSession, reason: Int) {
             android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionSuspended: reason=$reason")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "session suspended reason=$reason")
             // Session suspended (network drop). Don't clear Cast state —
             // framework will auto-resume. PlayerHolder.isCasting stays true.
             // A suspension is NOT a manual disconnect: clear the stale flag so
@@ -232,6 +233,7 @@ class MediaService : MediaLibraryService() {
 
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
             android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionResumed: wasSuspended=$wasSuspended")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "session resumed wasSuspended=$wasSuspended")
             sessionWasResumed = true
             // Per Cast SDK docs: onSessionResumed fires when a session is resumed
             // after suspension OR after the application is restarted (process death).
@@ -315,6 +317,7 @@ class MediaService : MediaLibraryService() {
 
         override fun onSessionResumeFailed(session: CastSession, error: Int) {
             android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionResumeFailed: error=$error")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "session resume failed error=$error")
             // Resume failed after suspension — fall back to local playback
             // to avoid being stuck in a broken Cast state.
             if (PlayerHolder.isCasting) {
@@ -356,9 +359,11 @@ class MediaService : MediaLibraryService() {
             // Queue load will happen in onDeviceInfoChanged(remote=true).
             // This is a safety net if that callback doesn't fire.
             android.util.Log.d("ftpmusic-cast", "[SessionManager] onSessionStarting")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-cast", "session starting")
         }
         override fun onSessionStarted(session: CastSession, sessionId: String) {
             android.util.Log.d("ftpmusic-cast", "[SessionManager] onSessionStarted: sessionId=$sessionId")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-cast", "session started sessionId=$sessionId")
             // A NEW session starts a fresh context — the previous resume flag is
             // stale. Without this reset, isReconnectingToExistingSession() stays
             // true forever after the first resume and every later session skips
@@ -386,6 +391,7 @@ class MediaService : MediaLibraryService() {
         }
         override fun onSessionStartFailed(session: CastSession, error: Int) {
             android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionStartFailed: error=$error")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "session start failed error=$error")
             // A failed start definitively ends the connect attempt. NO isCasting
             // guard (M5): during a device switch isCasting is still true, and a
             // start-failure there must clean up instead of deferring to the 10s
@@ -398,11 +404,13 @@ class MediaService : MediaLibraryService() {
         }
         override fun onSessionResuming(session: CastSession, sessionId: String) {
             android.util.Log.d("ftpmusic-cast", "[SessionManager] onSessionResuming: sessionId=$sessionId")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-cast", "session resuming sessionId=$sessionId")
             // UI will show "Casting to [device]" while the session reconnects —
             // PlayerHolder.isCasting stays true, no UI flicker.
         }
         override fun onSessionEnded(session: CastSession, error: Int) {
             android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionEnded: error=$error")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "session ended error=$error")
             // Safety net (see onSessionEnding): never let the MediaSession
             // process a shrinking cast timeline.
             detachCastSessionFromMediaSession()
@@ -730,7 +738,7 @@ class MediaService : MediaLibraryService() {
                 )
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                     "ftpmusic-playback",
-                    "transition id=${mediaItem.mediaId} reason=$reason title=${metadata.title}",
+                    "transition id=${mediaItem.mediaId} reason=$reason idx=${player?.currentMediaItemIndex} count=${player?.mediaItemCount}",
                 )
                 if (playbackManager.isUrlSwapInProgress) {
                     // URL-only swap — don't reset position or metadata, just update track index
@@ -851,6 +859,7 @@ class MediaService : MediaLibraryService() {
         override fun onDeviceInfoChanged(deviceInfo: DeviceInfo) {
             val isRemote = deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
             android.util.Log.w("ftpmusic-cast", "[CastPlayer] onDeviceInfoChanged: remote=$isRemote")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "remote=$isRemote")
             if (isRemote) {
                 // Successful (re)connect — stop the reconnect retry loop and cache the device.
                 castReconnectAttempts = 0
@@ -1047,11 +1056,19 @@ class MediaService : MediaLibraryService() {
                                 "ftpmusic",
                                 "[MediaService] Server unreachable — skip to cached idx=$cachedIdx past $currentId",
                             )
+                            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                                "ftpmusic-playback",
+                                "autoSkip action=CACHED_JUMP trackId=$currentId fromIdx=${ep.currentMediaItemIndex} toIdx=$cachedIdx errorCount=$playerErrorCount reachable=false",
+                            )
                             ep.seekTo(cachedIdx, 0L)
                         } else {
                             android.util.Log.w(
                                 "ftpmusic",
                                 "[MediaService] Server unreachable — no cached track ahead; stopping after $currentId",
+                            )
+                            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                                "ftpmusic-playback",
+                                "autoSkip action=STOP_NO_CACHED trackId=$currentId idx=${ep.currentMediaItemIndex} errorCount=$playerErrorCount reachable=false",
                             )
                             playerErrorCount = 0
                             ep.stop()
@@ -1059,6 +1076,10 @@ class MediaService : MediaLibraryService() {
                         }
                     } else {
                         android.util.Log.w("ftpmusic", "[MediaService] Auto-advancing past failed track: $currentId")
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                            "ftpmusic-playback",
+                            "autoSkip action=SKIP_NEXT trackId=$currentId idx=${ep.currentMediaItemIndex} count=${ep.mediaItemCount} errorCount=$playerErrorCount reachable=true",
+                        )
                         ep.seekToNextMediaItem()
                     }
                     // seekToNextMediaItem()/seekTo() position the next source but do
@@ -1073,12 +1094,20 @@ class MediaService : MediaLibraryService() {
 
                 ErrorSkipAction.LAST_TRACK_STOP -> {
                     android.util.Log.w("ftpmusic", "[MediaService] Last track failed ($playerErrorCount) — stopping")
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "autoSkip action=LAST_TRACK_STOP trackId=$currentId errorCount=$playerErrorCount",
+                    )
                     playerErrorCount = 0
                     ep.stop()
                 }
 
                 ErrorSkipAction.RETRY_LIMIT_STOP -> {
                     android.util.Log.e("ftpmusic", "[MediaService] Too many errors ($playerErrorCount) — stopping")
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.e(
+                        "ftpmusic-playback",
+                        "autoSkip action=RETRY_LIMIT_STOP trackId=$currentId errorCount=$playerErrorCount",
+                    )
                     playerErrorCount = 0
                     ep.stop()
                 }
@@ -1087,6 +1116,10 @@ class MediaService : MediaLibraryService() {
                     // Radio streams — no cached file, no queue position to advance.
                     // Leave the player as-is; the radio listener owns its lifecycle.
                     android.util.Log.w("ftpmusic", "[MediaService] Radio stream error — not retrying")
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "autoSkip action=RADIO_IGNORE trackId=$currentId errorCount=$playerErrorCount",
+                    )
                     playerErrorCount = 0
                 }
             }
@@ -2086,6 +2119,10 @@ class MediaService : MediaLibraryService() {
                 "ftpmusic-cast",
                 "[Cast] connect in flight — superseding target to ${device.friendlyName}",
             )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-cast",
+                "connect supersede deviceId=${device.deviceId}",
+            )
             castConnectTargetDeviceId = device.deviceId
             CastButtonState.connectingDeviceName.value = device.friendlyName
             // Invalidate the previous attempt's deferred select + timeout chain.
@@ -2104,6 +2141,10 @@ class MediaService : MediaLibraryService() {
         castConnectTargetDeviceId = device.deviceId
         val attemptSeq = castConnectSeq
         CastButtonState.connectingDeviceName.value = device.friendlyName
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-cast",
+            "connect start deviceId=${device.deviceId}",
+        )
         val current = try {
             castCtx?.sessionManager?.currentCastSession
         } catch (_: Exception) {
@@ -2228,6 +2269,10 @@ class MediaService : MediaLibraryService() {
                 "Check logcat for DynamiteModule/DynamiteLoaderV2Impl errors (corrupted GMS Cast module) " +
                 "or network isolation (phone/device not on the same Wi-Fi).",
         )
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-cast",
+            "connect timeout deviceId=$castConnectTargetDeviceId ms=$castConnectTimeoutMs",
+        )
         failCastConnect(deviceName, buildCastConnectTimeoutMessage(deviceName))
     }
 
@@ -2244,6 +2289,10 @@ class MediaService : MediaLibraryService() {
         castConnectInFlight = false
         castSwitchInProgress = false
         castConnectDeadlineMs = 0L
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-cast",
+            "connect fail deviceId=$castConnectTargetDeviceId",
+        )
         castConnectSeq++
         CastButtonState.connectingDeviceName.value = null
         CastButtonState.castErrorMessage.value = message
@@ -2270,6 +2319,7 @@ class MediaService : MediaLibraryService() {
     internal fun cancelCastConnect() {
         if (!castConnectInFlight && castConnectDeadlineMs == 0L) return
         android.util.Log.d("ftpmusic-cast", "[Cast] connect cancelled by user")
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-cast", "connect cancelled deviceId=$castConnectTargetDeviceId")
         val wasSwitch = castSwitchInProgress
         castConnectInFlight = false
         castSwitchInProgress = false
@@ -2419,6 +2469,10 @@ class MediaService : MediaLibraryService() {
             "ftpmusic-cast",
             "[saveQueueState] casting=${PlayerHolder.isCasting} tracks=${tracks.size} contextSize=${playbackManager.contextSize} currentIndex=$currentIndex pos=$currentPosition",
         )
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "saveQueueState casting=${PlayerHolder.isCasting} tracks=${tracks.size} contextSize=${playbackManager.contextSize} idx=$currentIndex pos=$currentPosition",
+        )
         scope.launch {
             persistenceManager.save(
                 tracks,
@@ -2447,9 +2501,19 @@ class MediaService : MediaLibraryService() {
                         tracks.getOrNull(currentIndex)?.id,
                         currentPosition,
                     )
+                    if (PlayerHolder.queueSaveFailed) {
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                            "ftpmusic-playback",
+                            "queueSaveFailed=false",
+                        )
+                    }
                     PlayerHolder.queueSaveFailed = false
                 } catch (_: Exception) {
                     PlayerHolder.queueSaveFailed = true
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "queueSaveFailed=true",
+                    )
                 }
             }
         }
@@ -2478,6 +2542,10 @@ class MediaService : MediaLibraryService() {
         android.util.Log.d(
             "ftpmusic-cast",
             "[saveQueueStateSync] casting=${PlayerHolder.isCasting} tracks=${tracks.size} contextSize=${playbackManager.contextSize} currentIndex=$currentIndex pos=$currentPosition",
+        )
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "saveQueueStateSync casting=${PlayerHolder.isCasting} tracks=${tracks.size} contextSize=${playbackManager.contextSize} idx=$currentIndex pos=$currentPosition",
         )
         try {
             if (waitBoundedMs != null) {
@@ -2877,12 +2945,20 @@ class MediaService : MediaLibraryService() {
                 "ftpmusic-cast",
                 "[Cast] loadFullQueueToReceiver: ${allItems.size} items via CastPlayer.setMediaItems, startIdx=$startIdx, position=$position",
             )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-cast",
+                "loadFullQueue count=${allItems.size} startIdx=$startIdx pos=$position via=CastPlayer",
+            )
             cp.setMediaItems(allItems, startIdx, position)
         } else {
             // CastPlayer not yet remote (or unavailable) — session-direct load.
             android.util.Log.d(
                 "ftpmusic-cast",
                 "[Cast] loadFullQueueToReceiver: ${allItems.size} items via raw queueLoad (CastPlayer not remote), startIdx=$startIdx, position=$position",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-cast",
+                "loadFullQueue count=${allItems.size} startIdx=$startIdx pos=$position via=queueLoad",
             )
             val converter = SubsonicMediaItemConverter(castPreferences)
             val queueItems = allItems.map { converter.toMediaQueueItem(it) }.toTypedArray()
@@ -3082,6 +3158,7 @@ class MediaService : MediaLibraryService() {
             }, 500L)
         } else {
             android.util.Log.d("ftpmusic-cast", "[Cast] Reconnecting to existing session — skipping queueLoad")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-cast", "skip queueLoad reconnect")
         }
         // Register MediaQueue.Callback for queue change tracking
         val mq = rmc.getMediaQueue() ?: run {
@@ -3133,6 +3210,7 @@ class MediaService : MediaLibraryService() {
                 val localCount = PlayerHolder.exoPlayer?.mediaItemCount ?: 0
                 if (remoteIds.size > localCount) {
                     android.util.Log.w("ftpmusic-cast", "[Cast] remote queue larger than local, reloading")
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "remote queue larger than local — reload")
                     loadFullQueueToReceiver(rmc)
                 } else if (remoteIds.size < localCount && remoteIds.isNotEmpty()) {
                     // Receiver trims played items — its queue is naturally
@@ -3405,6 +3483,7 @@ class MediaService : MediaLibraryService() {
 
         ep.setMediaItems(localItems, currentIdx, positionMs)
         android.util.Log.d("ftpmusic-cast", "[Cast] syncRemoteQueueToLocal: ${localItems.size} items, idx=$currentIdx")
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-cast", "syncRemoteQueueToLocal count=${localItems.size} idx=$currentIdx")
     }
 
     /**
@@ -3414,6 +3493,10 @@ class MediaService : MediaLibraryService() {
     @VisibleForTesting
     internal fun syncLocalToRemote(action: CastQueueAction) {
         val rmc = castCtx?.sessionManager?.currentCastSession?.remoteMediaClient ?: return
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-cast",
+            "syncLocalToRemote action=${action::class.simpleName}",
+        )
         if (action is CastQueueAction.ClearAndPlay && action.mediaItems.isNotEmpty()) {
             lastPreloadedItemId = null
             lastAdvanceItemId = null
@@ -3457,6 +3540,10 @@ class MediaService : MediaLibraryService() {
                         "ftpmusic-cast",
                         "[Cast] ClearAndPlay: ${items.size} items via CastPlayer.setMediaItems, startIdx=$startIndex, pos=$startPositionMs",
                     )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-cast",
+                        "syncLocalToRemote ClearAndPlay count=${items.size} startIdx=$startIndex pos=$startPositionMs",
+                    )
                     cp.setMediaItems(items, startIndex, startPositionMs)
                     playerReplaceSuccess = true
                     return true
@@ -3477,7 +3564,12 @@ class MediaService : MediaLibraryService() {
         val captured = pending
         if (captured != null) {
             captured.setResultCallback { result ->
-                playbackManager.onCastCommandAck(revision, result.status.isSuccess)
+                val ok = result.status.isSuccess
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-cast",
+                    "castAck revision=$revision success=$ok",
+                )
+                playbackManager.onCastCommandAck(revision, ok)
             }
         } else if (playerReplaceSuccess || action is CastQueueAction.ClearAndPlay) {
             playbackManager.onCastCommandAck(revision, true)

@@ -25,12 +25,31 @@ class DiagnosticLogTest {
 
     @Test
     fun ringOverflow_keepsNewestCap() {
-        repeat(520) { i -> DiagnosticLog.d("t", "line-$i") }
-        assertEquals(500, DiagnosticLog.lineCount())
+        repeat(1020) { i -> DiagnosticLog.d("t", "line-$i") }
+        assertEquals(1000, DiagnosticLog.lineCount())
         val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
         assertFalse(snap.contains("line-0"))
-        assertTrue(snap.contains("line-519"))
+        assertTrue(snap.contains("line-1019"))
         assertTrue(snap.contains("line-20"))
+    }
+
+    @Test
+    fun snapshot_includesLibraryCountsWhenProvided() {
+        val snap = DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+            albums = 10,
+            artists = 5,
+            tracks = 100,
+        )
+        assertTrue(snap.contains("albums=10 artists=5 tracks=100"))
+    }
+
+    @Test
+    fun snapshot_omitsLibraryCountsWhenUnset() {
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertFalse(snap.contains("albums="))
     }
 
     @Test
@@ -48,6 +67,14 @@ class DiagnosticLogTest {
         assertTrue(snap.contains("lastFullSyncMs=11 lastDeltaSyncMs=22"))
         assertTrue(snap.contains("| W | sync | hello"))
         assertTrue(snap.contains("RuntimeException: boom"))
+    }
+
+    @Test
+    fun snapshot_neverRequiresTitles() {
+        DiagnosticLog.d("ftpmusic-playback", "transition id=t1 reason=1 idx=0 count=3")
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertFalse(snap.contains("title="))
+        assertTrue(snap.contains("id=t1"))
     }
 
     @Test

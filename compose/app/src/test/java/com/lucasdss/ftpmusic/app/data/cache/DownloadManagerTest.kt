@@ -52,16 +52,26 @@ class DownloadManagerTest {
 
     @Test
     fun `enqueue inserts when no existing item`() = runTest {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
         coEvery { dao.getByTrackId("tr-3") } returns null
         coEvery { dao.insertIgnore(any()) } returns 1
 
         manager.enqueue("tr-3", "http://z", priority = 1)
 
         coVerify { dao.insertIgnore(match { it.trackId == "tr-3" && it.priority == 1 }) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+        )
+        assertTrue(snap.contains("result=inserted"))
+        assertTrue(snap.contains("trackId=tr-3"))
+        assertFalse(snap.contains("http://z"))
     }
 
     @Test
     fun `enqueue does not resurrect failed items`() = runTest {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
         coEvery { dao.getByTrackId("tr-4") } returns CacheQueueItemEntity(
             id = 3,
             trackId = "tr-4",
@@ -76,6 +86,13 @@ class DownloadManagerTest {
         // infinite download-retry loop (every re-enqueue re-attempts).
         coVerify(exactly = 0) { dao.insertIgnore(any()) }
         coVerify(exactly = 0) { dao.updateStatus(3, "pending") }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+        )
+        assertTrue(snap.contains("result=failed_terminal"))
+        assertFalse(snap.contains("http://a"))
     }
 
     @Test
