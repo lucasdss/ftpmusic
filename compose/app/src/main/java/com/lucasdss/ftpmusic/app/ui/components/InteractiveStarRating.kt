@@ -16,8 +16,8 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.ratingStarInteractiveSize
 
 /** Interactive 0–5★ rating row — market glyph.
- *  [expandTouchTarget]=true (player/hero) adds Material min touch;
- *  false for dense track rows so stars do not steal title taps. */
+ *  [expandTouchTarget]=true (player / album under art) adds Material min touch;
+ *  false kept for dense layouts if stars return beside title. */
 @Composable
 fun InteractiveStarRating(
     rating: Int,

@@ -219,38 +219,42 @@ fun AlbumDetailScreen(
                                 Text(" · ", color = Color(0xFF444444), fontSize = textLabelM())
                             }
                             Text("${state.tracks.size} tracks", color = Color(0xFF888888), fontSize = textLabelM())
-                            state.album?.let { alb ->
-                                val r = state.albumRating.takeIf { it > 0 } ?: (alb.rating ?: 0)
-                                Text(" · ", color = Color(0xFF444444), fontSize = textLabelM())
-                                InteractiveStarRating(
-                                    rating = r,
-                                    onRate = { viewModel.rateAlbum(albumId, it) },
-                                    contentDescriptionPrefix = "Rate album",
+                        }
+                        // ── Overwrite Protection ──
+                        val showOverwrite by
+                            viewModel.showOverwriteModal.collectAsStateWithLifecycle()
+                        if (showOverwrite) {
+                            android.app.AlertDialog.Builder(context).apply {
+                                setTitle("Tracks in your queue")
+                                setMessage(
+                                    "You have tracks in your Priority Queue. Do you want to clear them and play this album, or keep them?",
                                 )
-
-                                // ── Overwrite Protection ──
-                                val showOverwrite by
-                                    viewModel.showOverwriteModal.collectAsStateWithLifecycle()
-                                if (showOverwrite) {
-                                    android.app.AlertDialog.Builder(context).apply {
-                                        setTitle("Tracks in your queue")
-                                        setMessage(
-                                            "You have tracks in your Priority Queue. Do you want to clear them and play this album, or keep them?",
-                                        )
-                                        setNegativeButton("Keep Queue") { _, _ ->
-                                            viewModel.resolveOverwrite(false)
-                                        }
-                                        setPositiveButton("Clear & Play") { _, _ ->
-                                            viewModel.resolveOverwrite(true)
-                                        }
-                                        setOnCancelListener { viewModel.resolveOverwrite(false) }
-                                        show()
-                                    }
+                                setNegativeButton("Keep Queue") { _, _ ->
+                                    viewModel.resolveOverwrite(false)
                                 }
+                                setPositiveButton("Clear & Play") { _, _ ->
+                                    viewModel.resolveOverwrite(true)
+                                }
+                                setOnCancelListener { viewModel.resolveOverwrite(false) }
+                                show()
                             }
                         }
                     }
                 }
+            }
+
+            // Album user rating — just below hero art
+            item {
+                val alb = state.album
+                val r = state.albumRating.takeIf { it > 0 } ?: (alb?.rating ?: 0)
+                InteractiveStarRating(
+                    rating = r,
+                    onRate = { viewModel.rateAlbum(albumId, it) },
+                    contentDescriptionPrefix = "Rate album",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacingXL(), vertical = spacingS()),
+                )
             }
 
             // Public rating (MusicBrainz)
@@ -401,12 +405,6 @@ fun AlbumDetailScreen(
                         }
                     } // end playable area
                     Spacer(Modifier.width(8.dp))
-                    InteractiveStarRating(
-                        rating = viewModel.getTrackRating(track.id),
-                        onRate = { viewModel.rateTrack(track.id, it) },
-                        expandTouchTarget = false,
-                    )
-                    Spacer(Modifier.width(6.dp))
                     // Right-side icons — independent tap targets
                     DownloadDot(ds)
                     Spacer(Modifier.width(6.dp))

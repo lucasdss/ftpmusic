@@ -1905,21 +1905,6 @@ internal fun swipeDecision(offsetPx: Float, thresholdPx: Float): SwipeDecision =
     else -> SwipeDecision.PREV
 }
 
-/** Star rating composable for queue tracks (Item 3) — 12dp stars, teal/grey. */
-@Composable
-private fun QueueTrackStarRating(rating: Int) {
-    Row {
-        for (i in 1..5) {
-            Icon(
-                imageVector = if (i <= rating) Icons.Default.Star else Icons.Default.StarBorder,
-                contentDescription = null,
-                tint = if (i <= rating) BrandTeal else Color(0xFF444444),
-                modifier = Modifier.size(iconMicro()),
-            )
-        }
-    }
-}
-
 /**
  * Design v4 swipeable album art: left swipe = next track, right swipe = prev.
  * The art follows the finger at 25% translate + a slight rotation, with spring
@@ -2181,17 +2166,13 @@ private fun QueueTrackRow(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                QueueTrackStarRating(track.userRating ?: 0)
-                Spacer(Modifier.weight(1f))
-                if (track.durationMs > 0) {
-                    Text(
-                        formatPlayerBarTime(track.durationMs),
-                        color = NavUnselected,
-                        fontSize = textLabelS(),
-                        fontFamily = interFontFamily(),
-                    )
-                }
+            if (track.durationMs > 0) {
+                Text(
+                    formatPlayerBarTime(track.durationMs),
+                    color = NavUnselected,
+                    fontSize = textLabelS(),
+                    fontFamily = interFontFamily(),
+                )
             }
         }
         if (track.trackId != null && track.trackId in downloadedTrackIds) {

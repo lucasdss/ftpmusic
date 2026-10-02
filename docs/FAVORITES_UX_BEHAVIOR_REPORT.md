@@ -18,10 +18,12 @@ Invariant: Room write succeeds → then best-effort mirror. Offline / API fail �
 
 | Surface | Thumbs | 5★ | Notes |
 | :--- | :--- | :--- | :--- |
-| Library Artists/Albums | entity | album stars display | cache IGNORE-insert on API list |
-| Album detail hero | album | album rating (always) | track rows: thumbs + stars |
-| Artist detail hero | artist | — | album tab thumbs; track thumbs+stars |
-| PlayerBar | track | track rating | |
+| Library Albums grid | below art, above name | **none** | navigate on tile; thumbs consume click |
+| Library Artists | entity | — | list rows |
+| Album detail | hero TopEnd | under hero art | track rows: thumbs only |
+| Artist detail | artist | — | track rows: thumbs only |
+| Mix / Playlist / Queue lists | mix/playlist: thumbs where present | **none** | |
+| PlayerBar expanded | track | track rating | only track-list ★ surface |
 | Favorites empty Liked | ThumbUp icon | — | was heart |
 | Radio | Bookmark only | — | local-only |
 | Daily Mix artist badge | ThumbUp | — | was Star |
@@ -41,8 +43,7 @@ Invariant: Room write succeeds → then best-effort mirror. Offline / API fail �
 | :--- | :--- | :--- |
 | FavoriteThumbButton / Player ReactionCircle | `reactionGlyphSize` 20 | `reactionHitSize` 40 |
 | Dense-row thumbs / Favorites trailing | `reactionGlyphSize` 20 | `minimumInteractiveComponentSize` |
-| Interactive 0–5★ (player/hero) | `ratingStarInteractiveSize` 20 | min touch |
-| Interactive 0–5★ (dense track row) | `ratingStarInteractiveSize` 20 | no expand (avoid title steal) |
+| Interactive 0–5★ (player / album under art) | `ratingStarInteractiveSize` 20 | min touch |
 | Radio bookmark | `reactionGlyphSize` 20 | min touch |
 
 Decorative headers / empty-state / display-only stars unchanged.
@@ -51,4 +52,5 @@ Decorative headers / empty-state / display-only stars unchanged.
 
 - Radio cannot sync to Navidrome (no radio star API).
 - Favorites lists are **paged** (`FavoritesPaging.PAGE_SIZE = 50`) with **preserve-window** refresh + infinite scroll; Home shows page 1 only — see `docs/FAVORITES_PAGING_BEHAVIOR_REPORT.md` / `docs/FAVORITES_CORRECTNESS_BEHAVIOR_REPORT.md`.
-- Search/Queue/Playlist: stars display-only; no thumbs this pass.
+- Track ★ rate only from expanded PlayerBar; album ★ from Album detail under art.
+- See also `docs/RATING_SURFACE_BEHAVIOR_REPORT.md`.

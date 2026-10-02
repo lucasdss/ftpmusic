@@ -26,8 +26,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
@@ -58,7 +56,6 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
-import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
 import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -390,12 +387,6 @@ fun MixDetailScreen(
                                 }
                             }
                             Spacer(Modifier.width(8.dp))
-                            InteractiveStarRating(
-                                rating = viewModel.getTrackRating(track.id),
-                                onRate = { viewModel.rateTrack(track.id, it) },
-                                expandTouchTarget = false,
-                            )
-                            Spacer(Modifier.width(6.dp))
                             // Download badge
                             com.lucasdss.ftpmusic.app.ui.components.DownloadDot(ds)
                             Spacer(Modifier.width(6.dp))

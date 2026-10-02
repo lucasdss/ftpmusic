@@ -55,7 +55,6 @@ import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
-import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
 import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
@@ -549,15 +548,14 @@ private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
     ) {
         itemsIndexed(state.tracks) { index, track ->
             TrackRow(
-                track = track, index = index,
+                track = track,
+                index = index,
                 onClick = { viewModel.playTrack(index) },
                 onLongClick = { onTrackMenu(index) },
                 isLiked = viewModel.isTrackLiked(track.id),
                 isDisliked = viewModel.isTrackDisliked(track.id),
-                rating = viewModel.getTrackRating(track.id),
                 onToggleLike = { viewModel.toggleTrackLike(track.id) },
                 onToggleDislike = { viewModel.toggleTrackDislike(track.id) },
-                onRate = { viewModel.rateTrack(track.id, it) },
             )
         }
         // Load-more trigger: when near the end, fetch the next page
@@ -598,10 +596,8 @@ private fun TrackRow(
     onLongClick: () -> Unit,
     isLiked: Boolean,
     isDisliked: Boolean,
-    rating: Int,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
-    onRate: (Int) -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
@@ -635,12 +631,6 @@ private fun TrackRow(
                 )
             }
         }
-        Spacer(Modifier.width(8.dp))
-        InteractiveStarRating(
-            rating = rating,
-            onRate = onRate,
-            expandTouchTarget = false,
-        )
         Spacer(Modifier.width(8.dp))
         // ThumbsUp (like == star)
         ReactionGlyphButton(

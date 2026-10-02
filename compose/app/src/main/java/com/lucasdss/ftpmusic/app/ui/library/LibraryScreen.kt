@@ -248,38 +248,34 @@ fun LibraryContent(
                                                 "none",
                                                 Modifier.align(Alignment.BottomEnd).padding(4.dp),
                                             )
-                                            Row(
-                                                Modifier.align(Alignment.TopStart).padding(6.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            ) {
-                                                FavoriteThumbButton(
-                                                    icon = Icons.Filled.ThumbUp,
-                                                    active = album.id in albumTab.likedAlbumIds,
-                                                    contentDescription = if (album.id in albumTab.likedAlbumIds) {
-                                                        "Unlike album"
-                                                    } else {
-                                                        "Like album"
-                                                    },
-                                                    onClick = { viewModel.toggleAlbumLike(album.id) },
-                                                )
-                                                FavoriteThumbButton(
-                                                    icon = Icons.Filled.ThumbDown,
-                                                    active = album.id in albumTab.dislikedAlbumIds,
-                                                    activeTint = Color(0xFFE84040),
-                                                    contentDescription = if (album.id in albumTab.dislikedAlbumIds) {
-                                                        "Remove dislike"
-                                                    } else {
-                                                        "Dislike album"
-                                                    },
-                                                    onClick = { viewModel.toggleAlbumDislike(album.id) },
-                                                )
-                                            }
                                         }
                                         Spacer(Modifier.height(6.dp))
-                                        if (album.rating != null && album.rating!! > 0) {
-                                            StarRating(album.rating!!)
-                                            Spacer(Modifier.height(4.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            FavoriteThumbButton(
+                                                icon = Icons.Filled.ThumbUp,
+                                                active = album.id in albumTab.likedAlbumIds,
+                                                contentDescription = if (album.id in albumTab.likedAlbumIds) {
+                                                    "Unlike album"
+                                                } else {
+                                                    "Like album"
+                                                },
+                                                onClick = { viewModel.toggleAlbumLike(album.id) },
+                                            )
+                                            FavoriteThumbButton(
+                                                icon = Icons.Filled.ThumbDown,
+                                                active = album.id in albumTab.dislikedAlbumIds,
+                                                activeTint = Color(0xFFE84040),
+                                                contentDescription = if (album.id in albumTab.dislikedAlbumIds) {
+                                                    "Remove dislike"
+                                                } else {
+                                                    "Dislike album"
+                                                },
+                                                onClick = { viewModel.toggleAlbumDislike(album.id) },
+                                            )
                                         }
+                                        Spacer(Modifier.height(4.dp))
                                         Text(
                                             album.name,
                                             color = Color.White,
@@ -1020,20 +1016,6 @@ fun LibraryContent(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun StarRating(rating: Int) {
-    Row {
-        for (i in 1..5) {
-            Icon(
-                imageVector = if (i <= rating) Icons.Default.Star else Icons.Default.StarBorder,
-                contentDescription = null,
-                tint = if (i <= rating) BrandTeal else Color(0xFF444444),
-                modifier = Modifier.size(iconMicro()),
-            )
         }
     }
 }

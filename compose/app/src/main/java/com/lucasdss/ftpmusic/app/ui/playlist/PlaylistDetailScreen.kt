@@ -448,31 +448,6 @@ fun PlaylistDetailScreen(
                                                 fontSize = textLabelM(),
                                             )
                                         }
-                                        if (track.userRating != null && track.userRating!! > 0) {
-                                            Spacer(Modifier.width(6.dp))
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                (1..5).forEach { i ->
-                                                    Icon(
-                                                        imageVector = if (i <=
-                                                            track.userRating!!
-                                                        ) {
-                                                            Icons.Filled.Star
-                                                        } else {
-                                                            Icons.Default.StarBorder
-                                                        },
-                                                        contentDescription = null,
-                                                        tint = if (i <=
-                                                            track.userRating!!
-                                                        ) {
-                                                            BrandTeal
-                                                        } else {
-                                                            Color(0xFF444444)
-                                                        },
-                                                        modifier = Modifier.size(11.dp),
-                                                    )
-                                                }
-                                            }
-                                        }
                                     }
                                 },
                                 trailingContent = {

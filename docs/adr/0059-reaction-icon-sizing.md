@@ -22,8 +22,8 @@ Lock interactive reaction tokens (adaptive via `adp`):
 | `ratingStarInteractiveSize()` | `adp(20)` | Interactive 0–5★ glyph |
 
 Dense rows: thumbs use glyph + `minimumInteractiveComponentSize()` (no
-opaque circle). Track-row ★ use `InteractiveStarRating(expandTouchTarget=false)`
-so min-touch stars do not steal title taps. Player/hero ★ keep expanded touch.
+opaque circle). Interactive ★ live on full player + Album detail under art
+(`expandTouchTarget=true`). Track-list ★ removed (title space).
 Decorative / display-only stars and section headers stay unchanged.
 `knobSize()` remains for download/more/drag chrome only.
 
@@ -32,6 +32,6 @@ Shared composables: `FavoriteThumbButton`, `ReactionGlyphButton`,
 
 ## Consequences
 
-- Larger player/overlay chrome; denser track rows keep visual glyph scale but
-  expand invisible hit.
+- Larger player / album-under-art chrome; track rows no longer host ★.
 - Call sites must not hardcode reaction `.dp`; use tokens/components.
+- See `docs/RATING_SURFACE_BEHAVIOR_REPORT.md`.

@@ -19,8 +19,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -410,7 +408,7 @@ private fun QueueItemRow(
         }
         Spacer(Modifier.width(adp(10f)))
 
-        // Title + Artist + Star rating
+        // Title + Artist
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = item.title,
@@ -420,33 +418,14 @@ private fun QueueItemRow(
                 color = if (item.isCurrent) BrandTeal else Color.White,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                item.artist?.let { a ->
-                    FittingText(
-                        text = a,
-                        color = Color(0xFF888888),
-                        fontSize = textLabelM(),
-                        minFontSize = textMicro(),
-                        modifier = Modifier.weight(1f, fill = false),
-                        fillMaxWidth = false,
-                    )
-                }
-                Row(modifier = Modifier.padding(start = adp(8f))) {
-                    for (i in 1..5) {
-                        Icon(
-                            imageVector = if (i <=
-                                (item.userRating ?: 0)
-                            ) {
-                                Icons.Default.Star
-                            } else {
-                                Icons.Default.StarBorder
-                            },
-                            contentDescription = null,
-                            tint = if (i <= (item.userRating ?: 0)) BrandTeal else Color(0xFF444444),
-                            modifier = Modifier.size(adp(11f)),
-                        )
-                    }
-                }
+            item.artist?.let { a ->
+                FittingText(
+                    text = a,
+                    color = Color(0xFF888888),
+                    fontSize = textLabelM(),
+                    minFontSize = textMicro(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 

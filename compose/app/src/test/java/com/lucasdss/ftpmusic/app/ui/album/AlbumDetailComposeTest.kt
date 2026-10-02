@@ -140,4 +140,25 @@ class AlbumDetailComposeTest {
         }
         verify { vm.loadAlbum("a1") }
     }
+
+    @Test
+    fun `album rating under art exists and rates album`() {
+        val vm = mockViewModel()
+        composeRule.setContent {
+            AlbumDetailScreen(albumId = "a1", viewModel = vm)
+        }
+        composeRule.onNodeWithContentDescription("Rate album 3").assertExists()
+        composeRule.onNodeWithContentDescription("Rate album 3").performClick()
+        verify { vm.rateAlbum("a1", 3) }
+    }
+
+    @Test
+    fun `track rows do not expose track Rate content descriptions`() {
+        composeRule.setContent {
+            AlbumDetailScreen(albumId = "a1", viewModel = mockViewModel())
+        }
+        // Default InteractiveStarRating prefix is "Rate" — must not appear on track rows.
+        composeRule.onNodeWithContentDescription("Rate 1").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Rate album 1").assertExists()
+    }
 }
