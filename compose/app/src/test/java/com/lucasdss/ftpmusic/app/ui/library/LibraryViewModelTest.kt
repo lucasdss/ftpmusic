@@ -184,6 +184,78 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `loadArtists inserts missing artists into cached_artists for likes`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+
+        // Empty cache — the Class A skew: API list with no cached_artists rows.
+        coEvery { metadataDao.getAllArtists() } returns emptyList()
+        val artistMaps = listOf(
+            mapOf<String, Any?>("id" to "a1", "name" to "Artist One", "coverArt" to "ca-1", "albumCount" to 3),
+            mapOf<String, Any?>("id" to "a2", "name" to "Artist Two", "coverArt" to null, "albumCount" to 1),
+        )
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(artistMaps)
+        coEvery { metadataDao.insertArtistsIgnore(any()) } just Runs
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDao,
+                mockk(relaxed = true),
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        val state = viewModel.state.first { !it.isLoading && it.artists.isNotEmpty() }
+        advanceUntilIdle()
+
+        assertEquals(2, state.artists.size)
+        coVerify {
+            metadataDao.insertArtistsIgnore(
+                match { list ->
+                    list.size == 2 &&
+                        list.any { it.id == "a1" && it.name == "Artist One" && it.coverArt == "ca-1" } &&
+                        list.any { it.id == "a2" && it.name == "Artist Two" }
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `loadArtists skips cache insert when API returns empty artists`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { metadataDao.getAllArtists() } returns emptyList()
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDao,
+                mockk(relaxed = true),
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.state.first { !it.isLoading && it.hasLoadedOnce }
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { metadataDao.insertArtistsIgnore(any()) }
+    }
+
+    @Test
     fun `loadAlbums populates album list`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"

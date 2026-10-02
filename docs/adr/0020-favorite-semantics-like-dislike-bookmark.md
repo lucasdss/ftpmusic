@@ -117,3 +117,23 @@ Resulting invariants:
   unstarred on the server, and never flips back.
 - An offline unlike never resurrects; an offline like never vanishes.
 - Re-liking clears the intent marker and pushes the star again.
+
+## Review addendum (2026-10-02) — Library list ahead of cache
+
+ADR ensure-row (addendum 2026-08-23) fixed Search→ledger silent loss by
+`ensureArtistLedgerRow` copying from `cached_artists`. Remaining hole:
+
+- **Library Artists** paints live `getArtists` into UI **without** writing
+  `cached_artists` (`LibraryViewModel.loadArtists`). Metadata sync alone
+  populated cache. Window / failed sync → displayed id ∉ cache → ensure
+  INSERT 0 → `setArtistStarredAt` / dislike UPDATE 0 → optimistic thumb
+  reverted by `loadFavorites` / `observeFavorites`. Subset of list broken;
+  track/album likes still worked (different tables).
+- `healEmptyLedger` only heals ledger⊂cache count mismatch — not cache⊂API.
+- Side effect: `mirrorStar` could still call `api.star(artistId)` after a
+  local 0-row write → server star without local ledger (“ghost star”).
+
+**Fix:** after a successful Library `getArtists` parse, call
+`CachedMetadataDao.insertArtistsIgnore` (`OnConflictStrategy.IGNORE`) so
+missing rows are filled without REPLACE-wiping enrichment columns. Same
+hook on `loadArtistsInternal`. Ledger ensure path unchanged.

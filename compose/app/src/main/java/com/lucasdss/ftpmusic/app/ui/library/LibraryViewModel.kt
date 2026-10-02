@@ -6,6 +6,7 @@ import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.AlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
+import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreDao
@@ -1023,6 +1024,30 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persist API-visible artists into [cached_artists] without wiping enrichment.
+     * Like/dislike ensure ledger rows via SELECT FROM cached_artists — Library
+     * can paint getArtists ahead of MetadataSyncWorker, so missing cache rows
+     * made thumbs no-op for some artists.
+     */
+    private suspend fun ensureCachedArtistsForLikes(artists: List<Artist>) {
+        if (artists.isEmpty()) return
+        try {
+            metadataDao.insertArtistsIgnore(
+                artists.map {
+                    CachedArtistEntity(
+                        id = it.id,
+                        name = it.name,
+                        coverArt = it.coverArt,
+                        albumCount = it.albumCount,
+                    )
+                },
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "ensureCachedArtistsForLikes: ${e.message}")
+        }
+    }
+
     // Internal versions that don't set isLoading (used by resyncAll to avoid flag conflicts)
     private suspend fun loadArtistsInternal() {
         try {
@@ -1043,6 +1068,7 @@ class LibraryViewModel @Inject constructor(
                     )
                 } ?: emptyList()
             } ?: emptyList()
+            ensureCachedArtistsForLikes(artists)
             _state.value = _state.value.copy(artists = artists)
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-library", "loadArtists: ${e.message}")
@@ -1169,6 +1195,10 @@ class LibraryViewModel @Inject constructor(
                 // truth. The getArtists API count (all appearances incl. compilations)
                 // would otherwise diverge from the albums actually shown.
                 val cachedCounts = cached.associate { it.id to it.albumCount }
+                // Fill any API-visible artists missing from cached_artists so
+                // like/dislike ledger ensure (INSERT…SELECT FROM cached_artists)
+                // cannot silently no-op for a subset of the list.
+                ensureCachedArtistsForLikes(artists)
                 _state.value = _state.value.copy(
                     artists = artists.map { a -> a.copy(albumCount = cachedCounts[a.id] ?: a.albumCount) },
                     isLoading = false,

@@ -586,6 +586,15 @@ interface CachedMetadataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertArtists(artists: List<CachedArtistEntity>)
 
+    /**
+     * Insert artists missing from cache only. Preserves enrichment columns
+     * (MBID, public rating, similar artists) on existing rows — unlike
+     * [upsertArtists] REPLACE. Used by Library artist list so thumbs can
+     * ensure ledger rows for API-visible artists before metadata sync.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertArtistsIgnore(artists: List<CachedArtistEntity>)
+
     @Query("DELETE FROM cached_artists")
     suspend fun clearArtists()
 

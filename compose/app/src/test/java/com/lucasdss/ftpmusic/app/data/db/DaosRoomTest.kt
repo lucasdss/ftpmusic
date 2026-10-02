@@ -629,4 +629,48 @@ class DaosRoomTest {
         helper.close()
         context.deleteDatabase(testDb)
     }
+
+    @Test
+    fun `insertArtistsIgnore fills cache so ensureArtistLedgerRow like sticks`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        // Seed one enriched artist — IGNORE must not wipe enrichment on re-insert.
+        meta.upsertArtists(
+            listOf(
+                CachedArtistEntity(
+                    id = "ar-keep",
+                    name = "Keep",
+                    musicbrainzId = "mbid-keep",
+                    publicRating = 4.5,
+                ),
+            ),
+        )
+        // Simulate Library API artists: one existing, one missing from cache.
+        meta.insertArtistsIgnore(
+            listOf(
+                CachedArtistEntity(id = "ar-keep", name = "Keep Overwrite Attempt", musicbrainzId = null),
+                CachedArtistEntity(id = "ar-new", name = "New From API", coverArt = "cov"),
+            ),
+        )
+
+        val kept = meta.getArtistById("ar-keep")!!
+        assertEquals("Keep", kept.name)
+        assertEquals("mbid-keep", kept.musicbrainzId)
+        assertEquals(4.5, kept.publicRating!!, 0.0)
+
+        val neu = meta.getArtistById("ar-new")!!
+        assertEquals("New From API", neu.name)
+
+        // Like path without prior syncArtistLedger — ensure + star must persist.
+        meta.ensureArtistLedgerRow("ar-new")
+        meta.setArtistStarredAt("ar-new", 1_700_000_000_000L)
+        val starred = meta.getStarredArtists()
+        assertEquals(1, starred.size)
+        assertEquals("ar-new", starred[0].id)
+        assertEquals(1_700_000_000_000L, starred[0].starredAt)
+
+        // Dislike path for a cache-only-via-IGNORE artist.
+        meta.ensureArtistLedgerRow("ar-keep")
+        meta.setArtistDisliked("ar-keep", true, at = 99L)
+        assertTrue(meta.getDislikedArtistIds().contains("ar-keep"))
+    }
 }
