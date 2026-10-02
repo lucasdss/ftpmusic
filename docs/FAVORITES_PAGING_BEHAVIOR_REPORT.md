@@ -1,22 +1,21 @@
 # Favorites Paging Behavior Report
 
 **Date:** 2026-10-02  
-**Status:** Pagination / load-more (not a hard total cap).
+**Status:** Preserve loaded window + per-entity hasMore + infinite scroll.
 
 ## Rules
 
 | Surface | Behavior |
 | :--- | :--- |
-| Favorites tab | First page via Room Flow (`PAGE_SIZE=50`, offset 0). **Load more** appends further pages via one-shot suspend queries. |
-| Home fav rows | **First page only** — preview; full list lives on Favorites. |
-| Thumb id sets | Uncapped `*IdsFlow` — Library/detail thumbs never miss ids beyond page 1. |
-| Radio | Uncapped (`getAllFlow`). |
-| Sync / mix pools | Uncapped (`getAllStarredArtists`, etc.). |
+| Favorites tab | Room page-0 Flow **invalidates** → refresh `limit=loadedCount` (not wipe to page 0). Append via load-more / infinite scroll. |
+| hasMore | Per entity: `hasMoreLikedTracks/Albums/Artists` (+ disliked). Aggregate `hasMoreLiked` = any true. |
+| Home fav rows | First page only — preview. |
+| Thumb id sets | Uncapped `*IdsFlow`. |
+| Radio | Uncapped. |
+| Sync / mix pools | Uncapped. |
 
-Constant: `FavoritesPaging.PAGE_SIZE = 50` (page size, not total cap).
+Constant: `FavoritesPaging.PAGE_SIZE = 50`.
 
-`hasMoreLiked` / `hasMoreDisliked` = last batch size ≥ `PAGE_SIZE` for any entity type in that mode.
+Pending overlay: `FavoritePendingStore` on Favorites tab + Library/Artist/Album. Process death → Room truth.
 
-## Races (companion)
-
-Optimistic thumbs use `FavoritePendingStore` merge over Room Flow so stale emissions cannot clobber in-flight toggles. Playback scopes in-flight guard to `mutationTrackId`. AlbumDetail uses per-track `Mutex` (no cancel of in-flight writes).
+See also: `docs/FAVORITES_CORRECTNESS_BEHAVIOR_REPORT.md`.

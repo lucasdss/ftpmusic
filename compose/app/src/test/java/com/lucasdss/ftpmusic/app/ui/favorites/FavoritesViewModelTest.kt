@@ -3,7 +3,6 @@ package com.lucasdss.ftpmusic.app.ui.favorites
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
-import com.lucasdss.ftpmusic.app.data.repository.WaveformRepository
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,6 +42,13 @@ class FavoritesViewModelTest {
             kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
         every { metadataDao.getDislikedArtistsFlow(50, 0) } returns
             kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        coEvery { trackDao.getStarred(any(), any()) } returns emptyList()
+        coEvery { metadataDao.getStarredAlbums(any(), any()) } returns emptyList()
+        coEvery { metadataDao.getStarredArtists(any(), any()) } returns emptyList()
+        coEvery { trackDao.getDisliked(any(), any()) } returns emptyList()
+        coEvery { metadataDao.getDislikedAlbums(any(), any()) } returns emptyList()
+        coEvery { metadataDao.getDislikedArtists(any(), any()) } returns emptyList()
+        coEvery { radioFavoriteDao.getAll() } returns emptyList()
         viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
     }
 
@@ -292,6 +298,18 @@ class FavoritesViewModelTest {
         every { trackDao.getDislikedFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(emptyList())
         every { metadataDao.getDislikedAlbumsFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(emptyList())
         every { metadataDao.getDislikedArtistsFlow(50, 0) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        // observe() uses Flow as invalidation signal then refreshes via suspend queries
+        coEvery { trackDao.getStarred(any(), any()) } answers {
+            val limit = firstArg<Int>()
+            if (limit == 1) emptyList() else listOf(TrackEntity(id = "t1", title = "Arcade Heart"))
+        }
+        coEvery { radioFavoriteDao.getAll() } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity(
+                stationId = "st-1",
+                name = "Retro",
+                streamUrl = "https://s",
+            ),
+        )
 
         // Recreate so init.observe picks up the stubs above.
         viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
@@ -301,6 +319,14 @@ class FavoritesViewModelTest {
         assertEquals(1, viewModel.state.value.radio.size)
 
         // New emission (e.g. an artist like from another screen) → live update.
+        coEvery { metadataDao.getStarredArtists(any(), any()) } answers {
+            val limit = firstArg<Int>()
+            if (limit == 1) {
+                emptyList()
+            } else {
+                listOf(com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-1", name = "Neon Circuit"))
+            }
+        }
         artistsFlow.value = listOf(com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-1", name = "Neon Circuit"))
         advanceUntilIdle()
         assertEquals(1, viewModel.state.value.artists.size)
@@ -364,25 +390,88 @@ class FavoritesViewModelTest {
         val page0 = (1..50).map { TrackEntity(id = "t$it", title = "T$it") }
         val page1 = listOf(TrackEntity(id = "t51", title = "T51"))
         coEvery { trackDao.getStarred(50, 0) } returns page0
-        coEvery { metadataDao.getStarredAlbums(50, 0) } returns emptyList()
-        coEvery { metadataDao.getStarredArtists(50, 0) } returns emptyList()
-        coEvery { trackDao.getDisliked(50, 0) } returns emptyList()
-        coEvery { metadataDao.getDislikedAlbums(50, 0) } returns emptyList()
-        coEvery { metadataDao.getDislikedArtists(50, 0) } returns emptyList()
-        coEvery { radioFavoriteDao.getAll() } returns emptyList()
+        // Probe past window → hasMoreTracks
+        coEvery { trackDao.getStarred(1, 50) } returns listOf(TrackEntity(id = "probe", title = "P"))
         viewModel.load()
         advanceUntilIdle()
         assertEquals(50, viewModel.state.value.tracks.size)
-        assertTrue(viewModel.state.value.hasMoreLiked)
+        assertTrue(viewModel.state.value.hasMoreLikedTracks)
 
         coEvery { trackDao.getStarred(50, 50) } returns page1
-        coEvery { metadataDao.getStarredAlbums(50, 50) } returns emptyList()
-        coEvery { metadataDao.getStarredArtists(50, 50) } returns emptyList()
         viewModel.loadMore()
         advanceUntilIdle()
         assertEquals(51, viewModel.state.value.tracks.size)
         assertEquals("t51", viewModel.state.value.tracks.last().id)
-        assertFalse(viewModel.state.value.hasMoreLiked)
+        assertFalse(viewModel.state.value.hasMoreLikedTracks)
+    }
+
+    @Test
+    fun `per-entity hasMore albums full tracks short`() = runTest {
+        val albums = (1..50).map {
+            com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "a$it", name = "A$it")
+        }
+        coEvery { trackDao.getStarred(50, 0) } returns listOf(TrackEntity(id = "t1", title = "Only"))
+        coEvery { trackDao.getStarred(1, 1) } returns emptyList()
+        coEvery { metadataDao.getStarredAlbums(50, 0) } returns albums
+        coEvery { metadataDao.getStarredAlbums(1, 50) } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "a51", name = "More"),
+        )
+        viewModel.load()
+        advanceUntilIdle()
+        assertFalse(viewModel.state.value.hasMoreLikedTracks)
+        assertTrue(viewModel.state.value.hasMoreLikedAlbums)
+        assertTrue(viewModel.state.value.hasMoreLiked)
+    }
+
+    @Test
+    fun `refresh preserves appended pages`() = runTest {
+        val page0 = (1..50).map { TrackEntity(id = "t$it", title = "T$it") }
+        val page1 = listOf(TrackEntity(id = "t51", title = "T51"))
+        val starredFlow = kotlinx.coroutines.flow.MutableSharedFlow<List<TrackEntity>>(extraBufferCapacity = 1)
+        every { trackDao.getStarredFlow(50, 0) } returns starredFlow
+        // Rebuild VM with emitting flow
+        viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
+        coEvery { trackDao.getStarred(50, 0) } returns page0
+        coEvery { trackDao.getStarred(1, 50) } returns listOf(TrackEntity(id = "probe", title = "P"))
+        viewModel.load()
+        advanceUntilIdle()
+        coEvery { trackDao.getStarred(50, 50) } returns page1
+        viewModel.loadMore()
+        advanceUntilIdle()
+        assertEquals(51, viewModel.state.value.tracks.size)
+
+        // Flow tick → refresh window of 51, must keep t51
+        val window51 = page0 + page1
+        coEvery { trackDao.getStarred(51, 0) } returns window51
+        coEvery { trackDao.getStarred(1, 51) } returns emptyList()
+        starredFlow.tryEmit(page0)
+        advanceUntilIdle()
+        assertEquals(51, viewModel.state.value.tracks.size)
+        assertEquals("t51", viewModel.state.value.tracks.last().id)
+    }
+
+    @Test
+    fun `unstar pending survives stale refresh`() = runTest {
+        val tracks = listOf(
+            TrackEntity(id = "1", title = "Track 1"),
+            TrackEntity(id = "2", title = "Track 2"),
+        )
+        coEvery { trackDao.getStarred(50, 0) } returns tracks
+        coEvery { trackDao.getStarred(1, 2) } returns emptyList()
+        viewModel.load()
+        advanceUntilIdle()
+        coEvery { favoriteRepository.unstarTrack("1") } coAnswers { kotlinx.coroutines.delay(10_000) }
+        viewModel.unstarTrack("1")
+        assertEquals(1, viewModel.state.value.tracks.size)
+        // Stale Room still returns both — pending Neutral filters id 1
+        coEvery { trackDao.getStarred(any(), any()) } answers {
+            val limit = firstArg<Int>()
+            if (limit == 1) emptyList() else tracks
+        }
+        viewModel.load()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.tracks.none { it.id == "1" })
+        assertEquals(1, viewModel.state.value.tracks.size)
     }
 
     @Test
@@ -390,26 +479,21 @@ class FavoritesViewModelTest {
         val page0 = (1..50).map {
             TrackEntity(id = "d$it", title = "D$it", isDisliked = true, dislikedAt = it.toLong())
         }
-        coEvery { trackDao.getStarred(50, 0) } returns emptyList()
-        coEvery { metadataDao.getStarredAlbums(50, 0) } returns emptyList()
-        coEvery { metadataDao.getStarredArtists(50, 0) } returns emptyList()
         coEvery { trackDao.getDisliked(50, 0) } returns page0
-        coEvery { metadataDao.getDislikedAlbums(50, 0) } returns emptyList()
-        coEvery { metadataDao.getDislikedArtists(50, 0) } returns emptyList()
-        coEvery { radioFavoriteDao.getAll() } returns emptyList()
+        coEvery { trackDao.getDisliked(1, 50) } returns listOf(
+            TrackEntity(id = "probe", title = "P", isDisliked = true, dislikedAt = 99L),
+        )
         viewModel.load()
         advanceUntilIdle()
         viewModel.setMode(FavoritesMode.DISLIKED)
-        assertTrue(viewModel.state.value.hasMoreDisliked)
+        assertTrue(viewModel.state.value.hasMoreDislikedTracks)
 
         coEvery { trackDao.getDisliked(50, 50) } returns listOf(
             TrackEntity(id = "d51", title = "D51", isDisliked = true, dislikedAt = 51L),
         )
-        coEvery { metadataDao.getDislikedAlbums(50, 50) } returns emptyList()
-        coEvery { metadataDao.getDislikedArtists(50, 50) } returns emptyList()
         viewModel.loadMore()
         advanceUntilIdle()
         assertEquals(51, viewModel.state.value.dislikedTracks.size)
-        assertFalse(viewModel.state.value.hasMoreDisliked)
+        assertFalse(viewModel.state.value.hasMoreDislikedTracks)
     }
 }

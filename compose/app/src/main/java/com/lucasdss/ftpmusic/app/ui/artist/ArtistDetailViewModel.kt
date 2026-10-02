@@ -18,11 +18,14 @@ import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class ArtistDetailState(
     val artistId: String = "",
@@ -67,6 +70,9 @@ class ArtistDetailViewModel @Inject constructor(
     private val albumPending = FavoritePendingStore()
     private val artistPending = FavoritePendingStore()
     private val trackPending = FavoritePendingStore()
+    private val trackToggleMutexes = ConcurrentHashMap<String, Mutex>()
+
+    private fun trackMutex(trackId: String): Mutex = trackToggleMutexes.getOrPut(trackId) { Mutex() }
 
     init {
         // Reactive album + artist reactions: Room flows keep thumbs in sync;
@@ -277,6 +283,7 @@ class ArtistDetailViewModel @Inject constructor(
                     hasMoreTracks = newEntities.size >= TRACKS_PAGE_SIZE,
                     isLoadingMoreTracks = false,
                 )
+                loadReactions(newEntities.map { it.id }, merge = true)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoadingMoreTracks = false)
             }
@@ -433,25 +440,29 @@ class ArtistDetailViewModel @Inject constructor(
 
     fun getTrackRating(trackId: String): Int = _trackRatings.value[trackId] ?: 0
 
-    /** Load persisted like (starred_at) + dislike flags for the given track ids. */
-    private fun loadReactions(trackIds: List<String>) {
+    /** Load persisted like (starred_at) + dislike flags for the given track ids.
+     *  [merge]=true keeps prior page reactions (load-more); false replaces (first page). */
+    private fun loadReactions(trackIds: List<String>, merge: Boolean = false) {
         if (trackIds.isEmpty()) return
         viewModelScope.launch {
             try {
                 val entities = trackDao.getTracksByIds(trackIds)
                 val roomLiked = entities.filter { it.starredAt != null }.map { it.id }.toSet()
                 val roomDisliked = entities.filter { it.isDisliked }.map { it.id }.toSet()
-                trackPending.reconcile(roomLiked, roomDisliked)
-                _likedTrackIds.value = trackPending.mergeLiked(roomLiked)
-                _dislikedTrackIds.value = trackPending.mergeDisliked(roomDisliked)
+                val idSet = trackIds.toSet()
+                val likedBase = if (merge) (_likedTrackIds.value - idSet) + roomLiked else roomLiked
+                val dislikedBase = if (merge) (_dislikedTrackIds.value - idSet) + roomDisliked else roomDisliked
+                trackPending.reconcile(likedBase, dislikedBase)
+                _likedTrackIds.value = trackPending.mergeLiked(likedBase)
+                _dislikedTrackIds.value = trackPending.mergeDisliked(dislikedBase)
             } catch (_: Exception) {}
         }
     }
 
     fun toggleTrackLike(trackId: String) {
-        val isLiked = _likedTrackIds.value.contains(trackId)
         val previousLiked = _likedTrackIds.value
         val previousDisliked = _dislikedTrackIds.value
+        val isLiked = trackId in previousLiked
         if (isLiked) {
             trackPending.set(trackId, FavoritePendingKind.Neutral)
             _likedTrackIds.value = previousLiked - trackId
@@ -461,25 +472,27 @@ class ArtistDetailViewModel @Inject constructor(
             _dislikedTrackIds.value = previousDisliked - trackId
         }
         viewModelScope.launch {
-            try {
-                if (isLiked) {
-                    favoriteRepository.unlikeTrack(trackId)
-                } else {
-                    favoriteRepository.likeTrack(trackId)
+            trackMutex(trackId).withLock {
+                try {
+                    if (isLiked) {
+                        favoriteRepository.unlikeTrack(trackId)
+                    } else {
+                        favoriteRepository.likeTrack(trackId)
+                    }
+                } catch (_: Exception) {
+                    trackPending.clear(trackId)
+                    _likedTrackIds.value = previousLiked
+                    _dislikedTrackIds.value = previousDisliked
                 }
-            } catch (_: Exception) {
-                trackPending.clear(trackId)
-                _likedTrackIds.value = previousLiked
-                _dislikedTrackIds.value = previousDisliked
             }
         }
     }
 
     /** Toggle thumbs-down (local dislike). Mutual exclusion: disliking clears like. */
     fun toggleTrackDislike(trackId: String) {
-        val isDisliked = _dislikedTrackIds.value.contains(trackId)
         val previousLiked = _likedTrackIds.value
         val previousDisliked = _dislikedTrackIds.value
+        val isDisliked = trackId in previousDisliked
         if (isDisliked) {
             trackPending.set(trackId, FavoritePendingKind.Neutral)
             _dislikedTrackIds.value = previousDisliked - trackId
@@ -489,16 +502,18 @@ class ArtistDetailViewModel @Inject constructor(
             _likedTrackIds.value = previousLiked - trackId
         }
         viewModelScope.launch {
-            try {
-                if (isDisliked) {
-                    favoriteRepository.clearDislikeTrack(trackId)
-                } else {
-                    favoriteRepository.dislikeTrack(trackId)
+            trackMutex(trackId).withLock {
+                try {
+                    if (isDisliked) {
+                        favoriteRepository.clearDislikeTrack(trackId)
+                    } else {
+                        favoriteRepository.dislikeTrack(trackId)
+                    }
+                } catch (_: Exception) {
+                    trackPending.clear(trackId)
+                    _likedTrackIds.value = previousLiked
+                    _dislikedTrackIds.value = previousDisliked
                 }
-            } catch (_: Exception) {
-                trackPending.clear(trackId)
-                _likedTrackIds.value = previousLiked
-                _dislikedTrackIds.value = previousDisliked
             }
         }
     }

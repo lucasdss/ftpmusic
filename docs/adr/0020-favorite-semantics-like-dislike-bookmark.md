@@ -11,10 +11,12 @@ Related: ADR 0009 (pending scrobbles removal),
 > (migration 54→55), newest first — mirrors `starred_at` organization.
 > Clear via ThumbDown → `clearDislike*`. Dislikes remain local-only.
 >
-> **Status note (2026-10-02):** Favorites lists are **paged** (`PAGE_SIZE=50` +
-> load-more). Home preview stays first page. Thumb id sets stay uncapped.
-> Optimistic UI merges via `FavoritePendingStore` so Room Flow cannot clobber
-> in-flight toggles. See `docs/FAVORITES_PAGING_BEHAVIOR_REPORT.md`.
+> **Status note (2026-10-02):** Favorites lists are **paged** (`PAGE_SIZE=50`) with
+> preserve-loaded-window refresh, per-entity hasMore, and infinite scroll.
+> Home preview stays first page. Thumb id sets stay uncapped.
+> Optimistic UI merges via `FavoritePendingStore` (incl. Favorites tab).
+> Process death → Room truth. See `docs/FAVORITES_PAGING_BEHAVIOR_REPORT.md` and
+> `docs/FAVORITES_CORRECTNESS_BEHAVIOR_REPORT.md`.
 > Local-first repo/sync contract in this ADR is unchanged.
 
 ## Context

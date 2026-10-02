@@ -2516,6 +2516,22 @@ class LibraryViewModelTest {
         assertTrue(vm.state.value.likedAlbumIds.contains("al-pending"))
     }
 
+    @Test
+    fun `album like fail rollback does not clobber unrelated liked id`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        coEvery { favRepo.likeAlbum("al-fail") } throws RuntimeException("offline")
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+        // Seed unrelated like
+        vm.toggleAlbumLike("al-keep")
+        advanceUntilIdle()
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-keep"))
+        vm.toggleAlbumLike("al-fail")
+        advanceUntilIdle()
+        assertFalse(vm.state.value.likedAlbumIds.contains("al-fail"))
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-keep"))
+    }
+
     // ── Playlist create + Add Songs flow ───────────────────────────────────
 
     private fun playlistVm(repo: PlaylistRepository = playlistRepo): LibraryViewModel = LibraryViewModel(

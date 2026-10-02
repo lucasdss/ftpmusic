@@ -309,12 +309,15 @@ class ArtistDetailViewModelTest {
 
         viewModel.loadMoreTracks()
         val more = viewModel.state.first { !it.isLoadingMoreTracks && it.tracks.size == 60 }
+        advanceUntilIdle()
 
         assertEquals(60, more.tracks.size)
         assertEquals("Track 051", more.tracks[50].title)
         assertEquals("Track 060", more.tracks[59].title)
         assertFalse("hasMoreTracks must be false after short page", more.hasMoreTracks)
         coVerify { trackDao.getTracksByArtistIdAfter("ar-1", "Track 050", 50) }
+        // Reactions loaded for the new page (merge=true path)
+        coVerify { trackDao.getTracksByIds(match { it.contains("t51") }) }
     }
 
     @Test

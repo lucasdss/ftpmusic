@@ -2,7 +2,9 @@ package com.lucasdss.ftpmusic.app.playback
 
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
+import io.mockk.Runs
 import io.mockk.coEvery
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -198,5 +200,22 @@ class PlaybackViewModelTest {
         // New track should load its own starred reaction (true), not stuck false from unfinished t1
         assertTrue(vm.state.value.isStarred)
         assertEquals("Two", vm.state.value.title)
+    }
+
+    @Test
+    fun `overlapping same-track like then dislike keeps final dislike`() = runTest {
+        coEvery { favoriteRepo.likeTrack("t1") } coAnswers { kotlinx.coroutines.delay(1_000) }
+        coEvery { favoriteRepo.dislikeTrack("t1") } just Runs
+        provider.emit(PlaybackState(currentTrackId = "t1", title = "One"))
+        // Touch VM so init collectors settle before toggles.
+        viewModel.state.value
+        advanceUntilIdle()
+        viewModel.toggleLike()
+        viewModel.toggleDislike()
+        assertTrue(viewModel.state.value.isDisliked)
+        assertFalse(viewModel.state.value.isStarred)
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.isDisliked)
+        assertFalse(viewModel.state.value.isStarred)
     }
 }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +38,8 @@ import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingKind
+import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingStore
 import com.lucasdss.ftpmusic.app.data.favorites.FavoritesPaging
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
@@ -57,6 +61,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class FavoritesMode { LIKED, DISLIKED }
 
@@ -71,11 +77,18 @@ class FavoritesViewModel @Inject constructor(
     private val _state = MutableStateFlow(FavoritesState())
     val state: StateFlow<FavoritesState> = _state.asStateFlow()
 
-    /** Items loaded beyond the Flow-backed first page (liked). */
-    private var likedAppendedOffset = FavoritesPaging.PAGE_SIZE
-    private var dislikedAppendedOffset = FavoritesPaging.PAGE_SIZE
-    private var loadingMoreLiked = false
-    private var loadingMoreDisliked = false
+    /** How many rows currently held per entity (liked / disliked). */
+    private var loadedLikedTracks = FavoritesPaging.PAGE_SIZE
+    private var loadedLikedAlbums = FavoritesPaging.PAGE_SIZE
+    private var loadedLikedArtists = FavoritesPaging.PAGE_SIZE
+    private var loadedDislikedTracks = FavoritesPaging.PAGE_SIZE
+    private var loadedDislikedAlbums = FavoritesPaging.PAGE_SIZE
+    private var loadedDislikedArtists = FavoritesPaging.PAGE_SIZE
+
+    private val windowMutex = Mutex()
+    private val trackPending = FavoritePendingStore()
+    private val albumPending = FavoritePendingStore()
+    private val artistPending = FavoritePendingStore()
 
     fun setMode(mode: FavoritesMode) {
         _state.value = _state.value.copy(mode = mode)
@@ -84,32 +97,30 @@ class FavoritesViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             try {
-                val page = FavoritesPaging.PAGE_SIZE
-                _state.value = _state.value.copy(
-                    tracks = trackDao.getStarred(page, 0),
-                    albums = metadataDao.getStarredAlbums(page, 0),
-                    artists = metadataDao.getStarredArtists(page, 0),
-                    radio = radioFavoriteDao.getAll(),
-                    dislikedTracks = trackDao.getDisliked(page, 0),
-                    dislikedAlbums = metadataDao.getDislikedAlbums(page, 0),
-                    dislikedArtists = metadataDao.getDislikedArtists(page, 0),
-                    hasMoreLiked = true,
-                    hasMoreDisliked = true,
-                    showFavArtistsSection =
-                        storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ARTISTS)?.toBooleanStrictOrNull() ?: true,
-                    showFavAlbumsSection =
-                        storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ALBUMS)?.toBooleanStrictOrNull() ?: true,
-                    showFavRadioSection =
-                        storage.get(SecureStorage.KEY_HOME_SHOW_FAV_RADIO)?.toBooleanStrictOrNull() ?: true,
-                )
-                likedAppendedOffset = FavoritesPaging.PAGE_SIZE
-                dislikedAppendedOffset = FavoritesPaging.PAGE_SIZE
-            } catch (_: Exception) {}
+                windowMutex.withLock {
+                    refreshLikedWindow(forceMinPage = true)
+                    refreshDislikedWindow(forceMinPage = true)
+                    _state.value = _state.value.copy(
+                        radio = radioFavoriteDao.getAll(),
+                        showFavArtistsSection =
+                            storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ARTISTS)?.toBooleanStrictOrNull() ?: true,
+                        showFavAlbumsSection =
+                            storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ALBUMS)?.toBooleanStrictOrNull() ?: true,
+                        showFavRadioSection =
+                            storage.get(SecureStorage.KEY_HOME_SHOW_FAV_RADIO)?.toBooleanStrictOrNull() ?: true,
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-fav", "load failed", e)
+            }
         }
     }
 
-    /** Reactive first page — Room Flow so the tab updates live. Appended pages
-     *  survive until the next first-page emit resets offsets (user re-taps Load more). */
+    /**
+     * Room page-0 Flow invalidation → refresh the **already-loaded window**
+     * (limit=loadedCount, offset=0) so appends survive and order stays correct.
+     */
     fun observe() {
         viewModelScope.launch {
             try {
@@ -129,24 +140,12 @@ class FavoritesViewModel @Inject constructor(
                 ) { tracks, albums, artists ->
                     DislikedBundle(tracks, albums, artists)
                 }
-                liked.combine(disliked) { l, d ->
-                    likedAppendedOffset = FavoritesPaging.PAGE_SIZE
-                    dislikedAppendedOffset = FavoritesPaging.PAGE_SIZE
-                    _state.value = _state.value.copy(
-                        tracks = l.tracks,
-                        albums = l.albums,
-                        artists = l.artists,
-                        radio = l.radio,
-                        dislikedTracks = d.tracks,
-                        dislikedAlbums = d.albums,
-                        dislikedArtists = d.artists,
-                        hasMoreLiked = l.tracks.size >= page ||
-                            l.albums.size >= page ||
-                            l.artists.size >= page,
-                        hasMoreDisliked = d.tracks.size >= page ||
-                            d.albums.size >= page ||
-                            d.artists.size >= page,
-                    )
+                liked.combine(disliked) { _, _ ->
+                    windowMutex.withLock {
+                        refreshLikedWindow(forceMinPage = false)
+                        refreshDislikedWindow(forceMinPage = false)
+                        _state.value = _state.value.copy(radio = radioFavoriteDao.getAll())
+                    }
                 }.collect { }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -165,69 +164,204 @@ class FavoritesViewModel @Inject constructor(
     }
 
     private fun loadMoreLiked() {
-        if (loadingMoreLiked || !_state.value.hasMoreLiked) return
-        loadingMoreLiked = true
+        if (!_state.value.hasMoreLiked) return
         viewModelScope.launch {
             try {
-                val page = FavoritesPaging.PAGE_SIZE
-                val offset = likedAppendedOffset
-                val moreTracks = trackDao.getStarred(page, offset)
-                val moreAlbums = metadataDao.getStarredAlbums(page, offset)
-                val moreArtists = metadataDao.getStarredArtists(page, offset)
-                val existingTrackIds = _state.value.tracks.map { it.id }.toSet()
-                val existingAlbumIds = _state.value.albums.map { it.id }.toSet()
-                val existingArtistIds = _state.value.artists.map { it.id }.toSet()
-                likedAppendedOffset = offset + page
-                _state.value = _state.value.copy(
-                    tracks = _state.value.tracks + moreTracks.filter { it.id !in existingTrackIds },
-                    albums = _state.value.albums + moreAlbums.filter { it.id !in existingAlbumIds },
-                    artists = _state.value.artists + moreArtists.filter { it.id !in existingArtistIds },
-                    hasMoreLiked = moreTracks.size >= page ||
-                        moreAlbums.size >= page ||
-                        moreArtists.size >= page,
-                )
+                windowMutex.withLock {
+                    if (!_state.value.hasMoreLiked) return@withLock
+                    val page = FavoritesPaging.PAGE_SIZE
+                    val moreTracks = if (_state.value.hasMoreLikedTracks) {
+                        trackDao.getStarred(page, loadedLikedTracks)
+                    } else {
+                        emptyList()
+                    }
+                    val moreAlbums = if (_state.value.hasMoreLikedAlbums) {
+                        metadataDao.getStarredAlbums(page, loadedLikedAlbums)
+                    } else {
+                        emptyList()
+                    }
+                    val moreArtists = if (_state.value.hasMoreLikedArtists) {
+                        metadataDao.getStarredArtists(page, loadedLikedArtists)
+                    } else {
+                        emptyList()
+                    }
+                    if (moreTracks.isNotEmpty()) loadedLikedTracks += moreTracks.size
+                    if (moreAlbums.isNotEmpty()) loadedLikedAlbums += moreAlbums.size
+                    if (moreArtists.isNotEmpty()) loadedLikedArtists += moreArtists.size
+                    val s = _state.value
+                    val tracks =
+                        applyTrackPendingLiked(
+                            s.tracks + moreTracks.filter {
+                                it.id !in s.tracks.map { t -> t.id }.toSet()
+                            },
+                        )
+                    val albums =
+                        applyAlbumPendingLiked(
+                            s.albums + moreAlbums.filter {
+                                it.id !in s.albums.map { a -> a.id }.toSet()
+                            },
+                        )
+                    val artists =
+                        applyArtistPendingLiked(
+                            s.artists + moreArtists.filter {
+                                it.id !in s.artists.map { a -> a.id }.toSet()
+                            },
+                        )
+                    _state.value = s.copy(
+                        tracks = tracks,
+                        albums = albums,
+                        artists = artists,
+                        hasMoreLikedTracks = moreTracks.size >= page,
+                        hasMoreLikedAlbums = moreAlbums.size >= page,
+                        hasMoreLikedArtists = moreArtists.size >= page,
+                    )
+                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-fav", "loadMoreLiked failed", e)
-            } finally {
-                loadingMoreLiked = false
             }
         }
     }
 
     private fun loadMoreDisliked() {
-        if (loadingMoreDisliked || !_state.value.hasMoreDisliked) return
-        loadingMoreDisliked = true
+        if (!_state.value.hasMoreDisliked) return
         viewModelScope.launch {
             try {
-                val page = FavoritesPaging.PAGE_SIZE
-                val offset = dislikedAppendedOffset
-                val moreTracks = trackDao.getDisliked(page, offset)
-                val moreAlbums = metadataDao.getDislikedAlbums(page, offset)
-                val moreArtists = metadataDao.getDislikedArtists(page, offset)
-                val existingTrackIds = _state.value.dislikedTracks.map { it.id }.toSet()
-                val existingAlbumIds = _state.value.dislikedAlbums.map { it.id }.toSet()
-                val existingArtistIds = _state.value.dislikedArtists.map { it.id }.toSet()
-                dislikedAppendedOffset = offset + page
-                _state.value = _state.value.copy(
-                    dislikedTracks = _state.value.dislikedTracks +
-                        moreTracks.filter { it.id !in existingTrackIds },
-                    dislikedAlbums = _state.value.dislikedAlbums +
-                        moreAlbums.filter { it.id !in existingAlbumIds },
-                    dislikedArtists = _state.value.dislikedArtists +
-                        moreArtists.filter { it.id !in existingArtistIds },
-                    hasMoreDisliked = moreTracks.size >= page ||
-                        moreAlbums.size >= page ||
-                        moreArtists.size >= page,
-                )
+                windowMutex.withLock {
+                    if (!_state.value.hasMoreDisliked) return@withLock
+                    val page = FavoritesPaging.PAGE_SIZE
+                    val moreTracks = if (_state.value.hasMoreDislikedTracks) {
+                        trackDao.getDisliked(page, loadedDislikedTracks)
+                    } else {
+                        emptyList()
+                    }
+                    val moreAlbums = if (_state.value.hasMoreDislikedAlbums) {
+                        metadataDao.getDislikedAlbums(page, loadedDislikedAlbums)
+                    } else {
+                        emptyList()
+                    }
+                    val moreArtists = if (_state.value.hasMoreDislikedArtists) {
+                        metadataDao.getDislikedArtists(page, loadedDislikedArtists)
+                    } else {
+                        emptyList()
+                    }
+                    if (moreTracks.isNotEmpty()) loadedDislikedTracks += moreTracks.size
+                    if (moreAlbums.isNotEmpty()) loadedDislikedAlbums += moreAlbums.size
+                    if (moreArtists.isNotEmpty()) loadedDislikedArtists += moreArtists.size
+                    val s = _state.value
+                    val tracks = applyTrackPendingDisliked(
+                        s.dislikedTracks + moreTracks.filter { it.id !in s.dislikedTracks.map { t -> t.id }.toSet() },
+                    )
+                    val albums = applyAlbumPendingDisliked(
+                        s.dislikedAlbums + moreAlbums.filter { it.id !in s.dislikedAlbums.map { a -> a.id }.toSet() },
+                    )
+                    val artists = applyArtistPendingDisliked(
+                        s.dislikedArtists + moreArtists.filter {
+                            it.id !in s.dislikedArtists.map { a -> a.id }.toSet()
+                        },
+                    )
+                    _state.value = s.copy(
+                        dislikedTracks = tracks,
+                        dislikedAlbums = albums,
+                        dislikedArtists = artists,
+                        hasMoreDislikedTracks = moreTracks.size >= page,
+                        hasMoreDislikedAlbums = moreAlbums.size >= page,
+                        hasMoreDislikedArtists = moreArtists.size >= page,
+                    )
+                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-fav", "loadMoreDisliked failed", e)
-            } finally {
-                loadingMoreDisliked = false
             }
         }
     }
+
+    private suspend fun refreshLikedWindow(forceMinPage: Boolean) {
+        val page = FavoritesPaging.PAGE_SIZE
+        if (forceMinPage) {
+            loadedLikedTracks = maxOf(loadedLikedTracks, page)
+            loadedLikedAlbums = maxOf(loadedLikedAlbums, page)
+            loadedLikedArtists = maxOf(loadedLikedArtists, page)
+        } else {
+            // Preserve at least what UI already shows.
+            loadedLikedTracks = maxOf(loadedLikedTracks, _state.value.tracks.size, page)
+            loadedLikedAlbums = maxOf(loadedLikedAlbums, _state.value.albums.size, page)
+            loadedLikedArtists = maxOf(loadedLikedArtists, _state.value.artists.size, page)
+        }
+        val tracks = trackDao.getStarred(loadedLikedTracks, 0)
+        val albums = metadataDao.getStarredAlbums(loadedLikedAlbums, 0)
+        val artists = metadataDao.getStarredArtists(loadedLikedArtists, 0)
+        trackPending.reconcile(tracks.map { it.id }.toSet(), emptySet())
+        albumPending.reconcile(albums.map { it.id }.toSet(), emptySet())
+        artistPending.reconcile(artists.map { it.id }.toSet(), emptySet())
+        // Probe one more row past the loaded window.
+        val probeTracks = trackDao.getStarred(1, tracks.size)
+        val probeAlbums = metadataDao.getStarredAlbums(1, albums.size)
+        val probeArtists = metadataDao.getStarredArtists(1, artists.size)
+        loadedLikedTracks = tracks.size.coerceAtLeast(page)
+        loadedLikedAlbums = albums.size.coerceAtLeast(page)
+        loadedLikedArtists = artists.size.coerceAtLeast(page)
+        _state.value = _state.value.copy(
+            tracks = applyTrackPendingLiked(tracks),
+            albums = applyAlbumPendingLiked(albums),
+            artists = applyArtistPendingLiked(artists),
+            hasMoreLikedTracks = probeTracks.isNotEmpty(),
+            hasMoreLikedAlbums = probeAlbums.isNotEmpty(),
+            hasMoreLikedArtists = probeArtists.isNotEmpty(),
+        )
+    }
+
+    private suspend fun refreshDislikedWindow(forceMinPage: Boolean) {
+        val page = FavoritesPaging.PAGE_SIZE
+        if (forceMinPage) {
+            loadedDislikedTracks = maxOf(loadedDislikedTracks, page)
+            loadedDislikedAlbums = maxOf(loadedDislikedAlbums, page)
+            loadedDislikedArtists = maxOf(loadedDislikedArtists, page)
+        } else {
+            loadedDislikedTracks = maxOf(loadedDislikedTracks, _state.value.dislikedTracks.size, page)
+            loadedDislikedAlbums = maxOf(loadedDislikedAlbums, _state.value.dislikedAlbums.size, page)
+            loadedDislikedArtists = maxOf(loadedDislikedArtists, _state.value.dislikedArtists.size, page)
+        }
+        val tracks = trackDao.getDisliked(loadedDislikedTracks, 0)
+        val albums = metadataDao.getDislikedAlbums(loadedDislikedAlbums, 0)
+        val artists = metadataDao.getDislikedArtists(loadedDislikedArtists, 0)
+        // Neutral pending = clear dislike (removed from disliked list)
+        trackPending.reconcile(emptySet(), tracks.map { it.id }.toSet())
+        albumPending.reconcile(emptySet(), albums.map { it.id }.toSet())
+        artistPending.reconcile(emptySet(), artists.map { it.id }.toSet())
+        val probeTracks = trackDao.getDisliked(1, tracks.size)
+        val probeAlbums = metadataDao.getDislikedAlbums(1, albums.size)
+        val probeArtists = metadataDao.getDislikedArtists(1, artists.size)
+        loadedDislikedTracks = tracks.size.coerceAtLeast(page)
+        loadedDislikedAlbums = albums.size.coerceAtLeast(page)
+        loadedDislikedArtists = artists.size.coerceAtLeast(page)
+        _state.value = _state.value.copy(
+            dislikedTracks = applyTrackPendingDisliked(tracks),
+            dislikedAlbums = applyAlbumPendingDisliked(albums),
+            dislikedArtists = applyArtistPendingDisliked(artists),
+            hasMoreDislikedTracks = probeTracks.isNotEmpty(),
+            hasMoreDislikedAlbums = probeAlbums.isNotEmpty(),
+            hasMoreDislikedArtists = probeArtists.isNotEmpty(),
+        )
+    }
+
+    private fun applyTrackPendingLiked(room: List<TrackEntity>): List<TrackEntity> =
+        room.filter { trackPending.get(it.id) != FavoritePendingKind.Neutral }
+
+    private fun applyAlbumPendingLiked(room: List<AlbumEntity>): List<AlbumEntity> =
+        room.filter { albumPending.get(it.id) != FavoritePendingKind.Neutral }
+
+    private fun applyArtistPendingLiked(room: List<ArtistEntity>): List<ArtistEntity> =
+        room.filter { artistPending.get(it.id) != FavoritePendingKind.Neutral }
+
+    private fun applyTrackPendingDisliked(room: List<TrackEntity>): List<TrackEntity> =
+        room.filter { trackPending.get(it.id) != FavoritePendingKind.Neutral }
+
+    private fun applyAlbumPendingDisliked(room: List<AlbumEntity>): List<AlbumEntity> =
+        room.filter { albumPending.get(it.id) != FavoritePendingKind.Neutral }
+
+    private fun applyArtistPendingDisliked(room: List<ArtistEntity>): List<ArtistEntity> =
+        room.filter { artistPending.get(it.id) != FavoritePendingKind.Neutral }
 
     private data class LikedBundle(
         val tracks: List<TrackEntity>,
@@ -247,37 +381,55 @@ class FavoritesViewModel @Inject constructor(
     }
 
     fun unstarTrack(trackId: String) {
-        val previousTracks = _state.value.tracks
-        _state.value = _state.value.copy(tracks = previousTracks.filter { it.id != trackId })
+        val removed = _state.value.tracks.firstOrNull { it.id == trackId }
+        trackPending.set(trackId, FavoritePendingKind.Neutral)
+        _state.value = _state.value.copy(tracks = _state.value.tracks.filter { it.id != trackId })
         viewModelScope.launch {
             try {
                 favoriteRepository.unstarTrack(trackId)
             } catch (_: Exception) {
-                _state.value = _state.value.copy(tracks = previousTracks)
+                trackPending.clear(trackId)
+                if (removed != null) {
+                    _state.value = _state.value.copy(
+                        tracks = (_state.value.tracks + removed).distinctBy { it.id },
+                    )
+                }
             }
         }
     }
 
     fun unlikeAlbum(albumId: String) {
-        val previous = _state.value.albums
-        _state.value = _state.value.copy(albums = previous.filter { it.id != albumId })
+        val removed = _state.value.albums.firstOrNull { it.id == albumId }
+        albumPending.set(albumId, FavoritePendingKind.Neutral)
+        _state.value = _state.value.copy(albums = _state.value.albums.filter { it.id != albumId })
         viewModelScope.launch {
             try {
                 favoriteRepository.unlikeAlbum(albumId)
             } catch (_: Exception) {
-                _state.value = _state.value.copy(albums = previous)
+                albumPending.clear(albumId)
+                if (removed != null) {
+                    _state.value = _state.value.copy(
+                        albums = (_state.value.albums + removed).distinctBy { it.id },
+                    )
+                }
             }
         }
     }
 
     fun unlikeArtist(artistId: String) {
-        val previous = _state.value.artists
-        _state.value = _state.value.copy(artists = previous.filter { it.id != artistId })
+        val removed = _state.value.artists.firstOrNull { it.id == artistId }
+        artistPending.set(artistId, FavoritePendingKind.Neutral)
+        _state.value = _state.value.copy(artists = _state.value.artists.filter { it.id != artistId })
         viewModelScope.launch {
             try {
                 favoriteRepository.unlikeArtist(artistId)
             } catch (_: Exception) {
-                _state.value = _state.value.copy(artists = previous)
+                artistPending.clear(artistId)
+                if (removed != null) {
+                    _state.value = _state.value.copy(
+                        artists = (_state.value.artists + removed).distinctBy { it.id },
+                    )
+                }
             }
         }
     }
@@ -295,37 +447,55 @@ class FavoritesViewModel @Inject constructor(
     }
 
     fun clearDislikeTrack(trackId: String) {
-        val previous = _state.value.dislikedTracks
-        _state.value = _state.value.copy(dislikedTracks = previous.filter { it.id != trackId })
+        val removed = _state.value.dislikedTracks.firstOrNull { it.id == trackId }
+        trackPending.set(trackId, FavoritePendingKind.Neutral)
+        _state.value = _state.value.copy(dislikedTracks = _state.value.dislikedTracks.filter { it.id != trackId })
         viewModelScope.launch {
             try {
                 favoriteRepository.clearDislikeTrack(trackId)
             } catch (_: Exception) {
-                _state.value = _state.value.copy(dislikedTracks = previous)
+                trackPending.clear(trackId)
+                if (removed != null) {
+                    _state.value = _state.value.copy(
+                        dislikedTracks = (_state.value.dislikedTracks + removed).distinctBy { it.id },
+                    )
+                }
             }
         }
     }
 
     fun clearDislikeAlbum(albumId: String) {
-        val previous = _state.value.dislikedAlbums
-        _state.value = _state.value.copy(dislikedAlbums = previous.filter { it.id != albumId })
+        val removed = _state.value.dislikedAlbums.firstOrNull { it.id == albumId }
+        albumPending.set(albumId, FavoritePendingKind.Neutral)
+        _state.value = _state.value.copy(dislikedAlbums = _state.value.dislikedAlbums.filter { it.id != albumId })
         viewModelScope.launch {
             try {
                 favoriteRepository.clearDislikeAlbum(albumId)
             } catch (_: Exception) {
-                _state.value = _state.value.copy(dislikedAlbums = previous)
+                albumPending.clear(albumId)
+                if (removed != null) {
+                    _state.value = _state.value.copy(
+                        dislikedAlbums = (_state.value.dislikedAlbums + removed).distinctBy { it.id },
+                    )
+                }
             }
         }
     }
 
     fun clearDislikeArtist(artistId: String) {
-        val previous = _state.value.dislikedArtists
-        _state.value = _state.value.copy(dislikedArtists = previous.filter { it.id != artistId })
+        val removed = _state.value.dislikedArtists.firstOrNull { it.id == artistId }
+        artistPending.set(artistId, FavoritePendingKind.Neutral)
+        _state.value = _state.value.copy(dislikedArtists = _state.value.dislikedArtists.filter { it.id != artistId })
         viewModelScope.launch {
             try {
                 favoriteRepository.clearDislikeArtist(artistId)
             } catch (_: Exception) {
-                _state.value = _state.value.copy(dislikedArtists = previous)
+                artistPending.clear(artistId)
+                if (removed != null) {
+                    _state.value = _state.value.copy(
+                        dislikedArtists = (_state.value.dislikedArtists + removed).distinctBy { it.id },
+                    )
+                }
             }
         }
     }
@@ -340,12 +510,21 @@ data class FavoritesState(
     val dislikedTracks: List<TrackEntity> = emptyList(),
     val dislikedAlbums: List<AlbumEntity> = emptyList(),
     val dislikedArtists: List<ArtistEntity> = emptyList(),
-    val hasMoreLiked: Boolean = false,
-    val hasMoreDisliked: Boolean = false,
+    val hasMoreLikedTracks: Boolean = false,
+    val hasMoreLikedAlbums: Boolean = false,
+    val hasMoreLikedArtists: Boolean = false,
+    val hasMoreDislikedTracks: Boolean = false,
+    val hasMoreDislikedAlbums: Boolean = false,
+    val hasMoreDislikedArtists: Boolean = false,
     val showFavArtistsSection: Boolean = true,
     val showFavAlbumsSection: Boolean = true,
     val showFavRadioSection: Boolean = true,
-)
+) {
+    val hasMoreLiked: Boolean
+        get() = hasMoreLikedTracks || hasMoreLikedAlbums || hasMoreLikedArtists
+    val hasMoreDisliked: Boolean
+        get() = hasMoreDislikedTracks || hasMoreDislikedAlbums || hasMoreDislikedArtists
+}
 
 @Composable
 fun FavoritesScreen(
@@ -474,7 +653,18 @@ private fun LikedFavoritesList(
     currentAlbumId: String?,
     isPlaying: Boolean,
 ) {
-    LazyColumn(Modifier.testTag("favorites_liked_list")) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, state.hasMoreLiked) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            total > 0 && last >= total - 3
+        }.collect { nearEnd ->
+            if (nearEnd && state.hasMoreLiked) viewModel.loadMore()
+        }
+    }
+    LazyColumn(Modifier.testTag("favorites_liked_list"), state = listState) {
         if (state.tracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbUp) }
             items(state.tracks, key = { "liked_t_${it.id}" }) { track ->
@@ -554,7 +744,18 @@ private fun DislikedFavoritesList(
     isPlaying: Boolean,
 ) {
     val dislikeTint = Color(0xFFE84040)
-    LazyColumn(Modifier.testTag("favorites_disliked_list")) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, state.hasMoreDisliked) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            total > 0 && last >= total - 3
+        }.collect { nearEnd ->
+            if (nearEnd && state.hasMoreDisliked) viewModel.loadMore()
+        }
+    }
+    LazyColumn(Modifier.testTag("favorites_disliked_list"), state = listState) {
         if (state.dislikedTracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbDown, tint = dislikeTint) }
             items(state.dislikedTracks, key = { "dis_t_${it.id}" }) { track ->
