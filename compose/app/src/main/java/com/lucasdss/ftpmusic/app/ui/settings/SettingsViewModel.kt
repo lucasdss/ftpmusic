@@ -19,8 +19,11 @@ import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
@@ -432,7 +435,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Build diagnostics export text (no network upload). */
+    private val _shareDiagnosticsEvents = Channel<String>(Channel.BUFFERED)
+
+    /** One-shot share payloads — UI starts ACTION_SEND chooser. */
+    val shareDiagnosticsEvents = _shareDiagnosticsEvents.receiveAsFlow()
+
+    /** Build diagnostics export text (no network upload). Safe off main. */
     fun diagnosticsSnapshot(): String {
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-ui",
@@ -450,6 +458,14 @@ class SettingsViewModel @Inject constructor(
             artists = s.artistCount,
             tracks = s.cachedTrackCount,
         )
+    }
+
+    /** Snapshot on Default → emit for Share chooser (keeps UI thread free). */
+    fun shareDiagnostics() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val text = diagnosticsSnapshot()
+            _shareDiagnosticsEvents.send(text)
+        }
     }
 
     fun clearDiagnostics() {

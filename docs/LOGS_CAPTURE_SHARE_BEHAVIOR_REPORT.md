@@ -17,8 +17,11 @@ Verdict: shell matches support-export market. Pre-0060 coverage hollow for Cast/
 
 ## Pipeline
 
-Writers → `DiagnosticLog` ring (CAP=1000) → Settings Share `ACTION_SEND` text/plain.
-Clear wipes buffer. Process death → empty. DEBUG mirrors to Log.
+Writers → `DiagnosticLog.append` (sanitize URLs + truncate 200) → ring (CAP=1000).
+Share tap → `SettingsViewModel.shareDiagnostics()` on `Dispatchers.Default` → Channel →
+SettingsScreen chooser (`ActivityNotFoundException` swallowed). Clear wipes buffer.
+Process death → empty. DEBUG mirrors raw msg to Log (scrub only in buffer/export).
+`snapshot()` copies lines under lock; `joinToString` outside lock.
 
 ## Domain matrix (post-0060)
 
@@ -38,6 +41,8 @@ Clear wipes buffer. Process death → empty. DEBUG mirrors to Log.
 | Scrobble/reach | existing tags | yes | unchanged |
 
 Forbidden in share: titles, URLs, passwords, Cast friendlyName.
+Scrub: `https?://\S+` → `<url>` on msg + throwable message; fields capped at 200 chars.
+Null throwable message → class name only (no `: null`).
 
 ## Edge cases
 

@@ -31,3 +31,6 @@ sync, Daily Mix, cache/download, and UI lived only in logcat — R8 strips
 - Buffer fills faster under Cast — 1000 CAP + phase-boundary logging
   mitigates.
 - Extends ADR-0048; Crashlytics/Sentry remain out of scope for OSS client.
+- Append scrub: URL redact + 200-char cap on msg/throwable text (central).
+- Share builds snapshot off main (`Dispatchers.Default`); chooser guarded
+  against `ActivityNotFoundException`. Snapshot copies under lock, joins outside.

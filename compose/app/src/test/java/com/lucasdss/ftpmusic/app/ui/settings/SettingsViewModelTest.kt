@@ -21,7 +21,10 @@ import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -676,5 +679,19 @@ class SettingsViewModelTest {
         )
         assertTrue(afterClear.contains("cleared diagnostics"))
         assertFalse(afterClear.contains("vm-line"))
+    }
+
+    @Test
+    fun `shareDiagnostics emits snapshot off main`() = runBlocking {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("t", "share-async-line")
+        every { offlineModeManager.isQueueEnabled() } returns false
+
+        viewModel.shareDiagnostics()
+        val payload = withTimeout(10_000) { viewModel.shareDiagnosticsEvents.first() }
+
+        assertTrue(payload.contains("share-async-line"))
+        assertTrue(payload.contains("share diagnostics"))
+        assertTrue(payload.contains("ftpmusic diagnostics"))
     }
 }

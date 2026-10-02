@@ -10,9 +10,12 @@ import java.util.ArrayDeque
  * In-process ring buffer for Play testing diagnostics (ADR-0048, ADR-0060).
  * Survives R8 Log stripping — testers export via Settings → Share diagnostics.
  * Strict fields only: ids/counts/flags — no titles, URLs, or Cast friendlyName.
+ * Exception/msg scrub: URLs → `<url>`, truncate to [MAX_FIELD_LEN].
  */
 object DiagnosticLog {
     private const val CAP = 1000
+    internal const val MAX_FIELD_LEN = 200
+    private val URL_REGEX = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
     private val lock = Any()
     private val lines = ArrayDeque<String>(CAP + 1)
 
@@ -54,14 +57,20 @@ object DiagnosticLog {
             appendLine("capturedAt=${Instant.now()}")
             appendLine("---")
         }
-        val body = synchronized(lock) { lines.joinToString("\n") }
-        return header + body
+        val bodyLines = synchronized(lock) { lines.toList() }
+        return header + bodyLines.joinToString("\n")
     }
 
     private fun append(level: String, tag: String, msg: String, t: Throwable?) {
         val ts = Instant.now().toString()
-        val suffix = if (t != null) " | ${t.javaClass.simpleName}: ${t.message}" else ""
-        val line = "$ts | $level | $tag | $msg$suffix"
+        val safeMsg = sanitize(msg)
+        val suffix = if (t != null) {
+            val tMsg = t.message?.let { sanitize(it) }
+            if (tMsg.isNullOrEmpty()) " | ${t.javaClass.simpleName}" else " | ${t.javaClass.simpleName}: $tMsg"
+        } else {
+            ""
+        }
+        val line = "$ts | $level | $tag | $safeMsg$suffix"
         synchronized(lock) {
             lines.addLast(line)
             while (lines.size > CAP) lines.removeFirst()
@@ -73,5 +82,11 @@ object DiagnosticLog {
                 else -> android.util.Log.d(tag, msg)
             }
         }
+    }
+
+    /** Redact http(s) URLs + bound field length for Intent/EXTRA_TEXT safety. */
+    internal fun sanitize(text: String): String {
+        val scrubbed = URL_REGEX.replace(text, "<url>")
+        return if (scrubbed.length <= MAX_FIELD_LEN) scrubbed else scrubbed.take(MAX_FIELD_LEN)
     }
 }

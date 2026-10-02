@@ -53,6 +53,23 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    LaunchedEffect(viewModel) {
+        viewModel.shareDiagnosticsEvents.collect { text ->
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_SUBJECT, "ftpmusic diagnostics")
+                putExtra(android.content.Intent.EXTRA_TEXT, text)
+            }
+            try {
+                context.startActivity(
+                    android.content.Intent.createChooser(send, "Share diagnostics"),
+                )
+            } catch (_: android.content.ActivityNotFoundException) {
+                // No share target — ignore (export stays in-process only).
+            }
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -917,17 +934,7 @@ fun SettingsScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        val text = viewModel.diagnosticsSnapshot()
-                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(android.content.Intent.EXTRA_SUBJECT, "ftpmusic diagnostics")
-                            putExtra(android.content.Intent.EXTRA_TEXT, text)
-                        }
-                        context.startActivity(
-                            android.content.Intent.createChooser(send, "Share diagnostics"),
-                        )
-                    }
+                    .clickable { viewModel.shareDiagnostics() }
                     .padding(horizontal = spacingL(), vertical = spacingM())
                     .testTag("settings_share_diagnostics"),
                 verticalAlignment = Alignment.CenterVertically,

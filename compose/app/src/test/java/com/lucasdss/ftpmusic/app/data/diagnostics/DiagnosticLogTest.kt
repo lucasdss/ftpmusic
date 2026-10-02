@@ -87,4 +87,50 @@ class DiagnosticLogTest {
         assertTrue(snap.contains("---"))
         assertFalse(snap.contains("| E | x |"))
     }
+
+    @Test
+    fun scrub_throwableUrl_redacted() {
+        DiagnosticLog.e(
+            "sync",
+            "failed",
+            RuntimeException("GET https://music.example.com/rest/ping?u=x failed"),
+        )
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertTrue(snap.contains("<url>"))
+        assertFalse(snap.contains("music.example.com"))
+        assertFalse(snap.contains("https://"))
+        assertTrue(snap.contains("RuntimeException:"))
+    }
+
+    @Test
+    fun scrub_inlineMsgUrl_redacted() {
+        DiagnosticLog.w("download", "worker fail https://cdn.example/stream/track.mp3 timeout")
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertTrue(snap.contains("<url>"))
+        assertFalse(snap.contains("cdn.example"))
+    }
+
+    @Test
+    fun scrub_longMsg_truncated() {
+        val long = "x".repeat(DiagnosticLog.MAX_FIELD_LEN + 50)
+        DiagnosticLog.d("t", long)
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        val bodyLine = snap.lineSequence().first { it.contains("| D | t |") }
+        val msg = bodyLine.substringAfter("| D | t | ")
+        assertEquals(DiagnosticLog.MAX_FIELD_LEN, msg.length)
+    }
+
+    @Test
+    fun scrub_nullThrowableMessage_omitsNullLiteral() {
+        DiagnosticLog.e("x", "err", RuntimeException(null as String?))
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertTrue(snap.contains("RuntimeException"))
+        assertFalse(snap.contains("RuntimeException: null"))
+    }
+
+    @Test
+    fun sanitize_httpAndHttps() {
+        assertEquals("hit <url> ok", DiagnosticLog.sanitize("hit http://a.b/c ok"))
+        assertEquals("hit <url> ok", DiagnosticLog.sanitize("hit HTTPS://A.B/C ok"))
+    }
 }
