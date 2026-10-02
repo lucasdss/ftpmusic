@@ -3,9 +3,9 @@
 Date: 2026-08-19
 Status: Accepted
 
-> **Status note (2026-10-01):** verified on 1.3.0 (versionCode 5) — signed AAB
+> **Status note (2026-10-02):** verified on 1.4.0 (versionCode 6) — signed AAB
 > for Play Internal testing; unit suite + `lintVitalRelease` required before
-> upload. Prior note (2026-09-29) referred to 1.2.0 / code 4.
+> upload. Prior note (2026-10-01) referred to 1.3.0 / code 5.
 
 ## Context
 
