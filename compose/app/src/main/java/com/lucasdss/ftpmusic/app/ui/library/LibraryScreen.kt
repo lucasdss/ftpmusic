@@ -53,6 +53,7 @@ import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.RadioBookmarkIcon
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
@@ -637,31 +638,10 @@ fun LibraryContent(
                                             )
                                         }
                                         // v43: Bookmark ribbon (local-only favorite)
-                                        Icon(
-                                            if (station.id in
-                                                state.bookmarkedStationIds
-                                            ) {
-                                                Icons.Filled.Bookmark
-                                            } else {
-                                                Icons.Outlined.BookmarkBorder
-                                            },
-                                            if (station.id in
-                                                state.bookmarkedStationIds
-                                            ) {
-                                                "Unbookmark station"
-                                            } else {
-                                                "Bookmark station"
-                                            },
-                                            tint = if (station.id in
-                                                state.bookmarkedStationIds
-                                            ) {
-                                                BrandTeal
-                                            } else {
-                                                NavUnselected
-                                            },
-                                            modifier = Modifier.size(18.dp).clickable {
-                                                viewModel.toggleRadioBookmark(station)
-                                            },
+                                        RadioBookmarkIcon(
+                                            bookmarked = station.id in state.bookmarkedStationIds,
+                                            onClick = { viewModel.toggleRadioBookmark(station) },
+                                            inactiveTint = NavUnselected,
                                         )
                                         Spacer(Modifier.width(10.dp))
                                         Box(

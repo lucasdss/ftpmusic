@@ -12,12 +12,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.reactionGlyphSize
+import com.lucasdss.ftpmusic.app.ui.reactionHitSize
 
-/** Round 24dp favorite thumb (like/dislike) used on album cards and artist
- *  rows. The whole circle is the touch target (a11y); the icon carries
- *  semantics. Active tint teal by default, red for dislike. */
+/** Round market-sized favorite thumb (like/dislike) for album cards and
+ *  artist/album heroes. Circle = [reactionHitSize]; glyph = [reactionGlyphSize].
+ *  Active tint teal by default, red for dislike. */
 @Composable
 fun FavoriteThumbButton(
     icon: ImageVector,
@@ -28,7 +29,8 @@ fun FavoriteThumbButton(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier.size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+        modifier.size(reactionHitSize()).clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.55f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -36,7 +38,7 @@ fun FavoriteThumbButton(
             icon,
             contentDescription,
             tint = if (active) activeTint else Color.White.copy(alpha = 0.7f),
-            modifier = Modifier.size(12.dp),
+            modifier = Modifier.size(reactionGlyphSize()),
         )
     }
 }

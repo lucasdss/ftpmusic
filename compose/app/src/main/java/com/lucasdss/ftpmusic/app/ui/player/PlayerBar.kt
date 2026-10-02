@@ -77,6 +77,7 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.SurfaceElevated
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -733,7 +734,7 @@ private fun ColumnScope.PlayerMainBody(
                                     Icons.Filled.ThumbUp,
                                     if (isStarred) "Unlike" else "Like",
                                     tint = tint,
-                                    modifier = Modifier.size(adp(14f)),
+                                    modifier = Modifier.size(reactionGlyphSize()),
                                 )
                             },
                             onClick = onToggleLike,
@@ -747,7 +748,7 @@ private fun ColumnScope.PlayerMainBody(
                                     Icons.Filled.ThumbDown,
                                     if (isDisliked) "Remove dislike" else "Dislike",
                                     tint = tint,
-                                    modifier = Modifier.size(adp(14f)),
+                                    modifier = Modifier.size(reactionGlyphSize()),
                                 )
                             },
                             onClick = onToggleDislike,
@@ -755,16 +756,11 @@ private fun ColumnScope.PlayerMainBody(
                         )
                     }
                     // Interactive 0-5 star rating
-                    Row(Modifier.padding(top = spacingS())) {
-                        for (i in 1..5) {
-                            Icon(
-                                imageVector = if (i <= trackRating) Icons.Filled.Star else Icons.Default.StarBorder,
-                                contentDescription = "Rate $i",
-                                tint = if (i <= trackRating) BrandTeal else Color(0xFF444444),
-                                modifier = Modifier.size(adp(11f)).padding(end = adp(1f)).clickable { onRate(i) },
-                            )
-                        }
-                    }
+                    InteractiveStarRating(
+                        rating = trackRating,
+                        onRate = onRate,
+                        modifier = Modifier.padding(top = spacingS()),
+                    )
                 }
             }
             Spacer(Modifier.height(adp(16f)))
@@ -2074,7 +2070,7 @@ private fun SwipeableAlbumArt(
     }
 }
 
-/** Design v4 round reaction button (28dp) — active = tinted circle + border. */
+/** Design v4 round reaction button — market hit [reactionHitSize]. */
 @Composable
 private fun ReactionCircle(
     active: Boolean,
@@ -2085,7 +2081,7 @@ private fun ReactionCircle(
 ) {
     Box(
         modifier
-            .size(adp(28f))
+            .size(reactionHitSize())
             .clip(CircleShape)
             .then(
                 if (active) {

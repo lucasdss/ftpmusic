@@ -51,6 +51,8 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.SurfaceChip
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.RadioBookmarkIcon
+import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
@@ -913,11 +915,11 @@ private fun TrackFavoriteRow(
             Spacer(Modifier.width(6.dp))
         }
         Spacer(Modifier.width(8.dp))
-        Icon(
-            actionIcon,
+        ReactionGlyphButton(
+            icon = actionIcon,
             contentDescription = actionCd,
             tint = actionTint,
-            modifier = Modifier.size(16.dp).clickable(onClick = onAction),
+            onClick = onAction,
         )
     }
     HorizontalDivider(
@@ -952,11 +954,11 @@ private fun ArtistFavoriteRow(
             )
             Text("Artist", color = Color(0xFF888888), fontSize = textLabelM())
         }
-        Icon(
-            actionIcon,
+        ReactionGlyphButton(
+            icon = actionIcon,
             contentDescription = actionCd,
             tint = actionTint,
-            modifier = Modifier.size(16.dp).clickable(onClick = onAction),
+            onClick = onAction,
         )
     }
     HorizontalDivider(
@@ -1034,11 +1036,11 @@ private fun AlbumFavoriteRow(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        Icon(
-            actionIcon,
+        ReactionGlyphButton(
+            icon = actionIcon,
             contentDescription = actionCd,
             tint = actionTint,
-            modifier = Modifier.size(16.dp).clickable(onClick = onAction),
+            onClick = onAction,
         )
     }
     HorizontalDivider(
@@ -1091,11 +1093,9 @@ private fun RadioFavoriteRow(station: RadioFavoriteEntity, onRowClick: () -> Uni
                 )
             }
         }
-        Icon(
-            Icons.Filled.Bookmark,
-            contentDescription = "Unbookmark station",
-            tint = BrandTeal,
-            modifier = Modifier.size(16.dp).clickable(onClick = onUnbookmark),
+        RadioBookmarkIcon(
+            bookmarked = true,
+            onClick = onUnbookmark,
         )
         Spacer(Modifier.width(8.dp))
         Box(

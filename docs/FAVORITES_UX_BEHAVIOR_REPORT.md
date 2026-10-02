@@ -35,6 +35,18 @@ Invariant: Room write succeeds → then best-effort mirror. Offline / API fail �
 | Apple Music | ★ favorite | buried | — |
 | FTP Music | thumbs (= star) | thumbs (= local dislike) | 5★ (= userRating) |
 
+## Interactive icon sizes (ADR 0059)
+
+| Control | Glyph | Hit |
+| :--- | :--- | :--- |
+| FavoriteThumbButton / Player ReactionCircle | `reactionGlyphSize` 20 | `reactionHitSize` 40 |
+| Dense-row thumbs / Favorites trailing | `reactionGlyphSize` 20 | `minimumInteractiveComponentSize` |
+| Interactive 0–5★ (player/hero) | `ratingStarInteractiveSize` 20 | min touch |
+| Interactive 0–5★ (dense track row) | `ratingStarInteractiveSize` 20 | no expand (avoid title steal) |
+| Radio bookmark | `reactionGlyphSize` 20 | min touch |
+
+Decorative headers / empty-state / display-only stars unchanged.
+
 ## Known limits
 
 - Radio cannot sync to Navidrome (no radio star API).

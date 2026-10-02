@@ -55,6 +55,8 @@ import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
+import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
@@ -632,33 +634,28 @@ private fun TrackRow(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            // Star rating (parity with Album detail)
-            Row {
-                for (i in 1..5) {
-                    Icon(
-                        if (i <= rating) Icons.Default.Star else Icons.Default.StarBorder,
-                        null,
-                        tint = if (i <= rating) BrandTeal else Color(0xFF444444),
-                        modifier = Modifier.size(11.dp).clickable { onRate(i) },
-                    )
-                }
-            }
         }
         Spacer(Modifier.width(8.dp))
+        InteractiveStarRating(
+            rating = rating,
+            onRate = onRate,
+            expandTouchTarget = false,
+        )
+        Spacer(Modifier.width(8.dp))
         // ThumbsUp (like == star)
-        Icon(
-            if (isLiked) Icons.Filled.ThumbUp else Icons.Filled.ThumbUp,
+        ReactionGlyphButton(
+            icon = Icons.Filled.ThumbUp,
             contentDescription = if (isLiked) "Unlike" else "Like",
             tint = if (isLiked) BrandTeal else Color(0xFF444444),
-            modifier = Modifier.size(knobSize()).clickable { onToggleLike() },
+            onClick = onToggleLike,
         )
         Spacer(Modifier.width(6.dp))
         // ThumbsDown (dislike — local)
-        Icon(
-            if (isDisliked) Icons.Filled.ThumbDown else Icons.Filled.ThumbDown,
+        ReactionGlyphButton(
+            icon = Icons.Filled.ThumbDown,
             contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
             tint = if (isDisliked) Color(0xFFE84040) else Color(0xFF444444),
-            modifier = Modifier.size(knobSize()).clickable { onToggleDislike() },
+            onClick = onToggleDislike,
         )
         Spacer(Modifier.width(6.dp))
         track.duration?.let { d ->

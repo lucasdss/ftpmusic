@@ -58,6 +58,8 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
+import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -386,43 +388,33 @@ fun MixDetailScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
-                                // Star rating (parity with Album)
-                                Row {
-                                    for (i in 1..5) {
-                                        val r = viewModel.getTrackRating(track.id)
-                                        Icon(
-                                            if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
-                                            null,
-                                            tint = if (i <= r) BrandTeal else Color(0xFF444444),
-                                            modifier = Modifier.size(11.dp).clickable {
-                                                viewModel.rateTrack(track.id, i)
-                                            },
-                                        )
-                                    }
-                                }
                             }
                             Spacer(Modifier.width(8.dp))
+                            InteractiveStarRating(
+                                rating = viewModel.getTrackRating(track.id),
+                                onRate = { viewModel.rateTrack(track.id, it) },
+                                expandTouchTarget = false,
+                            )
+                            Spacer(Modifier.width(6.dp))
                             // Download badge
                             com.lucasdss.ftpmusic.app.ui.components.DownloadDot(ds)
                             Spacer(Modifier.width(6.dp))
                             // ThumbsUp (like == star)
                             val isLiked = viewModel.isTrackLiked(track.id)
-                            Icon(
-                                if (isLiked) Icons.Filled.ThumbUp else Icons.Filled.ThumbUp,
+                            ReactionGlyphButton(
+                                icon = Icons.Filled.ThumbUp,
                                 contentDescription = if (isLiked) "Unlike" else "Like",
                                 tint = if (isLiked) BrandTeal else Color(0xFF444444),
-                                modifier = Modifier.size(knobSize()).clickable { viewModel.toggleTrackLike(track.id) },
+                                onClick = { viewModel.toggleTrackLike(track.id) },
                             )
                             Spacer(Modifier.width(6.dp))
                             // ThumbsDown (dislike — local)
                             val isDisliked = viewModel.isTrackDisliked(track.id)
-                            Icon(
-                                if (isDisliked) Icons.Filled.ThumbDown else Icons.Filled.ThumbDown,
+                            ReactionGlyphButton(
+                                icon = Icons.Filled.ThumbDown,
                                 contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
                                 tint = if (isDisliked) Color(0xFFE84040) else Color(0xFF444444),
-                                modifier = Modifier.size(knobSize()).clickable {
-                                    viewModel.toggleTrackDislike(track.id)
-                                },
+                                onClick = { viewModel.toggleTrackDislike(track.id) },
                             )
                             Spacer(Modifier.width(6.dp))
                             // Duration

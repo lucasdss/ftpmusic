@@ -115,3 +115,12 @@ fun asp(base: Float): TextUnit = (base * AdaptiveScale.factor()).sp
 @Composable fun dividerThickness(): Dp = adp(1f)
 
 @Composable fun knobSize(): Dp = adp(14f)
+
+/** Interactive reaction glyph (thumbs / bookmark) — market ~20dp. */
+@Composable fun reactionGlyphSize(): Dp = adp(ReactionIconTokens.GLYPH_BASE_DP)
+
+/** Visible circle hit for overlay/player reaction buttons — market ~40dp. */
+@Composable fun reactionHitSize(): Dp = adp(ReactionIconTokens.HIT_BASE_DP)
+
+/** Interactive 0–5★ glyph size (pair with minimumInteractiveComponentSize). */
+@Composable fun ratingStarInteractiveSize(): Dp = adp(ReactionIconTokens.STAR_BASE_DP)

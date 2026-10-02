@@ -46,6 +46,8 @@ import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
+import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
@@ -220,35 +222,29 @@ fun AlbumDetailScreen(
                             state.album?.let { alb ->
                                 val r = state.albumRating.takeIf { it > 0 } ?: (alb.rating ?: 0)
                                 Text(" · ", color = Color(0xFF444444), fontSize = textLabelM())
-                                Row {
-                                    for (i in 1..5) {
-                                        Icon(
-                                            if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
-                                            contentDescription = "Rate album $i of 5",
-                                            tint = if (i <= r) BrandTeal else Color(0xFF444444),
-                                            modifier = Modifier.size(iconMicro())
-                                                .clickable { viewModel.rateAlbum(albumId, i) },
-                                        )
-                                    }
+                                InteractiveStarRating(
+                                    rating = r,
+                                    onRate = { viewModel.rateAlbum(albumId, it) },
+                                    contentDescriptionPrefix = "Rate album",
+                                )
 
-                                    // ── Overwrite Protection ──
-                                    val showOverwrite by
-                                        viewModel.showOverwriteModal.collectAsStateWithLifecycle()
-                                    if (showOverwrite) {
-                                        android.app.AlertDialog.Builder(context).apply {
-                                            setTitle("Tracks in your queue")
-                                            setMessage(
-                                                "You have tracks in your Priority Queue. Do you want to clear them and play this album, or keep them?",
-                                            )
-                                            setNegativeButton("Keep Queue") { _, _ ->
-                                                viewModel.resolveOverwrite(false)
-                                            }
-                                            setPositiveButton("Clear & Play") { _, _ ->
-                                                viewModel.resolveOverwrite(true)
-                                            }
-                                            setOnCancelListener { viewModel.resolveOverwrite(false) }
-                                            show()
+                                // ── Overwrite Protection ──
+                                val showOverwrite by
+                                    viewModel.showOverwriteModal.collectAsStateWithLifecycle()
+                                if (showOverwrite) {
+                                    android.app.AlertDialog.Builder(context).apply {
+                                        setTitle("Tracks in your queue")
+                                        setMessage(
+                                            "You have tracks in your Priority Queue. Do you want to clear them and play this album, or keep them?",
+                                        )
+                                        setNegativeButton("Keep Queue") { _, _ ->
+                                            viewModel.resolveOverwrite(false)
                                         }
+                                        setPositiveButton("Clear & Play") { _, _ ->
+                                            viewModel.resolveOverwrite(true)
+                                        }
+                                        setOnCancelListener { viewModel.resolveOverwrite(false) }
+                                        show()
                                     }
                                 }
                             }
@@ -402,40 +398,34 @@ fun AlbumDetailScreen(
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            Spacer(Modifier.height(2.dp))
-                            Row {
-                                for (i in 1..5) {
-                                    val r = viewModel.getTrackRating(track.id)
-                                    Icon(
-                                        if (i <= r) Icons.Default.Star else Icons.Default.StarBorder,
-                                        null,
-                                        tint = if (i <= r) BrandTeal else Color(0xFF444444),
-                                        modifier = Modifier.size(11.dp).clickable { viewModel.rateTrack(track.id, i) },
-                                    )
-                                }
-                            }
                         }
                     } // end playable area
                     Spacer(Modifier.width(8.dp))
+                    InteractiveStarRating(
+                        rating = viewModel.getTrackRating(track.id),
+                        onRate = { viewModel.rateTrack(track.id, it) },
+                        expandTouchTarget = false,
+                    )
+                    Spacer(Modifier.width(6.dp))
                     // Right-side icons — independent tap targets
                     DownloadDot(ds)
                     Spacer(Modifier.width(6.dp))
                     // ThumbsUp (like == star)
                     val isLiked = viewModel.isTrackLiked(track.id)
-                    Icon(
-                        Icons.Filled.ThumbUp,
+                    ReactionGlyphButton(
+                        icon = Icons.Filled.ThumbUp,
                         contentDescription = if (isLiked) "Unlike" else "Like",
                         tint = if (isLiked) BrandTeal else Color(0xFF444444),
-                        modifier = Modifier.size(knobSize()).clickable { viewModel.toggleTrackLike(track.id) },
+                        onClick = { viewModel.toggleTrackLike(track.id) },
                     )
                     Spacer(Modifier.width(6.dp))
                     // ThumbsDown (dislike — local)
                     val isDisliked = viewModel.isTrackDisliked(track.id)
-                    Icon(
-                        Icons.Filled.ThumbDown,
+                    ReactionGlyphButton(
+                        icon = Icons.Filled.ThumbDown,
                         contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
                         tint = if (isDisliked) Color(0xFFE84040) else Color(0xFF444444),
-                        modifier = Modifier.size(knobSize()).clickable { viewModel.toggleTrackDislike(track.id) },
+                        onClick = { viewModel.toggleTrackDislike(track.id) },
                     )
                     Spacer(Modifier.width(6.dp))
                     // Duration
