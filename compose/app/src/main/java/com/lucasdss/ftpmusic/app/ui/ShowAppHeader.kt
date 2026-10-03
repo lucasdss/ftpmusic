@@ -4,9 +4,9 @@ package com.lucasdss.ftpmusic.app.ui
  * Whether the persistent [com.lucasdss.ftpmusic.app.ui.components.AppHeader]
  * should show for the current nav route.
  *
- * Shows on primary tabs **and** Settings (header gear destination). Detail
- * routes use [com.lucasdss.ftpmusic.app.ui.components.DetailBackButton] instead
- * (ADR-0054 / ADR-0055).
+ * Shows on primary tabs only. Settings / detail / player use
+ * [com.lucasdss.ftpmusic.app.ui.components.DetailBackButton] or player
+ * minimize chrome instead (ADR-0054 / ADR-0063).
  */
 fun showAppHeaderForRoute(route: String?): Boolean {
     if (route == null) return false
@@ -20,6 +20,7 @@ private val HEADER_HIDDEN_EXACT = setOf(
     "nowplaying",
     "syncing",
     "rebuildmix",
+    "settings",
     "profile",
     "customMixes",
 )

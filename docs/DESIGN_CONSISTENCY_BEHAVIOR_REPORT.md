@@ -1,16 +1,18 @@
 # Design Consistency Behavior Report
 
-Caveman terse. Post ADR-0054 / 0055 / 0056.
+Caveman terse. Post ADR-0054 / 0055 / 0056 / **0063**.
 
 ## Chrome matrix
 
 | Surface | Behavior |
 |---------|----------|
 | Tabs Home/Search/Library/Favorites | AppHeader + Settings gear |
-| Settings | Off-bar; AppHeader gear (teal when selected); **stack push** `launchSingleTop` (ADR-0056) |
-| Detail routes | No AppHeader; `DetailBackButton` ≥48dp |
-| Full player | No AppHeader |
+| Settings | Off-bar; **no** AppHeader; `DetailBackButton` + title; **stack push** `launchSingleTop` (ADR-0056 / **0063**) |
+| Detail routes / Profile / customMixes | No AppHeader; `DetailBackButton` ≥48dp |
+| Full player | No AppHeader; swipe-down / ↓ minimize (ADR-0063) |
 | Queue (prod) | PlayerBar `queue_sheet` |
+
+Dismiss taxonomy: [docs/NAVIGATION_DISMISS_BEHAVIOR_REPORT.md](NAVIGATION_DISMISS_BEHAVIOR_REPORT.md).
 
 ## Navbar (ADR-0055)
 

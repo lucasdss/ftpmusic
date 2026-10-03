@@ -13,13 +13,22 @@ class ShowAppHeaderTest {
 
     @Test
     fun `primary tabs show header`() {
-        listOf("home", "library", "library?tab=albums", "favorites", "search", "search/foo", "settings")
+        listOf("home", "library", "library?tab=albums", "favorites", "search", "search/foo")
             .forEach { assertTrue(it, showAppHeaderForRoute(it)) }
     }
 
     @Test
     fun `exact hidden routes hide header`() {
-        listOf("splash", "connect", "nowplaying", "syncing", "rebuildmix", "profile", "customMixes")
+        listOf(
+            "splash",
+            "connect",
+            "nowplaying",
+            "syncing",
+            "rebuildmix",
+            "settings",
+            "profile",
+            "customMixes",
+        )
             .forEach { assertFalse(it, showAppHeaderForRoute(it)) }
     }
 

@@ -143,4 +143,15 @@ class SettingsScreenComposeTest {
         composeRule.onNodeWithTag("settings_profile_card").performClick()
         assert(profileClicked)
     }
+
+    @Test
+    fun `back button invokes onBack`() {
+        val vm = mockViewModel(SettingsUiState())
+        var invoked = false
+        composeRule.setContent {
+            SettingsScreen(viewModel = vm, onBack = { invoked = true })
+        }
+        composeRule.onNodeWithTag("detail_back_button").assertIsDisplayed().performClick()
+        assert(invoked)
+    }
 }

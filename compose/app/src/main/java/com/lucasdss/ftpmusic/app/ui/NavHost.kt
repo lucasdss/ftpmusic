@@ -647,6 +647,7 @@ fun FtpmusicNavHost() {
                 }
                 composable("settings") {
                     SettingsScreen(
+                        onBack = { navController.popBackStack() },
                         onResyncLibrary = {
                             if (navController.currentBackStackEntry?.destination?.route?.startsWith("syncing") ==
                                 true

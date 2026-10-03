@@ -23,6 +23,8 @@ by tests.
 2. **AppHeader:** shown on primary tabs only. Hidden on detail routes:
    `album/`, `artist/`, `playlist/`, `genre/`, `mix/`, `profile`,
    `customMixes`, plus splash/connect/nowplaying/syncing/rebuildmix.
+   **Superseded for Settings:** `settings` also hides AppHeader and uses
+   `DetailBackButton` — see **ADR-0063**.
 3. **Back:** shared `DetailBackButton` (circle + ChevronLeft) on detail
    screens; `inset=false` when embedded in TopAppBar / title rows.
 4. **Chips:** shared `SegmentedChip` / `SegmentedChipRow` — teal fill when

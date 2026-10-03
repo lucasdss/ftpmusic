@@ -22,6 +22,8 @@ the bar and put Search late vs Spotify / YT Music / Apple Music. Product require
 ## Consequences
 
 - Four-tab bar closer to market IA while preserving Liked as a dedicated tab.
-- Settings discoverability moves to header gear (teal when on `settings`).
+- Settings discoverability moves to header gear (entry from primary tabs).
 - No bottom-tab highlight while on Settings (none of the four routes match).
 - Settings **stack-back** policy refined in ADR-0056 (gear matches banners).
+- **ADR-0063:** while on `settings`, AppHeader hidden; in-screen
+  `DetailBackButton` (teal gear highlight on-route no longer applies).
