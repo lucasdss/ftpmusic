@@ -751,4 +751,91 @@ class DaosRoomTest {
         assertEquals(1, al1.size)
         assertTrue(al0.map { it.id }.toSet().intersect(al1.map { it.id }.toSet()).isEmpty())
     }
+
+    // ── Pending-unstar survival (YT Music second-tap unlike) ───────────────
+
+    @Test
+    fun `populateAllTrackGenres preserves pending_unstar_at`() = runBlocking {
+        val tracks = db.trackDao()
+        val meta = db.cachedMetadataDao()
+        tracks.upsert(
+            TrackEntity(
+                id = "t-pending",
+                title = "Pending",
+                albumId = "al-p",
+                starredAt = null,
+                pendingUnstarAt = 1_700_000_000_111L,
+            ),
+        )
+        meta.upsertAlbums(
+            listOf(CachedAlbumEntity(id = "al-p", name = "Album", genre = "Rock")),
+        )
+        meta.upsertAlbumTracks(
+            listOf(
+                CachedAlbumTrackEntity(
+                    id = "t-pending",
+                    albumId = "al-p",
+                    title = "Pending Updated",
+                    artist = "A",
+                ),
+            ),
+        )
+
+        tracks.populateAllTrackGenres()
+
+        val row = tracks.getTrack("t-pending")!!
+        assertEquals(1_700_000_000_111L, row.pendingUnstarAt)
+        assertNull(row.starredAt)
+        assertEquals("Pending Updated", row.title)
+    }
+
+    @Test
+    fun `clearStarAndMarkPendingUnstar is atomic`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.ensureTrackRow("t-atom")
+        tracks.setStarredAt("t-atom", 99L)
+        tracks.clearStarAndMarkPendingUnstar("t-atom", 1_700_000_000_222L)
+        val row = tracks.getTrack("t-atom")!!
+        assertNull(row.starredAt)
+        assertEquals(1_700_000_000_222L, row.pendingUnstarAt)
+        assertEquals(listOf("t-atom"), tracks.getPendingUnstarIds())
+    }
+
+    @Test
+    fun `pruneAlbumLedger keeps pending-unstar rows`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        // Ledger-only albums (not in cached_albums).
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO albums (id, server_id, name, is_disliked, pending_unstar_at) " +
+                "VALUES ('al-pend', '', 'Gone', 0, 1700000000333)",
+        )
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO albums (id, server_id, name, is_disliked) " +
+                "VALUES ('al-drop', '', 'Drop Me', 0)",
+        )
+
+        meta.pruneAlbumLedger()
+
+        val pending = meta.getPendingUnstarAlbumIds()
+        assertTrue("pending-unstar album must survive prune", pending.contains("al-pend"))
+        assertFalse(pending.contains("al-drop"))
+    }
+
+    @Test
+    fun `pruneArtistLedger keeps pending-unstar rows`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO artists (id, server_id, name, is_disliked, pending_unstar_at) " +
+                "VALUES ('ar-pend', '', 'Gone', 0, 1700000000444)",
+        )
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO artists (id, server_id, name, is_disliked) " +
+                "VALUES ('ar-drop', '', 'Drop Me', 0)",
+        )
+
+        meta.pruneArtistLedger()
+
+        assertTrue(meta.getPendingUnstarArtistIds().contains("ar-pend"))
+        assertFalse(meta.getPendingUnstarArtistIds().contains("ar-drop"))
+    }
 }

@@ -32,6 +32,8 @@ data class ArtistDetailState(
     val name: String = "",
     val albums: List<Album> = emptyList(),
     val tracks: List<Track> = emptyList(),
+    val likedTrackIds: Set<String> = emptySet(),
+    val dislikedTrackIds: Set<String> = emptySet(),
     val likedAlbumIds: Set<String> = emptySet(),
     val dislikedAlbumIds: Set<String> = emptySet(),
     val likedArtistIds: Set<String> = emptySet(),
@@ -424,19 +426,15 @@ class ArtistDetailViewModel @Inject constructor(
     val downloadedTrackIds: List<String> get() = _downloadedTrackIds.toList()
 
     // ── Like / rating (parity with Album detail) ───────────────────────
-
-    private val _likedTrackIds = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
-    val likedTrackIds = _likedTrackIds.asStateFlow()
-
-    private val _dislikedTrackIds = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
-    val dislikedTrackIds = _dislikedTrackIds.asStateFlow()
+    // Track reaction ids live on ArtistDetailState so Compose collecting `state`
+    // recomposes on toggle (separate StateFlows were unread by the UI).
 
     private val _trackRatings = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Int>>(emptyMap())
     val trackRatings = _trackRatings.asStateFlow()
 
-    fun isTrackLiked(trackId: String): Boolean = _likedTrackIds.value.contains(trackId)
+    fun isTrackLiked(trackId: String): Boolean = _state.value.likedTrackIds.contains(trackId)
 
-    fun isTrackDisliked(trackId: String): Boolean = _dislikedTrackIds.value.contains(trackId)
+    fun isTrackDisliked(trackId: String): Boolean = _state.value.dislikedTrackIds.contains(trackId)
 
     fun getTrackRating(trackId: String): Int = _trackRatings.value[trackId] ?: 0
 
@@ -450,26 +448,30 @@ class ArtistDetailViewModel @Inject constructor(
                 val roomLiked = entities.filter { it.starredAt != null }.map { it.id }.toSet()
                 val roomDisliked = entities.filter { it.isDisliked }.map { it.id }.toSet()
                 val idSet = trackIds.toSet()
-                val likedBase = (_likedTrackIds.value - idSet) + roomLiked
-                val dislikedBase = (_dislikedTrackIds.value - idSet) + roomDisliked
+                val likedBase = (_state.value.likedTrackIds - idSet) + roomLiked
+                val dislikedBase = (_state.value.dislikedTrackIds - idSet) + roomDisliked
                 trackPending.reconcile(likedBase, dislikedBase)
-                _likedTrackIds.value = trackPending.mergeLiked(likedBase)
-                _dislikedTrackIds.value = trackPending.mergeDisliked(dislikedBase)
+                _state.value = _state.value.copy(
+                    likedTrackIds = trackPending.mergeLiked(likedBase),
+                    dislikedTrackIds = trackPending.mergeDisliked(dislikedBase),
+                )
             } catch (_: Exception) {}
         }
     }
 
     fun toggleTrackLike(trackId: String) {
-        val previousLiked = _likedTrackIds.value
-        val previousDisliked = _dislikedTrackIds.value
+        val previousLiked = _state.value.likedTrackIds
+        val previousDisliked = _state.value.dislikedTrackIds
         val isLiked = trackId in previousLiked
         if (isLiked) {
             trackPending.set(trackId, FavoritePendingKind.Neutral)
-            _likedTrackIds.value = previousLiked - trackId
+            _state.value = _state.value.copy(likedTrackIds = previousLiked - trackId)
         } else {
             trackPending.set(trackId, FavoritePendingKind.Liked)
-            _likedTrackIds.value = previousLiked + trackId
-            _dislikedTrackIds.value = previousDisliked - trackId
+            _state.value = _state.value.copy(
+                likedTrackIds = previousLiked + trackId,
+                dislikedTrackIds = previousDisliked - trackId,
+            )
         }
         viewModelScope.launch {
             trackMutex(trackId).withLock {
@@ -481,8 +483,10 @@ class ArtistDetailViewModel @Inject constructor(
                     }
                 } catch (_: Exception) {
                     trackPending.clear(trackId)
-                    _likedTrackIds.value = previousLiked
-                    _dislikedTrackIds.value = previousDisliked
+                    _state.value = _state.value.copy(
+                        likedTrackIds = previousLiked,
+                        dislikedTrackIds = previousDisliked,
+                    )
                 }
             }
         }
@@ -490,16 +494,18 @@ class ArtistDetailViewModel @Inject constructor(
 
     /** Toggle thumbs-down (local dislike). Mutual exclusion: disliking clears like. */
     fun toggleTrackDislike(trackId: String) {
-        val previousLiked = _likedTrackIds.value
-        val previousDisliked = _dislikedTrackIds.value
+        val previousLiked = _state.value.likedTrackIds
+        val previousDisliked = _state.value.dislikedTrackIds
         val isDisliked = trackId in previousDisliked
         if (isDisliked) {
             trackPending.set(trackId, FavoritePendingKind.Neutral)
-            _dislikedTrackIds.value = previousDisliked - trackId
+            _state.value = _state.value.copy(dislikedTrackIds = previousDisliked - trackId)
         } else {
             trackPending.set(trackId, FavoritePendingKind.Disliked)
-            _dislikedTrackIds.value = previousDisliked + trackId
-            _likedTrackIds.value = previousLiked - trackId
+            _state.value = _state.value.copy(
+                dislikedTrackIds = previousDisliked + trackId,
+                likedTrackIds = previousLiked - trackId,
+            )
         }
         viewModelScope.launch {
             trackMutex(trackId).withLock {
@@ -511,8 +517,10 @@ class ArtistDetailViewModel @Inject constructor(
                     }
                 } catch (_: Exception) {
                     trackPending.clear(trackId)
-                    _likedTrackIds.value = previousLiked
-                    _dislikedTrackIds.value = previousDisliked
+                    _state.value = _state.value.copy(
+                        likedTrackIds = previousLiked,
+                        dislikedTrackIds = previousDisliked,
+                    )
                 }
             }
         }

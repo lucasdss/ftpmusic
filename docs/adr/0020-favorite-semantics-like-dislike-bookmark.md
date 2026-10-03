@@ -168,3 +168,24 @@ mirror failures — UI rolls back only on **Room** failure):
 9. UI language: empty Favorites Liked uses ThumbUp (not heart); Daily Mix
    liked-artist badge uses ThumbUp (not Star). 5★ content = rating, not like.
 10. Album/Artist detail heroes expose entity thumbs.
+
+## Review addendum (2026-10-03) — second-tap unlike (YT Music parity)
+
+Second tap on Like must unlike (market = YouTube Music). Intent already lived
+in `FavoriteRepository.unlike*` / ViewModel toggles; three bugs made it stick
+or show as Liked again:
+
+1. **`pending_unstar_at` wiped** by track `INSERT OR REPLACE` populate queries
+   (`populateAllTrackGenres` / `populateGenresFromCachedGenreSongs`) — column
+   omitted → NULL → mirror restarred from server. Queries now copy
+   `t.pending_unstar_at`.
+2. **Non-atomic unstar** (clear star then set pending) raced sync. Replaced
+   with atomic `clearStarAndMarkPendingUnstar` (tracks/albums/artists).
+3. **Ledger prune** deleted pending-unstar album/artist rows
+   (`starred_at IS NULL AND is_disliked = 0`). Prune now also requires
+   `pending_unstar_at IS NULL`.
+4. **Compose**: Artist/Mix track thumbs read uncollected liked-id flows —
+   UI stayed teal; second tap re-liked. Reaction ids folded into collected
+   `state` (AlbumDetail pattern).
+
+See `docs/THUMBS_TOGGLE_BEHAVIOR_REPORT.md`.

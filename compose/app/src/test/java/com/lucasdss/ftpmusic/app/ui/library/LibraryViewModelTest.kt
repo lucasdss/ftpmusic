@@ -2257,6 +2257,23 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `toggleAlbumLike like then unlike ends unstarred`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+
+        vm.toggleAlbumLike("al-toggle")
+        assertTrue(vm.state.value.likedAlbumIds.contains("al-toggle"))
+        vm.toggleAlbumLike("al-toggle")
+        assertFalse("second tap must unlike", vm.state.value.likedAlbumIds.contains("al-toggle"))
+        advanceUntilIdle()
+
+        coVerify { favRepo.likeAlbum("al-toggle") }
+        coVerify { favRepo.unlikeAlbum("al-toggle") }
+        assertFalse(vm.state.value.likedAlbumIds.contains("al-toggle"))
+    }
+
+    @Test
     fun `toggleAlbumLike rolls back on repository failure`() = runTest(testDispatcher) {
         val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
         coEvery { favRepo.likeAlbum("al-9") } throws RuntimeException("offline")

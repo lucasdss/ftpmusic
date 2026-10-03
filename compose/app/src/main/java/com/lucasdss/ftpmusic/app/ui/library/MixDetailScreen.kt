@@ -357,8 +357,8 @@ fun MixDetailScreen(
                             // Download badge
                             com.lucasdss.ftpmusic.app.ui.components.DownloadDot(ds)
                             Spacer(Modifier.width(6.dp))
-                            // ThumbsUp (like == star)
-                            val isLiked = viewModel.isTrackLiked(track.id)
+                            // ThumbsUp (like == star) — read from collected state
+                            val isLiked = track.id in state.likedTrackIds
                             ReactionGlyphButton(
                                 icon = Icons.Filled.ThumbUp,
                                 contentDescription = if (isLiked) "Unlike" else "Like",
@@ -367,7 +367,7 @@ fun MixDetailScreen(
                             )
                             Spacer(Modifier.width(6.dp))
                             // ThumbsDown (dislike — local)
-                            val isDisliked = viewModel.isTrackDisliked(track.id)
+                            val isDisliked = track.id in state.dislikedTrackIds
                             ReactionGlyphButton(
                                 icon = Icons.Filled.ThumbDown,
                                 contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
@@ -523,6 +523,8 @@ class MixDetailViewModel @Inject constructor(
 
     data class State(
         val tracks: List<GenreMixTrack> = emptyList(),
+        val likedTrackIds: Set<String> = emptySet(),
+        val dislikedTrackIds: Set<String> = emptySet(),
         val isLoading: Boolean = false,
         val error: String? = null,
     )
@@ -677,50 +679,69 @@ class MixDetailViewModel @Inject constructor(
     private val _downloadedTrackIds = androidx.compose.runtime.mutableStateListOf<String>()
     val downloadedTrackIds: List<String> get() = _downloadedTrackIds.toList()
 
-    private val _likedTrackIds = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
-    val likedTrackIds: kotlinx.coroutines.flow.StateFlow<Set<String>> = _likedTrackIds
-
-    private val _dislikedTrackIds = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
-    val dislikedTrackIds: kotlinx.coroutines.flow.StateFlow<Set<String>> = _dislikedTrackIds
-
     private val _trackRatings = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Int>>(emptyMap())
     val trackRatings: kotlinx.coroutines.flow.StateFlow<Map<String, Int>> = _trackRatings
 
-    fun isTrackLiked(trackId: String): Boolean = _likedTrackIds.value.contains(trackId)
-    fun isTrackDisliked(trackId: String): Boolean = _dislikedTrackIds.value.contains(trackId)
+    fun isTrackLiked(trackId: String): Boolean = _state.value.likedTrackIds.contains(trackId)
+    fun isTrackDisliked(trackId: String): Boolean = _state.value.dislikedTrackIds.contains(trackId)
     fun getTrackRating(trackId: String): Int = _trackRatings.value[trackId] ?: 0
     fun isDownloaded(trackId: String): Boolean = _downloadedTrackIds.contains(trackId)
 
     fun toggleTrackLike(trackId: String) {
-        val isLiked = _likedTrackIds.value.contains(trackId)
+        val previousLiked = _state.value.likedTrackIds
+        val previousDisliked = _state.value.dislikedTrackIds
+        val isLiked = trackId in previousLiked
+        // Optimistic before await so Compose collecting `state` updates immediately.
+        if (isLiked) {
+            _state.value = _state.value.copy(likedTrackIds = previousLiked - trackId)
+        } else {
+            _state.value = _state.value.copy(
+                likedTrackIds = previousLiked + trackId,
+                dislikedTrackIds = previousDisliked - trackId,
+            )
+        }
         viewModelScope.launch {
             try {
                 if (isLiked) {
                     favoriteRepository.unlikeTrack(trackId)
-                    _likedTrackIds.value = _likedTrackIds.value - trackId
                 } else {
                     favoriteRepository.likeTrack(trackId)
-                    _likedTrackIds.value = _likedTrackIds.value + trackId
-                    _dislikedTrackIds.value = _dislikedTrackIds.value - trackId
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(
+                    likedTrackIds = previousLiked,
+                    dislikedTrackIds = previousDisliked,
+                )
+            }
         }
     }
 
     /** Toggle thumbs-down (local dislike). Mutual exclusion: disliking clears like (star). */
     fun toggleTrackDislike(trackId: String) {
-        val isDisliked = _dislikedTrackIds.value.contains(trackId)
+        val previousLiked = _state.value.likedTrackIds
+        val previousDisliked = _state.value.dislikedTrackIds
+        val isDisliked = trackId in previousDisliked
+        if (isDisliked) {
+            _state.value = _state.value.copy(dislikedTrackIds = previousDisliked - trackId)
+        } else {
+            _state.value = _state.value.copy(
+                dislikedTrackIds = previousDisliked + trackId,
+                likedTrackIds = previousLiked - trackId,
+            )
+        }
         viewModelScope.launch {
             try {
                 if (isDisliked) {
                     favoriteRepository.clearDislikeTrack(trackId)
-                    _dislikedTrackIds.value = _dislikedTrackIds.value - trackId
                 } else {
                     favoriteRepository.dislikeTrack(trackId)
-                    _dislikedTrackIds.value = _dislikedTrackIds.value + trackId
-                    _likedTrackIds.value = _likedTrackIds.value - trackId
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(
+                    likedTrackIds = previousLiked,
+                    dislikedTrackIds = previousDisliked,
+                )
+            }
         }
     }
 
@@ -764,8 +785,8 @@ class MixDetailViewModel @Inject constructor(
                     } else {
                         trackDao.getTracksByIds(playableIds)
                     }
-                    _likedTrackIds.value = allTracks.filter { it.starredAt != null }.map { it.id }.toSet()
-                    _dislikedTrackIds.value = allTracks.filter { it.isDisliked }.map { it.id }.toSet()
+                    val liked = allTracks.filter { it.starredAt != null }.map { it.id }.toSet()
+                    val disliked = allTracks.filter { it.isDisliked }.map { it.id }.toSet()
                     val trackMap = allTracks.associateBy { it.id }
                     val displayTracks = playableIds.mapNotNull { id ->
                         trackMap[id]?.let { t ->
@@ -780,7 +801,12 @@ class MixDetailViewModel @Inject constructor(
                             )
                         }
                     }
-                    _state.value = State(tracks = displayTracks, isLoading = false)
+                    _state.value = State(
+                        tracks = displayTracks,
+                        likedTrackIds = liked,
+                        dislikedTrackIds = disliked,
+                        isLoading = false,
+                    )
                     return@launch
                 }
 

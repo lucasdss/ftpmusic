@@ -109,6 +109,31 @@ class FavoriteTest {
     }
 
     @Test
+    fun `toggleLike like then unlike stays unstarred`() = runTest {
+        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack("track-lu") } returns TrackEntity(
+            id = "track-lu",
+            title = "LU",
+            starredAt = null,
+        )
+        val (viewModel, provider) = vm(favoriteRepo, trackDao)
+        provider.emit(PlaybackState(currentTrackId = "track-lu"))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.toggleLike() // like
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.state.value.isStarred)
+
+        viewModel.toggleLike() // unlike (YT Music parity)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse("second tap must clear like", viewModel.state.value.isStarred)
+        coVerify { favoriteRepo.likeTrack("track-lu") }
+        coVerify { favoriteRepo.unlikeTrack("track-lu") }
+    }
+
+    @Test
     fun `toggleLike does nothing when no track is loaded`() = runTest {
         val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
         val trackDao = mockk<TrackDao>(relaxed = true)
@@ -218,6 +243,38 @@ class FavoriteTest {
     }
 
     // ── Failure branches (server throws) — release-gate coverage ────────────
+
+    @Test
+    fun `failed older like does not undo newer unlike`() = runTest {
+        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack("track-gen") } returns TrackEntity(
+            id = "track-gen",
+            title = "G",
+            starredAt = null,
+        )
+        val likeStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val likeRelease = kotlinx.coroutines.CompletableDeferred<Unit>()
+        coEvery { favoriteRepo.likeTrack("track-gen") } coAnswers {
+            likeStarted.complete(Unit)
+            likeRelease.await()
+            throw RuntimeException("stale like fail")
+        }
+        val (viewModel, provider) = vm(favoriteRepo, trackDao)
+        provider.emit(PlaybackState(currentTrackId = "track-gen"))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.toggleLike() // gen1 like (will fail later)
+        likeStarted.await()
+        viewModel.toggleLike() // gen2 unlike (optimistic)
+        assertFalse(viewModel.state.value.isStarred)
+        likeRelease.complete(Unit)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Stale gen1 failure must not resurrect the like after gen2 unlike.
+        assertFalse("stale fail must not undo newer unlike", viewModel.state.value.isStarred)
+        coVerify { favoriteRepo.unlikeTrack("track-gen") }
+    }
 
     @Test
     fun `toggleLike restores like when unlikeTrack throws`() = runTest {

@@ -317,11 +317,14 @@ class MixDetailViewModelTest {
     @Test fun `toggleTrackLike marks and unmarks a track optimistically`() = runTest(testDispatcher) {
         loadMixIntoTracks()
         viewModel.toggleTrackLike("t1")
+        assertTrue("optimistic like before await", "t1" in viewModel.state.value.likedTrackIds)
         advanceUntilIdle()
         assertTrue(viewModel.isTrackLiked("t1"))
         viewModel.toggleTrackLike("t1")
+        assertTrue("optimistic unlike before await", "t1" !in viewModel.state.value.likedTrackIds)
         advanceUntilIdle()
         assertFalse(viewModel.isTrackLiked("t1"))
+        coVerify { favoriteRepository.unlikeTrack("t1") }
     }
 
     @Test fun `toggleTrackDislike marks a track disliked locally`() = runTest(testDispatcher) {

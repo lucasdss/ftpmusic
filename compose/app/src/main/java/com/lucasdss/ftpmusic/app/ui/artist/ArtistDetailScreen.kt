@@ -552,8 +552,8 @@ private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
                 index = index,
                 onClick = { viewModel.playTrack(index) },
                 onLongClick = { onTrackMenu(index) },
-                isLiked = viewModel.isTrackLiked(track.id),
-                isDisliked = viewModel.isTrackDisliked(track.id),
+                isLiked = track.id in state.likedTrackIds,
+                isDisliked = track.id in state.dislikedTrackIds,
                 onToggleLike = { viewModel.toggleTrackLike(track.id) },
                 onToggleDislike = { viewModel.toggleTrackDislike(track.id) },
             )

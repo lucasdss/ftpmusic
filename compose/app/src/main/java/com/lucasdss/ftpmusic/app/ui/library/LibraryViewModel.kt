@@ -37,6 +37,7 @@ import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.playback.DailyMixGenerationCoordinator
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +50,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -182,6 +185,13 @@ class LibraryViewModel @Inject constructor(
     /** Optimistic overlays so Room Flow cannot clobber in-flight album/artist thumbs. */
     private val albumPending = FavoritePendingStore()
     private val artistPending = FavoritePendingStore()
+
+    private val albumToggleMutexes = ConcurrentHashMap<String, Mutex>()
+    private val artistToggleMutexes = ConcurrentHashMap<String, Mutex>()
+
+    private fun albumMutex(albumId: String): Mutex = albumToggleMutexes.getOrPut(albumId) { Mutex() }
+
+    private fun artistMutex(artistId: String): Mutex = artistToggleMutexes.getOrPut(artistId) { Mutex() }
 
     val libraryShellUi: StateFlow<LibraryShellUi> = _state
         .map {
@@ -460,32 +470,34 @@ class LibraryViewModel @Inject constructor(
             },
         )
         viewModelScope.launch {
-            try {
-                if (liked) {
-                    favoriteRepository.unlikeAlbum(albumId)
-                } else {
-                    favoriteRepository.likeAlbum(albumId)
+            albumMutex(albumId).withLock {
+                try {
+                    if (liked) {
+                        favoriteRepository.unlikeAlbum(albumId)
+                    } else {
+                        favoriteRepository.likeAlbum(albumId)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("ftpmusic-home", "toggleAlbumLike failed — rolled back", e)
+                    albumPending.clear(albumId)
+                    _state.value = _state.value.copy(
+                        likedAlbumIds = if (liked) {
+                            _state.value.likedAlbumIds + albumId
+                        } else {
+                            _state.value.likedAlbumIds - albumId
+                        },
+                        dislikedAlbumIds = if (wasDisliked) {
+                            _state.value.dislikedAlbumIds + albumId
+                        } else {
+                            _state.value.dislikedAlbumIds
+                        },
+                        starredAlbums = if (liked && removedRow != null) {
+                            (_state.value.starredAlbums + removedRow).distinctBy { it.id }
+                        } else {
+                            _state.value.starredAlbums
+                        },
+                    )
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("ftpmusic-home", "toggleAlbumLike failed — rolled back", e)
-                albumPending.clear(albumId)
-                _state.value = _state.value.copy(
-                    likedAlbumIds = if (liked) {
-                        _state.value.likedAlbumIds + albumId
-                    } else {
-                        _state.value.likedAlbumIds - albumId
-                    },
-                    dislikedAlbumIds = if (wasDisliked) {
-                        _state.value.dislikedAlbumIds + albumId
-                    } else {
-                        _state.value.dislikedAlbumIds
-                    },
-                    starredAlbums = if (liked && removedRow != null) {
-                        (_state.value.starredAlbums + removedRow).distinctBy { it.id }
-                    } else {
-                        _state.value.starredAlbums
-                    },
-                )
             }
         }
     }
@@ -505,31 +517,33 @@ class LibraryViewModel @Inject constructor(
             starredAlbums = _state.value.starredAlbums.filter { it.id != albumId },
         )
         viewModelScope.launch {
-            try {
-                if (disliked) {
-                    favoriteRepository.clearDislikeAlbum(albumId)
-                } else {
-                    favoriteRepository.dislikeAlbum(albumId)
+            albumMutex(albumId).withLock {
+                try {
+                    if (disliked) {
+                        favoriteRepository.clearDislikeAlbum(albumId)
+                    } else {
+                        favoriteRepository.dislikeAlbum(albumId)
+                    }
+                } catch (e: Exception) {
+                    albumPending.clear(albumId)
+                    _state.value = _state.value.copy(
+                        dislikedAlbumIds = if (disliked) {
+                            _state.value.dislikedAlbumIds + albumId
+                        } else {
+                            _state.value.dislikedAlbumIds - albumId
+                        },
+                        likedAlbumIds = if (wasLiked) {
+                            _state.value.likedAlbumIds + albumId
+                        } else {
+                            _state.value.likedAlbumIds
+                        },
+                        starredAlbums = if (wasLiked && removedRow != null) {
+                            (_state.value.starredAlbums + removedRow).distinctBy { it.id }
+                        } else {
+                            _state.value.starredAlbums
+                        },
+                    )
                 }
-            } catch (e: Exception) {
-                albumPending.clear(albumId)
-                _state.value = _state.value.copy(
-                    dislikedAlbumIds = if (disliked) {
-                        _state.value.dislikedAlbumIds + albumId
-                    } else {
-                        _state.value.dislikedAlbumIds - albumId
-                    },
-                    likedAlbumIds = if (wasLiked) {
-                        _state.value.likedAlbumIds + albumId
-                    } else {
-                        _state.value.likedAlbumIds
-                    },
-                    starredAlbums = if (wasLiked && removedRow != null) {
-                        (_state.value.starredAlbums + removedRow).distinctBy { it.id }
-                    } else {
-                        _state.value.starredAlbums
-                    },
-                )
             }
         }
     }
@@ -555,32 +569,34 @@ class LibraryViewModel @Inject constructor(
             },
         )
         viewModelScope.launch {
-            try {
-                if (liked) {
-                    favoriteRepository.unlikeArtist(artistId)
-                } else {
-                    favoriteRepository.likeArtist(artistId)
+            artistMutex(artistId).withLock {
+                try {
+                    if (liked) {
+                        favoriteRepository.unlikeArtist(artistId)
+                    } else {
+                        favoriteRepository.likeArtist(artistId)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("ftpmusic-home", "toggleArtistLike failed — rolled back", e)
+                    artistPending.clear(artistId)
+                    _state.value = _state.value.copy(
+                        likedArtistIds = if (liked) {
+                            _state.value.likedArtistIds + artistId
+                        } else {
+                            _state.value.likedArtistIds - artistId
+                        },
+                        dislikedArtistIds = if (wasDisliked) {
+                            _state.value.dislikedArtistIds + artistId
+                        } else {
+                            _state.value.dislikedArtistIds
+                        },
+                        starredArtists = if (liked && removedRow != null) {
+                            (_state.value.starredArtists + removedRow).distinctBy { it.id }
+                        } else {
+                            _state.value.starredArtists
+                        },
+                    )
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("ftpmusic-home", "toggleArtistLike failed — rolled back", e)
-                artistPending.clear(artistId)
-                _state.value = _state.value.copy(
-                    likedArtistIds = if (liked) {
-                        _state.value.likedArtistIds + artistId
-                    } else {
-                        _state.value.likedArtistIds - artistId
-                    },
-                    dislikedArtistIds = if (wasDisliked) {
-                        _state.value.dislikedArtistIds + artistId
-                    } else {
-                        _state.value.dislikedArtistIds
-                    },
-                    starredArtists = if (liked && removedRow != null) {
-                        (_state.value.starredArtists + removedRow).distinctBy { it.id }
-                    } else {
-                        _state.value.starredArtists
-                    },
-                )
             }
         }
     }
@@ -600,32 +616,34 @@ class LibraryViewModel @Inject constructor(
             starredArtists = _state.value.starredArtists.filter { it.id != artistId },
         )
         viewModelScope.launch {
-            try {
-                if (disliked) {
-                    favoriteRepository.clearDislikeArtist(artistId)
-                } else {
-                    favoriteRepository.dislikeArtist(artistId)
+            artistMutex(artistId).withLock {
+                try {
+                    if (disliked) {
+                        favoriteRepository.clearDislikeArtist(artistId)
+                    } else {
+                        favoriteRepository.dislikeArtist(artistId)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("ftpmusic-home", "toggleArtistDislike failed — rolled back", e)
+                    artistPending.clear(artistId)
+                    _state.value = _state.value.copy(
+                        dislikedArtistIds = if (disliked) {
+                            _state.value.dislikedArtistIds + artistId
+                        } else {
+                            _state.value.dislikedArtistIds - artistId
+                        },
+                        likedArtistIds = if (wasLiked) {
+                            _state.value.likedArtistIds + artistId
+                        } else {
+                            _state.value.likedArtistIds
+                        },
+                        starredArtists = if (wasLiked && removedRow != null) {
+                            (_state.value.starredArtists + removedRow).distinctBy { it.id }
+                        } else {
+                            _state.value.starredArtists
+                        },
+                    )
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("ftpmusic-home", "toggleArtistDislike failed — rolled back", e)
-                artistPending.clear(artistId)
-                _state.value = _state.value.copy(
-                    dislikedArtistIds = if (disliked) {
-                        _state.value.dislikedArtistIds + artistId
-                    } else {
-                        _state.value.dislikedArtistIds - artistId
-                    },
-                    likedArtistIds = if (wasLiked) {
-                        _state.value.likedArtistIds + artistId
-                    } else {
-                        _state.value.likedArtistIds
-                    },
-                    starredArtists = if (wasLiked && removedRow != null) {
-                        (_state.value.starredArtists + removedRow).distinctBy { it.id }
-                    } else {
-                        _state.value.starredArtists
-                    },
-                )
             }
         }
     }

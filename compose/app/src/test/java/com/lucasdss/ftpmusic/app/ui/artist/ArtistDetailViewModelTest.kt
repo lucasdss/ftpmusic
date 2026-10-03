@@ -827,7 +827,23 @@ class ArtistDetailViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.isTrackLiked("t1"))
+        assertTrue("t1" in viewModel.state.value.likedTrackIds)
         coVerify { favoriteRepository.likeTrack("t1") }
+    }
+
+    @Test
+    fun `toggleTrackLike removes when already liked and updates collected state`() = runTest(testDispatcher) {
+        viewModel.toggleTrackLike("t1")
+        advanceUntilIdle()
+        assertTrue("t1" in viewModel.state.value.likedTrackIds)
+
+        viewModel.toggleTrackLike("t1")
+        // Optimistic: collected state updates before repo await
+        assertTrue("t1" !in viewModel.state.value.likedTrackIds)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isTrackLiked("t1"))
+        coVerify { favoriteRepository.unlikeTrack("t1") }
     }
 
     @Test

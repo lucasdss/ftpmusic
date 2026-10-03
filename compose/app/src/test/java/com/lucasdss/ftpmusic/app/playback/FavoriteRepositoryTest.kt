@@ -81,10 +81,7 @@ class FavoriteRepositoryTest {
 
         r.unstarTrack("t1")
 
-        coVerifyOrder {
-            trackDao.setStarredAt("t1", null)
-            trackDao.setPendingUnstar("t1", any())
-        }
+        coVerify { trackDao.clearStarAndMarkPendingUnstar("t1", any()) }
     }
 
     @Test
@@ -104,7 +101,7 @@ class FavoriteRepositoryTest {
 
         r.dislikeTrack("t1")
 
-        coVerify { trackDao.setPendingUnstar("t1", any()) }
+        coVerify { trackDao.clearStarAndMarkPendingUnstar("t1", any()) }
     }
 
     @Test
@@ -117,9 +114,9 @@ class FavoriteRepositoryTest {
         r.unstarArtist("ar-1")
         r.starArtist("ar-1")
 
-        coVerify { metadataDao.setAlbumPendingUnstar("al-1", any()) }
+        coVerify { metadataDao.clearAlbumStarAndMarkPendingUnstar("al-1", any()) }
         coVerify { metadataDao.setAlbumPendingUnstar("al-1", null) }
-        coVerify { metadataDao.setArtistPendingUnstar("ar-1", any()) }
+        coVerify { metadataDao.clearArtistStarAndMarkPendingUnstar("ar-1", any()) }
         coVerify { metadataDao.setArtistPendingUnstar("ar-1", null) }
     }
 
@@ -131,8 +128,8 @@ class FavoriteRepositoryTest {
         r.dislikeAlbum("al-1")
         r.dislikeArtist("ar-1")
 
-        coVerify { metadataDao.setAlbumPendingUnstar("al-1", any()) }
-        coVerify { metadataDao.setArtistPendingUnstar("ar-1", any()) }
+        coVerify { metadataDao.clearAlbumStarAndMarkPendingUnstar("al-1", any()) }
+        coVerify { metadataDao.clearArtistStarAndMarkPendingUnstar("ar-1", any()) }
     }
 
     @Test
@@ -144,7 +141,7 @@ class FavoriteRepositoryTest {
         r.unlikeTrack("t1")
 
         coVerify { api.unstar(any(), id = "t1") }
-        coVerify { trackDao.setStarredAt("t1", null) }
+        coVerify { trackDao.clearStarAndMarkPendingUnstar("t1", any()) }
     }
 
     @Test
@@ -156,7 +153,7 @@ class FavoriteRepositoryTest {
 
         r.dislikeTrack("t1")
 
-        coVerify { trackDao.setStarredAt("t1", null) }
+        coVerify { trackDao.clearStarAndMarkPendingUnstar("t1", any()) }
         coVerify { trackDao.setDisliked("t1", true, any()) }
     }
 
@@ -169,7 +166,7 @@ class FavoriteRepositoryTest {
         r.dislikeTrack("t1")
 
         coVerify { api.unstar(any(), id = "t1") }
-        coVerify { trackDao.setStarredAt("t1", null) }
+        coVerify { trackDao.clearStarAndMarkPendingUnstar("t1", any()) }
         coVerify { trackDao.setDisliked("t1", true, any()) }
     }
 
@@ -205,7 +202,7 @@ class FavoriteRepositoryTest {
         r.unstarTrack("t1")
 
         coVerify { api.unstar(any(), id = "t1") }
-        coVerify { trackDao.setStarredAt("t1", null) }
+        coVerify { trackDao.clearStarAndMarkPendingUnstar("t1", any()) }
     }
 
     @Test
@@ -276,7 +273,7 @@ class FavoriteRepositoryTest {
 
         coVerifyOrder {
             metadataDao.ensureAlbumLedgerRow("al-1")
-            metadataDao.setAlbumStarredAt("al-1", null)
+            metadataDao.clearAlbumStarAndMarkPendingUnstar("al-1", any())
             metadataDao.setAlbumDisliked("al-1", true, any())
         }
     }
@@ -309,7 +306,7 @@ class FavoriteRepositoryTest {
 
         coVerify { metadataDao.ensureArtistLedgerRow("ar-1") }
         coVerify { metadataDao.setArtistDisliked("ar-1", true, any()) }
-        coVerify { metadataDao.setArtistStarredAt("ar-1", null) }
+        coVerify { metadataDao.clearArtistStarAndMarkPendingUnstar("ar-1", any()) }
     }
 
     @Test
@@ -321,7 +318,7 @@ class FavoriteRepositoryTest {
         r.unlikeAlbum("al-1")
 
         coVerify { api.unstar(any(), albumId = "al-1") }
-        coVerify { metadataDao.setAlbumStarredAt("al-1", null) }
+        coVerify { metadataDao.clearAlbumStarAndMarkPendingUnstar("al-1", any()) }
     }
 
     @Test
@@ -333,7 +330,7 @@ class FavoriteRepositoryTest {
 
         r.dislikeAlbum("al-1")
 
-        coVerify { metadataDao.setAlbumStarredAt("al-1", null) }
+        coVerify { metadataDao.clearAlbumStarAndMarkPendingUnstar("al-1", any()) }
         coVerify { metadataDao.setAlbumDisliked("al-1", true, any()) }
     }
 
@@ -374,7 +371,7 @@ class FavoriteRepositoryTest {
         r.unlikeArtist("ar-1")
 
         coVerify { api.unstar(any(), artistId = "ar-1") }
-        coVerify { metadataDao.setArtistStarredAt("ar-1", null) }
+        coVerify { metadataDao.clearArtistStarAndMarkPendingUnstar("ar-1", any()) }
     }
 
     @Test
@@ -386,7 +383,7 @@ class FavoriteRepositoryTest {
 
         r.dislikeArtist("ar-1")
 
-        coVerify { metadataDao.setArtistStarredAt("ar-1", null) }
+        coVerify { metadataDao.clearArtistStarAndMarkPendingUnstar("ar-1", any()) }
         coVerify { metadataDao.setArtistDisliked("ar-1", true, any()) }
     }
 

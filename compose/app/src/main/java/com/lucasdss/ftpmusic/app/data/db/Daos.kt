@@ -62,7 +62,7 @@ interface TrackDao {
      *  for these; preserve the existing tracks-table values instead of overwriting
      *  valid album/artist associations established by the album-track sync. */
     @Query(
-        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at) SELECT cgs.id, '' as server_id, cgs.title, COALESCE(cgs.artist, t.artist), COALESCE(cgs.album_id, t.album_id), COALESCE(cgs.artist_id, t.artist_id), cgs.genre, cgs.duration, cgs.track_number, cgs.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at FROM cached_genre_songs cgs LEFT JOIN tracks t ON cgs.id = t.id",
+        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cgs.id, '' as server_id, cgs.title, COALESCE(cgs.artist, t.artist), COALESCE(cgs.album_id, t.album_id), COALESCE(cgs.artist_id, t.artist_id), cgs.genre, cgs.duration, cgs.track_number, cgs.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_genre_songs cgs LEFT JOIN tracks t ON cgs.id = t.id",
     )
     suspend fun populateGenresFromCachedGenreSongs()
 
@@ -72,12 +72,18 @@ interface TrackDao {
      *  tracks-table values when the album source lacks them (defensive; keeps the
      *  two populate* queries idempotent regardless of execution order). */
     @Query(
-        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, 1 as disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
+        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, 1 as disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
     )
     suspend fun populateAllTrackGenres()
 
     @Query("UPDATE tracks SET starred_at = :starredAt WHERE id = :trackId")
     suspend fun setStarredAt(trackId: String, starredAt: Long?)
+
+    /** Atomic local unstar: clear star + mark pending in one write (no sync race gap). */
+    @Query(
+        "UPDATE tracks SET starred_at = NULL, pending_unstar_at = :pendingAt WHERE id = :trackId",
+    )
+    suspend fun clearStarAndMarkPendingUnstar(trackId: String, pendingAt: Long)
 
     /** Bulk-update starred_at for tracks. Used during star sync from server. */
     @Query("UPDATE tracks SET starred_at = :starredAt WHERE id IN (:ids)")
@@ -757,11 +763,23 @@ interface CachedMetadataDao {
     @Query("UPDATE albums SET starred_at = :starredAt WHERE id = :albumId")
     suspend fun setAlbumStarredAt(albumId: String, starredAt: Long?)
 
+    /** Atomic local album unstar: clear star + mark pending in one write. */
+    @Query(
+        "UPDATE albums SET starred_at = NULL, pending_unstar_at = :pendingAt WHERE id = :albumId",
+    )
+    suspend fun clearAlbumStarAndMarkPendingUnstar(albumId: String, pendingAt: Long)
+
     @Query("UPDATE albums SET user_rating = :rating WHERE id = :albumId")
     suspend fun setAlbumRating(albumId: String, rating: Int)
 
     @Query("UPDATE artists SET starred_at = :starredAt WHERE id = :artistId")
     suspend fun setArtistStarredAt(artistId: String, starredAt: Long?)
+
+    /** Atomic local artist unstar: clear star + mark pending in one write. */
+    @Query(
+        "UPDATE artists SET starred_at = NULL, pending_unstar_at = :pendingAt WHERE id = :artistId",
+    )
+    suspend fun clearArtistStarAndMarkPendingUnstar(artistId: String, pendingAt: Long)
 
     /** Bulk-update starred_at for albums. Used during star sync from server. */
     @Query("UPDATE albums SET starred_at = :starredAt WHERE id IN (:ids)")
@@ -944,9 +962,10 @@ interface CachedMetadataDao {
     }
 
     /** Remove ledger rows for albums no longer on the server — but keep rows
-     *  that are starred or disliked (favorites survive temporary gaps). */
+     *  that are starred, disliked, or pending local unstar (intent survives gaps). */
     @Query(
-        "DELETE FROM albums WHERE id NOT IN (SELECT id FROM cached_albums) AND starred_at IS NULL AND is_disliked = 0",
+        "DELETE FROM albums WHERE id NOT IN (SELECT id FROM cached_albums) " +
+            "AND starred_at IS NULL AND is_disliked = 0 AND pending_unstar_at IS NULL",
     )
     suspend fun pruneAlbumLedger()
 
@@ -967,7 +986,8 @@ interface CachedMetadataDao {
     }
 
     @Query(
-        "DELETE FROM artists WHERE id NOT IN (SELECT id FROM cached_artists) AND starred_at IS NULL AND is_disliked = 0",
+        "DELETE FROM artists WHERE id NOT IN (SELECT id FROM cached_artists) " +
+            "AND starred_at IS NULL AND is_disliked = 0 AND pending_unstar_at IS NULL",
     )
     suspend fun pruneArtistLedger()
 
