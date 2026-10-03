@@ -38,6 +38,7 @@ listeners) deepen the failure.
    `castDisconnectGen`.
 4. **Sticky-resume reset** — `sessionWasResumed` clears on `onSessionStarted`/
    `onSessionEnded` so a new session always attempts queue (re)load.
+   Transitions live in pure `CastSessionResumePolicy` (unit-tested EDGE-03).
 5. **Single listener** — `setListenerPlayer()` replaces the `listenerOnExoPlayer`
    flag; listeners are removed from the inactive player to prevent duplicate events.
 6. **No mid-cast player swap** — `PLAY_PAUSE` never switches `mediaSession.player` to

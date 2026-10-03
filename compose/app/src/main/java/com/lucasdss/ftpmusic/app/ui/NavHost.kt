@@ -360,10 +360,10 @@ fun FtpmusicNavHost() {
                                         currentRoute = currentRoute,
                                     )
                                     if (popToRoot) {
-                                        navController.popBackStack(
-                                            TabNavigationPolicy.tabRootPopRoute(tab.route),
-                                            inclusive = false,
-                                        )
+                                        // Try pattern route first; fall back if absent (ADR-0062).
+                                        for (route in TabNavigationPolicy.tabRootPopFallbackRoutes(tab.route)) {
+                                            if (navController.popBackStack(route, inclusive = false)) break
+                                        }
                                         return@NavigationBarItem
                                     }
                                     if (selected &&

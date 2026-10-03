@@ -339,6 +339,112 @@ class FavoriteTest {
     }
 
     @Test
+    fun `toggleDislike restores dislike when clearDislikeTrack throws`() = runTest {
+        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack("track-4") } returns TrackEntity(
+            id = "track-4",
+            title = "T4",
+            isDisliked = true,
+        )
+        coEvery { favoriteRepo.clearDislikeTrack("track-4") } throws RuntimeException("boom")
+        val (viewModel, provider) = vm(favoriteRepo, trackDao)
+        provider.emit(PlaybackState(currentTrackId = "track-4"))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.toggleDislike()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue("failed clear must restore dislike", viewModel.state.value.isDisliked)
+    }
+
+    @Test
+    fun `toggleDislike does nothing when no track is loaded`() = runTest {
+        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        val (viewModel, _) = vm(favoriteRepo, trackDao)
+
+        viewModel.toggleDislike()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { favoriteRepo.dislikeTrack(any()) }
+        coVerify(exactly = 0) { favoriteRepo.clearDislikeTrack(any()) }
+    }
+
+    @Test
+    fun `failed older dislike does not undo newer clear`() = runTest {
+        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack("track-gen-d") } returns TrackEntity(
+            id = "track-gen-d",
+            title = "G",
+            isDisliked = false,
+        )
+        val dislikeStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val dislikeRelease = kotlinx.coroutines.CompletableDeferred<Unit>()
+        coEvery { favoriteRepo.dislikeTrack("track-gen-d") } coAnswers {
+            dislikeStarted.complete(Unit)
+            dislikeRelease.await()
+            throw RuntimeException("stale dislike fail")
+        }
+        val (viewModel, provider) = vm(favoriteRepo, trackDao)
+        provider.emit(PlaybackState(currentTrackId = "track-gen-d"))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.toggleDislike() // gen1 dislike (will fail later)
+        dislikeStarted.await()
+        viewModel.toggleDislike() // gen2 clear (optimistic)
+        assertFalse(viewModel.state.value.isDisliked)
+        dislikeRelease.complete(Unit)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse("stale fail must not undo newer clear", viewModel.state.value.isDisliked)
+        coVerify { favoriteRepo.clearDislikeTrack("track-gen-d") }
+    }
+
+    @Test
+    fun `toggleDislike skips confirm when track changes mid flight`() = runTest {
+        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack(any()) } returns TrackEntity(id = "track-d1", title = "D1")
+        val (viewModel, provider) = vm(favoriteRepo, trackDao)
+        provider.emit(PlaybackState(currentTrackId = "track-d1"))
+        testDispatcher.scheduler.advanceUntilIdle()
+        coEvery { favoriteRepo.dislikeTrack("track-d1") } coAnswers {
+            provider.emit(PlaybackState(currentTrackId = "track-d2"))
+        }
+
+        viewModel.toggleDislike()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Optimistic dislike applied, then track changed — confirm block skipped.
+        coVerify { favoriteRepo.dislikeTrack("track-d1") }
+    }
+
+    @Test
+    fun `toggleDislike skip restore when track changes before failure`() = runTest {
+        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack(any()) } returns TrackEntity(
+            id = "track-d3",
+            title = "D3",
+            starredAt = 1L,
+        )
+        val (viewModel, provider) = vm(favoriteRepo, trackDao)
+        provider.emit(PlaybackState(currentTrackId = "track-d3"))
+        testDispatcher.scheduler.advanceUntilIdle()
+        coEvery { favoriteRepo.dislikeTrack("track-d3") } coAnswers {
+            provider.emit(PlaybackState(currentTrackId = "track-d4"))
+            throw RuntimeException("gone")
+        }
+
+        viewModel.toggleDislike()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify { favoriteRepo.dislikeTrack("track-d3") }
+    }
+
+    @Test
     fun `rateCurrent keeps local rating when server sync throws`() = runTest {
         val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
         val trackDao = mockk<TrackDao>(relaxed = true)

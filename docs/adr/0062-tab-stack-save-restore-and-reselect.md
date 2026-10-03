@@ -23,8 +23,9 @@ pop to tab root (then scroll-to-top if already root).
 ## Decision
 
 1. **Keep** cross-tab save/restore. Do not clear Home nest on Library visit.
-2. **Reselect** (active tab tapped again): `popBackStack(tabRoot, false)` when
-   not already on that root. Root re-tap scroll/refresh remains stub.
+2. **Reselect** (active tab tapped again): `popBackStack` via
+   `tabRootPopFallbackRoutes` (library pattern then bare `library`) when not
+   already on that root. Root re-tap scroll/refresh remains stub.
 3. **Selection ownership:** `activeBottomTab` (`rememberSaveable`), updated on
    tab clicks and programmatic tab jumps (`library?tab=playlists`). Not route
    prefix matching.

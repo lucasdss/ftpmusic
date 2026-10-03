@@ -103,6 +103,36 @@ class FavoriteRepositoryBranchTest {
     }
 
     @Test
+    fun `dislikeTrack skips server when local dislike miss`() = runTest {
+        coEvery { trackDao.isTrackDisliked("t-miss") } returns false
+        repo.dislikeTrack("t-miss")
+        coVerify { trackDao.clearStarAndMarkPendingUnstar("t-miss", any()) }
+        coVerify(exactly = 0) { api.unstar(any(), id = "t-miss") }
+    }
+
+    @Test
+    fun `starAlbum and starArtist skip server when local write missed`() = runTest {
+        coEvery { metadataDao.isAlbumStarred("al-miss") } returns false
+        coEvery { metadataDao.isArtistStarred("ar-miss") } returns false
+        repo.starAlbum("al-miss")
+        repo.starArtist("ar-miss")
+        coVerify(exactly = 0) { api.star(any(), albumId = "al-miss") }
+        coVerify(exactly = 0) { api.star(any(), artistId = "ar-miss") }
+    }
+
+    @Test
+    fun `dislikeAlbum and dislikeArtist skip server when local dislike miss`() = runTest {
+        coEvery { metadataDao.isAlbumDisliked("al-miss") } returns false
+        coEvery { metadataDao.isArtistDisliked("ar-miss") } returns false
+        repo.dislikeAlbum("al-miss")
+        repo.dislikeArtist("ar-miss")
+        coVerify { metadataDao.clearAlbumStarAndMarkPendingUnstar("al-miss", any()) }
+        coVerify { metadataDao.clearArtistStarAndMarkPendingUnstar("ar-miss", any()) }
+        coVerify(exactly = 0) { api.unstar(any(), albumId = "al-miss") }
+        coVerify(exactly = 0) { api.unstar(any(), artistId = "ar-miss") }
+    }
+
+    @Test
     fun `rateTrack writes local then mirrors setRating`() = runTest {
         repo.rateTrack("t1", 4)
         coVerify { trackDao.ensureTrackRow("t1") }

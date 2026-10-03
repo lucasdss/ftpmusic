@@ -240,7 +240,7 @@ class MediaService : MediaLibraryService() {
                 "ftpmusic-cast",
                 "session resumed wasSuspended=$wasSuspended",
             )
-            sessionWasResumed = true
+            sessionWasResumed = CastSessionResumePolicy.onSessionResumed()
             // Per Cast SDK docs: onSessionResumed fires when a session is resumed
             // after suspension OR after the application is restarted (process death).
             // The SDK is telling us a session is NOW active — restore Cast state
@@ -347,7 +347,7 @@ class MediaService : MediaLibraryService() {
                     CastButtonState.isCasting.value = false
                     CastButtonState.connectedDeviceName.value = null
                     CastButtonState.connectingDeviceName.value = null
-                    sessionWasResumed = false
+                    sessionWasResumed = CastSessionResumePolicy.onSessionEnded()
                     exoPlayer?.volume = 1f
                     switchToLocalPlayback()
                     notificationProvider?.notifyChanged()
@@ -381,7 +381,7 @@ class MediaService : MediaLibraryService() {
             // true forever after the first resume and every later session skips
             // the queue (re)load, leaving the phone-side timeline empty
             // (EDGE-03).
-            sessionWasResumed = false
+            sessionWasResumed = CastSessionResumePolicy.onSessionStarted()
             // Manual-connect success: cancel the connect timeout/in-flight lock so
             // the UI never hangs on "Connecting…" (Bug B).
             clearCastConnectAttempt()
@@ -447,7 +447,7 @@ class MediaService : MediaLibraryService() {
             }
             // Session is gone — a future onSessionStarted is a FRESH session and
             // must re-load the queue (sticky-resume fix, EDGE-03).
-            sessionWasResumed = false
+            sessionWasResumed = CastSessionResumePolicy.onSessionEnded()
             // Clean up immediately — gen guard prevents cross-contamination with new sessions
             if (PlayerHolder.isCasting) {
                 val endGen = ++castDisconnectGen
@@ -1414,7 +1414,7 @@ class MediaService : MediaLibraryService() {
             // Register disconnect callback — update notification immediately on user-initiated disconnect
             CastButtonState.onDisconnectRequested = {
                 disconnectingManually = true // prevent duplicate switchToLocalPlayback from onDeviceInfoChanged
-                sessionWasResumed = false // force queue load on next connect
+                sessionWasResumed = CastSessionResumePolicy.onManualDisconnect() // force queue load on next connect
                 castReconnectAttempts = 0 // manual disconnect stops any retry loop
                 castLastDevice = null
                 // 1. Pause the Cast receiver before tearing down, so the remote
@@ -2206,7 +2206,7 @@ class MediaService : MediaLibraryService() {
                     "[Cast] device switch to ${device.friendlyName} — ending session on ${current.castDevice?.friendlyName} first",
                 )
                 castSwitchInProgress = true
-                sessionWasResumed = false // never skip queueLoad on A→B
+                sessionWasResumed = CastSessionResumePolicy.onManualDisconnect() // never skip queueLoad on A→B
                 CastButtonState.endSessionForSwitch()
             }
             handler.postDelayed({
@@ -2709,12 +2709,16 @@ class MediaService : MediaLibraryService() {
     @VisibleForTesting
     internal fun noteCastDeviceForQueuePolicy(deviceId: String?) {
         if (deviceId == null) return
+        sessionWasResumed = CastSessionResumePolicy.onDeviceIdChanged(
+            previousId = castSessionDeviceId,
+            newId = deviceId,
+            current = sessionWasResumed,
+        )
         if (castSessionDeviceId != null && castSessionDeviceId != deviceId) {
             android.util.Log.w(
                 "ftpmusic-cast",
                 "[Cast] deviceId change $castSessionDeviceId → $deviceId — force queue reload",
             )
-            sessionWasResumed = false
         }
         castSessionDeviceId = deviceId
     }

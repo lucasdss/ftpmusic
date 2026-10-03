@@ -556,9 +556,8 @@ class ArtistDetailViewModel @Inject constructor(
                 } else {
                     favoriteRepository.likeAlbum(albumId)
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-artist", "toggleAlbumLike failed — rolled back", e)
                 albumPending.clear(albumId)
                 _state.value = previous
@@ -588,9 +587,8 @@ class ArtistDetailViewModel @Inject constructor(
                 } else {
                     favoriteRepository.dislikeAlbum(albumId)
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-artist", "toggleAlbumDislike failed — rolled back", e)
                 albumPending.clear(albumId)
                 _state.value = previous
@@ -609,9 +607,8 @@ class ArtistDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 if (liked) favoriteRepository.unlikeArtist(artistId) else favoriteRepository.likeArtist(artistId)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-artist", "toggleArtistLike failed — rolled back", e)
                 artistPending.clear(artistId)
                 _state.value = previous
@@ -639,9 +636,8 @@ class ArtistDetailViewModel @Inject constructor(
                 } else {
                     favoriteRepository.dislikeArtist(artistId)
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-artist", "toggleArtistDislike failed — rolled back", e)
                 artistPending.clear(artistId)
                 _state.value = previous

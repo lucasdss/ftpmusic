@@ -774,6 +774,167 @@ class ArtistDetailViewModelTest {
         assertTrue("al-1" !in viewModel.state.value.likedAlbumIds)
     }
 
+    @Test
+    fun `toggleArtistLike adds and second tap unlikes`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+
+        viewModel.toggleArtistLike("ar-1")
+        advanceUntilIdle()
+        assertTrue("ar-1" in viewModel.state.value.likedArtistIds)
+        coVerify(exactly = 1) { favoriteRepository.likeArtist("ar-1") }
+
+        viewModel.toggleArtistLike("ar-1")
+        advanceUntilIdle()
+        assertTrue("ar-1" !in viewModel.state.value.likedArtistIds)
+        coVerify(exactly = 1) { favoriteRepository.unlikeArtist("ar-1") }
+    }
+
+    @Test
+    fun `toggleArtistDislike adds clears like then second tap clears dislike`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(listOf("ar-1"))
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+        assertTrue("ar-1" in viewModel.state.value.likedArtistIds)
+
+        viewModel.toggleArtistDislike("ar-1")
+        advanceUntilIdle()
+        assertTrue("ar-1" in viewModel.state.value.dislikedArtistIds)
+        assertTrue("ar-1" !in viewModel.state.value.likedArtistIds)
+        coVerify(exactly = 1) { favoriteRepository.dislikeArtist("ar-1") }
+
+        viewModel.toggleArtistDislike("ar-1")
+        advanceUntilIdle()
+        assertTrue("ar-1" !in viewModel.state.value.dislikedArtistIds)
+        coVerify(exactly = 1) { favoriteRepository.clearDislikeArtist("ar-1") }
+    }
+
+    @Test
+    fun `toggleArtistLike rolls back on repository failure`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+        coEvery { favoriteRepository.likeArtist(any()) } throws RuntimeException("db down")
+
+        viewModel.toggleArtistLike("ar-1")
+        advanceUntilIdle()
+
+        assertTrue("ar-1" !in viewModel.state.value.likedArtistIds)
+    }
+
+    @Test
+    fun `toggleArtistLike cancellation is not rolled back as failure`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+        coEvery { favoriteRepository.likeArtist(any()) } throws kotlinx.coroutines.CancellationException()
+
+        viewModel.toggleArtistLike("ar-1")
+        advanceUntilIdle()
+
+        // Optimistic like stays — CancellationException must not clear pending.
+        assertTrue("ar-1" in viewModel.state.value.likedArtistIds)
+    }
+
+    @Test
+    fun `toggleArtistDislike cancellation is not rolled back as failure`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+        coEvery { favoriteRepository.dislikeArtist(any()) } throws kotlinx.coroutines.CancellationException()
+
+        viewModel.toggleArtistDislike("ar-1")
+        advanceUntilIdle()
+
+        assertTrue("ar-1" in viewModel.state.value.dislikedArtistIds)
+    }
+
+    @Test
+    fun `toggleArtistLike unlike rolls back on repository failure`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(listOf("ar-1"))
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+        assertTrue("ar-1" in viewModel.state.value.likedArtistIds)
+        coEvery { favoriteRepository.unlikeArtist(any()) } throws RuntimeException("db down")
+
+        viewModel.toggleArtistLike("ar-1")
+        advanceUntilIdle()
+
+        assertTrue("ar-1" in viewModel.state.value.likedArtistIds)
+    }
+
+    @Test
+    fun `toggleArtistDislike rolls back on repository failure`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+        coEvery { favoriteRepository.dislikeArtist(any()) } throws RuntimeException("db down")
+
+        viewModel.toggleArtistDislike("ar-1")
+        advanceUntilIdle()
+
+        assertTrue("ar-1" !in viewModel.state.value.dislikedArtistIds)
+    }
+
+    @Test
+    fun `toggleAlbumDislike rolls back on repository failure`() = runTest(testDispatcher) {
+        every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getStarredArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        every { metadataDao.getDislikedArtistIdsFlow() } returns MutableStateFlow(emptyList())
+        viewModel = freshViewModel()
+        advanceUntilIdle()
+        coEvery { favoriteRepository.dislikeAlbum(any()) } throws RuntimeException("db down")
+
+        viewModel.toggleAlbumDislike("al-1")
+        advanceUntilIdle()
+
+        assertTrue("al-1" !in viewModel.state.value.dislikedAlbumIds)
+    }
+
+    @Test
+    fun `toggleTrackDislike second tap clears dislike`() = runTest(testDispatcher) {
+        viewModel.toggleTrackDislike("t1")
+        advanceUntilIdle()
+        assertTrue(viewModel.isTrackDisliked("t1"))
+        coVerify { favoriteRepository.dislikeTrack("t1") }
+
+        viewModel.toggleTrackDislike("t1")
+        advanceUntilIdle()
+        assertFalse(viewModel.isTrackDisliked("t1"))
+        coVerify { favoriteRepository.clearDislikeTrack("t1") }
+    }
+
+    @Test
+    fun `toggleTrackDislike rolls back on repository failure`() = runTest(testDispatcher) {
+        coEvery { favoriteRepository.dislikeTrack(any()) } throws RuntimeException("db down")
+        viewModel.toggleTrackDislike("t1")
+        advanceUntilIdle()
+        assertFalse(viewModel.isTrackDisliked("t1"))
+    }
+
     // ── Play / overwrite modal ─────────────────────────────────────────────
 
     @Test
@@ -955,6 +1116,18 @@ class ArtistDetailViewModelTest {
         seedTracksForQueue()
         viewModel.playTrack(5)
         coVerify(exactly = 0) { playbackManager.playAlbum(any(), any(), startIndex = any()) }
+    }
+
+    @Test
+    fun `playTrack no-op on negative index`() = runTest(testDispatcher) {
+        seedTracksForQueue()
+        viewModel.playTrack(-1)
+        coVerify(exactly = 0) { playbackManager.playAlbum(any(), any(), startIndex = any()) }
+    }
+
+    @Test
+    fun `getTrackRating returns zero when unset`() = runTest(testDispatcher) {
+        assertEquals(0, viewModel.getTrackRating("missing-id"))
     }
 
     @Test

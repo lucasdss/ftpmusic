@@ -163,6 +163,16 @@ class TabNavigationPolicyTest {
     }
 
     @Test
+    fun `tabRootPopFallbackRoutes tries library pattern then bare`() {
+        assertEquals(
+            listOf("library?tab={tab}", "library"),
+            TabNavigationPolicy.tabRootPopFallbackRoutes("library"),
+        )
+        assertEquals(listOf("home"), TabNavigationPolicy.tabRootPopFallbackRoutes("home"))
+        assertEquals(listOf("favorites"), TabNavigationPolicy.tabRootPopFallbackRoutes("favorites"))
+    }
+
+    @Test
     fun `isTabRootRoute true for tab destinations`() {
         assertTrue(TabNavigationPolicy.isTabRootRoute("home"))
         assertTrue(TabNavigationPolicy.isTabRootRoute("library?tab=albums"))

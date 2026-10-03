@@ -2323,6 +2323,132 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `toggleArtistLike second tap unlikes and rolls back on failure`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+
+        vm.toggleArtistLike("ar-8")
+        advanceUntilIdle()
+        assertTrue(vm.state.value.likedArtistIds.contains("ar-8"))
+        coVerify { favRepo.likeArtist("ar-8") }
+
+        vm.toggleArtistLike("ar-8")
+        advanceUntilIdle()
+        assertFalse(vm.state.value.likedArtistIds.contains("ar-8"))
+        coVerify { favRepo.unlikeArtist("ar-8") }
+
+        coEvery { favRepo.likeArtist("ar-9") } throws RuntimeException("db down")
+        vm.toggleArtistLike("ar-9")
+        advanceUntilIdle()
+        assertFalse(vm.state.value.likedArtistIds.contains("ar-9"))
+    }
+
+    @Test
+    fun `toggleArtistDislike second tap clears and rolls back on failure`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+
+        vm.toggleArtistDislike("ar-10")
+        advanceUntilIdle()
+        assertTrue(vm.state.value.dislikedArtistIds.contains("ar-10"))
+        coVerify { favRepo.dislikeArtist("ar-10") }
+
+        vm.toggleArtistDislike("ar-10")
+        advanceUntilIdle()
+        assertFalse(vm.state.value.dislikedArtistIds.contains("ar-10"))
+        coVerify { favRepo.clearDislikeArtist("ar-10") }
+
+        coEvery { favRepo.dislikeArtist("ar-11") } throws RuntimeException("db down")
+        vm.toggleArtistDislike("ar-11")
+        advanceUntilIdle()
+        assertFalse(vm.state.value.dislikedArtistIds.contains("ar-11"))
+    }
+
+    @Test
+    fun `toggleArtistLike from disliked restores dislike on rollback`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        coEvery { favRepo.likeArtist("ar-12") } throws RuntimeException("db down")
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+        // Seed disliked so wasDisliked=true on like toggle.
+        vm.toggleArtistDislike("ar-12")
+        advanceUntilIdle()
+        assertTrue(vm.state.value.dislikedArtistIds.contains("ar-12"))
+
+        vm.toggleArtistLike("ar-12")
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.likedArtistIds.contains("ar-12"))
+        assertTrue(vm.state.value.dislikedArtistIds.contains("ar-12"))
+    }
+
+    @Test
+    fun `toggleArtistLike unlike restores starred row on rollback`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        coEvery { favRepo.unlikeArtist("ar-14") } throws RuntimeException("db down")
+        coEvery { metadataDao.getStarredArtists(50, 0) } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-14", name = "Artist Fourteen"),
+        )
+        coEvery { metadataDao.getStarredArtistIds() } returns listOf("ar-14")
+        coEvery { metadataDao.getStarredAlbumIds() } returns emptyList()
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+        vm.loadFavorites()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.starredArtists.any { it.id == "ar-14" })
+
+        vm.toggleArtistLike("ar-14")
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.likedArtistIds.contains("ar-14"))
+        assertTrue(vm.state.value.starredArtists.any { it.id == "ar-14" })
+    }
+
+    @Test
+    fun `toggleArtistLike unlike rollback without starred row keeps empty list`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+        vm.toggleArtistLike("ar-15")
+        advanceUntilIdle()
+        assertTrue(vm.state.value.likedArtistIds.contains("ar-15"))
+        assertTrue(vm.state.value.starredArtists.none { it.id == "ar-15" })
+        coEvery { favRepo.unlikeArtist("ar-15") } throws RuntimeException("db down")
+
+        vm.toggleArtistLike("ar-15")
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.likedArtistIds.contains("ar-15"))
+        assertTrue(vm.state.value.starredArtists.none { it.id == "ar-15" })
+    }
+
+    @Test
+    fun `toggleArtistDislike from liked restores like row on rollback`() = runTest(testDispatcher) {
+        val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        coEvery { favRepo.dislikeArtist("ar-13") } throws RuntimeException("db down")
+        coEvery { metadataDao.getStarredArtists(50, 0) } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-13", name = "Artist Thirteen"),
+        )
+        coEvery { metadataDao.getStarredArtistIds() } returns listOf("ar-13")
+        coEvery { metadataDao.getStarredAlbumIds() } returns emptyList()
+        val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)
+        val vm = favoritesVm(favRepo, radioDao)
+        vm.loadFavorites()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.likedArtistIds.contains("ar-13"))
+        assertTrue(vm.state.value.starredArtists.any { it.id == "ar-13" })
+
+        vm.toggleArtistDislike("ar-13")
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.likedArtistIds.contains("ar-13"))
+        assertFalse(vm.state.value.dislikedArtistIds.contains("ar-13"))
+        assertTrue(vm.state.value.starredArtists.any { it.id == "ar-13" })
+    }
+
+    @Test
     fun `toggleRadioBookmark bookmarks then unbookmarks`() = runTest(testDispatcher) {
         val favRepo = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
         val radioDao = mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true)

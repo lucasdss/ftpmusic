@@ -69,6 +69,16 @@ object TabNavigationPolicy {
     }
 
     /**
+     * Ordered pop targets for same-tab reselect. Primary is [tabRootPopRoute];
+     * library also tries bare `library` if the pattern route is absent from the
+     * back stack (Nav version / deep-link edge).
+     */
+    fun tabRootPopFallbackRoutes(tabRoute: String): List<String> = when (tabRoute) {
+        "library" -> listOf("library?tab={tab}", "library")
+        else -> listOf(tabRoute)
+    }
+
+    /**
      * Active tab after a bottom-bar click. Overlays never change ownership.
      * Cross-tab click switches ownership; same-tab keeps it.
      */
