@@ -126,7 +126,10 @@ fun FtpmusicNavHost() {
             // Stale state — CastPlayer would have set deviceName via onDeviceInfoChanged.
             // If not, the session likely died without us noticing.
             android.util.Log.w("ftpmusic-cast", "[NavHost] isCasting=true but no deviceName — force-resetting")
-            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "stale casting heal — force reset")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-cast",
+                "stale casting heal — force reset",
+            )
             playbackViewModel.onCastDisconnected()
         }
     }
@@ -524,13 +527,6 @@ fun FtpmusicNavHost() {
                         mixId = mixId,
                         mixName = mixName,
                         onBack = { navController.popBackStack() },
-                        onTrackClick = { track, url -> playbackViewModel.playSingleTrack(track, url) },
-                        onPlayAll = { tracks, urls ->
-                            playbackViewModel.playAll(tracks, urls, "genremix", mixId.toString(), mixName)
-                        },
-                        onShuffle = { tracks, urls ->
-                            playbackViewModel.shuffleAll(tracks, urls, "genremix", mixId.toString(), mixName)
-                        },
                         onRefresh = { vm.refreshMix(mixId) },
                         currentTrackId = playbackState.currentTrackId,
                         isPlaying = playbackState.isPlaying,
@@ -561,20 +557,6 @@ fun FtpmusicNavHost() {
                         currentTrackId = playbackState.currentTrackId,
                         currentAlbumId = playbackState.albumId,
                         isPlaying = playbackState.isPlaying,
-                        onTrackClick = { track ->
-                            val trackModel = com.lucasdss.ftpmusic.app.data.model.Track(
-                                id = track.id,
-                                title = track.title,
-                                artist = track.artist,
-                                album = null,
-                                duration = track.durationSeconds,
-                                coverArt = track.coverArtUrl,
-                                suffix = track.suffix,
-                                contentType = track.contentType,
-                            )
-                            val streamUrl = playbackViewModel.buildStreamUrl(track.id)
-                            playbackViewModel.playSingleTrack(trackModel, streamUrl)
-                        },
                         onAlbumClick = { album -> navController.navigate("album/${album.id}") },
                         onArtistClick = { artist -> navController.navigate("artist/${artist.id}") },
                         onRadioStationClick = { station ->

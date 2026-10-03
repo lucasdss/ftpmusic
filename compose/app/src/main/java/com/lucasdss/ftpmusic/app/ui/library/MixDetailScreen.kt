@@ -13,7 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -81,9 +81,6 @@ fun MixDetailScreen(
     mixId: Long,
     mixName: String,
     onBack: () -> Unit,
-    onTrackClick: (Track, String) -> Unit = { _, _ -> },
-    onPlayAll: (List<Track>, List<String>) -> Unit = { _, _ -> },
-    onShuffle: (List<Track>, List<String>) -> Unit = { _, _ -> },
     onRefresh: (() -> Unit)? = null,
     currentTrackId: String? = null,
     isPlaying: Boolean = false,
@@ -227,21 +224,7 @@ fun MixDetailScreen(
                                                 ),
                                             ),
                                         )
-                                        .clickable {
-                                            val tracks = state.tracks.map { t ->
-                                                Track(
-                                                    id = t.id,
-                                                    title = t.title,
-                                                    artist = t.artist,
-                                                    albumId = t.albumId,
-                                                    duration = t.duration,
-                                                    trackNumber = t.trackNumber,
-                                                    coverArt = t.coverArt,
-                                                )
-                                            }
-                                            val urls = tracks.map { viewModel.buildStreamUrl(it.id) }
-                                            onPlayAll(tracks, urls)
-                                        },
+                                        .clickable { viewModel.playAll() },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -269,21 +252,7 @@ fun MixDetailScreen(
                                             Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                             RoundedCornerShape(cornerM()),
                                         )
-                                        .clickable {
-                                            val tracks = state.tracks.map { t ->
-                                                Track(
-                                                    id = t.id,
-                                                    title = t.title,
-                                                    artist = t.artist,
-                                                    albumId = t.albumId,
-                                                    duration = t.duration,
-                                                    trackNumber = t.trackNumber,
-                                                    coverArt = t.coverArt,
-                                                )
-                                            }
-                                            val urls = tracks.map { viewModel.buildStreamUrl(it.id) }
-                                            onShuffle(tracks, urls)
-                                        },
+                                        .clickable { viewModel.shuffle() },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -323,7 +292,7 @@ fun MixDetailScreen(
                     }
 
                     // Track list — Album-style rows
-                    items(state.tracks) { track ->
+                    itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->
                         val t = Track(
                             id = track.id,
                             title = track.title,
@@ -350,7 +319,7 @@ fun MixDetailScreen(
                                     AnimatedEqBarsMix()
                                 } else {
                                     Text(
-                                        "${track.trackNumber ?: indexOfTrack(state.tracks, track) + 1}",
+                                        "${track.trackNumber ?: index + 1}",
                                         color = Color(0xFF666666),
                                         fontSize = textBodyM(),
                                         fontWeight = FontWeight.Medium,
@@ -361,9 +330,7 @@ fun MixDetailScreen(
                             // Info (tap to play, long-press for menu)
                             Column(
                                 Modifier.weight(1f).combinedClickable(
-                                    onClick = {
-                                        onTrackClick(t, viewModel.buildStreamUrl(t.id))
-                                    },
+                                    onClick = { viewModel.playTrack(index) },
                                     onLongClick = { showTrackSheet = track },
                                 ),
                             ) {
@@ -596,6 +563,13 @@ class MixDetailViewModel @Inject constructor(
     private fun toPlayable(): Pair<List<Track>, List<String>> {
         val tracks = toPlayableTracks()
         return Pair(tracks, tracks.map { buildStreamUrl(it.id) })
+    }
+
+    /** Full mix CONTEXT + jump to tapped index; PRIORITY kept (ADR 0061). */
+    fun playTrack(index: Int) {
+        val (tracks, urls) = toPlayable()
+        if (index < 0 || index >= tracks.size) return
+        playbackManager.playAlbum(tracks, urls, startIndex = index)
     }
 
     fun playAll() {
@@ -1032,12 +1006,6 @@ private fun MixSheetAction(
 }
 
 // ─── Helpers for Album-style track rows ───
-
-/** Find the 1-based index of a track in the list (for the number column). */
-private fun indexOfTrack(tracks: List<GenreMixTrack>, track: GenreMixTrack): Int {
-    val idx = tracks.indexOfFirst { it.id == track.id }
-    return if (idx >= 0) idx else 0
-}
 
 /** Animated EQ bars for the active track (parity with Album detail). */
 @Composable

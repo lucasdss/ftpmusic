@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,8 +42,11 @@ import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingKind
 import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingStore
 import com.lucasdss.ftpmusic.app.data.favorites.FavoritesPaging
+import com.lucasdss.ftpmusic.app.data.model.Track
+import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.Background
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
@@ -75,6 +79,8 @@ class FavoritesViewModel @Inject constructor(
     private val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao,
     private val radioFavoriteDao: com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao,
     private val storage: SecureStorage,
+    private val playbackManager: PlaybackManager,
+    private val authHelper: SubsonicAuthHelper,
 ) : ViewModel() {
     private val _state = MutableStateFlow(FavoritesState())
     val state: StateFlow<FavoritesState> = _state.asStateFlow()
@@ -94,6 +100,39 @@ class FavoritesViewModel @Inject constructor(
 
     fun setMode(mode: FavoritesMode) {
         _state.value = _state.value.copy(mode = mode)
+    }
+
+    /**
+     * Full loaded favorites track list as CONTEXT + jump to [index].
+     * PRIORITY kept (ADR 0061). Uses current mode's track list.
+     */
+    fun playTrack(index: Int) {
+        val entities = when (_state.value.mode) {
+            FavoritesMode.LIKED -> _state.value.tracks
+            FavoritesMode.DISLIKED -> _state.value.dislikedTracks
+        }
+        if (index < 0 || index >= entities.size) return
+        val tracks = entities.map { e ->
+            Track(
+                id = e.id,
+                title = e.title,
+                artist = e.artist,
+                album = null,
+                duration = e.durationSeconds,
+                coverArt = e.coverArtUrl,
+                suffix = e.suffix,
+                contentType = e.contentType,
+            )
+        }
+        val urls = tracks.map { buildStreamUrl(it.id) }
+        playbackManager.playAlbum(tracks, urls, startIndex = index)
+    }
+
+    fun buildStreamUrl(trackId: String): String {
+        val base = com.lucasdss.ftpmusic.app.di.DynamicBaseUrl.url.trimEnd('/')
+        val username = storage.get(SecureStorage.KEY_USERNAME) ?: ""
+        val password = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
+        return authHelper.buildStreamUrl(base, trackId, username, password)
     }
 
     fun load() {
@@ -545,7 +584,6 @@ data class FavoritesState(
 @Composable
 fun FavoritesScreen(
     viewModel: FavoritesViewModel = hiltViewModel(),
-    onTrackClick: (TrackEntity) -> Unit = {},
     onAlbumClick: (AlbumEntity) -> Unit = {},
     onArtistClick: (ArtistEntity) -> Unit = {},
     onRadioStationClick: (RadioFavoriteEntity) -> Unit = {},
@@ -616,7 +654,6 @@ fun FavoritesScreen(
             LikedFavoritesList(
                 state = state,
                 viewModel = viewModel,
-                onTrackClick = onTrackClick,
                 onAlbumClick = onAlbumClick,
                 onArtistClick = onArtistClick,
                 onRadioStationClick = onRadioStationClick,
@@ -628,7 +665,6 @@ fun FavoritesScreen(
             DislikedFavoritesList(
                 state = state,
                 viewModel = viewModel,
-                onTrackClick = onTrackClick,
                 onAlbumClick = onAlbumClick,
                 onArtistClick = onArtistClick,
                 currentTrackId = currentTrackId,
@@ -661,7 +697,6 @@ private fun FavoritesModeChips(selected: FavoritesMode, onSelect: (FavoritesMode
 private fun LikedFavoritesList(
     state: FavoritesState,
     viewModel: FavoritesViewModel,
-    onTrackClick: (TrackEntity) -> Unit,
     onAlbumClick: (AlbumEntity) -> Unit,
     onArtistClick: (ArtistEntity) -> Unit,
     onRadioStationClick: (RadioFavoriteEntity) -> Unit,
@@ -693,14 +728,14 @@ private fun LikedFavoritesList(
     LazyColumn(Modifier.testTag("favorites_liked_list"), state = listState) {
         if (state.tracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbUp) }
-            items(state.tracks, key = { "liked_t_${it.id}" }) { track ->
+            itemsIndexed(state.tracks, key = { _, t -> "liked_t_${t.id}" }) { index, track ->
                 TrackFavoriteRow(
                     track = track,
                     isActive = currentTrackId != null && track.id == currentTrackId,
                     actionIcon = Icons.Filled.ThumbUp,
                     actionTint = BrandTeal,
                     actionCd = "Unlike",
-                    onRowClick = { onTrackClick(track) },
+                    onRowClick = { viewModel.playTrack(index) },
                     onAction = { viewModel.unstarTrack(track.id) },
                 )
             }
@@ -762,7 +797,6 @@ private fun LikedFavoritesList(
 private fun DislikedFavoritesList(
     state: FavoritesState,
     viewModel: FavoritesViewModel,
-    onTrackClick: (TrackEntity) -> Unit,
     onAlbumClick: (AlbumEntity) -> Unit,
     onArtistClick: (ArtistEntity) -> Unit,
     currentTrackId: String?,
@@ -793,14 +827,14 @@ private fun DislikedFavoritesList(
     LazyColumn(Modifier.testTag("favorites_disliked_list"), state = listState) {
         if (state.dislikedTracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbDown, tint = dislikeTint) }
-            items(state.dislikedTracks, key = { "dis_t_${it.id}" }) { track ->
+            itemsIndexed(state.dislikedTracks, key = { _, t -> "dis_t_${t.id}" }) { index, track ->
                 TrackFavoriteRow(
                     track = track,
                     isActive = currentTrackId != null && track.id == currentTrackId,
                     actionIcon = Icons.Filled.ThumbDown,
                     actionTint = dislikeTint,
                     actionCd = "Remove dislike",
-                    onRowClick = { onTrackClick(track) },
+                    onRowClick = { viewModel.playTrack(index) },
                     onAction = { viewModel.clearDislikeTrack(track.id) },
                 )
             }

@@ -920,6 +920,21 @@ class ArtistDetailViewModelTest {
     // ── Remaining branch coverage ──────────────────────────────────────────
 
     @Test
+    fun `playTrack passes full loaded list and startIndex`() = runTest(testDispatcher) {
+        seedTracksForQueue()
+        viewModel.playTrack(1)
+        coVerify {
+            playbackManager.playAlbum(
+                match { it.size == 2 && it[0].id == "t1" && it[1].id == "t2" },
+                match { it.size == 2 },
+                eq(1),
+                eq(false),
+            )
+        }
+        coVerify(exactly = 0) { playbackManager.playSingleTrack(any(), any()) }
+    }
+
+    @Test
     fun `playTrack no-op on out-of-range index`() = runTest(testDispatcher) {
         seedTracksForQueue()
         viewModel.playTrack(5)

@@ -30,3 +30,6 @@ broke labels and restore.
 ## See also
 
 `docs/DUAL_QUEUE_INDUSTRY_ALIGN_BEHAVIOR_REPORT.md`
+
+Collection row-tap / Play header contract: ADR 0061,
+`docs/COLLECTION_PLAY_FROM_TRACK_BEHAVIOR_REPORT.md`.

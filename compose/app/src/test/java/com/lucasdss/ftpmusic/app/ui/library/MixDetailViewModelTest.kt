@@ -189,6 +189,26 @@ class MixDetailViewModelTest {
         advanceUntilIdle()
     }
 
+    @Test fun `playTrack passes full mix order and startIndex`() = runTest(testDispatcher) {
+        loadMixIntoTracks(listOf("t1", "t2", "t3"))
+        viewModel.playTrack(1)
+        verify {
+            playbackManager.playAlbum(
+                match { it.size == 3 && it[0].id == "t1" && it[1].id == "t2" && it[2].id == "t3" },
+                match { it.size == 3 },
+                eq(1),
+                eq(false),
+            )
+        }
+        verify(exactly = 0) { playbackManager.playSingleTrack(any(), any()) }
+    }
+
+    @Test fun `playTrack no-op on out-of-bounds index`() = runTest(testDispatcher) {
+        loadMixIntoTracks()
+        viewModel.playTrack(9)
+        verify(exactly = 0) { playbackManager.playAlbum(any(), any(), startIndex = any()) }
+    }
+
     @Test fun `playAll starts the context and shows overwrite modal when rejected`() = runTest(testDispatcher) {
         loadMixIntoTracks()
         coEvery {

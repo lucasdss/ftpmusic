@@ -2,7 +2,9 @@ package com.lucasdss.ftpmusic.app.ui.favorites
 
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
+import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,6 +23,8 @@ class FavoritesViewModelTest {
     private val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao = mockk(relaxed = true)
     private val radioFavoriteDao: com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao = mockk(relaxed = true)
     private val storage: com.lucasdss.ftpmusic.app.data.security.SecureStorage = mockk(relaxed = true)
+    private val playbackManager: PlaybackManager = mockk(relaxed = true)
+    private val authHelper: SubsonicAuthHelper = mockk(relaxed = true)
 
     private lateinit var viewModel: FavoritesViewModel
 
@@ -49,7 +53,16 @@ class FavoritesViewModelTest {
         coEvery { metadataDao.getDislikedAlbums(any(), any()) } returns emptyList()
         coEvery { metadataDao.getDislikedArtists(any(), any()) } returns emptyList()
         coEvery { radioFavoriteDao.getAll() } returns emptyList()
-        viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
+        every { authHelper.buildStreamUrl(any(), any(), any(), any()) } returns "http://stream"
+        viewModel = FavoritesViewModel(
+            trackDao,
+            favoriteRepository,
+            metadataDao,
+            radioFavoriteDao,
+            storage,
+            playbackManager,
+            authHelper,
+        )
     }
 
     @After
@@ -312,7 +325,15 @@ class FavoritesViewModelTest {
         )
 
         // Recreate so init.observe picks up the stubs above.
-        viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
+        viewModel = FavoritesViewModel(
+            trackDao,
+            favoriteRepository,
+            metadataDao,
+            radioFavoriteDao,
+            storage,
+            playbackManager,
+            authHelper,
+        )
         advanceUntilIdle()
 
         assertEquals(1, viewModel.state.value.tracks.size)
@@ -430,7 +451,15 @@ class FavoritesViewModelTest {
         val starredFlow = kotlinx.coroutines.flow.MutableSharedFlow<List<TrackEntity>>(extraBufferCapacity = 1)
         every { trackDao.getStarredFlow(50, 0) } returns starredFlow
         // Rebuild VM with emitting flow
-        viewModel = FavoritesViewModel(trackDao, favoriteRepository, metadataDao, radioFavoriteDao, storage)
+        viewModel = FavoritesViewModel(
+            trackDao,
+            favoriteRepository,
+            metadataDao,
+            radioFavoriteDao,
+            storage,
+            playbackManager,
+            authHelper,
+        )
         coEvery { trackDao.getStarred(50, 0) } returns page0
         coEvery { trackDao.getStarred(1, 50) } returns listOf(TrackEntity(id = "probe", title = "P"))
         viewModel.load()
@@ -472,6 +501,62 @@ class FavoritesViewModelTest {
         advanceUntilIdle()
         assertTrue(viewModel.state.value.tracks.none { it.id == "1" })
         assertEquals(1, viewModel.state.value.tracks.size)
+    }
+
+    @Test
+    fun `playTrack passes full liked list and startIndex`() = runTest {
+        val tracks = listOf(
+            TrackEntity(id = "t1", title = "One"),
+            TrackEntity(id = "t2", title = "Two"),
+            TrackEntity(id = "t3", title = "Three"),
+        )
+        coEvery { trackDao.getStarred(50, 0) } returns tracks
+        viewModel.load()
+        advanceUntilIdle()
+
+        viewModel.playTrack(1)
+
+        verify {
+            playbackManager.playAlbum(
+                match { it.size == 3 && it[0].id == "t1" && it[1].id == "t2" && it[2].id == "t3" },
+                match { it.size == 3 },
+                eq(1),
+                eq(false),
+            )
+        }
+        verify(exactly = 0) { playbackManager.playSingleTrack(any(), any()) }
+    }
+
+    @Test
+    fun `playTrack no-op on out-of-bounds index`() = runTest {
+        coEvery { trackDao.getStarred(50, 0) } returns listOf(TrackEntity(id = "t1", title = "One"))
+        viewModel.load()
+        advanceUntilIdle()
+        viewModel.playTrack(5)
+        verify(exactly = 0) { playbackManager.playAlbum(any(), any(), startIndex = any()) }
+    }
+
+    @Test
+    fun `playTrack uses disliked list when in disliked mode`() = runTest {
+        val disliked = listOf(
+            TrackEntity(id = "d1", title = "D1", isDisliked = true),
+            TrackEntity(id = "d2", title = "D2", isDisliked = true),
+        )
+        coEvery { trackDao.getDisliked(50, 0) } returns disliked
+        viewModel.load()
+        advanceUntilIdle()
+        viewModel.setMode(FavoritesMode.DISLIKED)
+
+        viewModel.playTrack(0)
+
+        verify {
+            playbackManager.playAlbum(
+                match { it.size == 2 && it[0].id == "d1" && it[1].id == "d2" },
+                match { it.size == 2 },
+                eq(0),
+                eq(false),
+            )
+        }
     }
 
     @Test
