@@ -994,7 +994,9 @@ class PlaybackManager @Inject constructor(
                     logWarn("enqueuePlayQueue", e.message ?: "unknown error")
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-cache",
-                        "enqueuePlayQueue fail trackId=${tracks.getOrNull(i)?.id} priority=${if (i < urgentEnd) 0 else 1}",
+                        "enqueuePlayQueue fail trackId=${tracks.getOrNull(
+                            i,
+                        )?.id} priority=${if (i < urgentEnd) 0 else 1}",
                         e,
                     )
                 }

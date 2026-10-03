@@ -177,10 +177,10 @@ class PlaylistDetailViewModel @Inject constructor(
             )
         } catch (_: Exception) {
             android.util.Log.w("ftpmusic-playlist", "Background refresh failed for $playlistId")
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                    "ftpmusic-playlist",
-                    "Background refresh failed for $playlistId",
-                )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-playlist",
+                "Background refresh failed for $playlistId",
+            )
         }
     }
 
@@ -600,11 +600,11 @@ class PlaylistDetailViewModel @Inject constructor(
             downloadManager.enqueue(track.id, streamUrl, priority = 1)
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-playlist", "downloadTrackInternal failed: ${e.message}")
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                    "ftpmusic-playlist",
-                    "downloadTrackInternal failed",
-                    e,
-                )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-playlist",
+                "downloadTrackInternal failed",
+                e,
+            )
         }
     }
 
@@ -884,11 +884,11 @@ class PlaylistDetailViewModel @Inject constructor(
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("ftpmusic-playlist", "watchCacheStatus($trackId) failed: ${e.message}")
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                    "ftpmusic-playlist",
-                    "watchCacheStatus($trackId) failed",
-                    e,
-                )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playlist",
+                        "watchCacheStatus($trackId) failed",
+                        e,
+                    )
                 }
             }
             watcherJobs.add(job)
@@ -907,11 +907,11 @@ class PlaylistDetailViewModel @Inject constructor(
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("ftpmusic-playlist", "watchByTrackId($trackId) failed: ${e.message}")
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                    "ftpmusic-playlist",
-                    "watchByTrackId($trackId) failed",
-                    e,
-                )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playlist",
+                        "watchByTrackId($trackId) failed",
+                        e,
+                    )
                 }
             }
             watcherJobs.add(job)

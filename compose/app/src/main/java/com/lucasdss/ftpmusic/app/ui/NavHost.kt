@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -207,6 +208,8 @@ fun FtpmusicNavHost() {
     )
 
     val tabs = BottomNavItems
+    // ADR-0062: selection ownership independent of flat detail routes (mix/, album/, …).
+    var activeBottomTab by rememberSaveable { mutableStateOf("home") }
     val showBottomBar = currentRoute != "connect" // hide on login screen
     val isFullPlayer = currentRoute == "nowplaying"
     val isLoginScreen = currentRoute == "connect"
@@ -314,10 +317,9 @@ fun FtpmusicNavHost() {
                         },
                     ) {
                         tabs.forEach { tab ->
-                            // Route patterns may carry query args (library?tab=…,
-                            // search/{query}) — match by prefix so the tab stays
-                            // highlighted while on a drill-down of that tab.
-                            val selected = currentRoute?.startsWith(tab.route) == true
+                            // ADR-0062: highlight from activeBottomTab so Home stays
+                            // selected on mix/album/… drill-downs (flat graph).
+                            val selected = TabNavigationPolicy.isTabSelected(activeBottomTab, tab.route)
                             NavigationBarItem(
                                 icon = {
                                     Icon(
@@ -352,14 +354,34 @@ fun FtpmusicNavHost() {
                                 },
                                 selected = selected,
                                 onClick = {
-                                    if (selected) {
-                                        // Re-tap behaviors per spec
+                                    val popToRoot = TabNavigationPolicy.shouldPopToTabRoot(
+                                        activeBottomTab = activeBottomTab,
+                                        clickedTab = tab.route,
+                                        currentRoute = currentRoute,
+                                    )
+                                    if (popToRoot) {
+                                        navController.popBackStack(
+                                            TabNavigationPolicy.tabRootPopRoute(tab.route),
+                                            inclusive = false,
+                                        )
+                                        return@NavigationBarItem
+                                    }
+                                    if (selected &&
+                                        currentRoute != null &&
+                                        TabNavigationPolicy.isAtTabRoot(tab.route, currentRoute)
+                                    ) {
+                                        // Already at tab root — scroll/refresh stubs (ADR-0062).
                                         when (tab.route) {
                                             "home" -> { /* scroll-to-top handled by HomeScreen */ }
                                             "favorites" -> { /* refresh handled by FavoritesScreen */ }
                                             "search" -> { /* clear handled by SearchScreen */ }
                                         }
+                                        return@NavigationBarItem
                                     }
+                                    activeBottomTab = TabNavigationPolicy.resolveActiveTabAfterClick(
+                                        activeBottomTab,
+                                        tab.route,
+                                    )
                                     navController.navigate(tab.route) {
                                         // Replace the current tab instead of pushing: pop up to the
                                         // real top-level root ("home") — the graph's start destination
@@ -491,6 +513,8 @@ fun FtpmusicNavHost() {
                             navController.navigate("mix/$mixId")
                         },
                         onPlaylistsClick = {
+                            TabNavigationPolicy.resolveActiveTabForDestination("library?tab=playlists")
+                                ?.let { activeBottomTab = it }
                             navController.navigate("library?tab=playlists") { launchSingleTop = true }
                         },
                         onPlaylistClick = { playlistId ->

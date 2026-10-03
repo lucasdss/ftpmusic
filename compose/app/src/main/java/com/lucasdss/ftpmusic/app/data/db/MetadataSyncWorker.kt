@@ -387,7 +387,10 @@ class MetadataSyncWorker(
                 isSyncing.set(false)
                 syncJobs.remove(coroutineContext[kotlinx.coroutines.Job]!!)
                 val phase = _status.value.phase
-                DiagnosticLog.d(TAG, "sync end phase=$phase elapsed=${System.currentTimeMillis() - startMs}ms albums=${_status.value.albums} artists=${_status.value.artists} tracks=${_status.value.trackCount}")
+                DiagnosticLog.d(
+                    TAG,
+                    "sync end phase=$phase elapsed=${System.currentTimeMillis() - startMs}ms albums=${_status.value.albums} artists=${_status.value.artists} tracks=${_status.value.trackCount}",
+                )
             }
         }
         syncJobs.add(job)
