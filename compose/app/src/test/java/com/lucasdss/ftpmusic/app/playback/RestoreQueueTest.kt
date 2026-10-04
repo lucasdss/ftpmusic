@@ -123,4 +123,53 @@ class RestoreQueueTest {
         }
         verify(exactly = 0) { player.seekToDefaultPosition(any()) }
     }
+
+    @Test
+    fun `restoreQueue mismatched flags falls back to all context`() {
+        val mgr = manager()
+        val (tracks, urls) = tracks("a", "b", "c")
+
+        mgr.restoreQueue(
+            tracks,
+            urls,
+            startIndex = 1,
+            isPriorityFlags = listOf(false, true), // wrong size
+        )
+
+        assertEquals(3, mgr.contextSize)
+        assertEquals(0, mgr.priorityQueueSize)
+    }
+
+    @Test
+    fun `restoreQueue mismatched entryIds ignored and zero ids skip stamp`() {
+        val mgr = manager()
+        val (tracks, urls) = tracks("a", "b", "c")
+
+        mgr.restoreQueue(
+            tracks,
+            urls,
+            startIndex = 0,
+            isPriorityFlags = listOf(false, true, false),
+            entryIds = listOf(10, 0, 12),
+            nextEntryId = 20,
+        )
+
+        val ids = mgr.entryIds()
+        assertEquals(3, ids.size)
+        assertEquals(10, ids[0])
+        assertTrue("zero entryId must not stamp 0", ids[1] != 0)
+        assertEquals(12, ids[2])
+        assertEquals(20, mgr.peekNextEntryId())
+    }
+
+    @Test
+    fun `restoreQueue with empty urls is a no-op`() {
+        val mgr = manager()
+        mgr.restoreQueue(
+            listOf(Track("a", "A", duration = 100)),
+            emptyList(),
+            startIndex = 0,
+        )
+        assertEquals(0, mgr.contextSize)
+    }
 }

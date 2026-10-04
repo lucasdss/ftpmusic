@@ -41,5 +41,8 @@ fun MediaItem.withQueueEntryId(id: Int): MediaItem {
         .setMediaMetadata(mediaMetadata.buildUpon().setExtras(extras).build())
         .build()
     QueueEntryIdMemory.put(built, id)
+    // Preserve Continuous Play autoplay stamp across entry-id rebuilds (JVM
+    // Bundle extras are stubbed; identity memory must travel with the instance).
+    AutoplayFlagMemory.get(this)?.let { AutoplayFlagMemory.put(built, it) }
     return built
 }

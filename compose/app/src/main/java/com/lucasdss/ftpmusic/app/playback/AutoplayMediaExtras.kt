@@ -36,5 +36,8 @@ fun MediaItem.withAutoplay(flag: Boolean = true): MediaItem {
         .setMediaMetadata(mediaMetadata.buildUpon().setExtras(extras).build())
         .build()
     AutoplayFlagMemory.put(built, flag)
+    // buildUpon() mints a new instance — copy JVM entry-id memory so Dual stamp
+    // does not treat the autoplay item as unstamped and drop this flag.
+    QueueEntryIdMemory.get(this).takeIf { it > 0 }?.let { QueueEntryIdMemory.put(built, it) }
     return built
 }

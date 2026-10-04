@@ -2464,6 +2464,8 @@ class MediaService : MediaLibraryService() {
                         // would otherwise merge on top of the restored context
                         // (113+50=163). Legacy saves (contextSize=-1) restore
                         // everything as context, matching the old behavior.
+                        // Index + position applied atomically inside restoreQueue —
+                        // do not seek again (avoids period/metadata flash).
                         playbackManager.restoreQueue(
                             saved.tracks,
                             saved.urls,
@@ -2474,16 +2476,17 @@ class MediaService : MediaLibraryService() {
                             saved.nextEntryId,
                             saved.positionMs,
                         )
+                    } else {
+                        if (saved.currentIndex !in 0 until ep.mediaItemCount) {
+                            android.util.Log.w(
+                                "ftpmusic-cast",
+                                "[switchToLocal] saved.currentIndex=${saved.currentIndex} out of range (count=${ep.mediaItemCount}) — clamped",
+                            )
+                        }
+                        // Queue already full — seek only (restore not called).
+                        val idx = saved.currentIndex.coerceIn(0, maxOf(0, ep.mediaItemCount - 1))
+                        ep.seekTo(idx, saved.positionMs)
                     }
-                    if (saved.currentIndex !in 0 until ep.mediaItemCount) {
-                        android.util.Log.w(
-                            "ftpmusic-cast",
-                            "[switchToLocal] saved.currentIndex=${saved.currentIndex} out of range (count=${ep.mediaItemCount}) — clamped",
-                        )
-                    }
-                    // Seek to saved position
-                    val idx = saved.currentIndex.coerceIn(0, maxOf(0, ep.mediaItemCount - 1))
-                    ep.seekTo(idx, saved.positionMs)
                 }
             }
             ep.playWhenReady = false

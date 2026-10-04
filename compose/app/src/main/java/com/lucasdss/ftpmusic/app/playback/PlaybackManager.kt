@@ -261,12 +261,13 @@ class PlaybackManager @Inject constructor(
         sourceName: String? = null,
         shuffled: Boolean = false,
     ) {
-        if (tracks.isEmpty()) return
+        val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, urls, "pushContext")
+        if (alignedTracks.isEmpty()) return
         val existingMerged = dualQueue.getMerged()
         val existingIds = existingMerged.mapNotNull { it.mediaId.takeIf { id -> id.isNotEmpty() } }.toSet()
-        var items = buildMediaItems(tracks, urls)
+        var items = buildMediaItems(alignedTracks, alignedUrls)
         if (shuffled) items = items.shuffled()
-        val si = startIndex.coerceIn(0, tracks.lastIndex)
+        val si = startIndex.coerceIn(0, alignedTracks.lastIndex)
 
         optimist.snapshot()
         // New context = the pushed tracks (dedup against existing queue by id).
@@ -282,7 +283,7 @@ class PlaybackManager @Inject constructor(
         playMergedQueue(merged, if (si < dualQueue.contextSize) si else 0)
         queueGeneration++
         if (sourceType != null && sourceId != null) {
-            journalQueue(sourceType, sourceId, sourceName, tracks.map { it.id }, si)
+            journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, si)
         }
         emitClearAndPlayOrCommit(merged, si)
     }
@@ -384,10 +385,11 @@ class PlaybackManager @Inject constructor(
         sourceName: String? = null,
     ) {
         ensurePlayer()
-        if (tracks.isEmpty()) return
+        val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "playAlbum")
+        if (alignedTracks.isEmpty()) return
         queueGeneration++ // prevent stale swapQueueUrls from overwriting
-        val items = buildMediaItems(tracks, streamUrls)
-        val si = startIndex.coerceIn(0, tracks.lastIndex)
+        val items = buildMediaItems(alignedTracks, alignedUrls)
+        val si = startIndex.coerceIn(0, alignedTracks.lastIndex)
 
         optimist.snapshot()
         // Dual-queue: set context at startIndex so PRIORITY sits after current (industry).
@@ -399,11 +401,11 @@ class PlaybackManager @Inject constructor(
         }
         val merged = dualQueue.getMerged()
         playMergedQueue(merged, si)
-        enqueuePlayQueue(tracks, streamUrls, si)
-        if (!skipPersistence) persistenceSave(tracks, streamUrls, si)
+        enqueuePlayQueue(alignedTracks, alignedUrls, si)
+        if (!skipPersistence) persistenceSave(alignedTracks, alignedUrls, si)
 
         if (sourceType != null && sourceId != null) {
-            journalQueue(sourceType, sourceId, sourceName, tracks.map { it.id }, si)
+            journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, si)
         }
 
         emitClearAndPlayOrCommit(merged, si)
@@ -425,9 +427,10 @@ class PlaybackManager @Inject constructor(
         positionMs: Long = 0L,
     ) {
         ensurePlayer()
-        if (tracks.isEmpty()) return
+        val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "restoreQueue")
+        if (alignedTracks.isEmpty()) return
         queueGeneration++
-        var items = buildMediaItems(tracks, streamUrls)
+        var items = buildMediaItems(alignedTracks, alignedUrls)
         val ids = entryIds?.takeIf { it.size == items.size }
         if (ids != null) {
             items = items.mapIndexed { i, item ->
@@ -449,7 +452,7 @@ class PlaybackManager @Inject constructor(
         val merged = dualQueue.getMerged()
         val si = startIndex.coerceIn(0, merged.lastIndex.coerceAtLeast(0))
         queueManager.playAll(merged, si, positionMs)
-        enqueuePlayQueue(tracks, streamUrls, startIndex)
+        enqueuePlayQueue(alignedTracks, alignedUrls, startIndex)
     }
 
     fun shuffleAlbum(
@@ -460,8 +463,9 @@ class PlaybackManager @Inject constructor(
         sourceName: String? = null,
     ) {
         ensurePlayer()
-        if (tracks.isEmpty()) return
-        val items = buildMediaItems(tracks, streamUrls)
+        val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "shuffleAlbum")
+        if (alignedTracks.isEmpty()) return
+        val items = buildMediaItems(alignedTracks, alignedUrls)
         val shuffled = items.shuffled()
 
         optimist.snapshot()
@@ -474,11 +478,11 @@ class PlaybackManager @Inject constructor(
         }
         val merged = dualQueue.getMerged()
         playMergedQueue(merged, 0)
-        enqueuePlayQueue(tracks, streamUrls, 0)
-        persistenceSave(tracks, streamUrls, 0)
+        enqueuePlayQueue(alignedTracks, alignedUrls, 0)
+        persistenceSave(alignedTracks, alignedUrls, 0)
 
         if (sourceType != null && sourceId != null) {
-            journalQueue(sourceType, sourceId, sourceName, tracks.map { it.id }, 0)
+            journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, 0)
         }
 
         emitClearAndPlayOrCommit(merged, 0)
@@ -616,8 +620,9 @@ class PlaybackManager @Inject constructor(
      *   render an Autoplay section separate from Continue Playing (ADR-0053).
      */
     fun appendToContext(tracks: List<Track>, streamUrls: List<String>, asAutoplay: Boolean = false) {
-        if (tracks.isEmpty()) return
-        val items = buildMediaItems(tracks, streamUrls)
+        val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "appendToContext")
+        if (alignedTracks.isEmpty()) return
+        val items = buildMediaItems(alignedTracks, alignedUrls)
             .map { it.ensureEntryId() }
             .map { if (asAutoplay) it.withAutoplay(true) else it }
         optimist.snapshot()
@@ -975,27 +980,29 @@ class PlaybackManager @Inject constructor(
      *    DownloadManager.enqueue (no re-download on every track advance).
      */
     fun enqueuePlayQueue(tracks: List<Track>, urls: List<String>, currentIndex: Int) {
+        val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, urls, "enqueuePlayQueue")
+        if (alignedTracks.isEmpty()) return
         val start = currentIndex + 1
-        val urgentEnd = minOf(start + 3, tracks.size)
+        val urgentEnd = minOf(start + 3, alignedTracks.size)
         scope.launch(kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> }) {
-            for (i in start until tracks.size) {
+            for (i in start until alignedTracks.size) {
                 try {
-                    trackInfoMap[tracks[i].id] =
+                    trackInfoMap[alignedTracks[i].id] =
                         TrackInfo(
-                            url = urls[i],
-                            localUrl = urls[i],
-                            castUrl = urls[i],
-                            title = tracks[i].title,
-                            artist = tracks[i].artist,
-                            album = tracks[i].album,
+                            url = alignedUrls[i],
+                            localUrl = alignedUrls[i],
+                            castUrl = alignedUrls[i],
+                            title = alignedTracks[i].title,
+                            artist = alignedTracks[i].artist,
+                            album = alignedTracks[i].album,
                         ) // store for Cast URL swap
                     val priority = if (i < urgentEnd) 0 else 1
-                    downloadManager.enqueue(tracks[i].id, urls[i], priority = priority)
+                    downloadManager.enqueue(alignedTracks[i].id, alignedUrls[i], priority = priority)
                 } catch (e: Exception) {
                     logWarn("enqueuePlayQueue", e.message ?: "unknown error")
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-cache",
-                        "enqueuePlayQueue fail trackId=${tracks.getOrNull(
+                        "enqueuePlayQueue fail trackId=${alignedTracks.getOrNull(
                             i,
                         )?.id} priority=${if (i < urgentEnd) 0 else 1}",
                         e,
@@ -1019,23 +1026,11 @@ class PlaybackManager @Inject constructor(
      * actually hearing — otherwise the pre-Cast queue was restored on disconnect.
      */
     fun buildQueueStateFromDual(): Pair<List<Track>, List<String>> {
-        val merged = dualQueue.getMerged()
         val tracks = mutableListOf<Track>()
         val urls = mutableListOf<String>()
-        for (item in merged) {
-            val url = item.localConfiguration?.uri?.toString() ?: ""
-            tracks.add(
-                Track(
-                    id = item.mediaId,
-                    title = item.mediaMetadata.title?.toString() ?: "",
-                    artist = item.mediaMetadata.artist?.toString(),
-                    artistId = item.mediaMetadata.extras?.getString("artistId"),
-                    album = item.mediaMetadata.albumTitle?.toString(),
-                    albumId = item.mediaMetadata.extras?.getString("albumId"),
-                    coverArt = extractCoverArtId(item.mediaMetadata),
-                    duration = (item.mediaMetadata.extras?.getLong("duration")?.div(1000))?.toInt(),
-                ),
-            )
+        for (item in dualQueue.getMerged()) {
+            val (track, url) = trackAndUrlFromMediaItem(item)
+            tracks.add(track)
             urls.add(url)
         }
         return Pair(tracks, urls)
@@ -1046,22 +1041,29 @@ class PlaybackManager @Inject constructor(
         val urls = mutableListOf<String>()
         for (i in 0 until player.mediaItemCount) {
             val item = player.getMediaItemAt(i) ?: continue
-            val url = item.localConfiguration?.uri?.toString() ?: ""
-            tracks.add(
-                Track(
-                    id = item.mediaId,
-                    title = item.mediaMetadata.title?.toString() ?: "",
-                    artist = item.mediaMetadata.artist?.toString(),
-                    artistId = item.mediaMetadata.extras?.getString("artistId"),
-                    album = item.mediaMetadata.albumTitle?.toString(),
-                    albumId = item.mediaMetadata.extras?.getString("albumId"),
-                    coverArt = extractCoverArtId(item.mediaMetadata),
-                    duration = (item.mediaMetadata.extras?.getLong("duration")?.div(1000))?.toInt(),
-                ),
-            )
+            val (track, url) = trackAndUrlFromMediaItem(item)
+            tracks.add(track)
             urls.add(url)
         }
         return Pair(tracks, urls)
+    }
+
+    /** Shared MediaItem → Track+URL mapping for Dual and Exo queue snapshots. */
+    internal fun trackAndUrlFromMediaItem(item: MediaItem): Pair<Track, String> {
+        val md = item.mediaMetadata
+        val extras = md.extras
+        val url = item.localConfiguration?.uri?.toString().orEmpty()
+        val track = Track(
+            id = item.mediaId,
+            title = md.title?.toString().orEmpty(),
+            artist = md.artist?.toString(),
+            artistId = extras?.getString("artistId"),
+            album = md.albumTitle?.toString(),
+            albumId = extras?.getString("albumId"),
+            coverArt = extractCoverArtId(md),
+            duration = extras?.getLong("duration")?.div(1000)?.toInt(),
+        )
+        return track to url
     }
 
     private fun updateNextTrackPreview(player: androidx.media3.common.Player) {
@@ -1070,6 +1072,41 @@ class PlaybackManager @Inject constructor(
 
     /** Cached track metadata map — keyed by trackId. For UI fallback when Cast device doesn't report metadata. */
     fun getTrackInfo(trackId: String): TrackInfo? = trackInfoMap[trackId]
+
+    /**
+     * Pair tracks with stream URLs at equal length. Mismatched lists used to
+     * silently zip-truncate in [buildMediaItems] while [enqueuePlayQueue]
+     * still indexed the full tracks list (OOB / wrong URL).
+     */
+    private fun alignedTracksAndUrls(
+        tracks: List<Track>,
+        urls: List<String>,
+        tag: String,
+    ): Pair<List<Track>, List<String>> {
+        if (tracks.isEmpty()) return emptyList<Track>() to emptyList()
+        if (urls.isEmpty()) {
+            android.util.Log.w(
+                "ftpmusic-playback",
+                "[$tag] empty urls for ${tracks.size} tracks — no-op",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-playback",
+                "queueLengthGuard tag=$tag tracks=${tracks.size} urls=0",
+            )
+            return emptyList<Track>() to emptyList()
+        }
+        if (tracks.size == urls.size) return tracks to urls
+        val n = minOf(tracks.size, urls.size)
+        android.util.Log.w(
+            "ftpmusic-playback",
+            "[$tag] tracks/urls length mismatch tracks=${tracks.size} urls=${urls.size} — coerce to $n",
+        )
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-playback",
+            "queueLengthGuard tag=$tag tracks=${tracks.size} urls=${urls.size} coerce=$n",
+        )
+        return tracks.take(n) to urls.take(n)
+    }
 
     private fun buildMediaItems(tracks: List<Track>, urls: List<String>): List<androidx.media3.common.MediaItem> =
         tracks.zip(urls).map { (track, url) ->
@@ -1167,7 +1204,7 @@ class PlaybackManager @Inject constructor(
     private fun MediaItem.ensureEntryId(): MediaItem =
         if (hasQueueEntryId()) this else withQueueEntryId(dualQueue.peekNextEntryId())
 
-    private inline fun emitCastOrCommit(action: () -> CastQueueAction) {
+    private fun emitCastOrCommit(action: () -> CastQueueAction) {
         if (PlayerHolder.isCasting) {
             castQueueListener?.invoke(action())
         } else {
