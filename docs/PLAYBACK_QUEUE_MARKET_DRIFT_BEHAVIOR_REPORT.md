@@ -60,5 +60,5 @@ Gate: PlaybackManager ≥80% line+branch. MediaService whole-file below bar hist
 - Kill local `QueueAutoLoader`; Cast load from Dual only
 - Merge `playback_state` into `queue_state` (ADR 0007 open)
 - Prune Overwrite PUSH / settings triad if unused in prod
-- Delete legacy `QueueScreen` (prod = PlayerBar sheet)
+- Delete legacy `QueueScreen` (prod = PlayerBar sheet; ADR-0070 ports reorder/remove into sheet first)
 - CP similarity API / Cast Continuous Play

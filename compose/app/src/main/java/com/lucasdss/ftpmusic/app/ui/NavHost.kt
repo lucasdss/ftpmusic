@@ -270,8 +270,9 @@ fun FtpmusicNavHost() {
     Scaffold(
         bottomBar = {
             Column(Modifier.navigationBarsPadding()) {
-                // Unified player bar — adapts to isCasting automatically
-                if (!isFullPlayer && !isLoginScreen) {
+                // Unified player bar — adapts to isCasting automatically.
+                // ADR-0070: hide idle mini (Spotify / Apple / YT) when no track.
+                if (!isFullPlayer && !isLoginScreen && playbackState.isVisible) {
                     // P1: collect the position tick HERE (bottomBar scope), not
                     // in the NavHost scope — only this subtree recomposes 5 Hz.
                     val position by playbackViewModel.positionMs.collectAsStateWithLifecycle(0L)
@@ -288,9 +289,12 @@ fun FtpmusicNavHost() {
                             title = playbackState.title,
                             artist = playbackState.artist,
                             isPlaying = playbackState.isPlaying,
+                            isBuffering = playbackState.isBuffering,
                             coverArtUrl = miniCoverUrl,
                             isCasting = playbackState.isCasting,
                             castDeviceName = playbackState.castDeviceName,
+                            priorityQueueSize = playbackState.priorityQueueSize,
+                            isQueueSynced = playbackState.isQueueSynced,
                             colors = miniPlayerColors,
                         ),
                         position = position,
@@ -848,6 +852,16 @@ fun FtpmusicNavHost() {
                         remember(playbackViewModel) { { index: Int -> playbackViewModel.removeFromQueue(index) } }
                     val onPlayQueueItem =
                         remember(playbackViewModel) { { index: Int -> playbackViewModel.playQueueItem(index) } }
+                    val onMoveQueueItem = remember(playbackViewModel) {
+                        { from: Int, to: Int -> playbackViewModel.moveQueueItem(from, to) }
+                    }
+                    val onBeginQueueReorder = remember(playbackViewModel) {
+                        { entryId: Int, fromIndex: Int ->
+                            playbackViewModel.beginQueueReorder(entryId, fromIndex)
+                        }
+                    }
+                    val onCommitQueueReorder =
+                        remember(playbackViewModel) { { playbackViewModel.commitQueueReorder() } }
                     val onSleepTimerClick = remember { { showSleepTimerDialog = true } }
                     val onCast = remember { { CastButtonState.showDialog.value = true } }
                     val onShareQueue =
@@ -859,6 +873,7 @@ fun FtpmusicNavHost() {
                             artist = playbackState.artist,
                             album = playbackState.album,
                             isPlaying = playbackState.isPlaying,
+                            isBuffering = playbackState.isBuffering,
                             coverArtUrl = nowPlayingCoverUrl,
                             coverArtId = effectiveCoverArtId,
                             isCasting = playbackState.isCasting,
@@ -919,7 +934,9 @@ fun FtpmusicNavHost() {
                         onSongInfo = { /* placeholder - coming soon */ },
                         onEqualizer = { /* placeholder - coming soon */ },
                         onCast = onCast,
-                        onShuffleQueue = onShuffleToggle,
+                        onMoveQueueItem = onMoveQueueItem,
+                        onBeginQueueReorder = onBeginQueueReorder,
+                        onCommitQueueReorder = onCommitQueueReorder,
                         onShareQueue = onShareQueue,
                         modifier = Modifier,
                     )

@@ -58,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
@@ -85,15 +87,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * Unified player UI — adapts between mini (bottom bar) and full (now-playing screen).
  *
- * Mini mode: cover art, title/artist, seek bar, prev/playpause/next.
- * Full mode: gradient album art background, large cover, vertical volume, all controls,
- *            "Casting to {device}" banner when casting.
+ * Mini mode: cover art, title/artist, thin progress (display only — no seek),
+ * prev/play/pause/next. Full mode: gradient album art background, large cover,
+ * seek/waveform, transport, cast volume, in-player queue sheet + lyrics overlay.
  *
- * Cast/disconnect button is NOT rendered here — it lives in the app top bar.
+ * Cast picker lives in [CastButton] (header) + [CastDevicePickerDialog] (NavHost).
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -128,7 +132,9 @@ fun PlayerBar(
     onSongInfo: () -> Unit = {},
     onEqualizer: () -> Unit = {},
     onCast: () -> Unit = {},
-    onShuffleQueue: () -> Unit = {},
+    onMoveQueueItem: (Int, Int) -> Unit = { _, _ -> },
+    onBeginQueueReorder: (entryId: Int, fromIndex: Int) -> Unit = { _, _ -> },
+    onCommitQueueReorder: () -> Unit = {},
     onShareQueue: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -241,8 +247,9 @@ fun PlayerBar(
                             onBack = onBack,
                             onArtistClick = onArtistClick,
                             onAlbumClick = onAlbumClick,
+                            onSleepTimer = onSleepTimer,
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(spacingXS()))
 
                         // ── Main body — fixed layout, no scrolling (design v4) ──
                         PlayerMainBody(
@@ -274,7 +281,10 @@ fun PlayerBar(
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
-                        onShuffleQueue = onShuffleQueue,
+                        onShuffleToggle = onShuffleToggle,
+                        onMoveQueueItem = onMoveQueueItem,
+                        onBeginQueueReorder = onBeginQueueReorder,
+                        onCommitQueueReorder = onCommitQueueReorder,
                         onShareQueue = onShareQueue,
                     )
 
@@ -326,11 +336,11 @@ private fun PlayerMiniBar(
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = spacingS())
                 .height(miniPlayerHeight())
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(cornerL()))
                 .background(miniBgBrush)
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(16.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(cornerL()))
                 .clickable { onClick() },
         ) {
             // Progress bar at TOP of mini player (Item 6)
@@ -369,23 +379,27 @@ private fun PlayerMiniBar(
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.SkipPrevious, "Previous", modifier = Modifier.size(iconSmall()))
+                    Icon(
+                        Icons.Default.SkipPrevious,
+                        stringResource(R.string.player_previous),
+                        modifier = Modifier.size(iconSmall()),
+                    )
                 }
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(spacingXS()))
                 // Cover art (small) with cast indicator dot
                 Box(Modifier.size(adp(44f))) {
                     if (coverArtUrl != null) {
                         AsyncImage(
                             model = coverArtUrl,
                             contentDescription = "Cover",
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(adp(4f))),
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(cornerS())),
                             contentScale = ContentScale.Crop,
                         )
                     } else {
                         Icon(
                             Icons.Default.MusicNote,
                             "No cover",
-                            modifier = Modifier.fillMaxSize().padding(8.dp),
+                            modifier = Modifier.fillMaxSize().padding(spacingS()),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -400,11 +414,11 @@ private fun PlayerMiniBar(
                         )
                     }
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(spacingS()))
                 // Track info
                 Column(modifier = Modifier.weight(1f)) {
                     FittingText(
-                        text = title ?: "No track",
+                        text = title ?: stringResource(R.string.player_no_track),
                         fontSize = textHeadingS(),
                         minFontSize = textMicro(),
                         fontWeight = FontWeight.Medium,
@@ -427,7 +441,7 @@ private fun PlayerMiniBar(
                                     )
                                 }
                             }
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(spacingXS()))
                             FittingText(
                                 text = castDeviceName!!,
                                 color = if (!isQueueSynced) Color(0xFFF0A040) else BrandTeal,
@@ -448,11 +462,11 @@ private fun PlayerMiniBar(
                             )
                         }
                         if (priorityQueueSize > 0) {
-                            Spacer(Modifier.width(4.dp))
-                            Surface(color = BrandPurple.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                            Spacer(Modifier.width(spacingXS()))
+                            Surface(color = BrandPurple.copy(alpha = 0.2f), shape = RoundedCornerShape(cornerS())) {
                                 Text(
                                     "+$priorityQueueSize",
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                    modifier = Modifier.padding(horizontal = spacingXS(), vertical = 1.dp),
                                     color = BrandPurple,
                                     fontSize = textMicro(),
                                     fontWeight = FontWeight.Bold,
@@ -461,54 +475,75 @@ private fun PlayerMiniBar(
                         }
                     }
                 }
-                Spacer(Modifier.width(8.dp))
-                // Controls — only Play/Pause + Skip Next per design spec
+                Spacer(Modifier.width(spacingS()))
+                // Controls — Play/Pause (+ buffering) + Skip Next
                 Box(
-                    Modifier.size(adp(40f)).background(Color.White.copy(alpha = 0.08f), CircleShape).clickable {
+                    Modifier.size(adp(48f)).background(Color.White.copy(alpha = 0.08f), CircleShape).clickable {
                         onPlayPause()
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        if (isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(iconSmall()),
-                    )
+                    if (isBuffering) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(iconSmall()),
+                            color = BrandTeal,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            if (isPlaying) {
+                                stringResource(R.string.player_pause)
+                            } else {
+                                stringResource(R.string.player_play)
+                            },
+                            modifier = Modifier.size(iconSmall()),
+                        )
+                    }
                 }
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(spacingXS()))
                 Box(
-                    Modifier.size(adp(40f)).background(Color.White.copy(alpha = 0.08f), CircleShape).clickable {
+                    Modifier.size(adp(48f)).background(Color.White.copy(alpha = 0.08f), CircleShape).clickable {
                         onSkipNext()
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.SkipNext, "Next", modifier = Modifier.size(iconSmall()))
+                    Icon(
+                        Icons.Default.SkipNext,
+                        stringResource(R.string.player_next),
+                        modifier = Modifier.size(iconSmall()),
+                    )
                 }
             }
         }
     }
 }
 
-/** Full-mode header: cast banner + back/title/artist/album top bar. */
+/** Full-mode header: cast banner + back/title/artist/album top bar + sleep timer. */
 @Composable
 private fun PlayerFullHeader(
     state: PlayerBarState,
     onBack: () -> Unit,
     onArtistClick: () -> Unit,
     onAlbumClick: () -> Unit,
+    onSleepTimer: () -> Unit = {},
 ) {
     with(state) {
         if (isCasting) {
             Row(
                 Modifier.fillMaxWidth()
                     .background(BrandTeal.copy(alpha = 0.12f))
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = spacingXL(), vertical = spacingS()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Cast, null, tint = BrandTeal, modifier = Modifier.size(12.dp))
-                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.Cast, null, tint = BrandTeal, modifier = Modifier.size(adp(12f)))
+                Spacer(Modifier.width(spacingS()))
                 FittingText(
-                    text = if (castDeviceName != null) "Casting to $castDeviceName" else "Casting…",
+                    text = if (castDeviceName != null) {
+                        stringResource(R.string.player_casting_to, castDeviceName!!)
+                    } else {
+                        stringResource(R.string.player_casting)
+                    },
                     color = BrandTeal,
                     fontSize = textLabelS(),
                     minFontSize = textMicro(),
@@ -526,7 +561,7 @@ private fun PlayerFullHeader(
                         Icons.Default.Refresh,
                         null,
                         tint = Color(0xFFF0A040),
-                        modifier = Modifier.size(10.dp).rotate(rotation.value),
+                        modifier = Modifier.size(adp(10f)).rotate(rotation.value),
                     )
                 }
             }
@@ -538,13 +573,17 @@ private fun PlayerFullHeader(
                 Row(
                     Modifier.fillMaxWidth()
                         .background(BrandTeal.copy(alpha = 0.10f))
-                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                        .padding(horizontal = spacingXL(), vertical = spacingS())
+                        .clickable { onSleepTimer() },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Timer, null, tint = BrandTeal, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Default.Timer, null, tint = BrandTeal, modifier = Modifier.size(adp(12f)))
+                    Spacer(Modifier.width(spacingS()))
                     FittingText(
-                        text = "Sleep timer — ${formatPlayerBarTime(remainingSec * 1000)}",
+                        text = stringResource(
+                            R.string.player_sleep_timer_remaining,
+                            formatPlayerBarTime(remainingSec * 1000),
+                        ),
                         color = BrandTeal,
                         fontSize = textLabelS(),
                         minFontSize = textMicro(),
@@ -554,23 +593,32 @@ private fun PlayerFullHeader(
                 }
             }
         }
-        // Top bar with back, title, cast
+        // Top bar with back, title, sleep timer, cast
         Row(
             Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingM()),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(
-                    adp(40f),
-                ).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.1f)).clickable {
-                    onBack()
-                },
+                Modifier.size(adp(48f))
+                    .clip(RoundedCornerShape(cornerL()))
+                    .background(Color.White.copy(alpha = 0.1f))
+                    .clickable { onBack() },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.KeyboardArrowDown, "Back", tint = Color.White, modifier = Modifier.size(adp(22f)))
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    stringResource(R.string.player_back),
+                    tint = Color.White,
+                    modifier = Modifier.size(adp(22f)),
+                )
             }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Now Playing", color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(R.string.player_now_playing),
+                    color = Color.White,
+                    fontSize = textBodyM(),
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(adp(6f))) {
                     if (artist != null) {
                         Surface(
@@ -600,7 +648,7 @@ private fun PlayerFullHeader(
                         ) {
                             Text(
                                 album ?: "",
-                                color = Color(0xFFAAAAAA),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = textMicro(),
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
@@ -613,6 +661,20 @@ private fun PlayerFullHeader(
                         }
                     }
                 }
+            }
+            Box(
+                Modifier.size(adp(48f))
+                    .clip(CircleShape)
+                    .clickable { onSleepTimer() }
+                    .testTag("sleep_timer_entry"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Timer,
+                    stringResource(R.string.player_sleep_timer),
+                    tint = if (sleepTimerEndMs > 0L) BrandTeal else Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(iconSmall()),
+                )
             }
             CastButton()
         }
@@ -695,7 +757,7 @@ private fun ColumnScope.PlayerMainBody(
                     Row(Modifier.padding(top = spacingXS()), verticalAlignment = Alignment.CenterVertically) {
                         FittingText(
                             text = artist ?: "",
-                            color = Color(0xFF999999),
+                            color = NavUnselected,
                             fontSize = textBodyM(),
                             minFontSize = textMicro(),
                             modifier = Modifier.weight(1f),
@@ -719,9 +781,9 @@ private fun ColumnScope.PlayerMainBody(
                                 )
                                 Spacer(Modifier.width(adp(3f)))
                                 Text(
-                                    "LYRICS",
+                                    stringResource(R.string.player_lyrics_chip),
                                     color = BrandTeal,
-                                    fontSize = asp(10f),
+                                    fontSize = textMicro(),
                                     fontWeight = FontWeight.Bold,
                                 )
                             }
@@ -856,17 +918,17 @@ private fun ColumnScope.PlayerMainBody(
                                 )
                             }
                         }
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(spacingXS()))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(
                                 formatPlayerBarTime(position),
-                                color = Color(0xFF666666),
+                                color = NavUnselected,
                                 fontSize = textBodyM(),
                                 fontFamily = interFontFamily(),
                             )
                             Text(
                                 "-${formatPlayerBarTime((duration - position).coerceAtLeast(0))}",
-                                color = Color(0xFF666666),
+                                color = NavUnselected,
                                 fontSize = textBodyM(),
                                 fontFamily = interFontFamily(),
                             )
@@ -874,7 +936,7 @@ private fun ColumnScope.PlayerMainBody(
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(spacingM()))
             // Transport controls
             Row(
                 Modifier.fillMaxWidth(),
@@ -884,7 +946,7 @@ private fun ColumnScope.PlayerMainBody(
                 IconButton(onClick = onShuffleToggle) {
                     Icon(
                         Icons.Default.Shuffle,
-                        "Shuffle",
+                        stringResource(R.string.player_shuffle),
                         tint = if (shuffleModeEnabled) BrandTeal else Color.White.copy(alpha = 0.4f),
                         modifier = Modifier.size(iconSmall()),
                     )
@@ -892,36 +954,51 @@ private fun ColumnScope.PlayerMainBody(
                 IconButton(onClick = onSkipPrev) {
                     Icon(
                         Icons.Default.SkipPrevious,
-                        "Previous",
+                        stringResource(R.string.player_previous),
                         tint = Color.White,
                         modifier = Modifier.size(iconMedium()),
                     )
                 }
                 Box(
-                    Modifier.size(
-                        miniPlayerHeight(),
-                    ).clip(
-                        RoundedCornerShape(32.dp),
-                    ).background(
-                        Brush.linearGradient(
-                            listOf(BrandTeal, BrandPurple),
-                            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                            end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
-                        ),
-                    ).clickable {
-                        onPlayPause()
-                    },
+                    Modifier.size(miniPlayerHeight())
+                        .clip(RoundedCornerShape(cornerL()))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(BrandTeal, BrandPurple),
+                                start = Offset(0f, 0f),
+                                end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                            ),
+                        )
+                        .clickable { onPlayPause() }
+                        .testTag("transport_play"),
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (isBuffering) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(iconMedium()).testTag("transport_buffering"),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            if (isPlaying) {
+                                stringResource(R.string.player_pause)
+                            } else {
+                                stringResource(R.string.player_play)
+                            },
+                            tint = Color.White,
+                            modifier = Modifier.size(iconMedium()),
+                        )
+                    }
+                }
+                IconButton(onClick = onSkipNext) {
                     Icon(
-                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        if (isPlaying) "Pause" else "Play",
+                        Icons.Default.SkipNext,
+                        stringResource(R.string.player_next),
                         tint = Color.White,
                         modifier = Modifier.size(iconMedium()),
                     )
-                }
-                IconButton(onClick = onSkipNext) {
-                    Icon(Icons.Default.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(iconMedium()))
                 }
                 IconButton(onClick = onRepeatToggle) {
                     val repeatIcon = if (repeatMode ==
@@ -933,14 +1010,8 @@ private fun ColumnScope.PlayerMainBody(
                     }
                     Icon(
                         repeatIcon,
-                        "Repeat",
-                        tint = if (repeatMode >
-                            0
-                        ) {
-                            BrandTeal
-                        } else {
-                            Color.White.copy(alpha = 0.4f)
-                        },
+                        stringResource(R.string.player_repeat),
+                        tint = if (repeatMode > 0) BrandTeal else Color.White.copy(alpha = 0.4f),
                         modifier = Modifier.size(iconSmall()),
                     )
                 }
@@ -1040,7 +1111,10 @@ private fun BoxScope.PlayerQueuePanel(
     onPlayQueueItem: (Int) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
-    onShuffleQueue: () -> Unit,
+    onShuffleToggle: () -> Unit,
+    onMoveQueueItem: (Int, Int) -> Unit,
+    onBeginQueueReorder: (entryId: Int, fromIndex: Int) -> Unit,
+    onCommitQueueReorder: () -> Unit,
     onShareQueue: () -> Unit,
 ) {
     with(state) {
@@ -1120,9 +1194,13 @@ private fun BoxScope.PlayerQueuePanel(
                         if (hasNext) {
                             val nextTrack = nextTracks.firstOrNull { it.queueIndex == trackIndex + 1 }
                             val nextIsPriority = nextTrack?.isPriority == true
-                            if (nextIsPriority) "Queue Next" else "Up Next"
+                            if (nextIsPriority) {
+                                stringResource(R.string.player_queue_next)
+                            } else {
+                                stringResource(R.string.player_up_next)
+                            }
                         } else {
-                            "End of queue"
+                            stringResource(R.string.player_end_of_queue)
                         },
                         color = NavUnselected,
                         fontSize = textMicro(),
@@ -1140,7 +1218,7 @@ private fun BoxScope.PlayerQueuePanel(
                                 append(nextTrackTitle ?: "")
                                 if (!nextTrackArtist.isNullOrEmpty()) {
                                     append(" (")
-                                    withStyle(SpanStyle(color = Color(0xFF999999))) {
+                                    withStyle(SpanStyle(color = NavUnselected)) {
                                         append(nextTrackArtist)
                                     }
                                     append(")")
@@ -1242,21 +1320,31 @@ private fun BoxScope.PlayerQueuePanel(
                         )
                     }
 
-                    // Scrollable content below the fixed drag handle — the queue
-                    // list overflows the sheet with long queues, so everything
-                    // except the handle scrolls. LazyColumn: only visible rows
-                    // compose (the old verticalScroll Column froze the sheet open
-                    // with large queues — H1).
-                    // Industry: Queue (PRIORITY) → Continue Playing → Autoplay (ADR-0053).
-                    val priorityTracks = nextTracks.filter { it.isPriority }
-                    val continueTracks = nextTracks.filter { !it.isPriority && !it.isAutoplay }
-                    val autoplayTracks = nextTracks.filter { !it.isPriority && it.isAutoplay }
+                    // Scrollable content below the fixed drag handle.
+                    // Industry: Queue (PRIORITY) → Next from → Autoplay (ADR-0053 / 0070).
+                    val priorityTracks = nextTracks.filter { it.isPriority && !it.isCurrent }
+                    val continueTracks = nextTracks.filter { !it.isPriority && !it.isAutoplay && !it.isCurrent }
+                    val autoplayTracks = nextTracks.filter { !it.isPriority && it.isAutoplay && !it.isCurrent }
+                    val reorderableTracks = priorityTracks + continueTracks + autoplayTracks
+                    val queueListState = rememberLazyListState()
+                    val reorderableState = rememberReorderableLazyListState(
+                        lazyListState = queueListState,
+                        onMove = { from, to ->
+                            val fromIdx = reorderableTracks.firstOrNull {
+                                queueRowKey(it) == from.key
+                            }?.queueIndex ?: return@rememberReorderableLazyListState
+                            val toIdx = reorderableTracks.firstOrNull {
+                                queueRowKey(it) == to.key
+                            }?.queueIndex ?: return@rememberReorderableLazyListState
+                            onMoveQueueItem(fromIdx, toIdx)
+                        },
+                    )
                     LazyColumn(
-                        state = rememberLazyListState(),
+                        state = queueListState,
                         modifier = Modifier.weight(1f).fillMaxWidth().testTag("queue_scroll"),
                     ) {
                         // Cast flatten notice
-                        item {
+                        item(key = "cast-notice") {
                             if (isCasting && castDeviceName != null) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingS())
@@ -1278,8 +1366,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     FittingText(
-                                        text = "Queue → Continue Playing order flattened " +
-                                            "into a Cast receiver timeline.",
+                                        text = stringResource(R.string.player_cast_flatten_notice),
                                         color = BrandTeal,
                                         fontSize = textLabelS(),
                                         minFontSize = textMicro(),
@@ -1291,7 +1378,7 @@ private fun BoxScope.PlayerQueuePanel(
                         }
 
                         // Now Playing anchor
-                        item {
+                        item(key = "now-playing-anchor") {
                             Column(
                                 Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingS())
                                     .clip(RoundedCornerShape(cornerM()))
@@ -1302,7 +1389,6 @@ private fun BoxScope.PlayerQueuePanel(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingM(), vertical = spacingXS()),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    // EQ bars animate only while actually playing
                                     if (isPlaying) {
                                         Row(
                                             Modifier.width(adp(16f)).height(adp(14f)),
@@ -1321,28 +1407,26 @@ private fun BoxScope.PlayerQueuePanel(
                                                     label = "bar$j",
                                                 )
                                                 Box(
-                                                    Modifier.width(
-                                                        adp(3f),
-                                                    ).fillMaxHeight(
-                                                        anim,
-                                                    ).clip(RoundedCornerShape(adp(1f))).background(BrandTeal),
+                                                    Modifier.width(adp(3f))
+                                                        .fillMaxHeight(anim)
+                                                        .clip(RoundedCornerShape(adp(1f)))
+                                                        .background(BrandTeal),
                                                 )
                                             }
                                         }
                                     }
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
-                                        "NOW PLAYING",
+                                        stringResource(R.string.player_now_playing_label),
                                         color = BrandTeal,
-                                        fontSize = asp(10f),
+                                        fontSize = textMicro(),
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 1.sp,
                                     )
                                 }
                                 Spacer(
-                                    Modifier.height(
-                                        adp(1f),
-                                    ).fillMaxWidth().background(BrandTeal.copy(alpha = 0.15f)),
+                                    Modifier.height(adp(1f)).fillMaxWidth()
+                                        .background(BrandTeal.copy(alpha = 0.15f)),
                                 )
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingM(), vertical = spacingS()),
@@ -1357,9 +1441,9 @@ private fun BoxScope.PlayerQueuePanel(
                                         )
                                     } else {
                                         Box(
-                                            Modifier.size(
-                                                adp(44f),
-                                            ).clip(RoundedCornerShape(cornerS())).background(Color(0xFF1E1E1E)),
+                                            Modifier.size(adp(44f))
+                                                .clip(RoundedCornerShape(cornerS()))
+                                                .background(Color(0xFF1E1E1E)),
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             Icon(
@@ -1373,16 +1457,16 @@ private fun BoxScope.PlayerQueuePanel(
                                     Spacer(Modifier.width(spacingM()))
                                     Column(Modifier.weight(1f)) {
                                         FittingText(
-                                            text = title ?: "No track",
+                                            text = title ?: stringResource(R.string.player_no_track),
                                             color = Color.White,
-                                            fontSize = textBodyM(),
+                                            fontSize = textHeadingS(),
                                             minFontSize = textMicro(),
-                                            fontWeight = FontWeight.Bold,
+                                            fontWeight = FontWeight.Medium,
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                         FittingText(
                                             text = artist ?: "",
-                                            color = Color(0xFF9CA3AF),
+                                            color = NavUnselected,
                                             fontSize = textLabelM(),
                                             minFontSize = textMicro(),
                                             modifier = Modifier.fillMaxWidth(),
@@ -1391,7 +1475,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     if (duration > 0) {
                                         Text(
                                             formatPlayerBarTime(duration),
-                                            color = Color(0xFF9CA3AF),
+                                            color = NavUnselected,
                                             fontSize = textLabelM(),
                                             fontFamily = interFontFamily(),
                                         )
@@ -1400,8 +1484,7 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
 
-                        // Playing from: {source name}
-                        item {
+                        item(key = "playing-from") {
                             if (contextSource != null) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingXS()),
@@ -1410,13 +1493,13 @@ private fun BoxScope.PlayerQueuePanel(
                                     Icon(
                                         Icons.Default.List,
                                         null,
-                                        tint = Color(0xFF666666),
+                                        tint = NavUnselected,
                                         modifier = Modifier.size(adp(12f)),
                                     )
                                     Spacer(Modifier.width(spacingXS()))
                                     FittingText(
                                         text = "Playing from: $contextSource",
-                                        color = Color(0xFF666666),
+                                        color = NavUnselected,
                                         fontSize = textLabelS(),
                                         minFontSize = textMicro(),
                                         fontWeight = FontWeight.Bold,
@@ -1426,15 +1509,14 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
 
-                        // Header row with actions
-                        item {
+                        item(key = "up-next-header") {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = spacingXL()),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    "Up Next",
-                                    color = Color(0xFF666666),
+                                    stringResource(R.string.player_up_next),
+                                    color = NavUnselected,
                                     fontSize = textBodyM(),
                                     fontWeight = FontWeight.SemiBold,
                                     letterSpacing = 4.sp,
@@ -1442,13 +1524,10 @@ private fun BoxScope.PlayerQueuePanel(
                                 )
                                 if (isOffline) {
                                     Row(
-                                        Modifier.padding(
-                                            horizontal = spacingS(),
-                                            vertical = spacingXS(),
-                                        ).clip(RoundedCornerShape(cornerS()))
-                                            .background(
-                                                Color(0xFFFFC800).copy(alpha = 0.12f),
-                                            ).padding(horizontal = spacingS(), vertical = 3.dp),
+                                        Modifier.padding(horizontal = spacingS(), vertical = spacingXS())
+                                            .clip(RoundedCornerShape(cornerS()))
+                                            .background(Color(0xFFFFC800).copy(alpha = 0.12f))
+                                            .padding(horizontal = spacingS(), vertical = adp(3f)),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Icon(
@@ -1457,9 +1536,9 @@ private fun BoxScope.PlayerQueuePanel(
                                             tint = Color(0xFFFFC800),
                                             modifier = Modifier.size(adp(10f)),
                                         )
-                                        Spacer(Modifier.width(4.dp))
+                                        Spacer(Modifier.width(spacingXS()))
                                         Text(
-                                            "Offline",
+                                            stringResource(R.string.player_offline),
                                             color = Color(0xFFFFC800),
                                             fontSize = textMicro(),
                                             fontWeight = FontWeight.SemiBold,
@@ -1467,13 +1546,10 @@ private fun BoxScope.PlayerQueuePanel(
                                     }
                                 } else if (isQueueSynced) {
                                     Row(
-                                        Modifier.padding(
-                                            horizontal = spacingS(),
-                                            vertical = spacingXS(),
-                                        ).clip(RoundedCornerShape(cornerS()))
-                                            .background(
-                                                BrandTeal.copy(alpha = 0.1f),
-                                            ).padding(horizontal = spacingS(), vertical = 3.dp),
+                                        Modifier.padding(horizontal = spacingS(), vertical = spacingXS())
+                                            .clip(RoundedCornerShape(cornerS()))
+                                            .background(BrandTeal.copy(alpha = 0.1f))
+                                            .padding(horizontal = spacingS(), vertical = adp(3f)),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Icon(
@@ -1482,9 +1558,9 @@ private fun BoxScope.PlayerQueuePanel(
                                             tint = BrandTeal,
                                             modifier = Modifier.size(adp(10f)),
                                         )
-                                        Spacer(Modifier.width(4.dp))
+                                        Spacer(Modifier.width(spacingXS()))
                                         Text(
-                                            "Synced",
+                                            stringResource(R.string.player_synced),
                                             color = BrandTeal,
                                             fontSize = textMicro(),
                                             fontWeight = FontWeight.SemiBold,
@@ -1492,13 +1568,10 @@ private fun BoxScope.PlayerQueuePanel(
                                     }
                                 } else {
                                     Row(
-                                        Modifier.padding(
-                                            horizontal = spacingS(),
-                                            vertical = spacingXS(),
-                                        ).clip(RoundedCornerShape(cornerS()))
-                                            .background(
-                                                Color(0xFFFFC800).copy(alpha = 0.1f),
-                                            ).padding(horizontal = spacingS(), vertical = 3.dp),
+                                        Modifier.padding(horizontal = spacingS(), vertical = spacingXS())
+                                            .clip(RoundedCornerShape(cornerS()))
+                                            .background(Color(0xFFFFC800).copy(alpha = 0.1f))
+                                            .padding(horizontal = spacingS(), vertical = adp(3f)),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Icon(
@@ -1507,9 +1580,9 @@ private fun BoxScope.PlayerQueuePanel(
                                             tint = Color(0xFFFFC800),
                                             modifier = Modifier.size(adp(10f)),
                                         )
-                                        Spacer(Modifier.width(4.dp))
+                                        Spacer(Modifier.width(spacingXS()))
                                         Text(
-                                            "Saving…",
+                                            stringResource(R.string.player_saving),
                                             color = Color(0xFFFFC800),
                                             fontSize = textMicro(),
                                             fontWeight = FontWeight.SemiBold,
@@ -1519,42 +1592,54 @@ private fun BoxScope.PlayerQueuePanel(
                                 Spacer(Modifier.weight(1f))
                                 Icon(
                                     Icons.Default.Shuffle,
-                                    "Shuffle Queue",
-                                    tint = NavUnselected,
-                                    modifier = Modifier.size(knobSize()).padding(end = spacingS()).clickable {
-                                        onShuffleQueue()
-                                    },
+                                    stringResource(R.string.player_shuffle),
+                                    tint = if (shuffleModeEnabled) BrandTeal else NavUnselected,
+                                    modifier = Modifier
+                                        .size(adp(48f))
+                                        .padding(end = spacingXS())
+                                        .clickable { onShuffleToggle() }
+                                        .testTag("queue_sheet_shuffle"),
                                 )
                                 Icon(
                                     Icons.Default.Share,
-                                    "Share Queue",
+                                    stringResource(R.string.player_share_queue),
                                     tint = NavUnselected,
-                                    modifier = Modifier.size(knobSize()).padding(end = spacingS()).clickable {
-                                        onShareQueue()
-                                    },
+                                    modifier = Modifier
+                                        .size(adp(48f))
+                                        .padding(end = spacingXS())
+                                        .clickable { onShareQueue() },
                                 )
                                 Row(
-                                    Modifier.clickable {
-                                        onClearQueue()
-                                    }.padding(horizontal = spacingS(), vertical = spacingXS()),
+                                    Modifier
+                                        .clickable { onClearQueue() }
+                                        .padding(horizontal = spacingS(), vertical = spacingXS())
+                                        .heightIn(min = adp(48f)),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(
                                         Icons.Filled.Delete,
                                         null,
                                         tint = Color(0xFFE84040),
-                                        modifier = Modifier.size(knobSize()),
+                                        modifier = Modifier.size(iconSmall()),
                                     )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Clear", color = Color(0xFFE84040), fontSize = textLabelM())
+                                    Spacer(Modifier.width(spacingXS()))
+                                    Text(
+                                        stringResource(R.string.player_clear),
+                                        color = Color(0xFFE84040),
+                                        fontSize = textLabelM(),
+                                    )
                                 }
-                                Spacer(Modifier.width(8.dp))
-                                Text("$queueSize tracks", color = NavUnselected, fontSize = textLabelM())
+                                Spacer(Modifier.width(spacingS()))
+                                Text(
+                                    stringResource(R.string.player_tracks_count, queueSize),
+                                    color = NavUnselected,
+                                    fontSize = textLabelM(),
+                                )
                             }
                         }
-                        // Queue (manual) then Continue Playing — industry dual-section
+
                         if (priorityTracks.isNotEmpty()) {
-                            item {
+                            item(key = "hdr-priority") {
                                 Spacer(Modifier.height(spacingS()))
                                 Column(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL())
@@ -1581,7 +1666,7 @@ private fun BoxScope.PlayerQueuePanel(
                                         )
                                         Spacer(Modifier.width(spacingS()))
                                         Text(
-                                            "Queue · $priorityQueueSize",
+                                            stringResource(R.string.player_queue_section, priorityQueueSize),
                                             color = BrandPurple,
                                             fontSize = textLabelS(),
                                             fontWeight = FontWeight.Bold,
@@ -1589,34 +1674,43 @@ private fun BoxScope.PlayerQueuePanel(
                                         )
                                         Spacer(Modifier.weight(1f))
                                         Text(
-                                            "Clear",
+                                            stringResource(R.string.player_clear),
                                             color = Color(0xFFE84040),
                                             fontSize = textMicro(),
-                                            modifier = Modifier.clickable { onClearQueue() },
+                                            modifier = Modifier
+                                                .clickable { onClearQueue() }
+                                                .padding(spacingS()),
                                         )
                                     }
                                     Spacer(
-                                        Modifier.height(
-                                            adp(1f),
-                                        ).fillMaxWidth().background(BrandPurple.copy(alpha = 0.15f)),
+                                        Modifier.height(adp(1f)).fillMaxWidth()
+                                            .background(BrandPurple.copy(alpha = 0.15f)),
                                     )
                                 }
                             }
-                            itemsIndexed(priorityTracks, key = { _, track -> "pq-${track.queueIndex}" }) { _, track ->
-                                QueueTrackRow(
-                                    track.queueIndex,
-                                    track,
-                                    isPlaying,
-                                    onPlayQueueItem,
-                                    onRemoveFromQueue,
-                                    downloadedTrackIds,
-                                )
+                            items(priorityTracks, key = { queueRowKey(it) }) { track ->
+                                ReorderableItem(state = reorderableState, key = queueRowKey(track)) { isDragging ->
+                                    QueueDismissTrackRow(
+                                        track = track,
+                                        isPlaying = isPlaying,
+                                        isDragging = isDragging,
+                                        downloadedTrackIds = downloadedTrackIds,
+                                        onPlayQueueItem = onPlayQueueItem,
+                                        onRemoveFromQueue = onRemoveFromQueue,
+                                        dragHandleModifier = Modifier.draggableHandle(
+                                            onDragStarted = {
+                                                onBeginQueueReorder(track.entryId, track.queueIndex)
+                                            },
+                                            onDragStopped = { onCommitQueueReorder() },
+                                        ),
+                                    )
+                                }
                             }
-                            item { Spacer(Modifier.height(spacingS())) }
+                            item(key = "spacer-priority") { Spacer(Modifier.height(spacingS())) }
                         }
 
                         if (continueTracks.isNotEmpty()) {
-                            item {
+                            item(key = "hdr-next-from") {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingXS()),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1624,37 +1718,49 @@ private fun BoxScope.PlayerQueuePanel(
                                     Icon(
                                         Icons.AutoMirrored.Filled.QueueMusic,
                                         null,
-                                        tint = Color(0xFF666666),
+                                        tint = NavUnselected,
                                         modifier = Modifier.size(adp(12f)),
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
                                         if (contextSource != null) {
-                                            "Continue Playing · $contextSource · ${continueTracks.size}"
+                                            stringResource(
+                                                R.string.player_next_from_source_section,
+                                                contextSource!!,
+                                                continueTracks.size,
+                                            )
                                         } else {
-                                            "Continue Playing · ${continueTracks.size}"
+                                            stringResource(R.string.player_next_from_section, continueTracks.size)
                                         },
-                                        color = Color(0xFF666666),
+                                        color = NavUnselected,
                                         fontSize = textLabelS(),
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 0.5.sp,
                                     )
                                 }
                             }
-                            itemsIndexed(continueTracks, key = { _, track -> "cq-${track.queueIndex}" }) { _, track ->
-                                QueueTrackRow(
-                                    track.queueIndex,
-                                    track,
-                                    isPlaying,
-                                    onPlayQueueItem,
-                                    onRemoveFromQueue,
-                                    downloadedTrackIds,
-                                )
+                            items(continueTracks, key = { queueRowKey(it) }) { track ->
+                                ReorderableItem(state = reorderableState, key = queueRowKey(track)) { isDragging ->
+                                    QueueDismissTrackRow(
+                                        track = track,
+                                        isPlaying = isPlaying,
+                                        isDragging = isDragging,
+                                        downloadedTrackIds = downloadedTrackIds,
+                                        onPlayQueueItem = onPlayQueueItem,
+                                        onRemoveFromQueue = onRemoveFromQueue,
+                                        dragHandleModifier = Modifier.draggableHandle(
+                                            onDragStarted = {
+                                                onBeginQueueReorder(track.entryId, track.queueIndex)
+                                            },
+                                            onDragStopped = { onCommitQueueReorder() },
+                                        ),
+                                    )
+                                }
                             }
                         }
 
                         if (autoplayTracks.isNotEmpty()) {
-                            item {
+                            item(key = "hdr-autoplay") {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingXS()),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1667,7 +1773,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
-                                        "Autoplay · ${autoplayTracks.size}",
+                                        stringResource(R.string.player_autoplay_section, autoplayTracks.size),
                                         color = BrandTeal,
                                         fontSize = textLabelS(),
                                         fontWeight = FontWeight.Bold,
@@ -1676,20 +1782,28 @@ private fun BoxScope.PlayerQueuePanel(
                                     )
                                 }
                             }
-                            itemsIndexed(autoplayTracks, key = { _, track -> "aq-${track.queueIndex}" }) { _, track ->
-                                QueueTrackRow(
-                                    track.queueIndex,
-                                    track,
-                                    isPlaying,
-                                    onPlayQueueItem,
-                                    onRemoveFromQueue,
-                                    downloadedTrackIds,
-                                )
+                            items(autoplayTracks, key = { queueRowKey(it) }) { track ->
+                                ReorderableItem(state = reorderableState, key = queueRowKey(track)) { isDragging ->
+                                    QueueDismissTrackRow(
+                                        track = track,
+                                        isPlaying = isPlaying,
+                                        isDragging = isDragging,
+                                        downloadedTrackIds = downloadedTrackIds,
+                                        onPlayQueueItem = onPlayQueueItem,
+                                        onRemoveFromQueue = onRemoveFromQueue,
+                                        dragHandleModifier = Modifier.draggableHandle(
+                                            onDragStarted = {
+                                                onBeginQueueReorder(track.entryId, track.queueIndex)
+                                            },
+                                            onDragStopped = { onCommitQueueReorder() },
+                                        ),
+                                    )
+                                }
                             }
                         }
 
-                        if (nextTracks.isEmpty()) {
-                            item {
+                        if (nextTracks.none { !it.isCurrent }) {
+                            item(key = "empty-queue") {
                                 Spacer(Modifier.height(spacing2XL()))
                                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(
@@ -1699,10 +1813,14 @@ private fun BoxScope.PlayerQueuePanel(
                                         modifier = Modifier.size(adp(36f)),
                                     )
                                     Spacer(Modifier.height(spacingM()))
-                                    Text("Queue is empty", color = Color(0xFF888888), fontSize = textBodyM())
+                                    Text(
+                                        stringResource(R.string.player_queue_empty),
+                                        color = NavUnselected,
+                                        fontSize = textBodyM(),
+                                    )
                                     Spacer(Modifier.height(spacingXS()))
                                     Text(
-                                        "Use \"Play Next\" or \"Add to Queue\" from any track",
+                                        stringResource(R.string.player_queue_empty_hint),
                                         color = NavUnselected,
                                         fontSize = textLabelM(),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -1710,7 +1828,7 @@ private fun BoxScope.PlayerQueuePanel(
                                 }
                             }
                         }
-                        item { Spacer(Modifier.height(32.dp)) }
+                        item(key = "footer-spacer") { Spacer(Modifier.height(spacing3XL())) }
                     }
                 }
             }
@@ -1789,6 +1907,7 @@ data class PlayerBarState(
     val artist: String? = null,
     val album: String? = null,
     val isPlaying: Boolean = false,
+    val isBuffering: Boolean = false,
     val coverArtUrl: String? = null,
     val coverArtId: String? = null,
     val isCasting: Boolean = false,
@@ -2083,6 +2202,63 @@ private fun ReactionCircle(
     }
 }
 
+@VisibleForTesting
+internal fun queueRowKey(track: com.lucasdss.ftpmusic.app.playback.UpcomingTrack): Any = when {
+    track.entryId > 0 -> track.entryId
+    track.trackId != null -> "id-${track.trackId}"
+    else -> "qi-${track.queueIndex}-${track.title}"
+}
+
+/** Swipe-to-remove wrapper around [QueueTrackRow] for the prod queue sheet. */
+@Composable
+private fun QueueDismissTrackRow(
+    track: com.lucasdss.ftpmusic.app.playback.UpcomingTrack,
+    isPlaying: Boolean,
+    isDragging: Boolean,
+    downloadedTrackIds: Set<String>,
+    onPlayQueueItem: (Int) -> Unit,
+    onRemoveFromQueue: (Int) -> Unit,
+    dragHandleModifier: Modifier = Modifier,
+) {
+    SwipeToDismissBox(
+        state = rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                if (value == SwipeToDismissBoxValue.EndToStart) {
+                    onRemoveFromQueue(track.queueIndex)
+                    true
+                } else {
+                    false
+                }
+            },
+        ),
+        backgroundContent = {
+            Box(
+                Modifier.fillMaxSize().background(Color(0xFFE84040)),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    stringResource(R.string.player_remove),
+                    tint = Color.White,
+                    modifier = Modifier.padding(end = spacingXL()),
+                )
+            }
+        },
+        enableDismissFromStartToEnd = false,
+    ) {
+        QueueTrackRow(
+            index = track.queueIndex,
+            track = track,
+            isPlaying = isPlaying,
+            onPlayQueueItem = onPlayQueueItem,
+            onRemoveFromQueue = onRemoveFromQueue,
+            downloadedTrackIds = downloadedTrackIds,
+            isDragging = isDragging,
+            dragHandleModifier = dragHandleModifier,
+        )
+    }
+}
+
 /** Reusable queue track row for both priority and context sections. */
 @Composable
 private fun QueueTrackRow(
@@ -2093,15 +2269,27 @@ private fun QueueTrackRow(
     onRemoveFromQueue: (Int) -> Unit,
     downloadedTrackIds: Set<String>,
     dimmed: Boolean = false,
+    isDragging: Boolean = false,
+    dragHandleModifier: Modifier = Modifier,
 ) {
     Row(
         Modifier.fillMaxWidth()
+            .background(if (isDragging) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
             .clickable { onPlayQueueItem(index) }
-            .padding(vertical = adp(6f)),
+            .padding(vertical = adp(6f), horizontal = spacingS()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.DragHandle, null, tint = Color(0xFF333333), modifier = Modifier.size(knobSize()))
-        Spacer(Modifier.width(4.dp))
+        Icon(
+            Icons.Default.DragHandle,
+            stringResource(R.string.player_drag_handle),
+            tint = NavUnselected,
+            modifier = Modifier
+                .size(adp(48f))
+                .padding(spacingS())
+                .then(dragHandleModifier)
+                .testTag("queue_drag_handle"),
+        )
+        Spacer(Modifier.width(spacingXS()))
         Box(Modifier.size(adp(40f)).clip(RoundedCornerShape(cornerS())), contentAlignment = Alignment.Center) {
             if (track.coverArtUrl != null) {
                 AsyncImage(
@@ -2115,14 +2303,13 @@ private fun QueueTrackRow(
                     Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(adp(16f)))
                 }
             }
-            // EQ bars animate only while actually playing
             if (track.isCurrent && !dimmed && isPlaying) {
                 Box(
                     Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Row(
-                        Modifier.width(16.dp).height(14.dp),
+                        Modifier.width(adp(16f)).height(adp(14f)),
                         horizontalArrangement = Arrangement.spacedBy(adp(2f)),
                         verticalAlignment = Alignment.Bottom,
                     ) {
@@ -2138,20 +2325,21 @@ private fun QueueTrackRow(
                                 label = "bar$j",
                             )
                             Box(
-                                Modifier.width(
-                                    adp(3f),
-                                ).fillMaxHeight(anim).clip(RoundedCornerShape(adp(1f))).background(BrandTeal),
+                                Modifier.width(adp(3f))
+                                    .fillMaxHeight(anim)
+                                    .clip(RoundedCornerShape(adp(1f)))
+                                    .background(BrandTeal),
                             )
                         }
                     }
                 }
             }
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(spacingM()))
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = track.title,
-                color = if (dimmed) Color(0xFF999999) else Color.White,
+                color = if (dimmed) NavUnselected else Color.White,
                 fontSize = textHeadingS(),
                 minFontSize = textMicro(),
                 fontWeight = FontWeight.Medium,
@@ -2160,7 +2348,7 @@ private fun QueueTrackRow(
             track.artist?.let {
                 FittingText(
                     text = it,
-                    color = if (dimmed) NavUnselected else Color(0xFF666666),
+                    color = NavUnselected,
                     fontSize = textLabelM(),
                     minFontSize = textMicro(),
                     modifier = Modifier.fillMaxWidth(),
@@ -2177,14 +2365,22 @@ private fun QueueTrackRow(
         }
         if (track.trackId != null && track.trackId in downloadedTrackIds) {
             DownloadDot("downloaded")
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(spacingS()))
         }
-        Icon(
-            Icons.Default.Close,
-            "Remove",
-            tint = Color(0xFF444444),
-            modifier = Modifier.size(iconMicro()).clickable { onRemoveFromQueue(index) },
-        )
+        Box(
+            Modifier
+                .size(adp(48f))
+                .clickable { onRemoveFromQueue(index) }
+                .testTag("queue_remove"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Close,
+                stringResource(R.string.player_remove),
+                tint = NavUnselected,
+                modifier = Modifier.size(iconSmall()),
+            )
+        }
     }
 }
 

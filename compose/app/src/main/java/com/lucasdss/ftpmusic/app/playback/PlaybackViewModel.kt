@@ -533,6 +533,7 @@ class PlaybackViewModel @Inject constructor(
         val end = minOf(currentIndex + count, queuePlayer.mediaItemCount)
         val priorityFlags = playbackManager.isPriorityFlags()
         val autoplayFlags = playbackManager.isAutoplayFlags()
+        val entryIds = playbackManager.entryIds()
         return (start until end).mapNotNull { i ->
             val item = player.getMediaItemAt(i) ?: return@mapNotNull null
             val title = item.mediaMetadata.title?.toString() ?: return@mapNotNull null
@@ -548,6 +549,7 @@ class PlaybackViewModel @Inject constructor(
                 isCurrent = i == currentIndex,
                 trackId = item.mediaId.takeIf { it.isNotEmpty() },
                 queueIndex = i,
+                entryId = entryIds.getOrElse(i) { item.queueEntryId() },
                 isPriority = priorityFlags.getOrElse(i) { false },
                 isAutoplay = autoplayFlags.getOrElse(i) { false } || item.isAutoplay(),
             )
@@ -565,6 +567,8 @@ data class UpcomingTrack(
     val isCurrent: Boolean = false,
     val trackId: String? = null,
     val queueIndex: Int = 0,
+    /** Stable Dual-queue entry id (>0) for reorder keys; 0 = fall back to index. */
+    val entryId: Int = 0,
     val isPriority: Boolean = false,
     val isAutoplay: Boolean = false,
 )

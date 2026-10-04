@@ -49,7 +49,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  * Full-screen queue view for unit/instrumentation tests and legacy callers.
  *
  * **Production UI** is the in-player bottom sheet in [PlayerBar] (`queue_sheet`).
- * Keep section semantics (Queue / Continue Playing / Autoplay) and brand tokens
+ * Keep section semantics (Queue / Next from / Autoplay) and brand tokens
  * aligned with that sheet so tests do not drift from shipping chrome.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -200,12 +200,12 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                     item(key = "hdr-continue") {
                         Text(
                             if (playbackState.contextSource != null) {
-                                "Continue Playing · ${playbackState.contextSource} · ${continueRows.size}"
+                                "Next from · ${playbackState.contextSource} · ${continueRows.size}"
                             } else {
-                                "Continue Playing · ${continueRows.size}"
+                                "Next from · ${continueRows.size}"
                             },
                             style = MaterialTheme.typography.labelLarge,
-                            color = Color(0xFF888888),
+                            color = NavUnselected,
                             modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                         )
                     }
@@ -323,6 +323,7 @@ private fun QueueDismissRow(
             isPlaying = isPlaying,
             isDragging = isDragging,
             onClick = { viewModel.playQueueItem(item.index) },
+            onRemove = { viewModel.removeFromQueue(item.index) },
             dragHandleModifier = dragHandleModifier,
         )
     }
@@ -334,6 +335,7 @@ private fun QueueItemRow(
     isPlaying: Boolean = false,
     isDragging: Boolean = false,
     onClick: () -> Unit = {},
+    onRemove: () -> Unit = {},
     dragHandleModifier: Modifier = Modifier,
 ) {
     val bgColor = when {
@@ -443,12 +445,18 @@ private fun QueueItemRow(
 
         Spacer(Modifier.width(adp(8f)))
 
-        // Remove button (tappable via surface onClick but also shown here)
-        Icon(
-            Icons.Default.Close,
-            "Remove",
-            tint = Color(0xFF444444),
-            modifier = Modifier.size(adp(12f)),
-        )
+        Box(
+            Modifier
+                .size(adp(48f))
+                .clickable { onRemove() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Close,
+                "Remove",
+                tint = NavUnselected,
+                modifier = Modifier.size(iconSmall()),
+            )
+        }
     }
 }

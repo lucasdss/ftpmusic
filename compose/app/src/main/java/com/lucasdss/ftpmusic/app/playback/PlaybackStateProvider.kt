@@ -82,6 +82,8 @@ data class PlaybackState(
     val album: String? = null,
     val coverArtId: String? = null,
     val isPlaying: Boolean = false,
+    /** True while the active player reports [Player.STATE_BUFFERING]. */
+    val isBuffering: Boolean = false,
     val position: Long = 0L,
     val duration: Long = 0L,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
@@ -121,6 +123,7 @@ data class PlaybackState(
             val extras = metadata?.extras
             val nextIndex = player.currentMediaItemIndex + 1
             val nextItem = if (nextIndex < player.mediaItemCount) player.getMediaItemAt(nextIndex) else null
+            val buffering = player.playbackState == Player.STATE_BUFFERING
             return buildPlaybackState(
                 mediaItem = mediaItem,
                 nextItem = nextItem,
@@ -128,10 +131,11 @@ data class PlaybackState(
                     // During Cast, the receiver reports isPlaying=false while buffering the
                     // next track. Treat STATE_BUFFERING as playing so Now Playing / notification /
                     // Quick Settings don't show "stopped" during track transitions.
-                    PlayerHolder.isCasting -> player.isPlaying || player.playbackState == Player.STATE_BUFFERING
+                    PlayerHolder.isCasting -> player.isPlaying || buffering
 
                     else -> player.isPlaying
                 },
+                isBuffering = buffering,
                 position = player.currentPosition,
                 duration = player.duration,
                 repeatMode = player.repeatMode,
@@ -165,6 +169,7 @@ data class PlaybackState(
                 mediaItem = item,
                 nextItem = nextItem,
                 isPlaying = isPlaying,
+                isBuffering = prevState.isBuffering,
                 position = positionMs,
                 duration = durationMs ?: 0L,
                 repeatMode = prevState.repeatMode,
@@ -182,6 +187,7 @@ data class PlaybackState(
             mediaItem: MediaItem?,
             nextItem: MediaItem?,
             isPlaying: Boolean,
+            isBuffering: Boolean = false,
             position: Long,
             duration: Long,
             repeatMode: Int,
@@ -200,6 +206,7 @@ data class PlaybackState(
                 album = metadata?.albumTitle?.toString(),
                 coverArtId = extractCoverArtId(metadata),
                 isPlaying = isPlaying,
+                isBuffering = isBuffering,
                 position = position,
                 duration = duration,
                 repeatMode = repeatMode,

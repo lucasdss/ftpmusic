@@ -75,6 +75,8 @@ class NowPlayingComposeTest {
                 artist = "Artist $i",
                 coverArtUrl = if (art) "https://example.com/art-$i.jpg" else null,
                 isCurrent = i == 1,
+                queueIndex = i,
+                entryId = i + 1,
             )
         },
     )

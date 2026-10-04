@@ -34,6 +34,16 @@ class PlaybackStateTest {
     }
 
     @Test
+    fun `default isBuffering is false`() {
+        assertEquals(false, PlaybackState().isBuffering)
+    }
+
+    @Test
+    fun `isBuffering can be set true`() {
+        assertTrue(PlaybackState(isBuffering = true).isBuffering)
+    }
+
+    @Test
     fun `default position and duration are zero`() {
         val state = PlaybackState()
         assertEquals(0L, state.position)
