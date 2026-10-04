@@ -33,5 +33,7 @@ honest completion of the existing interval — not faster polling.
 - Periodic sync survives to completion or gets WM retry.
 - Failed track phases do not postpone weekly FULL heal.
 - Partial FULL pages cannot wipe the library.
+- Mid-pagination album-list failure aborts the whole sync (`phase=error`) so
+  watermarks do not advance after a keep-cache early return.
 - Same Subsonic id cannot appear twice from one fetch batch.
 - Semantic duplicates (same title, different ids) still both kept by design.

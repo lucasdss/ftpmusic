@@ -226,7 +226,10 @@ fun ArtistDetailScreen(
                         contentPadding = PaddingValues(vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        itemsIndexed(state.similarArtists) { _, sa ->
+                        itemsIndexed(
+                            state.similarArtists,
+                            key = { _, sa -> sa.mbid?.takeIf { it.isNotBlank() } ?: sa.name },
+                        ) { _, sa ->
                             Column(
                                 Modifier.clickable {
                                     viewModel.resolveSimilarArtist(sa.name) { resolvedId ->
@@ -488,7 +491,7 @@ private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
         Modifier.fillMaxSize().padding(horizontal = spacingXL()),
         contentPadding = PaddingValues(vertical = spacingS()),
     ) {
-        itemsIndexed(state.tracks) { index, track ->
+        itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->
             TrackRow(
                 track = track,
                 index = index,

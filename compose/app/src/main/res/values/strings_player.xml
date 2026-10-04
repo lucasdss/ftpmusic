@@ -28,6 +28,11 @@
     <string name="player_lyrics">Lyrics</string>
     <string name="player_lyrics_chip">LYRICS</string>
     <string name="player_synced_lyrics">Synced lyrics</string>
+    <string name="player_loading_lyrics">Loading lyrics…</string>
+    <string name="player_no_lyrics">No lyrics available for this track</string>
+    <string name="player_close_lyrics">Close lyrics</string>
+    <string name="player_track_by_artist">\"%1$s\" by %2$s</string>
+    <string name="player_no_track_playing">No track playing</string>
     <string name="player_no_track">No track</string>
     <string name="player_play">Play</string>
     <string name="player_pause">Pause</string>

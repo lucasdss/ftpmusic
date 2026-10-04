@@ -1861,7 +1861,12 @@ private fun PlayerLyricsOverlay(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Mic, null, tint = BrandTeal, modifier = Modifier.size(adp(15f)))
                         Spacer(Modifier.width(spacingS()))
-                        Text("Lyrics", color = Color.White, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
+                        Text(
+                            stringResource(R.string.player_lyrics),
+                            color = Color.White,
+                            fontSize = textHeadingM(),
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                     Spacer(Modifier.weight(1f))
                     Box(
@@ -1874,8 +1879,8 @@ private fun PlayerLyricsOverlay(
                     ) {
                         Icon(
                             Icons.Default.Close,
-                            "Close lyrics",
-                            tint = Color(0xFFAAAAAA),
+                            stringResource(R.string.player_close_lyrics),
+                            tint = NavUnselected,
                             modifier = Modifier.size(adp(16f)),
                         )
                     }
@@ -2438,8 +2443,12 @@ private fun LyricsContent(
             Icon(Icons.Default.Mic, null, tint = BrandTeal, modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(6.dp))
             Text(
-                if (isSynced) "Synced lyrics" else "Lyrics",
-                color = Color(0xFF666666),
+                if (isSynced) {
+                    stringResource(R.string.player_synced_lyrics)
+                } else {
+                    stringResource(R.string.player_lyrics)
+                },
+                color = NavUnselected,
                 fontSize = textLabelS(),
             )
         }
@@ -2528,7 +2537,11 @@ private fun LyricsContent(
                                     strokeWidth = adp(3f),
                                 )
                                 Spacer(Modifier.height(12.dp))
-                                Text("Loading lyrics…", color = Color(0xFF888888), fontSize = textBodyM())
+                                Text(
+                                    stringResource(R.string.player_loading_lyrics),
+                                    color = NavUnselected,
+                                    fontSize = textBodyM(),
+                                )
                             }
                         } else {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2540,22 +2553,24 @@ private fun LyricsContent(
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    if (artist != null &&
-                                        title != null
-                                    ) {
-                                        "\"${title}\" by $artist"
+                                    if (artist != null && title != null) {
+                                        stringResource(
+                                            R.string.player_track_by_artist,
+                                            title,
+                                            artist,
+                                        )
                                     } else {
-                                        "No track playing"
+                                        stringResource(R.string.player_no_track_playing)
                                     },
-                                    color = Color(0xFF888888),
+                                    color = NavUnselected,
                                     fontSize = textBodyM(),
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "No lyrics available for this track",
-                                    color = Color(0xFF666666),
+                                    stringResource(R.string.player_no_lyrics),
+                                    color = NavUnselected,
                                     fontSize = textLabelM(),
                                 )
                             }

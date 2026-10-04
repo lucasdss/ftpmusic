@@ -26,11 +26,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.playback.PlaybackViewModel
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
@@ -200,9 +202,13 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                     item(key = "hdr-continue") {
                         Text(
                             if (playbackState.contextSource != null) {
-                                "Next from · ${playbackState.contextSource} · ${continueRows.size}"
+                                stringResource(
+                                    R.string.player_next_from_source_section,
+                                    playbackState.contextSource!!,
+                                    continueRows.size,
+                                )
                             } else {
-                                "Next from · ${continueRows.size}"
+                                stringResource(R.string.player_next_from_section, continueRows.size)
                             },
                             style = MaterialTheme.typography.labelLarge,
                             color = NavUnselected,

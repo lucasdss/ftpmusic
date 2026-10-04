@@ -443,8 +443,9 @@ class MetadataSyncWorker(
         }
 
         if (listIncomplete) {
+            // ADR-0068: abort whole sync so watermarks stay honest (catch → phase=error).
             Log.w(TAG, "Album list incomplete (API failed mid-pagination) — keeping cached albums")
-            return
+            throw AlbumListIncompleteException()
         }
 
         // 1A: collapse duplicate Subsonic ids within the fetched batch.

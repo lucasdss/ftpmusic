@@ -140,10 +140,16 @@ class MetadataSyncWorkerTest {
         val failedResponse = mapOf("subsonic-response" to mapOf("status" to "failed"))
         coEvery { api.getAlbumList2(type = any(), size = any(), offset = any(), auth = any()) } returns failedResponse
 
-        worker.syncAlbums()
+        try {
+            worker.syncAlbums()
+            fail("expected AlbumListIncompleteException")
+        } catch (_: AlbumListIncompleteException) {
+            // expected — first-page fail is also fail-closed
+        }
 
         coVerify(exactly = 0) { metadataDao.clearAlbums() }
         coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
     }
 
     @Test
@@ -848,7 +854,12 @@ class MetadataSyncWorkerTest {
         coEvery { api.getAlbumList2(type = any(), size = 500, offset = 500, auth = any()) } returns failed
         coEvery { metadataDao.albumCount() } returns 900
 
-        worker.syncAlbums(LibrarySyncMode.FULL)
+        try {
+            worker.syncAlbums(LibrarySyncMode.FULL)
+            fail("expected AlbumListIncompleteException")
+        } catch (_: AlbumListIncompleteException) {
+            // expected — ADR-0068 fail-closed
+        }
 
         coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
         coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
@@ -869,9 +880,51 @@ class MetadataSyncWorkerTest {
         coEvery { api.getAlbumList2(type = "newest", size = 500, offset = 500, auth = any()) } returns failed
         coEvery { metadataDao.albumCount() } returns 100
 
-        worker.syncAlbums(LibrarySyncMode.DELTA)
+        try {
+            worker.syncAlbums(LibrarySyncMode.DELTA)
+            fail("expected AlbumListIncompleteException")
+        } catch (_: AlbumListIncompleteException) {
+            // expected — ADR-0068 fail-closed
+        }
 
         coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+    }
+
+    @Test
+    fun `syncNow skips watermarks when album list incomplete mid-page`() = runTest {
+        val w = MetadataSyncWorker(
+            context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
+            mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
+            dailyMixRepository,
+            kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
+        )
+        val page1 = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to (1..500).map { mapOf("id" to "al-$it", "name" to "Album $it") },
+                ),
+            ),
+        )
+        val failed = mapOf("subsonic-response" to mapOf("status" to "failed"))
+        coEvery { api.getAlbumList2(type = any(), size = 500, offset = 0, auth = any()) } returns page1
+        coEvery { api.getAlbumList2(type = any(), size = 500, offset = 500, auth = any()) } returns failed
+        coEvery { metadataDao.albumCount() } returns 900
+
+        val job = w.syncNowAsync(forceTrackResync = true, mode = LibrarySyncMode.FULL)
+        assertNotNull(job)
+        job!!.join()
+
+        assertEquals("error", w.status.value.phase)
+        assertFalse(w.status.value.isRunning)
+        verify(exactly = 0) { prefsEditor.putLong("last_metadata_sync_ms", any()) }
+        verify(exactly = 0) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, any())
+        }
+        verify(exactly = 0) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
+        }
         coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
     }
 

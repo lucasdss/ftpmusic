@@ -629,9 +629,12 @@ fun SettingsScreen(
                     val granted = result.values.any { it } ||
                         com.lucasdss.ftpmusic.app.playback.BluetoothBondedDevices
                             .hasConnectPermission(context)
-                    viewModel.refreshBtResumeState()
-                    if (!granted) {
+                    if (granted) {
+                        viewModel.setBtResumeEnabled(true)
+                        viewModel.refreshBtResumeState()
+                    } else {
                         viewModel.setBtResumeEnabled(false)
+                        viewModel.refreshBtResumeState()
                         android.widget.Toast.makeText(
                             context,
                             context.getString(R.string.bt_resume_devices_need_permission),
@@ -650,11 +653,6 @@ fun SettingsScreen(
                         if (enabled) {
                             val needsBt = !state.btHasConnectPermission &&
                                 android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
-                            if (needsBt) {
-                                btPermissionLauncher.launch(
-                                    arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT),
-                                )
-                            }
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                                 val nm = androidx.core.app.NotificationManagerCompat.from(context)
                                 if (!nm.areNotificationsEnabled()) {
@@ -663,8 +661,15 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                            viewModel.setBtResumeEnabled(true)
-                            viewModel.refreshBtResumeState()
+                            if (needsBt) {
+                                // Enable only after CONNECT grant (callback).
+                                btPermissionLauncher.launch(
+                                    arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT),
+                                )
+                            } else {
+                                viewModel.setBtResumeEnabled(true)
+                                viewModel.refreshBtResumeState()
+                            }
                         } else {
                             viewModel.setBtResumeEnabled(false)
                         }

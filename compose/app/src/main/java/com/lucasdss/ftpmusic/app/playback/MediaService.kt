@@ -1055,6 +1055,20 @@ class MediaService : MediaLibraryService() {
                         notificationProvider?.notifyChanged()
                         return@postDelayed
                     }
+                    // Capture Cast position before seat swap so ADR-0066
+                    // switchToLocalPlayback can join save before restore.
+                    try {
+                        val cp = PlayerHolder.player
+                        if (cp != null && cp.playbackState != Player.STATE_IDLE) {
+                            val idx = resolveCurrentIndexForPersistence(PlayerHolder.exoPlayer ?: cp)
+                            val pos = cp.currentPosition
+                            castDisconnectSaveJob = persistenceScope.launch {
+                                try {
+                                    persistenceManager.savePositionOnly(idx, pos)
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    } catch (_: Exception) {}
                     PlayerHolder.isCasting = false
                     PlayerHolder.castDeviceName = null
                     PlayerHolder.castVolume = 0f
@@ -1066,26 +1080,8 @@ class MediaService : MediaLibraryService() {
                     CastButtonState.connectedDeviceName.value = null
                     CastButtonState.connectingDeviceName.value = null
                     exoPlayer?.volume = 1f
-                    // Switch to local playback
+                    // Sole restore path: switchToLocalPlayback → applySwitchToLocalRestore
                     switchToLocalPlayback()
-                    // Restore position from persistence
-                    scope.launch {
-                        kotlinx.coroutines.delay(500)
-                        try {
-                            if (PlayerHolder.isCasting) return@launch
-                            val saved = persistenceManager.restore()
-                            if (saved != null) {
-                                val idx = saved.currentIndex.coerceIn(0, maxOf(0, (exoPlayer?.mediaItemCount ?: 1) - 1))
-                                exoPlayer?.seekTo(idx, saved.positionMs)
-                                android.util.Log.d(
-                                    "ftpmusic-cast",
-                                    "[MediaService] Restored position idx=$idx pos=${saved.positionMs}",
-                                )
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("ftpmusic-cast", "[MediaService] Position restore failed: ${e.message}")
-                        }
-                    }
                     notificationProvider?.notifyChanged()
                 }, 300L) // wait for CastPlayer internal transition
             }
