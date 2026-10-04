@@ -224,6 +224,50 @@ class AlbumDetailViewModelTest {
     }
 
     @Test
+    fun `playTrack uses playAlbum not tryStartContext — market keep PRIORITY`() {
+        setupTracks(
+            listOf(
+                Track("t1", "First", duration = 200),
+                Track("t2", "Second", duration = 300),
+            ),
+        )
+
+        viewModel.playTrack(0)
+
+        verify { playbackManager.playAlbum(any(), any(), eq(0), eq(false)) }
+        verify(exactly = 0) {
+            playbackManager.tryStartContext(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `playAll shows overwrite modal when tryStartContext blocked — market ASK`() = runTest {
+        every {
+            playbackManager.tryStartContext(any(), any(), any(), any(), any(), any())
+        } returns false
+        setupTracks(listOf(Track("t1", "First", duration = 200)))
+
+        viewModel.playAll()
+
+        assertTrue(viewModel.showOverwriteModal.value)
+    }
+
+    @Test
+    fun `resolveOverwrite dismisses modal and forwards to PlaybackManager`() {
+        every {
+            playbackManager.tryStartContext(any(), any(), any(), any(), any(), any())
+        } returns false
+        setupTracks(listOf(Track("t1", "First", duration = 200)))
+        viewModel.playAll()
+        assertTrue(viewModel.showOverwriteModal.value)
+
+        viewModel.resolveOverwrite(clearAndPlay = true)
+
+        assertFalse(viewModel.showOverwriteModal.value)
+        verify { playbackManager.resolveOverwrite(true) }
+    }
+
+    @Test
     fun `addToPlaylist updates local DB and enqueues sync`() = runTest {
         val trackIds = listOf("t1", "t2", "t3")
 

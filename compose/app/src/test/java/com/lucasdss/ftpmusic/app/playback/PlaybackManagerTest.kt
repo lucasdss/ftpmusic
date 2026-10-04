@@ -471,7 +471,7 @@ class PlaybackManagerTest {
         assertTrue(mgr.continuousPlayEnabled)
     }
 
-    // ── buildQueueStateFromDual (authoritative during Cast) ────────────
+    // ── buildQueueStateFromDual (sole persist SoT — ADR 0067) ───────────
 
     @Test
     fun `buildQueueStateFromDual returns merged context plus priority`() {
@@ -800,14 +800,16 @@ class PlaybackManagerTest {
 
         manager.addToQueue(Track("t-persist", "Persist Me", duration = 120), "http://server/rest/stream?id=t-persist")
 
+        // Dual SoT (ADR 0067): persist merged Dual, not Player snapshot + track.
+        // URLs may be empty under Uri.parse mock — assert track ids + PRIORITY flags.
         coVerify(timeout = 1_000) {
             mockPersistenceManager.save(
                 match { tracks -> tracks.any { it.id == "t-persist" } },
-                match { urls -> urls.any { it == "http://server/rest/stream?id=t-persist" } },
                 any(),
                 any(),
                 any(),
                 any(),
+                match { flags -> flags.size == 1 && flags.single() },
                 any(),
                 any(),
                 any(),
@@ -839,8 +841,19 @@ class PlaybackManagerTest {
         )
 
         assertEquals("Dual queue keeps items without a player", 1, manager.priorityQueueSize)
-        coVerify(exactly = 0) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        // Dual persist SoT still saves even when Player is absent (ADR 0067).
+        coVerify(timeout = 1_000) {
+            mockPersistenceManager.save(
+                match { it.any { t -> t.id == "t1" } },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
     }
 

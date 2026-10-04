@@ -524,7 +524,11 @@ class PlaybackManager @Inject constructor(
         emitClearAndPlayOrCommit(listOf(item), 0)
     }
 
-    /** Play a live radio stream URL directly — no proxy, no caching. */
+    /**
+     * Play a live radio stream URL directly — no proxy, no caching.
+     * Enters Dual as single-item CONTEXT (keeps PRIORITY), matching [playSingleTrack]
+     * market keep-Up-Next semantics (ADR 0067).
+     */
     fun playStream(url: String, title: String) {
         ensurePlayer()
         val item = queueManager.buildMediaItem(
@@ -533,8 +537,18 @@ class PlaybackManager @Inject constructor(
             url = url,
             durationMs = 0L,
             mediaType = "radio",
-        )
-        queueManager.playAll(listOf(item))
+        ).ensureEntryId()
+        optimist.snapshot()
+        dualQueue.setSingleContextWithSource(item, title)
+        val merged = dualQueue.getMerged()
+        playMergedQueue(merged, 0)
+        val (tracks, urls) = buildQueueStateFromDual()
+        if (tracks.isEmpty()) {
+            scope.launch { persistenceManager.clear() }
+        } else {
+            persistenceSave(tracks, urls, 0)
+        }
+        emitClearAndPlayOrCommit(merged, 0)
     }
 
     fun playNext(track: Track, streamUrl: String) {
@@ -559,18 +573,10 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
-        // Persist after modifying queue
-        val player = PlayerHolder.player
-        if (player != null) {
-            val (tracks, urls) = if (PlayerHolder.isCasting) {
-                buildQueueStateFromDual()
-            } else {
-                buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
-            }
-            val persistedIndex = if (PlayerHolder.isCasting) currentIndex else player.currentMediaItemIndex
-            persistenceSave(tracks, urls, persistedIndex)
-            updateNextTrackPreview(player)
-        }
+        // Persist Dual SoT (ADR 0067) — Player is projection only.
+        val (tracks, urls) = buildQueueStateFromDual()
+        persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
+        PlayerHolder.player?.let { updateNextTrackPreview(it) }
         // Bi-directional sync during Cast: item inserted after current
         emitCastOrCommit {
             val beforeEntryId = dualQueue.getMerged().getOrNull(currentIndex + 2)?.queueEntryId()
@@ -596,18 +602,8 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
-        val player = PlayerHolder.exoPlayer ?: PlayerHolder.player
-        if (player != null) {
-            // During Cast ExoPlayer is frozen and never reflects what's playing —
-            // persist the authoritative DUAL queue so contextSize stays consistent
-            // across a disconnect.
-            val (allTracks, allUrls) = if (PlayerHolder.isCasting) {
-                buildQueueStateFromDual()
-            } else {
-                buildQueueStateFromPlayer(player)
-            }
-            persistenceSave(allTracks, allUrls, currentCanonicalIndex())
-        }
+        val (allTracks, allUrls) = buildQueueStateFromDual()
+        persistenceSave(allTracks, allUrls, currentCanonicalIndex().coerceAtLeast(0))
         // Bi-directional sync during Cast
         emitCastAddsOrCommit(items)
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
@@ -699,18 +695,9 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
-        val player = PlayerHolder.player ?: return
-        // During Cast ExoPlayer is frozen and never reflects what's playing —
-        // persist the authoritative DUAL queue (context + priority) so the
-        // context/priority split stays consistent across a disconnect.
-        val (allTracks, allUrls) = if (PlayerHolder.isCasting) {
-            buildQueueStateFromDual()
-        } else {
-            val currentTracks = buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
-            Pair(currentTracks.first + track, currentTracks.second + streamUrl)
-        }
-        persistenceSave(allTracks, allUrls, currentCanonicalIndex())
-        updateNextTrackPreview(player)
+        val (allTracks, allUrls) = buildQueueStateFromDual()
+        persistenceSave(allTracks, allUrls, currentCanonicalIndex().coerceAtLeast(0))
+        PlayerHolder.player?.let { updateNextTrackPreview(it) }
         // Bi-directional sync during Cast — -1 appends at the end of the remote
         // queue (mediaItemCount-1 pointed at the pre-append last item).
         emitCastOrCommit { CastQueueAction.Add(item) }
@@ -737,14 +724,11 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
-        val player = PlayerHolder.player
-        if (player != null) {
-            val (tracks, urls) = if (PlayerHolder.isCasting) {
-                buildQueueStateFromDual()
-            } else {
-                buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
-            }
-            persistenceSave(tracks, urls, currentCanonicalIndex())
+        val (tracks, urls) = buildQueueStateFromDual()
+        if (tracks.isEmpty()) {
+            scope.launch { persistenceManager.clear() }
+        } else {
+            persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
         }
         emitCastOrCommit {
             CastQueueAction.Remove(removed.queueEntryId())
@@ -755,6 +739,11 @@ class PlaybackManager @Inject constructor(
         )
     }
 
+    /**
+     * Trim upcoming items after the current track (keep Now Playing).
+     * Cast: ClearAndPlay remaining Dual. Persist Dual (ADR 0067); clear Room only
+     * when nothing remains.
+     */
     fun clearQueue() {
         val player = PlayerHolder.player
         if (player == null) {
@@ -766,6 +755,7 @@ class PlaybackManager @Inject constructor(
             )
             return
         }
+        optimist.snapshot()
         val currentIdx = currentCanonicalIndex()
         if (currentIdx >= 0) {
             val total = dualQueue.size
@@ -787,7 +777,13 @@ class PlaybackManager @Inject constructor(
                 syncDualQueueToPlayer()
             }
         }
-        scope.launch { persistenceManager.clear() }
+        val (tracks, urls) = buildQueueStateFromDual()
+        if (tracks.isEmpty()) {
+            scope.launch { persistenceManager.clear() }
+        } else {
+            persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
+        }
+        emitClearAndPlayOrCommit(dualQueue.getMerged(), currentCanonicalIndex().coerceAtLeast(0))
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
             "queueEdit action=clear casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
@@ -818,11 +814,14 @@ class PlaybackManager @Inject constructor(
         }
     }
 
-    /** Persists the current queue state (called after drag-reorder). */
+    /** Persists the current queue state from Dual SoT (ADR 0067). */
     fun persistCurrentQueue() {
-        val player = PlayerHolder.player ?: return
-        val (tracks, urls) = buildQueueStateFromPlayer(player)
-        persistenceSave(tracks, urls, player.currentMediaItemIndex)
+        val (tracks, urls) = buildQueueStateFromDual()
+        if (tracks.isEmpty()) {
+            scope.launch { persistenceManager.clear() }
+            return
+        }
+        persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
     }
 
     // ── Drag-reorder coalesce (Dual/UI during drag; one Exo move on release) ─
@@ -875,15 +874,8 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
-        val player = PlayerHolder.player
-        if (player != null) {
-            val (tracks, urls) = if (PlayerHolder.isCasting) {
-                buildQueueStateFromDual()
-            } else {
-                buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
-            }
-            persistenceSave(tracks, urls, currentCanonicalIndex())
-        }
+        val (tracks, urls) = buildQueueStateFromDual()
+        persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
         emitCastOrCommit {
             val beforeEntryId = dualQueue.getMerged().getOrNull(finalIndex + 1)?.queueEntryId()?.takeIf { it > 0 }
             CastQueueAction.Move(moved.queueEntryId(), beforeEntryId)
@@ -915,13 +907,8 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
-        val player = PlayerHolder.player ?: return
-        val (tracks, urls) = if (PlayerHolder.isCasting) {
-            buildQueueStateFromDual()
-        } else {
-            buildQueueStateFromPlayer(PlayerHolder.exoPlayer ?: player)
-        }
-        persistenceSave(tracks, urls, currentCanonicalIndex())
+        val (tracks, urls) = buildQueueStateFromDual()
+        persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
         emitCastOrCommit {
             val beforeEntryId = dualQueue.getMerged().getOrNull(to + 1)?.queueEntryId()?.takeIf { it > 0 }
             CastQueueAction.Move(moved.queueEntryId(), beforeEntryId)
@@ -1028,10 +1015,7 @@ class PlaybackManager @Inject constructor(
 
     /**
      * Build queue state from the DUAL QUEUE's merged view (context + priority).
-     * This is the authoritative queue DURING Cast: ExoPlayer is frozen (muted,
-     * volume=0f) and its queue never reflects albums/mixes played while casting.
-     * Used by saveQueueState() during Cast so the DB persists what the user is
-     * actually hearing — otherwise the pre-Cast queue was restored on disconnect.
+     * Sole Room persist SoT for local and Cast (ADR 0067). Player is projection only.
      */
     fun buildQueueStateFromDual(): Pair<List<Track>, List<String>> {
         val tracks = mutableListOf<Track>()

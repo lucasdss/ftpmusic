@@ -351,16 +351,37 @@ class PlaybackManagerCoverageTest {
     // ── Persistence / edge guards ────────────────────────────────────────
 
     @Test
-    fun `persistCurrentQueue saves player state and tolerates null player`() {
+    fun `persistCurrentQueue saves Dual state and clears when empty`() {
         val mgr = baseManager()
-        every { mockPlayer.mediaItemCount } returns 0
+        mgr.playAlbum(
+            listOf(Track("t1", "T1", duration = 100)),
+            listOf("http://server/rest/stream?id=t1"),
+            skipPersistence = true,
+        )
+        clearMocks(mockPersistenceManager, recordedCalls = true, answers = false)
+
         mgr.persistCurrentQueue()
+
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(
+                match { it.any { t -> t.id == "t1" } },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
 
+        // Empty Dual → clear Room (ADR 0067)
         PlayerHolder.player = null
-        mgr.persistCurrentQueue() // no-op, no crash
+        mgr.clearQueue()
+        clearMocks(mockPersistenceManager, recordedCalls = true, answers = false)
+        mgr.persistCurrentQueue()
+        coVerify(timeout = 1_000) { mockPersistenceManager.clear() }
     }
 
     @Test

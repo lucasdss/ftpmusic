@@ -109,18 +109,49 @@ class QueueAutosaveTest {
 
         playbackManager.addToQueue(track, url)
 
-        // addToQueue builds current state from player, then appends the new track
+        // addToQueue persists Dual SoT (ADR 0067)
         coVerify(timeout = 2000) {
             mockPersistenceManager.save(any(), any(), 0, 0L, any(), any(), any(), any(), any())
         }
     }
 
     @Test
-    fun `clearQueue triggers clear on persistence manager`() = runTest {
+    fun `clearQueue with empty dual clears persistence`() = runTest {
         playbackManager.clearQueue()
 
         coVerify(timeout = 2000) {
             mockPersistenceManager.clear()
+        }
+    }
+
+    @Test
+    fun `clearQueue with remaining current persists Dual`() = runTest {
+        val tracks = listOf(
+            Track("t1", "Song 1", duration = 200),
+            Track("t2", "Song 2", duration = 180),
+        )
+        val urls = tracks.map { "http://server/rest/stream?id=${it.id}" }
+        playbackManager.playAlbum(tracks, urls)
+        every { mockPlayer.currentMediaItem } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        every { mockPlayer.currentMediaItemIndex } returns 0
+        every { mockPlayer.mediaItemCount } returns 2
+        clearMocks(mockPersistenceManager, recordedCalls = true, answers = false)
+
+        playbackManager.clearQueue()
+
+        coVerify(timeout = 2000) {
+            mockPersistenceManager.save(
+                match { it.size == 1 && it[0].id == "t1" },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
     }
 }

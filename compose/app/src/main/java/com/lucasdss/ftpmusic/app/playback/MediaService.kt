@@ -774,8 +774,11 @@ class MediaService : MediaLibraryService() {
             if (!PlayerHolder.isCasting) {
                 val player = PlayerHolder.player
                 if (player != null && player.mediaItemCount > 0) {
-                    val (tracks, urls) = playbackManager.buildQueueState()
-                    playbackManager.enqueuePlayQueue(tracks, urls, player.currentMediaItemIndex)
+                    val (tracks, urls) = playbackManager.buildQueueStateFromDual()
+                    if (tracks.isNotEmpty()) {
+                        val idx = player.currentMediaItemIndex.coerceIn(0, tracks.lastIndex)
+                        playbackManager.enqueuePlayQueue(tracks, urls, idx)
+                    }
                 }
             }
 
@@ -2553,15 +2556,10 @@ class MediaService : MediaLibraryService() {
 
     private fun saveQueueState() {
         val player = PlayerHolder.exoPlayer ?: return
-        // During Cast, ExoPlayer is frozen (muted) and its queue never reflects
-        // albums/mixes played while casting. The dual queue (context + priority)
-        // is the authoritative state — persist THAT so a disconnect restores the
-        // queue the user was actually hearing, not the pre-Cast one.
-        val (tracks, urls) = if (PlayerHolder.isCasting) {
-            playbackManager.buildQueueStateFromDual()
-        } else {
-            playbackManager.buildQueueState()
-        }
+        // DualQueue is sole persist SoT (ADR 0067) — Player is projection only.
+        // Local and Cast both snapshot Dual so is_priority / is_autoplay / entryIds
+        // never length-mismatch a Player-rebuilt track list.
+        val (tracks, urls) = playbackManager.buildQueueStateFromDual()
         if (tracks.isEmpty()) return
         val currentIndex = resolveCurrentIndexForPersistence(player)
         val currentPosition = PlayerHolder.player?.currentPosition ?: 0L
@@ -2629,11 +2627,8 @@ class MediaService : MediaLibraryService() {
      *  (an unreachable server would otherwise ANR the teardown). */
     private fun saveQueueStateSync(waitBoundedMs: Long? = null) {
         val player = PlayerHolder.exoPlayer ?: return
-        val (tracks, urls) = if (PlayerHolder.isCasting) {
-            playbackManager.buildQueueStateFromDual()
-        } else {
-            playbackManager.buildQueueState()
-        }
+        // DualQueue sole persist SoT (ADR 0067) — local and Cast.
+        val (tracks, urls) = playbackManager.buildQueueStateFromDual()
         if (tracks.isEmpty()) return
         // Full queue loaded — currentMediaItemIndex IS the correct index locally,
         // but during Cast map the receiver's itemId to the full queue (see

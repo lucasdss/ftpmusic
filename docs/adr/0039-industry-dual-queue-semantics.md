@@ -29,7 +29,10 @@ broke labels and restore.
 
 ## See also
 
-`docs/DUAL_QUEUE_INDUSTRY_ALIGN_BEHAVIOR_REPORT.md`
+`docs/PLAYBACK_QUEUE_MARKET_DRIFT_BEHAVIOR_REPORT.md` (market matrix + P0 persist/Cast fixes;
+supersedes missing `DUAL_QUEUE_INDUSTRY_ALIGN_BEHAVIOR_REPORT.md` link).
+
+Persist SoT: ADR 0067.
 
 Collection row-tap / Play header contract: ADR 0061,
 `docs/COLLECTION_PLAY_FROM_TRACK_BEHAVIOR_REPORT.md`.
