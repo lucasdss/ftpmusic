@@ -133,7 +133,9 @@ class FinalFixesTest {
 
         // Give the coroutine time to call save
         kotlinx.coroutines.delay(200)
-        coVerify(atLeast = 1) { mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(atLeast = 1) {
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        }
     }
 
     @Test
@@ -154,7 +156,9 @@ class FinalFixesTest {
 
         manager.playAlbum(tracks, urls, skipPersistence = true)
 
-        coVerify(exactly = 0) { mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) {
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        }
     }
 
     @Test

@@ -165,7 +165,7 @@ class PlaybackManagerTest {
         manager.addToQueue(track, url)
 
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -187,7 +187,7 @@ class PlaybackManagerTest {
         manager.addAllToQueue(tracks, urls)
 
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -218,7 +218,7 @@ class PlaybackManagerTest {
         assertEquals(3, manager.contextSize)
         assertEquals(0, manager.priorityQueueSize)
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), match { it == 3 }, any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), match { it == 3 }, any(), any(), any(), any())
         }
     }
 
@@ -245,7 +245,7 @@ class PlaybackManagerTest {
 
         assertEquals(2, manager.contextSize)
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), match { it == 2 }, any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), match { it == 2 }, any(), any(), any(), any())
         }
     }
 
@@ -810,6 +810,7 @@ class PlaybackManagerTest {
                 any(),
                 any(),
                 any(),
+                any(),
             )
         }
     }
@@ -838,7 +839,9 @@ class PlaybackManagerTest {
         )
 
         assertEquals("Dual queue keeps items without a player", 1, manager.priorityQueueSize)
-        coVerify(exactly = 0) { mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) {
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        }
     }
 
     @Test

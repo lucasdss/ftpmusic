@@ -281,7 +281,6 @@ class PlaybackManager @Inject constructor(
         existingMerged.forEach { dualQueue.addToQueue(it) }
         val merged = dualQueue.getMerged()
         playMergedQueue(merged, if (si < dualQueue.contextSize) si else 0)
-        queueGeneration++
         if (sourceType != null && sourceId != null) {
             journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, si)
         }
@@ -330,9 +329,6 @@ class PlaybackManager @Inject constructor(
 
     // Maps trackId → original server URL for queue URL swapping when Cast connects/disconnects
     private val trackInfoMap = mutableMapOf<String, TrackInfo>()
-
-    @Volatile
-    private var queueGeneration = 0
 
     /** True while URL-only swap is happening — suppress onMediaItemTransition side effects. */
     @Volatile
@@ -387,7 +383,6 @@ class PlaybackManager @Inject constructor(
         ensurePlayer()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "playAlbum")
         if (alignedTracks.isEmpty()) return
-        queueGeneration++ // prevent stale swapQueueUrls from overwriting
         val items = buildMediaItems(alignedTracks, alignedUrls)
         val si = startIndex.coerceIn(0, alignedTracks.lastIndex)
 
@@ -415,6 +410,9 @@ class PlaybackManager @Inject constructor(
      * Restore a persisted queue into the DUAL queue (industry layout).
      * Origin SoT is [isPriorityFlags]. [contextSize] is ignored.
      * Missing flags: treat all CONTEXT; Dual stamps fresh ids.
+     *
+     * @return true when the dual/Exo queue was rebuilt; false on empty/no-op
+     * (callers that skipped a follow-up seek must fall back).
      */
     fun restoreQueue(
         tracks: List<Track>,
@@ -425,19 +423,27 @@ class PlaybackManager @Inject constructor(
         entryIds: List<Int>? = null,
         nextEntryId: Int = 0,
         positionMs: Long = 0L,
-    ) {
+        isAutoplayFlags: List<Boolean>? = null,
+    ): Boolean {
         ensurePlayer()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "restoreQueue")
-        if (alignedTracks.isEmpty()) return
-        queueGeneration++
+        if (alignedTracks.isEmpty()) return false
+        val n = alignedTracks.size
         var items = buildMediaItems(alignedTracks, alignedUrls)
-        val ids = entryIds?.takeIf { it.size == items.size }
+        // Prefix-align parallel arrays when tracks/urls were coerced shorter.
+        val ids = alignParallelList(entryIds, n, tracks.size)
         if (ids != null) {
             items = items.mapIndexed { i, item ->
                 if (ids[i] > 0) item.withQueueEntryId(ids[i]) else item
             }
         }
-        val flags = isPriorityFlags?.takeIf { it.size == items.size }
+        val autoplay = alignParallelList(isAutoplayFlags, n, tracks.size)
+        if (autoplay != null) {
+            items = items.mapIndexed { i, item ->
+                if (autoplay[i]) item.withAutoplay(true) else item
+            }
+        }
+        val flags = alignParallelList(isPriorityFlags, n, tracks.size)
         if (flags != null) {
             dualQueue.restoreEntries(
                 items.zip(flags).map { (item, isPri) ->
@@ -452,7 +458,8 @@ class PlaybackManager @Inject constructor(
         val merged = dualQueue.getMerged()
         val si = startIndex.coerceIn(0, merged.lastIndex.coerceAtLeast(0))
         queueManager.playAll(merged, si, positionMs)
-        enqueuePlayQueue(alignedTracks, alignedUrls, startIndex)
+        enqueuePlayQueue(alignedTracks, alignedUrls, si)
+        return true
     }
 
     fun shuffleAlbum(
@@ -982,7 +989,8 @@ class PlaybackManager @Inject constructor(
     fun enqueuePlayQueue(tracks: List<Track>, urls: List<String>, currentIndex: Int) {
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, urls, "enqueuePlayQueue")
         if (alignedTracks.isEmpty()) return
-        val start = currentIndex + 1
+        val si = currentIndex.coerceIn(0, alignedTracks.lastIndex)
+        val start = si + 1
         val urgentEnd = minOf(start + 3, alignedTracks.size)
         scope.launch(kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> }) {
             for (i in start until alignedTracks.size) {
@@ -1108,6 +1116,20 @@ class PlaybackManager @Inject constructor(
         return tracks.take(n) to urls.take(n)
     }
 
+    /**
+     * Align a parallel restore array to coerced queue length [n].
+     * Same length → keep; sized for pre-coerce [originalSize] → prefix [take];
+     * otherwise drop (caller falls back).
+     */
+    private fun <T> alignParallelList(list: List<T>?, n: Int, originalSize: Int): List<T>? {
+        if (list == null) return null
+        return when {
+            list.size == n -> list
+            list.size == originalSize && originalSize > n -> list.take(n)
+            else -> null
+        }
+    }
+
     private fun buildMediaItems(tracks: List<Track>, urls: List<String>): List<androidx.media3.common.MediaItem> =
         tracks.zip(urls).map { (track, url) ->
             val localUrl = buildLocalUrl(track.id, url)
@@ -1158,6 +1180,7 @@ class PlaybackManager @Inject constructor(
         val safeCtx = contextSize.coerceIn(0, tracks.size)
         val flags = dualQueue.originIsContextFlags().map { !it }
             .let { f -> if (f.size == tracks.size) f else null }
+        val autoplay = isAutoplayFlags().takeIf { it.size == tracks.size }
         val idx = index
         scope.launch(kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> }) {
             persistenceManager.save(
@@ -1169,6 +1192,7 @@ class PlaybackManager @Inject constructor(
                 flags,
                 dualQueue.entryIds().takeIf { it.size == tracks.size },
                 dualQueue.peekNextEntryId(),
+                autoplay,
             )
         }
     }

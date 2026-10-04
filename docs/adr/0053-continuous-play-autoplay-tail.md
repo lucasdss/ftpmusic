@@ -29,4 +29,6 @@ toggle, not a hidden append.
 ## Consequences
 
 - Autoplay visible and clearable without nuking Priority or Continue Playing.
-- Process death drops `is_autoplay` stamps until next CP burst (no Room column yet).
+- Process death: Room `queue_items.is_autoplay` (v56) restores Autoplay section;
+  `hasLoadedContinuation` set when any autoplay row restored (no double CP append).
+- In-process `AutoplayFlagMemory` remains JVM Bundle-stub only — not death SoT.

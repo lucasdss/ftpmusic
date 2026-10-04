@@ -7,7 +7,9 @@ import androidx.media3.common.MediaItem
 const val IS_AUTOPLAY_EXTRA = "is_autoplay"
 
 /**
- * JVM unit tests stub [Bundle]; remember autoplay by instance like [QueueEntryIdMemory].
+ * In-process / JVM Bundle-stub shim (ADR-0053/0065). Keyed by identityHashCode;
+ * LRU cap 2048. Process death durability is Room `queue_items.is_autoplay` —
+ * not this map. Device reads Bundle extras when memory misses.
  */
 internal object AutoplayFlagMemory {
     private val map = object : LinkedHashMap<Int, Boolean>(64, 0.75f, true) {

@@ -165,11 +165,80 @@ class RestoreQueueTest {
     @Test
     fun `restoreQueue with empty urls is a no-op`() {
         val mgr = manager()
-        mgr.restoreQueue(
+        val ok = mgr.restoreQueue(
             listOf(Track("a", "A", duration = 100)),
             emptyList(),
             startIndex = 0,
         )
+        assertFalse(ok)
         assertEquals(0, mgr.contextSize)
+    }
+
+    @Test
+    fun `restoreQueue tracks urls coerce preserves prefix flags and entryIds`() {
+        val mgr = manager()
+        val tracks = listOf(
+            Track("a", "A", duration = 100),
+            Track("b", "B", duration = 100),
+            Track("c", "C", duration = 100),
+        )
+        // urls shorter → coerce to 2; parallel arrays sized for original 3 → take(2)
+        val ok = mgr.restoreQueue(
+            tracks,
+            listOf("http://s/a", "http://s/b"),
+            startIndex = 1,
+            isPriorityFlags = listOf(false, true, false),
+            entryIds = listOf(10, 11, 12),
+            nextEntryId = 20,
+        )
+        assertTrue(ok)
+        assertEquals(1, mgr.contextSize)
+        assertEquals(1, mgr.priorityQueueSize)
+        assertEquals(listOf("a", "b"), mgr.buildQueueStateFromDual().first.map { it.id })
+        assertEquals(listOf(10, 11), mgr.entryIds())
+        assertEquals(20, mgr.peekNextEntryId())
+    }
+
+    @Test
+    fun `restoreQueue returns true when queue rebuilt`() {
+        val mgr = manager()
+        val (tracks, urls) = tracks("a", "b")
+        assertTrue(mgr.restoreQueue(tracks, urls, startIndex = 0))
+        assertEquals(2, mgr.contextSize)
+    }
+
+    @Test
+    fun `restoreQueue stamps autoplay flags from persistence`() {
+        val mgr = manager()
+        val (tracks, urls) = tracks("a", "ap1", "ap2")
+        assertTrue(
+            mgr.restoreQueue(
+                tracks,
+                urls,
+                startIndex = 0,
+                isPriorityFlags = listOf(false, false, false),
+                isAutoplayFlags = listOf(false, true, true),
+            ),
+        )
+        assertEquals(listOf(false, true, true), mgr.isAutoplayFlags())
+    }
+
+    @Test
+    fun `restoreQueue coerces autoplay flags with tracks urls skew`() {
+        val mgr = manager()
+        val tracks = listOf(
+            Track("a", "A", duration = 100),
+            Track("b", "B", duration = 100),
+            Track("c", "C", duration = 100),
+        )
+        assertTrue(
+            mgr.restoreQueue(
+                tracks,
+                listOf("http://s/a", "http://s/b"),
+                startIndex = 0,
+                isAutoplayFlags = listOf(false, true, true),
+            ),
+        )
+        assertEquals(listOf(false, true), mgr.isAutoplayFlags())
     }
 }

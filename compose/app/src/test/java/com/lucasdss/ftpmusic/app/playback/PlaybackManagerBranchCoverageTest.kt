@@ -8,8 +8,8 @@ import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.model.Track
 import io.mockk.*
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -21,6 +21,7 @@ import org.junit.Test
  */
 class PlaybackManagerBranchCoverageTest {
 
+    private val testDispatcher = UnconfinedTestDispatcher()
     private val mockAppContext: android.app.Application = mockk(relaxed = true)
     private val mockPlayer: Player = mockk(relaxed = true)
     private val queueManager = QueueManager(mockk())
@@ -38,6 +39,7 @@ class PlaybackManagerBranchCoverageTest {
         castPreferences,
         mockAppContext,
         mockQueueJournalDao,
+        CoroutineScope(testDispatcher),
     )
 
     private fun track(id: String) = Track(id, "Title $id", artist = "A", album = "Al", duration = 100)
@@ -87,7 +89,9 @@ class PlaybackManagerBranchCoverageTest {
         m.clearAutoplayQueue()
 
         coVerify(exactly = 0) { mockPersistenceManager.clear() }
-        coVerify(exactly = 0) { mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) {
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        }
     }
 
     @Test
@@ -230,7 +234,7 @@ class PlaybackManagerBranchCoverageTest {
     // ── pushContext journal / dedupe / si clamp ──────────────────────────
 
     @Test
-    fun `pushContext journals when source set`() = runBlocking {
+    fun `pushContext journals when source set`() {
         val m = mgr()
         m.pushContext(
             listOf(track("n1"), track("n2")),
@@ -240,8 +244,7 @@ class PlaybackManagerBranchCoverageTest {
             sourceId = "al-1",
             sourceName = "Album",
         )
-        delay(200)
-        coVerify(timeout = 1_000) {
+        coVerify {
             mockQueueJournalDao.upsert(
                 match {
                     it.sourceType == "album" && it.sourceId == "al-1"
@@ -330,7 +333,7 @@ class PlaybackManagerBranchCoverageTest {
     // ── enqueuePlayQueue catch ───────────────────────────────────────────
 
     @Test
-    fun `enqueuePlayQueue continues after enqueue throw`() = runBlocking {
+    fun `enqueuePlayQueue continues after enqueue throw`() {
         coEvery { mockDownloadManager.enqueue(any(), any(), any()) } throws RuntimeException("disk full") andThen
             Unit andThen Unit andThen Unit
         val m = mgr()
@@ -339,9 +342,22 @@ class PlaybackManagerBranchCoverageTest {
             listOf(url("t0"), url("t1"), url("t2"), url("t3")),
             currentIndex = 0,
         )
-        delay(400)
         // start = 1; t1 throws, t2+t3 still attempted
         coVerify(atLeast = 3) { mockDownloadManager.enqueue(any(), any(), any()) }
+    }
+
+    @Test
+    fun `enqueuePlayQueue clamps startIndex past coerced length`() {
+        clearMocks(mockDownloadManager, recordedCalls = true, answers = false)
+        coEvery { mockDownloadManager.enqueue(any(), any(), any()) } just Runs
+        val m = mgr()
+        // 3 tracks / 2 urls → n=2; currentIndex=9 clamps to lastIndex=1 → start=2 → no enqueues
+        m.enqueuePlayQueue(
+            listOf(track("a"), track("b"), track("c")),
+            listOf(url("a"), url("b")),
+            currentIndex = 9,
+        )
+        coVerify(exactly = 0) { mockDownloadManager.enqueue(any(), any(), any()) }
     }
 
     // ── empty / journal XOR / length guard ───────────────────────────────
@@ -354,10 +370,9 @@ class PlaybackManagerBranchCoverageTest {
     }
 
     @Test
-    fun `playSingleTrack sourceType without sourceId skips journal`() = runBlocking {
+    fun `playSingleTrack sourceType without sourceId skips journal`() {
         val m = mgr()
         m.playSingleTrack(track("solo"), url("solo"), sourceType = "album", sourceId = null)
-        delay(200)
         coVerify(exactly = 0) { mockQueueJournalDao.upsert(any()) }
     }
 
@@ -418,13 +433,13 @@ class PlaybackManagerBranchCoverageTest {
     // ── playMergedQueue empty cast mirror ────────────────────────────────
 
     @Test
-    fun `playAlbum during Cast with empty mirror path uses exo clear when dual empty after clear`() {
+    fun `syncDualQueueToPlayer during Cast with empty dual clears exo without stop`() {
         val m = mgr()
         val exo = mockk<Player>(relaxed = true)
         PlayerHolder.exoPlayer = exo
         PlayerHolder.isCasting = true
         m.clearQueue()
-        // playMergedQueue empty: push empty is no-op; sync empty while casting clears without stop
+        // sync empty while casting clears without stop
         m.syncDualQueueToPlayer()
         verify { exo.clearMediaItems() }
         verify(exactly = 0) { exo.stop() }

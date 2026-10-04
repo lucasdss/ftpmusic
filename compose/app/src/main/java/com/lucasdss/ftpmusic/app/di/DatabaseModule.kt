@@ -50,7 +50,7 @@ object DatabaseModule {
         AppDatabase::class.java,
         "ftpmusic.db",
     )
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_55)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_56)
         // NO fallbackToDestructiveMigration: all migrations 1→46 are registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
         // instead of silently wiping the database (the playlist-loss root cause).

@@ -38,7 +38,7 @@ import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
     ],
-    version = 55,
+    version = 56,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -977,5 +977,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_55 = ALL_MIGRATIONS_54 + MIGRATION_54_55
+
+        // Migration 55→56: persist Continuous Play Autoplay stamps (ADR-0053).
+        val MIGRATION_55_56 = object : Migration(55, 56) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE queue_items ADD COLUMN is_autoplay INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_56 = ALL_MIGRATIONS_55 + MIGRATION_55_56
     }
 }

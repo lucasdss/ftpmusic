@@ -61,7 +61,7 @@ class QueueAutosaveTest {
         playbackManager.playAlbum(tracks, urls)
 
         coVerify(timeout = 2000) {
-            mockPersistenceManager.save(tracks, any(), 0, 0L, any(), any(), any(), any())
+            mockPersistenceManager.save(tracks, any(), 0, 0L, any(), any(), any(), any(), any())
         }
     }
 
@@ -76,7 +76,7 @@ class QueueAutosaveTest {
         playbackManager.shuffleAlbum(tracks, urls)
 
         coVerify(timeout = 2000) {
-            mockPersistenceManager.save(tracks, any(), 0, 0L, any(), any(), any(), any())
+            mockPersistenceManager.save(tracks, any(), 0, 0L, any(), any(), any(), any(), any())
         }
     }
 
@@ -95,7 +95,7 @@ class QueueAutosaveTest {
         playbackManager.playSingleTrack(track, url)
 
         coVerify(timeout = 2000) {
-            mockPersistenceManager.save(listOf(track), any(), 0, 0L, any(), any(), any(), any())
+            mockPersistenceManager.save(listOf(track), any(), 0, 0L, any(), any(), any(), any(), any())
         }
     }
 
@@ -111,7 +111,7 @@ class QueueAutosaveTest {
 
         // addToQueue builds current state from player, then appends the new track
         coVerify(timeout = 2000) {
-            mockPersistenceManager.save(any(), any(), 0, 0L, any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), 0, 0L, any(), any(), any(), any(), any())
         }
     }
 

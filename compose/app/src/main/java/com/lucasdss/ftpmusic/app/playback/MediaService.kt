@@ -1474,8 +1474,12 @@ class MediaService : MediaLibraryService() {
                         // trimmed receiver window after soundbar DMR advances.
                         val idx = resolveCurrentIndexForPersistence(PlayerHolder.exoPlayer ?: cp)
                         val pos = cp.currentPosition
-                        kotlinx.coroutines.runBlocking {
-                            persistenceManager.savePositionOnly(idx, pos)
+                        // Capture on main; Room write on IO. switchToLocal joins
+                        // this job before restore so position is not stale.
+                        castDisconnectSaveJob = persistenceScope.launch {
+                            try {
+                                persistenceManager.savePositionOnly(idx, pos)
+                            } catch (_: Exception) {}
                         }
                     }
                 } catch (_: Exception) {}
@@ -1505,7 +1509,7 @@ class MediaService : MediaLibraryService() {
                 CastButtonState.isCasting.value = false
                 CastButtonState.connectedDeviceName.value = null
                 exoPlayer?.volume = 1f
-                // 4. Switch to local playback (reads position we just saved)
+                // 4. Switch to local playback (awaits position save, then async restore)
                 switchToLocalPlayback()
                 // 5. Tell the Cast SDK to tear down the session so its SessionManager
                 //    state is clean. Without this, SessionManager keeps the old session
@@ -1642,7 +1646,7 @@ class MediaService : MediaLibraryService() {
                     // playAlbum (which itself sets playWhenReady=true) so the
                     // restore-then-pause below never swallows the user's intent.
                     val userInitiatedPlayback = p?.playWhenReady == true
-                    playbackManager.restoreQueue(
+                    val restored = playbackManager.restoreQueue(
                         saved.tracks,
                         saved.urls,
                         saved.currentIndex,
@@ -1651,7 +1655,12 @@ class MediaService : MediaLibraryService() {
                         saved.entryIds,
                         saved.nextEntryId,
                         saved.positionMs,
+                        saved.isAutoplayFlags,
                     )
+                    if (restored && saved.isAutoplayFlags?.any { it } == true) {
+                        // Prevent Continuous Play from double-appending after death.
+                        hasLoadedContinuation = true
+                    }
                     // Index + position already applied atomically inside restoreQueue/playAll.
                     if (!userInitiatedPlayback) {
                         p?.pause()
@@ -2035,6 +2044,9 @@ class MediaService : MediaLibraryService() {
 
     /** Guard against duplicate switchToLocalPlayback calls. */
     private var switchingToLocal = false
+
+    /** Position save kicked off on cast disconnect; [switchToLocalPlayback] joins before restore. */
+    private var castDisconnectSaveJob: Job? = null
 
     /** Max retry attempts within the 10s reconnect window. */
     @VisibleForTesting
@@ -2430,69 +2442,92 @@ class MediaService : MediaLibraryService() {
     private fun switchToLocalPlayback() {
         if (switchingToLocal) return // idempotent guard
         switchingToLocal = true
-        try {
-            val ep = exoPlayer ?: return
-            setListenerPlayer(ep)
-            clearCastMirror()
-            PlayerHolder.player = ep
-            mediaSession.player = ep
-            playbackProvider.onPlayerSwitched()
-            // Restore full queue from DB — ExoPlayer may have fewer items than Cast receiver.
-            // CRITICAL: CastPlayer's internal transfer (CastTransferFilter) replaces
-            // ExoPlayer's queue with the receiver's TRUNCATED queue (the DMR trims
-            // played items) before this runs. Checking saved.currentIndex >= itemCount
-            // is therefore never true (the truncated queue is smaller, index in bounds),
-            // so the full queue was silently lost on every disconnect. Compare SIZES:
-            // any mismatch → always restore the full queue from DB.
-            kotlinx.coroutines.runBlocking {
+        val ep = exoPlayer
+        if (ep == null) {
+            switchingToLocal = false
+            return
+        }
+        // Seat swap stays synchronous on main (Exo/session authority).
+        setListenerPlayer(ep)
+        clearCastMirror()
+        PlayerHolder.player = ep
+        mediaSession.player = ep
+        playbackProvider.onPlayerSwitched()
+        ep.playWhenReady = false
+        ep.prepare()
+        // Room restore off main (ADR-0066). Join disconnect position save first.
+        val saveJob = castDisconnectSaveJob
+        castDisconnectSaveJob = null
+        scope.launch {
+            try {
+                saveJob?.join()
                 val saved = persistenceManager.restore()
-                if (saved != null) {
-                    android.util.Log.d(
-                        "ftpmusic-cast",
-                        "[switchToLocal] saved: tracks=${saved.tracks.size} contextSize=${saved.contextSize} currentIndex=${saved.currentIndex} pos=${saved.positionMs} -> local count=${ep.mediaItemCount}",
-                    )
-                    val queueTruncated = saved.tracks.size != ep.mediaItemCount
-                    if (queueTruncated) {
-                        android.util.Log.w(
-                            "ftpmusic",
-                            "[switchToLocal] restoring full queue: saved=${saved.tracks.size} local=${ep.mediaItemCount}",
-                        )
-                        // restoreQueue rebuilds the dual queue preserving the
-                        // persisted context/priority split (contextSize), and clears
-                        // stale priority items first — the lazy-loader may have
-                        // appended chunks to it during the Cast→local switch, which
-                        // would otherwise merge on top of the restored context
-                        // (113+50=163). Legacy saves (contextSize=-1) restore
-                        // everything as context, matching the old behavior.
-                        // Index + position applied atomically inside restoreQueue —
-                        // do not seek again (avoids period/metadata flash).
-                        playbackManager.restoreQueue(
-                            saved.tracks,
-                            saved.urls,
-                            saved.currentIndex,
-                            saved.contextSize,
-                            saved.isPriorityFlags,
-                            saved.entryIds,
-                            saved.nextEntryId,
-                            saved.positionMs,
-                        )
-                    } else {
-                        if (saved.currentIndex !in 0 until ep.mediaItemCount) {
-                            android.util.Log.w(
-                                "ftpmusic-cast",
-                                "[switchToLocal] saved.currentIndex=${saved.currentIndex} out of range (count=${ep.mediaItemCount}) — clamped",
-                            )
-                        }
-                        // Queue already full — seek only (restore not called).
-                        val idx = saved.currentIndex.coerceIn(0, maxOf(0, ep.mediaItemCount - 1))
-                        ep.seekTo(idx, saved.positionMs)
-                    }
+                withContext(Dispatchers.Main) {
+                    applySwitchToLocalRestore(ep, saved)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ftpmusic-cast", "[switchToLocal] async restore failed: ${e.message}", e)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    switchingToLocal = false
                 }
             }
-            ep.playWhenReady = false
-            ep.prepare()
-        } finally {
-            switchingToLocal = false
+        }
+    }
+
+    /**
+     * Apply DB queue after cast→local seat swap. Runs on Main.
+     * Size mismatch → full [PlaybackManager.restoreQueue]; else seek only.
+     */
+    @VisibleForTesting
+    internal fun applySwitchToLocalRestore(ep: androidx.media3.common.Player, saved: SavedQueueState?) {
+        if (saved == null) return
+        android.util.Log.d(
+            "ftpmusic-cast",
+            "[switchToLocal] saved: tracks=${saved.tracks.size} contextSize=${saved.contextSize} currentIndex=${saved.currentIndex} pos=${saved.positionMs} -> local count=${ep.mediaItemCount}",
+        )
+        val queueTruncated = saved.tracks.size != ep.mediaItemCount
+        if (queueTruncated) {
+            android.util.Log.w(
+                "ftpmusic",
+                "[switchToLocal] restoring full queue: saved=${saved.tracks.size} local=${ep.mediaItemCount}",
+            )
+            val restored = playbackManager.restoreQueue(
+                saved.tracks,
+                saved.urls,
+                saved.currentIndex,
+                saved.contextSize,
+                saved.isPriorityFlags,
+                saved.entryIds,
+                saved.nextEntryId,
+                saved.positionMs,
+                saved.isAutoplayFlags,
+            )
+            if (restored && saved.isAutoplayFlags?.any { it } == true) {
+                hasLoadedContinuation = true
+            }
+            if (!restored) {
+                android.util.Log.w(
+                    "ftpmusic-cast",
+                    "[switchToLocal] restoreQueue no-op (empty/invalid urls) — seek truncated local",
+                )
+                if (ep.mediaItemCount > 0) {
+                    val idx = saved.currentIndex.coerceIn(0, ep.mediaItemCount - 1)
+                    ep.seekTo(idx, saved.positionMs)
+                }
+            }
+        } else {
+            if (saved.currentIndex !in 0 until ep.mediaItemCount) {
+                android.util.Log.w(
+                    "ftpmusic-cast",
+                    "[switchToLocal] saved.currentIndex=${saved.currentIndex} out of range (count=${ep.mediaItemCount}) — clamped",
+                )
+            }
+            val idx = saved.currentIndex.coerceIn(0, maxOf(0, ep.mediaItemCount - 1))
+            ep.seekTo(idx, saved.positionMs)
+            if (saved.isAutoplayFlags?.any { it } == true) {
+                hasLoadedContinuation = true
+            }
         }
     }
 
@@ -2548,6 +2583,7 @@ class MediaService : MediaLibraryService() {
                 playbackManager.isPriorityFlags(),
                 playbackManager.entryIds(),
                 playbackManager.peekNextEntryId(),
+                playbackManager.isAutoplayFlags(),
             )
             // savePlayQueue: debounce by 1.5s — cancels previous pending call, fires after idle window.
             // saveQueueStateSync() (onDestroy/onTaskRemoved) bypasses this for guaranteed last-chance persistence.
@@ -2625,6 +2661,7 @@ class MediaService : MediaLibraryService() {
                             playbackManager.isPriorityFlags(),
                             playbackManager.entryIds(),
                             playbackManager.peekNextEntryId(),
+                            playbackManager.isAutoplayFlags(),
                         )
                     }
                 }
@@ -2640,6 +2677,7 @@ class MediaService : MediaLibraryService() {
                             playbackManager.isPriorityFlags(),
                             playbackManager.entryIds(),
                             playbackManager.peekNextEntryId(),
+                            playbackManager.isAutoplayFlags(),
                         )
                     } catch (_: Exception) {}
                 }

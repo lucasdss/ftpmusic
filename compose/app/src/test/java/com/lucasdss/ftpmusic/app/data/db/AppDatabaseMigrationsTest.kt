@@ -510,10 +510,23 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 55 to 56 adds is_autoplay on queue_items`() {
+        run(AppDatabase.MIGRATION_55_56)
+        verify {
+            db.execSQL(
+                match {
+                    it.contains("is_autoplay") && it.contains("DEFAULT 0")
+                },
+            )
+        }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
         assertEquals(54, AppDatabase.ALL_MIGRATIONS_54.last().endVersion)
         assertEquals(55, AppDatabase.ALL_MIGRATIONS_55.last().endVersion)
+        assertEquals(56, AppDatabase.ALL_MIGRATIONS_56.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -539,8 +552,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_50, AppDatabase.ALL_MIGRATIONS_51,
             AppDatabase.ALL_MIGRATIONS_52, AppDatabase.ALL_MIGRATIONS_53,
             AppDatabase.ALL_MIGRATIONS_54, AppDatabase.ALL_MIGRATIONS_55,
+            AppDatabase.ALL_MIGRATIONS_56,
         )
-        assertEquals(46, all.size)
+        assertEquals(47, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

@@ -6,8 +6,8 @@ import androidx.media3.common.MediaItem
 const val QUEUE_ENTRY_ID_EXTRA = "queueEntryId"
 
 /**
- * JVM unit tests stub [Bundle] / [MediaItem] tag. Remember ids by instance
- * so Dual / projection / Cast tests still see stamps.
+ * In-process / JVM Bundle-stub shim. Keyed by identityHashCode; LRU cap 2048.
+ * Process death durability is Room `queue_items.entry_id` — not this map.
  */
 internal object QueueEntryIdMemory {
     private val map = object : LinkedHashMap<Int, Int>(64, 0.75f, true) {

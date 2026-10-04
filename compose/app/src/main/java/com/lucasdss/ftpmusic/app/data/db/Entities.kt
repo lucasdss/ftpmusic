@@ -324,6 +324,8 @@ data class QueueItemEntity(
     @ColumnInfo(name = "is_priority") val isPriority: Boolean = false,
     /** Monotonic occurrence id. 0 = legacy unstamped row. */
     @ColumnInfo(name = "entry_id") val entryId: Int = 0,
+    /** Continuous Play Autoplay tail (ADR-0053 / ADR-0065). Survives process death. */
+    @ColumnInfo(name = "is_autoplay") val isAutoplay: Boolean = false,
 )
 
 /** Single-row table for queue playback state (index, position, cast status). */

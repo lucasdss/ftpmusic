@@ -22,6 +22,8 @@ data class SavedQueueState(
     /** Per-row [queueEntryId]; 0 = unstamped legacy. */
     val entryIds: List<Int>? = null,
     val nextEntryId: Int = 1,
+    /** Per-row Continuous Play Autoplay flags aligned with [tracks]. */
+    val isAutoplayFlags: List<Boolean>? = null,
 )
 
 @Singleton
@@ -35,6 +37,7 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
         isPriorityFlags: List<Boolean>? = null,
         entryIds: List<Int>? = null,
         nextEntryId: Int = 1,
+        isAutoplayFlags: List<Boolean>? = null,
     ) {
         if (tracks.isEmpty()) {
             dao.clear()
@@ -46,6 +49,8 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
             }
         val ids = entryIds?.takeIf { it.size == tracks.size }
             ?: List(tracks.size) { index -> index + 1 }
+        val autoplay = isAutoplayFlags?.takeIf { it.size == tracks.size }
+            ?: List(tracks.size) { false }
         val entities = tracks.zip(urls).mapIndexed { index, (track, url) ->
             QueueItemEntity(
                 trackId = track.id,
@@ -60,6 +65,7 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
                 durationSeconds = track.duration,
                 isPriority = flags[index],
                 entryId = ids[index],
+                isAutoplay = autoplay[index],
             )
         }
         val derivedCtx = flags.count { !it }
@@ -98,6 +104,7 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
         val state = dao.getState() ?: QueueStateEntity()
         val flags = entities.map { it.isPriority }
         val ids = entities.map { it.entryId }
+        val autoplay = entities.map { it.isAutoplay }
         val derivedCtx = flags.count { !it }
         val derivedNext = maxOf(state.nextEntryId, ids.max() + 1, 1)
         return SavedQueueState(
@@ -109,6 +116,7 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
             isPriorityFlags = flags,
             entryIds = ids,
             nextEntryId = derivedNext,
+            isAutoplayFlags = autoplay,
         )
     }
 

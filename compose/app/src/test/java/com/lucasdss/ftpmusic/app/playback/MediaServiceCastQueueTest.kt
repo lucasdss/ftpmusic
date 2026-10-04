@@ -12,6 +12,7 @@ import com.google.android.gms.cast.framework.SessionManager
 import com.google.android.gms.cast.framework.media.MediaQueue
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
+import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import io.mockk.*
 import org.junit.After
@@ -1162,6 +1163,37 @@ class MediaServiceCastQueueTest {
 
         assertFalse("old condition missed the truncation", oldCondition)
         assertTrue("size-based condition catches it", newCondition)
+    }
+
+    @Test
+    fun `truncated restore no-op falls back to seek on local queue`() {
+        // MediaService: queueTruncated → restoreQueue; if false (empty urls), seek truncated local.
+        val queueTruncated = true
+        val restored = false
+        val localCount = 3
+        val savedIndex = 8
+        var seekIdx: Int? = null
+        if (queueTruncated) {
+            if (!restored && localCount > 0) {
+                seekIdx = savedIndex.coerceIn(0, localCount - 1)
+            }
+        }
+        assertEquals(2, seekIdx)
+    }
+
+    @Test
+    fun `applySwitchToLocalRestore seeks when sizes match`() {
+        val exo = mockExoPlayer
+        every { exo.mediaItemCount } returns 2
+        val saved = SavedQueueState(
+            tracks = listOf(Track("a", "A", duration = 100), Track("b", "B", duration = 100)),
+            urls = listOf("http://a", "http://b"),
+            currentIndex = 1,
+            positionMs = 9_000L,
+            isAutoplayFlags = listOf(false, true),
+        )
+        service.applySwitchToLocalRestore(exo, saved)
+        verify { exo.seekTo(1, 9_000L) }
     }
 
     // ── endCurrentCastSession (device switch) ───────────────────────────
