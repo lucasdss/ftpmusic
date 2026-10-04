@@ -1,9 +1,12 @@
 package com.lucasdss.ftpmusic.app.di
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.session.MediaLibraryService
+import com.lucasdss.ftpmusic.app.MainActivity
 import com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -42,8 +45,17 @@ object MediaModule {
         bitmapLoader: com.lucasdss.ftpmusic.app.playback.CoverArtBitmapLoader,
     ): MediaLibraryService.MediaLibrarySession {
         val exoPlayer = androidx.media3.exoplayer.ExoPlayer.Builder(context).build()
+        val sessionActivity = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         return MediaLibraryService.MediaLibrarySession.Builder(context, exoPlayer, callback)
             .setBitmapLoader(bitmapLoader)
+            .setSessionActivity(sessionActivity)
             .build()
     }
 

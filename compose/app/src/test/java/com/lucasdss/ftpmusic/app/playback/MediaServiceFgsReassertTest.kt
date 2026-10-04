@@ -152,8 +152,11 @@ class MediaServiceFgsReassertTest {
         assertTrue(shouldPromotePlaybackOnCreate(true))
         assertFalse(shouldPromotePlaybackOnCreate(false))
         assertTrue(shouldReassertPlayback(MediaServiceStartRequest.ACTION_PLAYBACK))
+        assertTrue(shouldReassertPlayback(MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY))
         assertFalse(shouldReassertPlayback(MediaServiceStartRequest.ACTION_INITIALIZE))
         assertFalse(shouldReassertPlayback(null))
+        assertTrue(isCarBtAutoplayAction(MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY))
+        assertFalse(isCarBtAutoplayAction(MediaServiceStartRequest.ACTION_PLAYBACK))
     }
 
     @Test

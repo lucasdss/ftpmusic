@@ -76,6 +76,13 @@ data class SettingsUiState(
     // Last.fm API key (masked in UI when non-blank after save)
     val lastFmApiKey: String = "",
     val lastFmKeySaved: Boolean = false,
+    // ADR-0071: Car Bluetooth resume
+    val carBtResumeEnabled: Boolean = false,
+    val carBtSelectedMacs: Set<String> = emptySet(),
+    val carBtBondedDevices: List<com.lucasdss.ftpmusic.app.playback.BondedBtDevice> = emptyList(),
+    val carBtHasConnectPermission: Boolean = false,
+    val isDefaultMusicApp: Boolean = false,
+    val defaultMusicRoleAvailable: Boolean = false,
 )
 
 @HiltViewModel
@@ -164,7 +171,15 @@ class SettingsViewModel @Inject constructor(
             castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
             lastFmApiKey = storage.get(SecureStorage.KEY_LASTFM_API_KEY).orEmpty(),
             lastFmKeySaved = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank(),
+            carBtResumeEnabled =
+                storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED)?.toBooleanStrictOrNull() == true,
+            carBtSelectedMacs = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.parseMacAllowlist(
+                storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS),
+            ),
         )
+        // Bonded-device / role refresh needs a real Context (permissions + BT
+        // adapter). Settings UI calls refreshCarBtState() from LaunchedEffect;
+        // skip here so unit tests with a mock Context stay green.
         viewModelScope.launch {
             metadataSyncWorker.status.collect { s ->
                 _state.value = _state.value.copy(isResyncing = s.isRunning)
@@ -339,6 +354,59 @@ class SettingsViewModel @Inject constructor(
         playbackManager.setJournalCap(clamped)
         _state.value = _state.value.copy(journalCap = clamped)
         storage.put(SecureStorage.KEY_QUEUE_JOURNAL_CAP, clamped.toString())
+    }
+
+    fun refreshCarBtState() {
+        val hasPerm = try {
+            com.lucasdss.ftpmusic.app.playback.BluetoothBondedDevices.hasConnectPermission(context)
+        } catch (_: Exception) {
+            false
+        }
+        val bonded = if (hasPerm) {
+            try {
+                com.lucasdss.ftpmusic.app.playback.BluetoothBondedDevices.list(context)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+        val roleHeld = try {
+            com.lucasdss.ftpmusic.app.playback.DefaultMusicRoleHelper.isRoleHeld(context)
+        } catch (_: Exception) {
+            false
+        }
+        val roleAvailable = try {
+            com.lucasdss.ftpmusic.app.playback.DefaultMusicRoleHelper.isRoleAvailable(context)
+        } catch (_: Exception) {
+            true
+        }
+        _state.value = _state.value.copy(
+            carBtHasConnectPermission = hasPerm,
+            carBtBondedDevices = bonded,
+            isDefaultMusicApp = roleHeld,
+            defaultMusicRoleAvailable = roleAvailable,
+            carBtResumeEnabled =
+                storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED)?.toBooleanStrictOrNull() == true,
+            carBtSelectedMacs = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.parseMacAllowlist(
+                storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS),
+            ),
+        )
+    }
+
+    fun setCarBtResumeEnabled(enabled: Boolean) {
+        storage.put(SecureStorage.KEY_CAR_BT_RESUME_ENABLED, enabled.toString())
+        _state.value = _state.value.copy(carBtResumeEnabled = enabled)
+    }
+
+    fun setCarBtDeviceSelected(mac: String, selected: Boolean) {
+        val normalized = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.normalizeMac(mac)
+            ?: return
+        val next = _state.value.carBtSelectedMacs.toMutableSet()
+        if (selected) next.add(normalized) else next.remove(normalized)
+        val encoded = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.encodeMacAllowlist(next)
+        storage.put(SecureStorage.KEY_CAR_BT_DEVICE_MACS, encoded)
+        _state.value = _state.value.copy(carBtSelectedMacs = next)
     }
 
     fun setContinuousPlayEnabled(enabled: Boolean) {

@@ -694,4 +694,29 @@ class SettingsViewModelTest {
         assertTrue(payload.contains("share diagnostics"))
         assertTrue(payload.contains("ftpmusic diagnostics"))
     }
+
+    @Test
+    fun `setCarBtResumeEnabled persists`() {
+        viewModel.setCarBtResumeEnabled(true)
+        verify { storage.put(SecureStorage.KEY_CAR_BT_RESUME_ENABLED, "true") }
+        assertTrue(viewModel.state.value.carBtResumeEnabled)
+        viewModel.setCarBtResumeEnabled(false)
+        verify { storage.put(SecureStorage.KEY_CAR_BT_RESUME_ENABLED, "false") }
+        assertFalse(viewModel.state.value.carBtResumeEnabled)
+    }
+
+    @Test
+    fun `setCarBtDeviceSelected updates allowlist JSON`() {
+        viewModel.setCarBtDeviceSelected("aa:bb:cc:dd:ee:ff", true)
+        verify {
+            storage.put(
+                SecureStorage.KEY_CAR_BT_DEVICE_MACS,
+                """["AA:BB:CC:DD:EE:FF"]""",
+            )
+        }
+        assertTrue("AA:BB:CC:DD:EE:FF" in viewModel.state.value.carBtSelectedMacs)
+        viewModel.setCarBtDeviceSelected("AA:BB:CC:DD:EE:FF", false)
+        verify { storage.put(SecureStorage.KEY_CAR_BT_DEVICE_MACS, "[]") }
+        assertTrue(viewModel.state.value.carBtSelectedMacs.isEmpty())
+    }
 }

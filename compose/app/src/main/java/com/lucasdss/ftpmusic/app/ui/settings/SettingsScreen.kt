@@ -24,12 +24,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.R
+import com.lucasdss.ftpmusic.app.playback.DefaultMusicRoleHelper
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.Background
 import com.lucasdss.ftpmusic.app.ui.BrandBg
@@ -612,6 +614,165 @@ fun SettingsScreen(
                             shape = RoundedCornerShape(cornerS()),
                         ) { Text("Clear", color = BrandTeal) }
                     }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ═══ Car Bluetooth (ADR-0071) ═══
+            SectionLabel(stringResource(R.string.car_bt_section_label))
+            SectionCard {
+                LaunchedEffect(Unit) { viewModel.refreshCarBtState() }
+                val btPermissionLauncher = rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+                ) { result ->
+                    val granted = result.values.any { it } ||
+                        com.lucasdss.ftpmusic.app.playback.BluetoothBondedDevices
+                            .hasConnectPermission(context)
+                    viewModel.refreshCarBtState()
+                    if (!granted) {
+                        viewModel.setCarBtResumeEnabled(false)
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.car_bt_devices_need_permission),
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
+                val notifPermissionLauncher = rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+                ) { /* best-effort for FGS fallback notif */ }
+                SectionToggleRow(
+                    label = stringResource(R.string.car_bt_resume_toggle),
+                    subtitle = stringResource(R.string.car_bt_resume_subtitle),
+                    checked = state.carBtResumeEnabled,
+                    onToggle = { enabled ->
+                        if (enabled) {
+                            val needsBt = !state.carBtHasConnectPermission &&
+                                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                            if (needsBt) {
+                                btPermissionLauncher.launch(
+                                    arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT),
+                                )
+                            }
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                val nm = androidx.core.app.NotificationManagerCompat.from(context)
+                                if (!nm.areNotificationsEnabled()) {
+                                    notifPermissionLauncher.launch(
+                                        android.Manifest.permission.POST_NOTIFICATIONS,
+                                    )
+                                }
+                            }
+                            viewModel.setCarBtResumeEnabled(true)
+                            viewModel.refreshCarBtState()
+                        } else {
+                            viewModel.setCarBtResumeEnabled(false)
+                        }
+                    },
+                )
+                if (state.carBtResumeEnabled) {
+                    SectionDivider()
+                    Text(
+                        stringResource(R.string.car_bt_devices_label),
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+                    )
+                    when {
+                        !state.carBtHasConnectPermission &&
+                            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
+                            Text(
+                                stringResource(R.string.car_bt_devices_need_permission),
+                                color = Color(0xFF888888),
+                                fontSize = textLabelS(),
+                                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                            )
+                        }
+
+                        state.carBtBondedDevices.isEmpty() -> {
+                            Text(
+                                stringResource(R.string.car_bt_devices_empty),
+                                color = Color(0xFF888888),
+                                fontSize = textLabelS(),
+                                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                            )
+                        }
+
+                        else -> {
+                            state.carBtBondedDevices.forEach { device ->
+                                val selected = device.address in state.carBtSelectedMacs
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.setCarBtDeviceSelected(device.address, !selected)
+                                        }
+                                        .padding(horizontal = spacingL(), vertical = spacingM())
+                                        .testTag("car_bt_device_${device.address}"),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(device.name, color = Color.White, fontSize = textHeadingS())
+                                        Text(
+                                            device.address,
+                                            color = Color(0xFF666666),
+                                            fontSize = textLabelS(),
+                                        )
+                                    }
+                                    Checkbox(
+                                        checked = selected,
+                                        onCheckedChange = {
+                                            viewModel.setCarBtDeviceSelected(device.address, it)
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = BrandTeal,
+                                            uncheckedColor = Color(0xFF666666),
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                SectionDivider()
+                val defaultSubtitle = if (state.isDefaultMusicApp) {
+                    stringResource(R.string.car_bt_default_music_app_held)
+                } else {
+                    stringResource(R.string.car_bt_default_music_app_subtitle)
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val activity = context as? ComponentActivity
+                            if (activity != null) {
+                                DefaultMusicRoleHelper.requestDefaultMusicApp(activity)
+                            } else {
+                                DefaultMusicRoleHelper.openDefaultAppsSettings(context)
+                            }
+                            viewModel.refreshCarBtState()
+                        }
+                        .padding(horizontal = spacingL(), vertical = spacingM())
+                        .testTag("settings_default_music_app"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.car_bt_default_music_app),
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                        )
+                        Text(
+                            defaultSubtitle,
+                            color = Color(0xFF666666),
+                            fontSize = textLabelM(),
+                        )
+                    }
+                    Icon(
+                        Icons.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = NavUnselected,
+                    )
                 }
             }
 

@@ -3,6 +3,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
 import java.util.Properties
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
 
 plugins {
     id("com.android.application")
@@ -115,6 +116,13 @@ android {
                 // (DynamicBaseUrl) leak across classes under multi-fork orderings.
                 // One fork = deterministic order for the release gate.
                 it.maxParallelForks = 1
+
+                // Robolectric relocates Android classes; without this JaCoCo
+                // drops coverage for Robolectric-hosted unit tests (ADR-0071).
+                it.extensions.configure<JacocoTaskExtension> {
+                    isIncludeNoLocationClasses = true
+                    excludes = listOf("jdk.internal.*")
+                }
             }
         }
     }
