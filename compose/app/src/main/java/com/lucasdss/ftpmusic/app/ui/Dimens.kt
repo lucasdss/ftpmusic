@@ -116,6 +116,18 @@ fun asp(base: Float): TextUnit = (base * AdaptiveScale.factor()).sp
 
 @Composable fun knobSize(): Dp = adp(14f)
 
+/** Detail Play/Shuffle button height (Album + Artist action row). */
+@Composable fun detailActionHeight(): Dp = adp(42f)
+
+/** Album grid horizontal gap (Library + Artist Albums tab). */
+@Composable fun gridGapH(): Dp = adp(10f)
+
+/** Album grid vertical gap (Library + Artist Albums tab). */
+@Composable fun gridGapV(): Dp = adp(14f)
+
+/** Spacer between cover art and title on album cards. */
+@Composable fun spacingBelowArt(): Dp = adp(6f)
+
 /** Interactive reaction glyph (thumbs / bookmark) — market ~20dp. */
 @Composable fun reactionGlyphSize(): Dp = adp(ReactionIconTokens.GLYPH_BASE_DP)
 

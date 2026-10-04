@@ -195,8 +195,8 @@ fun LibraryContent(
                                 columns = GridCells.Fixed(2),
                                 modifier = Modifier.padding(horizontal = spacingM()),
                                 contentPadding = PaddingValues(vertical = spacingS()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(gridGapH()),
+                                verticalArrangement = Arrangement.spacedBy(gridGapV()),
                             ) {
                                 items(displayedAlbums, key = { it.id }, contentType = { "album" }) { album ->
                                     val isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying
@@ -249,7 +249,7 @@ fun LibraryContent(
                                                 Modifier.align(Alignment.BottomEnd).padding(4.dp),
                                             )
                                         }
-                                        Spacer(Modifier.height(6.dp))
+                                        Spacer(Modifier.height(spacingBelowArt()))
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         ) {
@@ -321,7 +321,7 @@ fun LibraryContent(
                                     Row(
                                         Modifier.fillMaxWidth().clickable {
                                             onArtistClick(artist.id)
-                                        }.padding(horizontal = spacingL(), vertical = 10.dp),
+                                        }.padding(horizontal = spacingL(), vertical = spacingM()),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         ArtistAvatar(
@@ -408,7 +408,7 @@ fun LibraryContent(
                                                     onClick = { onPlaylistClick(pl.id) },
                                                     onLongClick = { menuPlaylist = pl },
                                                 )
-                                                .padding(horizontal = spacingL(), vertical = 10.dp),
+                                                .padding(horizontal = spacingL(), vertical = spacingM()),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
                                             Box(

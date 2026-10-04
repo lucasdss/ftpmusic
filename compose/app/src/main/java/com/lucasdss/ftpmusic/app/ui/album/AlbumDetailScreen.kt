@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.DetailActionRow
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
@@ -281,80 +283,12 @@ fun AlbumDetailScreen(
             // ═══ Action row: Play | Shuffle | ⋮ ═══
             if (state.tracks.isNotEmpty()) {
                 item {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingL()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        // Play button — gradient
-                        Box(
-                            Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(BrandTeal, BrandPurple),
-                                        start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                        end = androidx.compose.ui.geometry.Offset(
-                                            Float.POSITIVE_INFINITY,
-                                            Float.POSITIVE_INFINITY,
-                                        ),
-                                    ),
-                                )
-                                .clickable { viewModel.playAll() },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(knobSize()),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text("Play", color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        // Shuffle button — dark with gradient border (consistent across screens)
-                        Box(
-                            Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
-                                .background(Color(0xFF252538))
-                                .border(
-                                    1.dp,
-                                    Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
-                                    RoundedCornerShape(cornerM()),
-                                )
-                                .clickable { viewModel.shuffle() },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Shuffle,
-                                    null,
-                                    tint = Color(0xFFCCCCCC),
-                                    modifier = Modifier.size(knobSize()),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "Shuffle",
-                                    color = Color(0xFFCCCCCC),
-                                    fontSize = textBodyM(),
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        }
-                        // ⋮ button
-                        Box(
-                            Modifier.size(40.dp).clip(RoundedCornerShape(cornerM()))
-                                .background(Color(0xFF252538)).clickable { showAlbumSheet = true },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                null,
-                                tint = Color(0xFFAAAAAA),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
+                    DetailActionRow(
+                        playLabel = "Play",
+                        onPlay = { viewModel.playAll() },
+                        onShuffle = { viewModel.shuffle() },
+                        onMore = { showAlbumSheet = true },
+                    )
                 }
             }
 
@@ -434,13 +368,20 @@ fun AlbumDetailScreen(
                         fontFamily = interFontFamily(),
                     )
                     Spacer(Modifier.width(4.dp))
-                    // ⋮
-                    Icon(
-                        Icons.Default.MoreVert,
-                        null,
-                        tint = Color(0xFF444444),
-                        modifier = Modifier.size(knobSize()).clickable { showTrackSheet = index },
-                    )
+                    // ⋮ — ≥48dp interactive floor
+                    Box(
+                        Modifier
+                            .minimumInteractiveComponentSize()
+                            .clickable { showTrackSheet = index },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "Track menu",
+                            tint = Color(0xFF444444),
+                            modifier = Modifier.size(knobSize()),
+                        )
+                    }
                 }
                 HorizontalDivider(
                     color = Color.White.copy(alpha = 0.05f),

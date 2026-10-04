@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +52,7 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.DetailActionRow
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
@@ -186,7 +188,7 @@ fun ArtistDetailScreen(
                         Text(
                             "★ %.1f".format(rating),
                             color = Color(0xFFFFC107),
-                            fontSize = textBodyM(),
+                            fontSize = textLabelM(),
                             fontWeight = FontWeight.SemiBold,
                         )
                         state.publicRatingVotes?.let { votes ->
@@ -202,87 +204,14 @@ fun ArtistDetailScreen(
                         }
                     }
                 }
-                // Play controls row — consistent Box pattern (Album reference)
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = 0.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Play — gradient
-                    Box(
-                        Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(BrandTeal, BrandPurple),
-                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                    end = androidx.compose.ui.geometry.Offset(
-                                        Float.POSITIVE_INFINITY,
-                                        Float.POSITIVE_INFINITY,
-                                    ),
-                                ),
-                            )
-                            .clickable(enabled = state.tracks.isNotEmpty()) { viewModel.playAll() },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.PlayArrow,
-                                null,
-                                tint = Color.White,
-                                modifier = Modifier.size(knobSize()),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "Play All",
-                                color = Color.White,
-                                fontSize = textBodyM(),
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                    // Shuffle — dark with gradient border (consistent across screens)
-                    Box(
-                        Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
-                            .background(Color(0xFF252538))
-                            .border(
-                                1.dp,
-                                Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
-                                RoundedCornerShape(cornerM()),
-                            )
-                            .clickable(enabled = state.tracks.isNotEmpty()) { viewModel.shuffle() },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Shuffle,
-                                null,
-                                tint = Color(0xFFCCCCCC),
-                                modifier = Modifier.size(knobSize()),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "Shuffle",
-                                color = Color(0xFFCCCCCC),
-                                fontSize = textBodyM(),
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                    // ⋮ button — artist action sheet
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(cornerM()))
-                            .background(Color(0xFF252538))
-                            .clickable(enabled = state.tracks.isNotEmpty()) { showArtistSheet = true },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            null,
-                            tint = Color(0xFFAAAAAA),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
+                // Play controls — shared DetailActionRow (Spotify-style: full catalog)
+                DetailActionRow(
+                    playLabel = "Play All",
+                    onPlay = { viewModel.playAll() },
+                    onShuffle = { viewModel.shuffle() },
+                    onMore = { showArtistSheet = true },
+                    enabled = state.tracks.isNotEmpty(),
+                )
                 // Similar artists (last.fm)
                 if (state.similarArtists.isNotEmpty()) {
                     Text(
@@ -337,7 +266,7 @@ fun ArtistDetailScreen(
                         }
                     }
                 }
-                // Tab row
+                // Tab row — Albums first (market discography-led); Songs = full catalog
                 TabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = Background,
@@ -346,21 +275,34 @@ fun ArtistDetailScreen(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("Top Tracks") },
+                        text = {
+                            Text(
+                                "Albums",
+                                fontSize = textBodyM(),
+                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selectedTab == 0) BrandTeal else Color(0xFF888888),
+                            )
+                        },
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text("Albums") },
+                        text = {
+                            Text(
+                                "Songs",
+                                fontSize = textBodyM(),
+                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selectedTab == 1) BrandTeal else Color(0xFF888888),
+                            )
+                        },
                     )
                 }
-                Spacer(Modifier.height(0.dp))
                 // Tab content — weight(1f) bounds the inner LazyColumn/Grid
                 Box(Modifier.weight(1f)) {
                     if (selectedTab == 0) {
-                        TracksTab(state = state, viewModel = viewModel, onTrackMenu = { showTrackSheet = it })
-                    } else {
                         AlbumsTab(state = state, viewModel = viewModel, onAlbumClick = onAlbumClick)
+                    } else {
+                        TracksTab(state = state, viewModel = viewModel, onTrackMenu = { showTrackSheet = it })
                     }
                 }
             }
@@ -543,7 +485,7 @@ fun ArtistDetailScreen(
 @Composable
 private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel, onTrackMenu: (Int) -> Unit) {
     LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = spacingM()),
+        Modifier.fillMaxSize().padding(horizontal = spacingXL()),
         contentPadding = PaddingValues(vertical = spacingS()),
     ) {
         itemsIndexed(state.tracks) { index, track ->
@@ -601,7 +543,7 @@ private fun TrackRow(
 ) {
     Row(
         Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 8.dp),
+            .padding(vertical = spacingM()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -656,13 +598,20 @@ private fun TrackRow(
             )
         }
         Spacer(Modifier.width(4.dp))
-        // ⋮ menu
-        Icon(
-            Icons.Default.MoreVert,
-            null,
-            tint = Color(0xFF444444),
-            modifier = Modifier.size(knobSize()).clickable { onLongClick() },
-        )
+        // ⋮ menu — ≥48dp interactive floor
+        Box(
+            Modifier
+                .minimumInteractiveComponentSize()
+                .clickable { onLongClick() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.MoreVert,
+                contentDescription = "Track menu",
+                tint = Color(0xFF444444),
+                modifier = Modifier.size(knobSize()),
+            )
+        }
     }
 }
 
@@ -866,8 +815,8 @@ private fun AlbumsTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
         columns = GridCells.Fixed(2),
         modifier = Modifier.fillMaxSize().padding(horizontal = spacingM()),
         contentPadding = PaddingValues(vertical = spacingS()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(gridGapH()),
+        verticalArrangement = Arrangement.spacedBy(gridGapV()),
     ) {
         items(albums) { album ->
             Column(Modifier.clickable { onAlbumClick(album.id) }) {
@@ -923,7 +872,7 @@ private fun AlbumsTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
                         )
                     }
                 }
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(spacingBelowArt()))
                 // Album name
                 Text(
                     album.name,

@@ -123,19 +123,19 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .padding(horizontal = spacingL(), vertical = spacingM())
                             .height(100.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(cornerM()))
                             .background(Color(0xFF1E1E2E))
                             .border(
                                 2.dp,
                                 Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
-                                RoundedCornerShape(16.dp),
+                                RoundedCornerShape(cornerM()),
                             )
                             .clickable { viewModel.playSurpriseMe() },
                     ) {
                         Row(
-                            Modifier.fillMaxSize().padding(10.dp),
+                            Modifier.fillMaxSize().padding(spacingS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             // Inset image — rounded square (button affordance)
@@ -145,10 +145,10 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(12.dp)),
+                                    .clip(RoundedCornerShape(cornerM())),
                                 contentScale = ContentScale.Crop,
                             )
-                            Spacer(Modifier.width(16.dp))
+                            Spacer(Modifier.width(spacingL()))
                             Column(Modifier.weight(1f)) {
                                 FittingText(
                                     text = "Surprise Me",
@@ -158,7 +158,7 @@ fun HomeScreen(
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(spacingXS()))
                                 FittingText(
                                     text = "Random music from your library",
                                     color = Color.White.copy(alpha = 0.8f),
@@ -307,7 +307,7 @@ fun HomeScreen(
                     }
                     item {
                         LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
                             modifier = Modifier.semantics { testTag = "home_fav_artists_row" },
                         ) {
@@ -322,11 +322,11 @@ fun HomeScreen(
                                         coverArtId = artist.coverArtUrl,
                                         size = albumCardWidth(),
                                     )
-                                    Spacer(Modifier.height(6.dp))
+                                    Spacer(Modifier.height(spacingBelowArt()))
                                     Text(
                                         artist.name,
                                         color = Color.White,
-                                        fontSize = textLabelM(),
+                                        fontSize = textBodyM(),
                                         fontWeight = FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -399,7 +399,7 @@ fun HomeScreen(
                                             )
                                         }
                                     }
-                                    Spacer(Modifier.height(6.dp))
+                                    Spacer(Modifier.height(spacingBelowArt()))
                                     Text(
                                         album.name,
                                         color = Color.White,
@@ -447,7 +447,7 @@ fun HomeScreen(
                     }
                     item {
                         LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
                             modifier = Modifier.semantics { testTag = "home_fav_radio_row" },
                         ) {
@@ -700,7 +700,7 @@ private fun AlbumCardDesign(
             }
             AlbumDownloadBadge(downloadStatus, Modifier.align(Alignment.BottomEnd).padding(4.dp))
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(spacingBelowArt()))
         if (album.rating != null && album.rating!! > 0) {
             StarRating(album.rating!!)
             Spacer(Modifier.height(4.dp))
@@ -776,7 +776,7 @@ private fun GenreMixCard(
                 Icon(Icons.Default.MusicNote, null, tint = Color(0xFF444444), modifier = Modifier.size(36.dp))
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(spacingBelowArt()))
         Text(
             mix.name,
             color = Color.White,
@@ -843,7 +843,7 @@ private fun HomePlaylistCard(playlist: PlaylistView, montageCovers: List<String>
                 Icon(Icons.Default.QueueMusic, null, tint = Color(0xFF444444), modifier = Modifier.size(32.dp))
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(spacingBelowArt()))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.CheckCircle, null, tint = BrandTeal, modifier = Modifier.size(10.dp))
             Spacer(Modifier.width(4.dp))
