@@ -380,6 +380,38 @@ class QueueManagerTest {
         unmockkObject(com.lucasdss.ftpmusic.app.di.SubsonicCredentials)
     }
 
+    // ── playAll atomic start index ───────────────────────────────────────
+
+    @Test
+    fun `playAll uses atomic setMediaItems with startIndex and position`() {
+        PlayerHolder.player = mockPlayer
+        val items = listOf(
+            manager.buildMediaItem("t0", "T0", "http://a.com/0"),
+            manager.buildMediaItem("t1", "T1", "http://a.com/1"),
+            manager.buildMediaItem("animal", "ANIMAL", "http://a.com/animal"),
+        )
+
+        manager.playAll(items, startIndex = 2, positionMs = 142629L)
+
+        verify { mockPlayer.setMediaItems(items, 2, 142629L) }
+        verify { mockPlayer.prepare() }
+        verify { mockPlayer.play() }
+        verify(exactly = 0) { mockPlayer.seekToDefaultPosition(any()) }
+    }
+
+    @Test
+    fun `playAll clamps startIndex into range`() {
+        PlayerHolder.player = mockPlayer
+        val items = listOf(
+            manager.buildMediaItem("t0", "T0", "http://a.com/0"),
+            manager.buildMediaItem("t1", "T1", "http://a.com/1"),
+        )
+
+        manager.playAll(items, startIndex = 99, positionMs = -5L)
+
+        verify { mockPlayer.setMediaItems(items, 1, 0L) }
+    }
+
     // ── size / localQueueSize tests ───────────────────────────────────────
 
     @Test

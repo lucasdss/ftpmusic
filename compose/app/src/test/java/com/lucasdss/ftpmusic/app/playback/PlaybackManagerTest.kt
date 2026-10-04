@@ -58,7 +58,7 @@ class PlaybackManagerTest {
             mockQueueJournalDao,
         ).playAlbum(tracks, urls)
 
-        verify { mockPlayer.setMediaItems(any()) }
+        verify { mockPlayer.setMediaItems(any(), any(), any()) }
         verify { mockPlayer.prepare() }
         verify { mockPlayer.play() }
     }
@@ -75,7 +75,7 @@ class PlaybackManagerTest {
             mockQueueJournalDao,
         ).playAlbum(emptyList(), emptyList())
 
-        verify(exactly = 0) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
     }
 
     @Test
@@ -96,7 +96,7 @@ class PlaybackManagerTest {
             mockQueueJournalDao,
         ).shuffleAlbum(tracks, urls)
 
-        verify { mockPlayer.setMediaItems(any()) }
+        verify { mockPlayer.setMediaItems(any(), any(), any()) }
         verify { mockPlayer.prepare() }
         verify { mockPlayer.play() }
     }
@@ -123,7 +123,7 @@ class PlaybackManagerTest {
             mockQueueJournalDao,
         ).playSingleTrack(track, url)
 
-        verify { mockPlayer.setMediaItems(any()) }
+        verify { mockPlayer.setMediaItems(any(), any(), any()) }
         verify { mockPlayer.prepare() }
         verify { mockPlayer.play() }
     }
@@ -306,6 +306,8 @@ class PlaybackManagerTest {
                         items.first().mediaId == "radio:${"http://radio.example.com/stream".hashCode()}" &&
                         items.first().mediaMetadata.title?.toString() == "My Radio"
                 },
+                0,
+                0L,
             )
         }
         verify { mockPlayer.prepare() }
@@ -772,7 +774,7 @@ class PlaybackManagerTest {
         manager.addToQueue(Track("t-add", "Add Me", duration = 150), "http://server/rest/stream?id=t-add")
 
         verify { mockPlayer.addMediaItems(match { it.size == 1 && it[0].mediaId == "t-add" }) }
-        verify(exactly = 0) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         assertEquals("Priority queue grew", 1, manager.priorityQueueSize)
     }
 
@@ -787,7 +789,7 @@ class PlaybackManagerTest {
         )
 
         verify { mockPlayer.addMediaItems(match { it.size == 2 && it.map { i -> i.mediaId } == listOf("t1", "t2") }) }
-        verify(exactly = 0) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         assertEquals("Priority queue grew", 2, manager.priorityQueueSize)
     }
 
@@ -820,7 +822,7 @@ class PlaybackManagerTest {
         manager.addAllToQueue(emptyList(), emptyList())
 
         verify { mockPlayer.addMediaItems(emptyList()) }
-        verify(exactly = 0) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         assertEquals("Priority queue untouched", 0, manager.priorityQueueSize)
     }
 
@@ -909,7 +911,7 @@ class PlaybackManagerTest {
 
         verify { mockPlayer.removeMediaItem(1) }
         // playAlbum is the only setMediaItems call
-        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any(), any(), any()) }
     }
 
     @Test
@@ -924,7 +926,7 @@ class PlaybackManagerTest {
         manager.moveQueueItem(0, 2)
 
         verify { mockPlayer.moveMediaItem(0, 2) }
-        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any(), any(), any()) }
     }
 
     @Test
@@ -941,7 +943,7 @@ class PlaybackManagerTest {
         manager.playNext(Track("n", "Next", duration = 100), "http://s/n")
 
         verify { mockPlayer.addMediaItem(any(), match { it.mediaId == "n" }) }
-        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any(), any(), any()) }
     }
 
     @Test
@@ -960,7 +962,7 @@ class PlaybackManagerTest {
 
         verify { mockPlayer.removeMediaItem(1) }
         // playAlbum only (addToQueue uses addMediaItems)
-        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any(), any(), any()) }
         assertEquals(0, manager.priorityQueueSize)
     }
 
@@ -981,7 +983,7 @@ class PlaybackManagerTest {
 
         manager.commitQueueReorder()
         verify(exactly = 1) { mockPlayer.moveMediaItem(0, 2) }
-        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any(), any(), any()) }
     }
 
     @Test
@@ -1019,7 +1021,7 @@ class PlaybackManagerTest {
 
         verify { mockPlayer.removeMediaItem(2) }
         verify { mockPlayer.removeMediaItem(1) }
-        verify(exactly = 1) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 1) { mockPlayer.setMediaItems(any(), any(), any()) }
     }
 
     @Test

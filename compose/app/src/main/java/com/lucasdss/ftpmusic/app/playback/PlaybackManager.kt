@@ -422,6 +422,7 @@ class PlaybackManager @Inject constructor(
         isPriorityFlags: List<Boolean>? = null,
         entryIds: List<Int>? = null,
         nextEntryId: Int = 0,
+        positionMs: Long = 0L,
     ) {
         ensurePlayer()
         if (tracks.isEmpty()) return
@@ -447,7 +448,7 @@ class PlaybackManager @Inject constructor(
         if (nextEntryId > 0) dualQueue.adoptNextEntryId(nextEntryId)
         val merged = dualQueue.getMerged()
         val si = startIndex.coerceIn(0, merged.lastIndex.coerceAtLeast(0))
-        queueManager.playAll(merged, si)
+        queueManager.playAll(merged, si, positionMs)
         enqueuePlayQueue(tracks, streamUrls, startIndex)
     }
 
@@ -1096,16 +1097,19 @@ class PlaybackManager @Inject constructor(
         // Handle legacy pipe-separated "localUrl|castUrl" format from old queue persistence
         val cleanUrl = serverUrl.substringBefore("|")
         // Legacy migration: extract embedded remote URL from old proxy-format URLs
-        if (cleanUrl.contains("127.0.0.1:9000/stream") && cleanUrl.contains("url=")) {
+        val migrated = if (cleanUrl.contains("127.0.0.1:9000/stream") && cleanUrl.contains("url=")) {
             val urlIdx = cleanUrl.indexOf("url=")
             val encoded = cleanUrl.substring(urlIdx + 4).substringBefore('&')
-            return try {
+            try {
                 java.net.URLDecoder.decode(encoded, "UTF-8")
             } catch (_: Exception) {
                 cleanUrl
             }
+        } else {
+            cleanUrl
         }
-        return cleanUrl
+        // mediaId/metadata must agree with stream URI id (cache key + bytes).
+        return alignStreamUrlToTrackId(trackId, migrated)
     }
 
     private fun persistenceSave(

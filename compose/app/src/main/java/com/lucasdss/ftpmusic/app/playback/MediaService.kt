@@ -138,6 +138,38 @@ internal fun streamCacheKey(uriString: String): String {
     return uri.getQueryParameter("id") ?: uriString
 }
 
+/**
+ * Subsonic stream track id from a URL query (`id=`), or null when absent.
+ * String-based so JVM unit tests do not need a live [android.net.Uri].
+ */
+internal fun streamUrlTrackId(uriString: String): String? {
+    val match = Regex("""[?&]id=([^&]*)""").find(uriString) ?: return null
+    return try {
+        java.net.URLDecoder.decode(match.groupValues[1], "UTF-8")
+    } catch (_: Exception) {
+        match.groupValues[1]
+    }
+}
+
+/**
+ * Ensure a stream URL's `id=` query matches [trackId]. Mismatched zip of
+ * persisted track metadata + URL (UI ANIMAL / audio TAKE IT) is rewritten
+ * before MediaItem build so mediaId, metadata, cache key, and bytes agree.
+ */
+internal fun alignStreamUrlToTrackId(trackId: String, url: String): String {
+    val uriId = streamUrlTrackId(url) ?: return url
+    if (uriId == trackId) return url
+    android.util.Log.e(
+        "ftpmusic-playback",
+        "identity mismatch mediaId=$trackId uriId=$uriId — rewriting stream URL",
+    )
+    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+        "ftpmusic-playback",
+        "identity mismatch mediaId=$trackId uriId=$uriId",
+    )
+    return url.replace(Regex("""([?&])id=[^&]*"""), "$1id=$trackId")
+}
+
 internal object MediaServiceStartRequest {
     const val ACTION_INITIALIZE = "com.lucasdss.ftpmusic.action.INITIALIZE_PLAYBACK"
     const val ACTION_PLAYBACK = "com.lucasdss.ftpmusic.action.START_PLAYBACK"
@@ -758,6 +790,13 @@ class MediaService : MediaLibraryService() {
                     "ftpmusic-playback",
                     "transition id=${mediaItem.mediaId} reason=$reason idx=${player?.currentMediaItemIndex} count=${player?.mediaItemCount}",
                 )
+                val uriId = mediaItem.localConfiguration?.uri?.toString()?.let { streamUrlTrackId(it) }
+                if (uriId != null && uriId != mediaItem.mediaId) {
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "identity mismatch mediaId=${mediaItem.mediaId} uriId=$uriId",
+                    )
+                }
                 if (playbackManager.isUrlSwapInProgress) {
                     // URL-only swap — don't reset position or metadata, just update track index
                     // idx is read from Player directly by PlaybackState.fromPlayer
@@ -1611,8 +1650,9 @@ class MediaService : MediaLibraryService() {
                         saved.isPriorityFlags,
                         saved.entryIds,
                         saved.nextEntryId,
+                        saved.positionMs,
                     )
-                    p?.seekTo(saved.currentIndex, saved.positionMs)
+                    // Index + position already applied atomically inside restoreQueue/playAll.
                     if (!userInitiatedPlayback) {
                         p?.pause()
                     } else {
@@ -2432,6 +2472,7 @@ class MediaService : MediaLibraryService() {
                             saved.isPriorityFlags,
                             saved.entryIds,
                             saved.nextEntryId,
+                            saved.positionMs,
                         )
                     }
                     if (saved.currentIndex !in 0 until ep.mediaItemCount) {

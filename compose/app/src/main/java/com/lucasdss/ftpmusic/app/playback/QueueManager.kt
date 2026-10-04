@@ -82,24 +82,32 @@ class QueueManager @Inject constructor(private val authHelper: SubsonicAuthHelpe
             .build()
     }
 
-    /** Replace queue with given tracks, start playing from startIndex (default 0). */
-    fun playAll(items: List<MediaItem>, startIndex: Int = 0) {
+    /**
+     * Replace queue with given tracks and start at [startIndex]/[positionMs].
+     * Uses atomic [Player.setMediaItems] (list, index, position) so metadata and
+     * the decoder period never briefly bind to index 0 during restore.
+     */
+    fun playAll(items: List<MediaItem>, startIndex: Int = 0, positionMs: Long = 0L) {
         val p = player ?: run {
             android.util.Log.e("ftpmusic-playback", "[DEBUG-q] playAll: PlayerHolder.player is NULL")
             return
         }
         if (items.isEmpty()) return
-        android.util.Log.d("ftpmusic-playback", "[DEBUG-q] playAll: ${items.size} items, startIndex=$startIndex")
-        p.setMediaItems(items)
+        val si = startIndex.coerceIn(0, items.lastIndex)
+        val pos = positionMs.coerceAtLeast(0L)
+        android.util.Log.d(
+            "ftpmusic-playback",
+            "[DEBUG-q] playAll: ${items.size} items, startIndex=$si pos=$pos",
+        )
+        p.setMediaItems(items, si, pos)
         p.prepare()
-        if (startIndex > 0) p.seekToDefaultPosition(startIndex)
         p.play()
     }
 
     fun shuffleAndPlay(items: List<MediaItem>) {
         val p = player ?: return
         if (items.isEmpty()) return
-        p.setMediaItems(items.shuffled())
+        p.setMediaItems(items.shuffled(), 0, 0L)
         p.prepare()
         p.play()
     }

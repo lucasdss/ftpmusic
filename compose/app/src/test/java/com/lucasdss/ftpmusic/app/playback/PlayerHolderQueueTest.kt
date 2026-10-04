@@ -33,7 +33,7 @@ class PlayerHolderQueueTest {
             queueManager.buildMediaItem("t2", "Track 2", "http://ex.com/2"),
         )
         queueManager.playAll(items)
-        verify { mockPlayer.setMediaItems(items) }
+        verify { mockPlayer.setMediaItems(items, 0, 0L) }
         verify { mockPlayer.prepare() }
         verify { mockPlayer.play() }
     }
@@ -47,7 +47,7 @@ class PlayerHolderQueueTest {
             queueManager.buildMediaItem("t3", "T3", "http://ex.com/3"),
         )
         queueManager.shuffleAndPlay(items)
-        verify { mockPlayer.setMediaItems(any()) }
+        verify { mockPlayer.setMediaItems(any(), 0, 0L) }
         verify { mockPlayer.prepare() }
         verify { mockPlayer.play() }
     }
@@ -64,7 +64,7 @@ class PlayerHolderQueueTest {
     fun `playAll on empty list does nothing`() {
         PlayerHolder.player = mockPlayer
         queueManager.playAll(emptyList())
-        verify(exactly = 0) { mockPlayer.setMediaItems(any()) }
+        verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         verify(exactly = 0) { mockPlayer.play() }
     }
 

@@ -102,12 +102,27 @@ class PlaybackManagerCoverageTest {
     @Test
     fun `legacy proxy URL is decoded back to remote URL`() {
         val mgr = baseManager()
-        val encoded = java.net.URLEncoder.encode("https://server.example/rest/stream?id=abc", "UTF-8")
-        val legacy = "http://127.0.0.1:9000/stream?id=abc&url=$encoded"
+        val encoded = java.net.URLEncoder.encode("https://server.example/rest/stream?id=t-legacy", "UTF-8")
+        val legacy = "http://127.0.0.1:9000/stream?id=t-legacy&url=$encoded"
 
         mgr.addAllToQueue(listOf(Track("t-legacy", "Legacy", duration = 100)), listOf(legacy))
 
-        assertEquals("https://server.example/rest/stream?id=abc", mgr.getTrackInfo("t-legacy")?.localUrl)
+        assertEquals("https://server.example/rest/stream?id=t-legacy", mgr.getTrackInfo("t-legacy")?.localUrl)
+    }
+
+    @Test
+    fun `mismatched stream id is rewritten to mediaId`() {
+        // Repro shape: UI metadata ANIMAL + URL id=TAKE_IT → rewrite before play.
+        val mgr = baseManager()
+        mgr.addAllToQueue(
+            listOf(Track("animal-id", "ANIMAL", artist = "KATSEYE", duration = 100)),
+            listOf("https://server.example/rest/stream?id=take-it-id&u=user&t=tok"),
+        )
+
+        assertEquals(
+            "https://server.example/rest/stream?id=animal-id&u=user&t=tok",
+            mgr.getTrackInfo("animal-id")?.localUrl,
+        )
     }
 
     @Test
@@ -129,7 +144,8 @@ class PlaybackManagerCoverageTest {
             listOf("http://127.0.0.1:9000/stream?id=x&url=%ZZ"),
         )
 
-        assertEquals("http://127.0.0.1:9000/stream?id=x&url=%ZZ", mgr.getTrackInfo("t-bad")?.localUrl)
+        // Fallback keeps proxy URL, then identity rewrite aligns id= to mediaId.
+        assertEquals("http://127.0.0.1:9000/stream?id=t-bad&url=%ZZ", mgr.getTrackInfo("t-bad")?.localUrl)
     }
 
     // ── Reorder / remove / rollback ──────────────────────────────────────

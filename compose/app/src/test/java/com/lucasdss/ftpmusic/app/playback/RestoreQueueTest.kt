@@ -108,4 +108,19 @@ class RestoreQueueTest {
         assertEquals(0, mgr.contextSize)
         assertEquals(0, mgr.priorityQueueSize)
     }
+
+    @Test
+    fun `restoreQueue starts atomically at saved index and position`() {
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        PlayerHolder.player = player
+        val mgr = manager()
+        val (tracks, urls) = tracks("t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "animal")
+
+        mgr.restoreQueue(tracks, urls, startIndex = 8, positionMs = 142629L)
+
+        verify {
+            player.setMediaItems(any<List<androidx.media3.common.MediaItem>>(), 8, 142629L)
+        }
+        verify(exactly = 0) { player.seekToDefaultPosition(any()) }
+    }
 }
