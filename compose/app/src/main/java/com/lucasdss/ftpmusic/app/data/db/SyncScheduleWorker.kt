@@ -12,7 +12,8 @@ import dagger.assisted.AssistedInject
 
 /**
  * WorkManager CoroutineWorker that delegates to [MetadataSyncWorker]
- * for periodic library metadata sync (ADR-0045: DELTA or weekly FULL).
+ * for periodic library metadata sync (ADR-0045: DELTA or weekly FULL;
+ * ADR-0068: await completion + retry on error phase).
  *
  * Scheduled via WorkManager in [com.lucasdss.ftpmusic.app.FtpmusicApp].
  */
@@ -33,10 +34,18 @@ class SyncScheduleWorker @AssistedInject constructor(
             val mode = MetadataSyncWorker.resolvePeriodicMode(metadataSyncWorker.lastFullSyncMs())
             Log.d("ftpmusic-work", "Periodic sync starting mode=$mode")
             DiagnosticLog.d("ftpmusic-work", "periodic sync start mode=$mode")
-            val started = metadataSyncWorker.syncNow(forceTrackResync = false, mode = mode)
-            if (!started) {
+            val job = metadataSyncWorker.syncNowAsync(forceTrackResync = false, mode = mode)
+            if (job == null) {
                 Log.d("ftpmusic-work", "Periodic sync skipped — already running, cooldown, or offline")
                 DiagnosticLog.d("ftpmusic-work", "periodic sync skipped")
+                return Result.success()
+            }
+            job.join()
+            val phase = metadataSyncWorker.status.value.phase
+            if (phase == "error") {
+                Log.w("ftpmusic-work", "Periodic sync ended in error phase — retry")
+                DiagnosticLog.w("ftpmusic-work", "periodic sync error phase — retry")
+                return if (runAttemptCount < 3) Result.retry() else Result.failure()
             }
             Result.success()
         } catch (e: Exception) {

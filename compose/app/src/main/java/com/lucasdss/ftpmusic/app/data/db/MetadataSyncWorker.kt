@@ -351,6 +351,8 @@ class MetadataSyncWorker(
                     trackDao.populateGenresFromCachedGenreSongs()
                 }
                 val current = _status.value
+                // ADR-0068: watermarks only on success — track-phase error must
+                // not advance last_full/delta cadence or skip needed heal.
                 if (current.phase != "error") {
                     _status.value = current.copy(
                         albums = albumCount, albumsTotal = albumCount,
@@ -360,20 +362,20 @@ class MetadataSyncWorker(
                         phase = "complete", isRunning = false,
                         elapsedMs = System.currentTimeMillis() - startMs,
                     )
+                    val durationMs = System.currentTimeMillis() - startMs
+                    val now = System.currentTimeMillis()
+                    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    val editor = prefs.edit()
+                        .putLong(PREF_LAST_METADATA_SYNC_MS, now)
+                        .putLong(PREF_METADATA_SYNC_DURATION_MS, durationMs)
+                        .putInt("metadata_version", METADATA_VERSION)
+                    if (resolvedMode == LibrarySyncMode.FULL) {
+                        editor.putLong(PREF_LAST_FULL_SYNC_MS, now)
+                    } else {
+                        editor.putLong(PREF_LAST_DELTA_SYNC_MS, now)
+                    }
+                    editor.apply()
                 }
-                val durationMs = System.currentTimeMillis() - startMs
-                val now = System.currentTimeMillis()
-                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val editor = prefs.edit()
-                    .putLong(PREF_LAST_METADATA_SYNC_MS, now)
-                    .putLong(PREF_METADATA_SYNC_DURATION_MS, durationMs)
-                    .putInt("metadata_version", METADATA_VERSION)
-                if (resolvedMode == LibrarySyncMode.FULL) {
-                    editor.putLong(PREF_LAST_FULL_SYNC_MS, now)
-                } else {
-                    editor.putLong(PREF_LAST_DELTA_SYNC_MS, now)
-                }
-                editor.apply()
             } catch (e: Exception) {
                 Log.w(TAG, "Metadata sync failed: ${e.message}")
                 DiagnosticLog.e(TAG, "sync failed: ${e.message}", e)
@@ -412,6 +414,7 @@ class MetadataSyncWorker(
         val allAlbums = mutableListOf<CachedAlbumEntity>()
         var offset = 0
         var page = 0
+        var listIncomplete = false
         while (page < maxPages) {
             val response = api.getAlbumList2(
                 type = listType,
@@ -420,7 +423,11 @@ class MetadataSyncWorker(
                 auth = params,
             )
             val sr = response["subsonic-response"] as? Map<*, *>
-            if (sr?.get("status") as? String == "failed") break
+            if (sr?.get("status") as? String == "failed") {
+                // ADR-0068: fail-closed — never replace/upsert from a truncated page walk.
+                listIncomplete = true
+                break
+            }
             val albumList = sr?.get("albumList2") as? Map<*, *>
             val albums = albumList?.get("album") as? List<*>
             if (albums.isNullOrEmpty()) break
@@ -435,13 +442,21 @@ class MetadataSyncWorker(
             delay(100L) // throttle between paginated API calls
         }
 
-        if (allAlbums.isNotEmpty()) {
+        if (listIncomplete) {
+            Log.w(TAG, "Album list incomplete (API failed mid-pagination) — keeping cached albums")
+            return
+        }
+
+        // 1A: collapse duplicate Subsonic ids within the fetched batch.
+        val uniqueAlbums = allAlbums.distinctBy { it.id }
+
+        if (uniqueAlbums.isNotEmpty()) {
             // Incremental staleness detection: albums whose metadata
             // changed on the server need their tracks re-fetched.
             changedAlbumIds.clear()
             try {
                 val cached = metadataDao.getAllAlbums().associateBy { it.id }
-                for (album in allAlbums) {
+                for (album in uniqueAlbums) {
                     val old = cached[album.id] ?: continue // new album — uncached path handles it
                     if (old.songCount != album.songCount || old.duration != album.duration ||
                         old.name != album.name || old.artist != album.artist ||
@@ -459,7 +474,7 @@ class MetadataSyncWorker(
                 Log.w(TAG, "Change detection failed: ${e.message}")
             }
         }
-        if (allAlbums.isEmpty() && metadataDao.albumCount() > 0) {
+        if (uniqueAlbums.isEmpty() && metadataDao.albumCount() > 0) {
             // A failed/partial page must never wipe the cached library or the
             // cover-art cache. Keep what we have; the next sync retries.
             Log.w(TAG, "Album sync returned no rows for a populated library — keeping cached albums")
@@ -468,8 +483,8 @@ class MetadataSyncWorker(
 
         if (mode == LibrarySyncMode.DELTA) {
             // Upsert only — do not wipe albums outside the newest window.
-            if (allAlbums.isNotEmpty()) {
-                metadataDao.upsertAlbums(allAlbums)
+            if (uniqueAlbums.isNotEmpty()) {
+                metadataDao.upsertAlbums(uniqueAlbums)
                 try {
                     metadataDao.insertNewAlbumsToLedger()
                     metadataDao.refreshAlbumLedgerMetadata()
@@ -478,11 +493,11 @@ class MetadataSyncWorker(
                     Log.w(TAG, "Album ledger upsert failed: ${e.message}")
                 }
             }
-            Log.d(TAG, "DELTA upserted ${allAlbums.size} newest albums")
+            Log.d(TAG, "DELTA upserted ${uniqueAlbums.size} newest albums")
         } else {
             // Replace — an empty list with an empty cache is a legitimate no-op
             // (fresh install / genuinely empty server).
-            metadataDao.replaceAlbums(allAlbums)
+            metadataDao.replaceAlbums(uniqueAlbums)
             // Repopulate the albums ledger (favorites table) — ON CONFLICT DO
             // UPDATE preserves starred_at/user_rating/is_disliked/disliked_at across wipes.
             try {
@@ -501,11 +516,11 @@ class MetadataSyncWorker(
             }
             // Clean up orphaned navidrome cover art files for deleted albums
             try {
-                coverArtFallback.cleanOrphanedNavidromeArt(allAlbums.mapNotNull { it.coverArt }.toSet())
+                coverArtFallback.cleanOrphanedNavidromeArt(uniqueAlbums.mapNotNull { it.coverArt }.toSet())
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
             }
-            Log.d(TAG, "FULL cached ${allAlbums.size} albums")
+            Log.d(TAG, "FULL cached ${uniqueAlbums.size} albums")
         }
         _status.value = _status.value.copy(
             albums = metadataDao.albumCount(),

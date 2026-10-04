@@ -55,6 +55,7 @@ class MetadataSyncWorkerBranchTest {
         every { context.getSharedPreferences("ftpmusic_sync", any()) } returns prefs
         every { prefs.edit() } returns prefsEditor
         every { prefsEditor.putLong(any(), any()) } returns prefsEditor
+        every { prefsEditor.putInt(any(), any()) } returns prefsEditor
         every { prefsEditor.apply() } just Runs
         every { prefs.getInt("metadata_version", 0) } returns 2
         every { offlineModeManager.isOfflineEnabled() } returns false

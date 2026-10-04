@@ -40,6 +40,7 @@ class MetadataSyncWorkerTest {
         every { context.getSharedPreferences("ftpmusic_sync", any()) } returns prefs
         every { prefs.edit() } returns prefsEditor
         every { prefsEditor.putLong(any(), any()) } returns prefsEditor
+        every { prefsEditor.putInt(any(), any()) } returns prefsEditor
         every { prefsEditor.apply() } just Runs
         worker =
             MetadataSyncWorker(
@@ -776,6 +777,133 @@ class MetadataSyncWorkerTest {
 
         coVerify(atLeast = 1) { prefsEditor.putLong("last_metadata_sync_ms", any()) }
         coVerify(atLeast = 1) { prefsEditor.putLong("metadata_sync_duration_ms", any()) }
+        coVerify(atLeast = 1) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
+        }
+    }
+
+    @Test
+    fun `syncNow skips watermarks when track phase ends in error`() = runTest {
+        // Share testScheduler so AdaptiveSyncLimiter batch delays advance.
+        val w = MetadataSyncWorker(
+            context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
+            mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
+            dailyMixRepository,
+            kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
+        )
+        val albums = (1..5).map { i -> CachedAlbumEntity(id = "al-$i", name = "A$i") }
+        coEvery { metadataDao.albumCount() } returns albums.size
+        coEvery { metadataDao.artistCount() } returns 0
+        coEvery { metadataDao.cachedTrackCount() } returns 0
+        coEvery { genreMixDao.getTopGenres() } returns emptyList()
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to albums.map { mapOf("id" to it.id, "name" to it.name) },
+                ),
+            ),
+        )
+        coEvery { api.getArtists(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "artists" to mapOf<String, Any>()),
+        )
+        coEvery { api.getGenres(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "genres" to mapOf<String, Any>()),
+        )
+        coEvery { api.getStarred2(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "starred2" to mapOf<String, Any>()),
+        )
+        coEvery { metadataDao.getAllAlbums() } returns albums
+        coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
+        coEvery { metadataDao.countUncachedAlbums() } returns albums.size
+        every { prefs.getInt("metadata_version", 0) } returns 2
+        coEvery { api.getAlbum(any(), any()) } throws RuntimeException("Network gone")
+
+        val job = w.syncNowAsync(forceTrackResync = false, mode = LibrarySyncMode.DELTA)
+        assertNotNull(job)
+        job!!.join()
+
+        assertEquals("error", w.status.value.phase)
+        verify(exactly = 0) { prefsEditor.putLong("last_metadata_sync_ms", any()) }
+        verify(exactly = 0) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
+        }
+        verify(exactly = 0) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, any())
+        }
+    }
+
+    @Test
+    fun `syncAlbums FULL aborts replace when mid-page API fails`() = runTest {
+        val page1 = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to (1..500).map { mapOf("id" to "al-$it", "name" to "Album $it") },
+                ),
+            ),
+        )
+        val failed = mapOf("subsonic-response" to mapOf("status" to "failed"))
+        coEvery { api.getAlbumList2(type = any(), size = 500, offset = 0, auth = any()) } returns page1
+        coEvery { api.getAlbumList2(type = any(), size = 500, offset = 500, auth = any()) } returns failed
+        coEvery { metadataDao.albumCount() } returns 900
+
+        worker.syncAlbums(LibrarySyncMode.FULL)
+
+        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
+    }
+
+    @Test
+    fun `syncAlbums DELTA aborts upsert when mid-page API fails`() = runTest {
+        val page1 = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to (1..500).map { mapOf("id" to "al-$it", "name" to "Album $it") },
+                ),
+            ),
+        )
+        val failed = mapOf("subsonic-response" to mapOf("status" to "failed"))
+        coEvery { api.getAlbumList2(type = "newest", size = 500, offset = 0, auth = any()) } returns page1
+        coEvery { api.getAlbumList2(type = "newest", size = 500, offset = 500, auth = any()) } returns failed
+        coEvery { metadataDao.albumCount() } returns 100
+
+        worker.syncAlbums(LibrarySyncMode.DELTA)
+
+        coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+    }
+
+    @Test
+    fun `syncAlbums dedupes duplicate album ids in one fetch`() = runTest {
+        val albumListResponse = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to listOf(
+                        mapOf("id" to "al-1", "name" to "First", "artist" to "A", "songCount" to 1),
+                        mapOf("id" to "al-1", "name" to "Dup", "artist" to "A", "songCount" to 2),
+                        mapOf("id" to "al-2", "name" to "Other", "artist" to "B", "songCount" to 3),
+                    ),
+                ),
+            ),
+        )
+        coEvery { api.getAlbumList2(type = "newest", size = 500, offset = 0, auth = any()) } returns
+            albumListResponse
+        coEvery { metadataDao.albumCount() } returns 0
+
+        worker.syncAlbums(LibrarySyncMode.DELTA)
+
+        coVerify {
+            metadataDao.upsertAlbums(
+                match { list ->
+                    list.size == 2 &&
+                        list.count { it.id == "al-1" } == 1 &&
+                        list.any { it.id == "al-2" }
+                },
+            )
+        }
     }
 
     @Test
