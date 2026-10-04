@@ -9,11 +9,11 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 
 /**
- * Starts [MediaService] with [MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY].
+ * Starts [MediaService] with [MediaServiceStartRequest.ACTION_BT_AUTOPLAY].
  * On FGS background-start denial, posts a high-priority tap-to-resume notification.
  */
-object CarBtAutoplayStarter {
-    const val RESUME_CHANNEL_ID = "ftpmusic_car_bt_resume"
+object BtAutoplayStarter {
+    const val RESUME_CHANNEL_ID = "ftpmusic_bt_resume"
     const val RESUME_NOTIFICATION_ID = 1002
 
     fun startAutoplay(context: Context): StartResult = startAutoplay(
@@ -33,9 +33,9 @@ object CarBtAutoplayStarter {
         sdkInt: Int = Build.VERSION.SDK_INT,
     ): StartResult {
         MediaServiceStartRequest.foregroundRequested = true
-        MediaServiceStartRequest.carBtAutoplayRequested = true
+        MediaServiceStartRequest.btAutoplayRequested = true
         val intent = Intent(context, MediaService::class.java).apply {
-            action = MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY
+            action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY
         }
         return try {
             startForegroundService(context, intent)
@@ -45,9 +45,8 @@ object CarBtAutoplayStarter {
             val fgsBlocked = sdkInt >= Build.VERSION_CODES.S &&
                 e.javaClass.name.endsWith("ForegroundServiceStartNotAllowedException")
             if (!fgsBlocked) {
-                android.util.Log.w("ftpmusic-carbt", "startForegroundService failed: ${e.message}")
+                android.util.Log.w("ftpmusic-bt", "startForegroundService failed: ${e.message}")
             }
-            // Always offer a user-visible path so deep-sleep connect is not silent.
             postFallback(context)
             StartResult.NotificationFallback
         }
@@ -59,10 +58,10 @@ object CarBtAutoplayStarter {
         if (manager.getNotificationChannel(RESUME_CHANNEL_ID) != null) return
         val channel = NotificationChannel(
             RESUME_CHANNEL_ID,
-            context.getString(com.lucasdss.ftpmusic.app.R.string.car_bt_resume_channel_name),
+            context.getString(com.lucasdss.ftpmusic.app.R.string.bt_resume_channel_name),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = context.getString(com.lucasdss.ftpmusic.app.R.string.car_bt_resume_channel_desc)
+            description = context.getString(com.lucasdss.ftpmusic.app.R.string.bt_resume_channel_desc)
             setShowBadge(false)
         }
         manager.createNotificationChannel(channel)
@@ -71,7 +70,7 @@ object CarBtAutoplayStarter {
     fun postResumeNotification(context: Context) {
         ensureResumeChannel(context)
         val launch = Intent(context, MediaService::class.java).apply {
-            action = MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY
+            action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pending = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -81,15 +80,15 @@ object CarBtAutoplayStarter {
         }
         val notification = NotificationCompat.Builder(context, RESUME_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(context.getString(com.lucasdss.ftpmusic.app.R.string.car_bt_resume_notif_title))
-            .setContentText(context.getString(com.lucasdss.ftpmusic.app.R.string.car_bt_resume_notif_body))
+            .setContentTitle(context.getString(com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_title))
+            .setContentText(context.getString(com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setAutoCancel(true)
             .setContentIntent(pending)
             .addAction(
                 0,
-                context.getString(com.lucasdss.ftpmusic.app.R.string.car_bt_resume_notif_action),
+                context.getString(com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_action),
                 pending,
             )
             .build()

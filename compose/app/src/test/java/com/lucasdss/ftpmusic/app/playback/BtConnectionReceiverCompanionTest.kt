@@ -22,79 +22,75 @@ import org.robolectric.shadows.ShadowBluetoothDevice
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
-class CarBtConnectionReceiverCompanionTest {
+class BtConnectionReceiverCompanionTest {
 
     @Before
     fun setUp() {
-        CarBtConnectionReceiver.debounceMap.clear()
+        BtConnectionReceiver.debounceMap.clear()
         PlayerHolder.isCasting = false
     }
 
     @After
     fun tearDown() {
-        CarBtConnectionReceiver.debounceMap.clear()
+        BtConnectionReceiver.debounceMap.clear()
     }
 
     @Test
     fun `safeAddress returns address or null on SecurityException`() {
         val ok = mockk<BluetoothDevice>()
         every { ok.address } returns "AA:BB:CC:DD:EE:FF"
-        assertEquals("AA:BB:CC:DD:EE:FF", CarBtConnectionReceiver.safeAddress(ok))
+        assertEquals("AA:BB:CC:DD:EE:FF", BtConnectionReceiver.safeAddress(ok))
 
         val denied = mockk<BluetoothDevice>()
         every { denied.address } throws SecurityException("no bt")
-        assertNull(CarBtConnectionReceiver.safeAddress(denied))
+        assertNull(BtConnectionReceiver.safeAddress(denied))
     }
 
     @Test
-    fun `handleConnectBroadcast allowlisted ACL`() {
+    fun `handleConnectBroadcast allowlisted A2DP`() {
         val ctx = RuntimeEnvironment.getApplication()
         Shadows.shadowOf(ctx).grantPermissions(Manifest.permission.BLUETOOTH_CONNECT)
 
         val storage = mockk<SecureStorage>()
-        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns "true"
-        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "selected"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns
             """["AA:BB:CC:DD:EE:FF"]"""
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
 
         val device = ShadowBluetoothDevice.newInstance("AA:BB:CC:DD:EE:FF")
-        val intent = Intent(CarBtConnectionReceiver.ACTION_ACL_CONNECTED)
+        val intent = Intent(BtConnectionReceiver.ACTION_A2DP_CONNECTION_STATE_CHANGED)
             .putExtra(BluetoothDevice.EXTRA_DEVICE, device)
+            .putExtra(BtConnectionReceiver.EXTRA_STATE, BtConnectionReceiver.STATE_CONNECTED)
 
-        assertEquals(device, CarBtConnectionReceiver.extractDevice(intent))
-        assertEquals("AA:BB:CC:DD:EE:FF", CarBtConnectionReceiver.safeAddress(device))
-
+        assertEquals(device, BtConnectionReceiver.extractDevice(intent))
+        assertTrue(BtConnectionReceiver.isConnectEvent(intent))
         assertTrue(
-            CarBtConnectionReceiver.handleConnectBroadcast(
+            BtConnectionReceiver.handleConnectBroadcast(
                 context = ctx,
                 intent = intent,
                 storage = storage,
                 casting = false,
             ),
         )
-        assertTrue(CarBtConnectionReceiver.debounceMap.containsKey("AA:BB:CC:DD:EE:FF"))
+        assertTrue(BtConnectionReceiver.debounceMap.containsKey("AA:BB:CC:DD:EE:FF"))
     }
 
     @Test
-    fun `handleConnectBroadcast no-ops for null and non-connect`() {
+    fun `handleConnectBroadcast no-ops for null and ACL`() {
         val storage = mockk<SecureStorage>(relaxed = true)
         val ctx = RuntimeEnvironment.getApplication()
         assertFalse(
-            CarBtConnectionReceiver.handleConnectBroadcast(ctx, null, storage, casting = false),
+            BtConnectionReceiver.handleConnectBroadcast(ctx, null, storage, casting = false),
         )
         assertFalse(
-            CarBtConnectionReceiver.handleConnectBroadcast(
+            BtConnectionReceiver.handleConnectBroadcast(
                 ctx,
-                Intent("other.action"),
+                Intent("android.bluetooth.device.action.ACL_CONNECTED"),
                 storage,
                 casting = false,
             ),
         )
-    }
-
-    @Test
-    fun `intent isConnectEvent wrapper`() {
-        val connected = Intent(CarBtConnectionReceiver.ACTION_A2DP_CONNECTION_STATE_CHANGED)
-            .putExtra(CarBtConnectionReceiver.EXTRA_STATE, CarBtConnectionReceiver.STATE_CONNECTED)
-        assertTrue(CarBtConnectionReceiver.isConnectEvent(connected))
     }
 }

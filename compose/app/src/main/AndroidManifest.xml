@@ -97,13 +97,12 @@
             </intent-filter>
         </receiver>
 
-        <!-- ADR-0071: resume playback when an allowlisted car BT audio sink connects -->
+        <!-- ADR-0072: resume playback when an A2DP audio sink connects -->
         <receiver
-            android:name=".playback.CarBtConnectionReceiver"
+            android:name=".playback.BtConnectionReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
-                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
             </intent-filter>
         </receiver>
     </application>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bt_resume_channel_name">Bluetooth resume</string>
+    <string name="bt_resume_channel_desc">Prompts to resume playback when Bluetooth audio connects and background start is blocked</string>
+    <string name="bt_resume_notif_title">Resume playback</string>
+    <string name="bt_resume_notif_body">Tap to continue your last queue</string>
+    <string name="bt_resume_notif_action">Resume</string>
+    <string name="bt_resume_section_label">Bluetooth</string>
+    <string name="bt_resume_toggle">Resume on Bluetooth</string>
+    <string name="bt_resume_subtitle">When a Bluetooth audio device connects, restore the last queue and play</string>
+    <string name="bt_resume_mode_any">Any audio device</string>
+    <string name="bt_resume_mode_any_subtitle">Headphones, speakers, car — any A2DP sink</string>
+    <string name="bt_resume_mode_selected">Selected devices</string>
+    <string name="bt_resume_mode_selected_subtitle">Only the paired devices you choose below</string>
+    <string name="bt_resume_devices_label">Devices</string>
+    <string name="bt_resume_devices_empty">No paired Bluetooth devices. Pair a device in system Settings first.</string>
+    <string name="bt_resume_devices_need_permission">Bluetooth permission required to list paired devices</string>
+    <string name="bt_resume_default_music_app">Set as default music app</string>
+    <string name="bt_resume_default_music_app_subtitle">Prefer FTP Music for system media controls and Bluetooth play</string>
+    <string name="bt_resume_default_music_app_held">FTP Music is the default music app</string>
+</resources>

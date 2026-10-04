@@ -174,7 +174,10 @@ internal object MediaServiceStartRequest {
     const val ACTION_INITIALIZE = "com.lucasdss.ftpmusic.action.INITIALIZE_PLAYBACK"
     const val ACTION_PLAYBACK = "com.lucasdss.ftpmusic.action.START_PLAYBACK"
 
-    /** Car Bluetooth resume: promote FGS + restore queue + play (ADR-0071). */
+    /** Bluetooth A2DP resume: promote FGS + restore queue + play (ADR-0072). */
+    const val ACTION_BT_AUTOPLAY = "com.lucasdss.ftpmusic.action.BT_AUTOPLAY"
+
+    /** Legacy alias (ADR-0071) — still accepted for in-flight PendingIntents. */
     const val ACTION_CAR_BT_AUTOPLAY = "com.lucasdss.ftpmusic.action.CAR_BT_AUTOPLAY"
 
     @Volatile
@@ -182,15 +185,16 @@ internal object MediaServiceStartRequest {
 
     /** When true, queue restore must not pause; consume once handled. */
     @Volatile
-    var carBtAutoplayRequested: Boolean = false
+    var btAutoplayRequested: Boolean = false
 }
 
 internal fun shouldPromotePlaybackOnCreate(foregroundRequested: Boolean): Boolean = foregroundRequested
 
-internal fun shouldReassertPlayback(action: String?): Boolean = action == MediaServiceStartRequest.ACTION_PLAYBACK ||
-    action == MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY
+internal fun shouldReassertPlayback(action: String?): Boolean =
+    action == MediaServiceStartRequest.ACTION_PLAYBACK || isBtAutoplayAction(action)
 
-internal fun isCarBtAutoplayAction(action: String?): Boolean = action == MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY
+internal fun isBtAutoplayAction(action: String?): Boolean = action == MediaServiceStartRequest.ACTION_BT_AUTOPLAY ||
+    action == MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY
 
 internal fun playbackServiceStartMode(action: String?): Int =
     if (action == MediaServiceStartRequest.ACTION_INITIALIZE) {
@@ -1638,7 +1642,7 @@ class MediaService : MediaLibraryService() {
                     notificationProvider?.notifyChanged()
                 }
 
-                val carBtResume = MediaServiceStartRequest.carBtAutoplayRequested
+                val btResume = MediaServiceStartRequest.btAutoplayRequested
 
                 // Only restore if queue is empty — don't overwrite user's current selection
                 val shouldRestore = withContext(Dispatchers.Main) {
@@ -1647,15 +1651,15 @@ class MediaService : MediaLibraryService() {
                 }
                 if (!shouldRestore) {
                     android.util.Log.w("ftpmusic", "[MediaService] Queue already has items — skipping restore")
-                    if (carBtResume) {
-                        withContext(Dispatchers.Main) { handleCarBtAutoplayIfNeeded() }
+                    if (btResume) {
+                        withContext(Dispatchers.Main) { handleBtAutoplayIfNeeded() }
                     }
                     return@launch
                 }
                 val saved = persistenceManager.restore()
                 if (saved == null) {
-                    if (carBtResume) {
-                        MediaServiceStartRequest.carBtAutoplayRequested = false
+                    if (btResume) {
+                        MediaServiceStartRequest.btAutoplayRequested = false
                     }
                     return@launch
                 }
@@ -1664,8 +1668,8 @@ class MediaService : MediaLibraryService() {
                     val p = PlayerHolder.player
                     if (p != null && p.mediaItemCount > 0) {
                         android.util.Log.w("ftpmusic", "[MediaService] Queue populated during restore load — skipping")
-                        if (MediaServiceStartRequest.carBtAutoplayRequested) {
-                            handleCarBtAutoplayIfNeeded()
+                        if (MediaServiceStartRequest.btAutoplayRequested) {
+                            handleBtAutoplayIfNeeded()
                         }
                         return@withContext
                     }
@@ -1674,7 +1678,7 @@ class MediaService : MediaLibraryService() {
                     // playAlbum (which itself sets playWhenReady=true) so the
                     // restore-then-pause below never swallows the user's intent.
                     val userInitiatedPlayback = p?.playWhenReady == true
-                    val resumeForCar = MediaServiceStartRequest.carBtAutoplayRequested
+                    val resumeForBt = MediaServiceStartRequest.btAutoplayRequested
                     val restored = playbackManager.restoreQueue(
                         saved.tracks,
                         saved.urls,
@@ -1691,13 +1695,13 @@ class MediaService : MediaLibraryService() {
                         hasLoadedContinuation = true
                     }
                     // Index + position already applied atomically inside restoreQueue/playAll.
-                    if (resumeForCar || userInitiatedPlayback) {
-                        MediaServiceStartRequest.carBtAutoplayRequested = false
-                        if (resumeForCar) {
+                    if (resumeForBt || userInitiatedPlayback) {
+                        MediaServiceStartRequest.btAutoplayRequested = false
+                        if (resumeForBt) {
                             p?.play()
                             android.util.Log.i(
                                 "ftpmusic",
-                                "[MediaService] Car BT autoplay — leaving / forcing play after restore",
+                                "[MediaService] BT autoplay — leaving / forcing play after restore",
                             )
                         } else {
                             android.util.Log.w(
@@ -1848,17 +1852,17 @@ class MediaService : MediaLibraryService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if (isCarBtAutoplayAction(intent?.action)) {
-            MediaServiceStartRequest.carBtAutoplayRequested = true
+        if (isBtAutoplayAction(intent?.action)) {
+            MediaServiceStartRequest.btAutoplayRequested = true
             MediaServiceStartRequest.foregroundRequested = true
         }
         if (shouldReassertPlayback(intent?.action)) {
             MediaServiceStartRequest.foregroundRequested = false
             reassertForegroundIfNeeded()
         }
-        if (isCarBtAutoplayAction(intent?.action)) {
+        if (isBtAutoplayAction(intent?.action)) {
             // Service already running with a queue: play immediately.
-            scope.launch { withContext(Dispatchers.Main) { handleCarBtAutoplayIfNeeded() } }
+            scope.launch { withContext(Dispatchers.Main) { handleBtAutoplayIfNeeded() } }
         }
         // Handle MEDIA_PLAY_FROM_SEARCH (Google Assistant / Gemini voice commands)
         if (intent?.action == "android.media.action.MEDIA_PLAY_FROM_SEARCH") {
@@ -1876,10 +1880,10 @@ class MediaService : MediaLibraryService() {
      * start playback and clear the flag. No-op while casting or empty.
      */
     @VisibleForTesting
-    internal fun handleCarBtAutoplayIfNeeded() {
-        if (!MediaServiceStartRequest.carBtAutoplayRequested) return
+    internal fun handleBtAutoplayIfNeeded() {
+        if (!MediaServiceStartRequest.btAutoplayRequested) return
         if (PlayerHolder.isCasting) {
-            MediaServiceStartRequest.carBtAutoplayRequested = false
+            MediaServiceStartRequest.btAutoplayRequested = false
             return
         }
         val p = PlayerHolder.player
@@ -1887,9 +1891,9 @@ class MediaService : MediaLibraryService() {
             // Restore coroutine still loading — leave flag for restore path.
             return
         }
-        MediaServiceStartRequest.carBtAutoplayRequested = false
+        MediaServiceStartRequest.btAutoplayRequested = false
         p.play()
-        android.util.Log.i("ftpmusic", "[MediaService] Car BT autoplay — play() on existing queue")
+        android.util.Log.i("ftpmusic", "[MediaService] BT autoplay — play() on existing queue")
     }
 
     /**

@@ -696,27 +696,37 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `setCarBtResumeEnabled persists`() {
-        viewModel.setCarBtResumeEnabled(true)
-        verify { storage.put(SecureStorage.KEY_CAR_BT_RESUME_ENABLED, "true") }
-        assertTrue(viewModel.state.value.carBtResumeEnabled)
-        viewModel.setCarBtResumeEnabled(false)
-        verify { storage.put(SecureStorage.KEY_CAR_BT_RESUME_ENABLED, "false") }
-        assertFalse(viewModel.state.value.carBtResumeEnabled)
+    fun `setBtResumeEnabled persists modern key`() {
+        viewModel.setBtResumeEnabled(true)
+        verify { storage.put(SecureStorage.KEY_BT_RESUME_ENABLED, "true") }
+        assertTrue(viewModel.state.value.btResumeEnabled)
+        viewModel.setBtResumeEnabled(false)
+        verify { storage.put(SecureStorage.KEY_BT_RESUME_ENABLED, "false") }
+        assertFalse(viewModel.state.value.btResumeEnabled)
     }
 
     @Test
-    fun `setCarBtDeviceSelected updates allowlist JSON`() {
-        viewModel.setCarBtDeviceSelected("aa:bb:cc:dd:ee:ff", true)
+    fun `setBtResumeMode persists`() {
+        viewModel.setBtResumeMode(com.lucasdss.ftpmusic.app.playback.BtResumeMode.ANY)
+        verify { storage.put(SecureStorage.KEY_BT_RESUME_MODE, "any") }
+        assertEquals(
+            com.lucasdss.ftpmusic.app.playback.BtResumeMode.ANY,
+            viewModel.state.value.btResumeMode,
+        )
+    }
+
+    @Test
+    fun `setBtDeviceSelected updates allowlist JSON`() {
+        viewModel.setBtDeviceSelected("aa:bb:cc:dd:ee:ff", true)
         verify {
             storage.put(
-                SecureStorage.KEY_CAR_BT_DEVICE_MACS,
+                SecureStorage.KEY_BT_DEVICE_MACS,
                 """["AA:BB:CC:DD:EE:FF"]""",
             )
         }
-        assertTrue("AA:BB:CC:DD:EE:FF" in viewModel.state.value.carBtSelectedMacs)
-        viewModel.setCarBtDeviceSelected("AA:BB:CC:DD:EE:FF", false)
-        verify { storage.put(SecureStorage.KEY_CAR_BT_DEVICE_MACS, "[]") }
-        assertTrue(viewModel.state.value.carBtSelectedMacs.isEmpty())
+        assertTrue("AA:BB:CC:DD:EE:FF" in viewModel.state.value.btSelectedMacs)
+        viewModel.setBtDeviceSelected("AA:BB:CC:DD:EE:FF", false)
+        verify { storage.put(SecureStorage.KEY_BT_DEVICE_MACS, "[]") }
+        assertTrue(viewModel.state.value.btSelectedMacs.isEmpty())
     }
 }

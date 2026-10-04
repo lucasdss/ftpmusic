@@ -174,8 +174,13 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         // v49: Hide bottom-nav labels (icon-only). Default OFF (labels shown).
         const val KEY_NAV_HIDE_LABELS = "nav_hide_labels"
 
-        // v71: Car Bluetooth resume (ADR-0071). Opt-in; empty MAC allowlist = no-op.
+        // v71 legacy (ADR-0071) — read fallback only; writes use KEY_BT_*.
         const val KEY_CAR_BT_RESUME_ENABLED = "car_bt_resume_enabled"
         const val KEY_CAR_BT_DEVICE_MACS = "car_bt_device_macs"
+
+        // v72: Generic Bluetooth A2DP resume (ADR-0072).
+        const val KEY_BT_RESUME_ENABLED = "bt_resume_enabled"
+        const val KEY_BT_RESUME_MODE = "bt_resume_mode" // any | selected
+        const val KEY_BT_DEVICE_MACS = "bt_device_macs"
     }
 }

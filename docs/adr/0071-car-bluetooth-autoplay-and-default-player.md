@@ -1,9 +1,9 @@
 # ADR 0071 — Car Bluetooth Autoplay + Default Player
 
 Date: 2026-10-04
-Status: Accepted
+Status: Superseded by ADR-0072
 Related: ADR-0019 (FGS lifecycle), ADR-0032 (MediaService recovery),
-`docs/CAR_BT_SYSTEM_MEDIA_BEHAVIOR_REPORT.md`
+ADR-0072, `docs/BT_RESUME_SYSTEM_MEDIA_BEHAVIOR_REPORT.md`
 
 ## Context
 

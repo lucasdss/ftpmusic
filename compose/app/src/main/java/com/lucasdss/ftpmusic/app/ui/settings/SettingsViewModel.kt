@@ -76,11 +76,13 @@ data class SettingsUiState(
     // Last.fm API key (masked in UI when non-blank after save)
     val lastFmApiKey: String = "",
     val lastFmKeySaved: Boolean = false,
-    // ADR-0071: Car Bluetooth resume
-    val carBtResumeEnabled: Boolean = false,
-    val carBtSelectedMacs: Set<String> = emptySet(),
-    val carBtBondedDevices: List<com.lucasdss.ftpmusic.app.playback.BondedBtDevice> = emptyList(),
-    val carBtHasConnectPermission: Boolean = false,
+    // ADR-0072: Bluetooth A2DP resume
+    val btResumeEnabled: Boolean = false,
+    val btResumeMode: com.lucasdss.ftpmusic.app.playback.BtResumeMode =
+        com.lucasdss.ftpmusic.app.playback.BtResumeMode.SELECTED,
+    val btSelectedMacs: Set<String> = emptySet(),
+    val btBondedDevices: List<com.lucasdss.ftpmusic.app.playback.BondedBtDevice> = emptyList(),
+    val btHasConnectPermission: Boolean = false,
     val isDefaultMusicApp: Boolean = false,
     val defaultMusicRoleAvailable: Boolean = false,
 )
@@ -171,14 +173,12 @@ class SettingsViewModel @Inject constructor(
             castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
             lastFmApiKey = storage.get(SecureStorage.KEY_LASTFM_API_KEY).orEmpty(),
             lastFmKeySaved = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank(),
-            carBtResumeEnabled =
-                storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED)?.toBooleanStrictOrNull() == true,
-            carBtSelectedMacs = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.parseMacAllowlist(
-                storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS),
-            ),
+            btResumeEnabled = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.isEnabled(storage),
+            btResumeMode = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.mode(storage),
+            btSelectedMacs = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.allowlist(storage),
         )
         // Bonded-device / role refresh needs a real Context (permissions + BT
-        // adapter). Settings UI calls refreshCarBtState() from LaunchedEffect;
+        // adapter). Settings UI calls refreshBtResumeState() from LaunchedEffect;
         // skip here so unit tests with a mock Context stay green.
         viewModelScope.launch {
             metadataSyncWorker.status.collect { s ->
@@ -356,7 +356,7 @@ class SettingsViewModel @Inject constructor(
         storage.put(SecureStorage.KEY_QUEUE_JOURNAL_CAP, clamped.toString())
     }
 
-    fun refreshCarBtState() {
+    fun refreshBtResumeState() {
         val hasPerm = try {
             com.lucasdss.ftpmusic.app.playback.BluetoothBondedDevices.hasConnectPermission(context)
         } catch (_: Exception) {
@@ -382,31 +382,33 @@ class SettingsViewModel @Inject constructor(
             true
         }
         _state.value = _state.value.copy(
-            carBtHasConnectPermission = hasPerm,
-            carBtBondedDevices = bonded,
+            btHasConnectPermission = hasPerm,
+            btBondedDevices = bonded,
             isDefaultMusicApp = roleHeld,
             defaultMusicRoleAvailable = roleAvailable,
-            carBtResumeEnabled =
-                storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED)?.toBooleanStrictOrNull() == true,
-            carBtSelectedMacs = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.parseMacAllowlist(
-                storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS),
-            ),
+            btResumeEnabled = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.isEnabled(storage),
+            btResumeMode = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.mode(storage),
+            btSelectedMacs = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.allowlist(storage),
         )
     }
 
-    fun setCarBtResumeEnabled(enabled: Boolean) {
-        storage.put(SecureStorage.KEY_CAR_BT_RESUME_ENABLED, enabled.toString())
-        _state.value = _state.value.copy(carBtResumeEnabled = enabled)
+    fun setBtResumeEnabled(enabled: Boolean) {
+        com.lucasdss.ftpmusic.app.playback.BtResumeStorage.setEnabled(storage, enabled)
+        _state.value = _state.value.copy(btResumeEnabled = enabled)
     }
 
-    fun setCarBtDeviceSelected(mac: String, selected: Boolean) {
-        val normalized = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.normalizeMac(mac)
+    fun setBtResumeMode(mode: com.lucasdss.ftpmusic.app.playback.BtResumeMode) {
+        com.lucasdss.ftpmusic.app.playback.BtResumeStorage.setMode(storage, mode)
+        _state.value = _state.value.copy(btResumeMode = mode)
+    }
+
+    fun setBtDeviceSelected(mac: String, selected: Boolean) {
+        val normalized = com.lucasdss.ftpmusic.app.playback.BtResumePolicy.normalizeMac(mac)
             ?: return
-        val next = _state.value.carBtSelectedMacs.toMutableSet()
+        val next = _state.value.btSelectedMacs.toMutableSet()
         if (selected) next.add(normalized) else next.remove(normalized)
-        val encoded = com.lucasdss.ftpmusic.app.playback.CarBtAutoplayPolicy.encodeMacAllowlist(next)
-        storage.put(SecureStorage.KEY_CAR_BT_DEVICE_MACS, encoded)
-        _state.value = _state.value.copy(carBtSelectedMacs = next)
+        com.lucasdss.ftpmusic.app.playback.BtResumeStorage.setAllowlist(storage, next)
+        _state.value = _state.value.copy(btSelectedMacs = next)
     }
 
     fun setContinuousPlayEnabled(enabled: Boolean) {

@@ -11,11 +11,11 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 /**
- * Wakes playback when an allowlisted car Bluetooth audio device connects.
- * See ADR-0071.
+ * Wakes playback when an A2DP audio device connects (any or allowlisted).
+ * See ADR-0072.
  */
 @AndroidEntryPoint
-class CarBtConnectionReceiver : BroadcastReceiver() {
+class BtConnectionReceiver : BroadcastReceiver() {
 
     @Inject lateinit var storage: SecureStorage
 
@@ -36,10 +36,6 @@ class CarBtConnectionReceiver : BroadcastReceiver() {
         internal const val ACTION_A2DP_CONNECTION_STATE_CHANGED =
             "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED"
 
-        /** ACL connected broadcast action (literal for JVM unit tests). */
-        internal const val ACTION_ACL_CONNECTED =
-            "android.bluetooth.device.action.ACL_CONNECTED"
-
         internal const val EXTRA_STATE = "android.bluetooth.profile.extra.STATE"
         internal const val STATE_CONNECTED = 2
 
@@ -54,7 +50,7 @@ class CarBtConnectionReceiver : BroadcastReceiver() {
             if (!isConnectEvent(intent)) return false
             val device = extractDevice(intent) ?: return false
             val mac = safeAddress(device) ?: return false
-            return dispatchCarBtConnect(
+            return dispatchBtConnect(
                 context = context,
                 storage = storage,
                 deviceMac = mac,
@@ -62,27 +58,22 @@ class CarBtConnectionReceiver : BroadcastReceiver() {
             )
         }
 
-        /**
-         * Policy + start. Package-visible for unit tests (Parcelable BT device
-         * extras are awkward under mockk).
-         */
-        internal fun dispatchCarBtConnect(
+        internal fun dispatchBtConnect(
             context: Context,
             storage: SecureStorage,
             deviceMac: String?,
             casting: Boolean,
             nowMs: Long = System.currentTimeMillis(),
-            starter: (Context) -> CarBtAutoplayStarter.StartResult = {
-                CarBtAutoplayStarter.startAutoplay(it)
+            starter: (Context) -> BtAutoplayStarter.StartResult = {
+                BtAutoplayStarter.startAutoplay(it)
             },
         ): Boolean {
-            val enabled = storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED)
-                ?.toBooleanStrictOrNull() == true
-            val allowlist = CarBtAutoplayPolicy.parseMacAllowlist(
-                storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS),
-            )
-            val allow = CarBtAutoplayPolicy.shouldResume(
+            val enabled = BtResumeStorage.isEnabled(storage)
+            val mode = BtResumeStorage.mode(storage)
+            val allowlist = BtResumeStorage.allowlist(storage)
+            val allow = BtResumePolicy.shouldResume(
                 enabled = enabled,
+                mode = mode,
                 allowlistedMacs = allowlist,
                 deviceMac = deviceMac,
                 casting = casting,
@@ -90,10 +81,13 @@ class CarBtConnectionReceiver : BroadcastReceiver() {
                 lastAcceptedAtMsByMac = debounceMap,
             )
             if (!allow) {
-                android.util.Log.d("ftpmusic-carbt", "skip connect mac=$deviceMac enabled=$enabled")
+                android.util.Log.d(
+                    "ftpmusic-bt",
+                    "skip connect mac=$deviceMac enabled=$enabled mode=$mode",
+                )
                 return false
             }
-            android.util.Log.i("ftpmusic-carbt", "car BT resume for $deviceMac")
+            android.util.Log.i("ftpmusic-bt", "BT resume for $deviceMac mode=$mode")
             starter(context)
             return true
         }
@@ -103,14 +97,12 @@ class CarBtConnectionReceiver : BroadcastReceiver() {
             a2dpState = intent.getIntExtra(EXTRA_STATE, -1),
         )
 
-        /** Pure gate — unit-testable without Robolectric Intent stubs. */
+        /** Pure gate — A2DP connected only (ADR-0072). */
         internal fun isConnectEvent(action: String?, a2dpState: Int): Boolean {
             if (action == null) return false
             val a2dp = action == ACTION_A2DP_CONNECTION_STATE_CHANGED ||
                 action == BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED
-            if (a2dp) return a2dpState == STATE_CONNECTED
-            return action == ACTION_ACL_CONNECTED ||
-                action == BluetoothDevice.ACTION_ACL_CONNECTED
+            return a2dp && a2dpState == STATE_CONNECTED
         }
 
         @Suppress("DEPRECATION")

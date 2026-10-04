@@ -28,7 +28,7 @@ object BluetoothBondedDevices {
         return try {
             @Suppress("MissingPermission")
             adapter.bondedDevices.orEmpty().mapNotNull { device ->
-                val mac = CarBtAutoplayPolicy.normalizeMac(device.address) ?: return@mapNotNull null
+                val mac = BtResumePolicy.normalizeMac(device.address) ?: return@mapNotNull null
                 val name = deviceNameOrMac(device, mac)
                 BondedBtDevice(name = name, address = mac)
             }.sortedBy { it.name.lowercase() }
