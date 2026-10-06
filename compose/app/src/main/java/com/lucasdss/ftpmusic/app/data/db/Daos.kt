@@ -418,6 +418,9 @@ interface GenreDao {
     )
     suspend fun searchGenres(query: String): List<GenreEntity>
 
+    @Query("SELECT * FROM genres WHERE name IN (:names)")
+    suspend fun getGenresByNames(names: List<String>): List<GenreEntity>
+
     @Query(
         "SELECT DISTINCT t.genre FROM tracks t WHERE t.genre IS NOT NULL AND t.play_count > 0 ORDER BY t.last_played_at DESC LIMIT 10",
     )
@@ -543,6 +546,9 @@ interface PlaylistDao {
 
     @Query("SELECT * FROM playlists WHERE id = :id")
     suspend fun getById(id: String): PlaylistEntity?
+
+    @Query("SELECT * FROM playlists WHERE id IN (:ids)")
+    suspend fun getPlaylistsByIds(ids: List<String>): List<PlaylistEntity>
 
     @Query(
         "SELECT * FROM playlists WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
@@ -846,6 +852,24 @@ interface CachedMetadataDao {
     /** Resolve selected artist ids to display names (mix editor chips). */
     @Query("SELECT * FROM cached_artists WHERE id IN (:ids)")
     suspend fun getArtistsByIds(ids: List<String>): List<CachedArtistEntity>
+
+    @Query("SELECT * FROM cached_albums WHERE id IN (:ids)")
+    suspend fun getAlbumsByIds(ids: List<String>): List<CachedAlbumEntity>
+
+    /** Year lookup for a small id set — search hot path (Phase-4). */
+    @Query("SELECT id, year FROM cached_albums WHERE id IN (:ids)")
+    suspend fun getAlbumYearRows(ids: List<String>): List<AlbumYearRow>
+
+    @Query(
+        "SELECT * FROM cached_albums WHERE year BETWEEN :minYear AND :maxYear " +
+            "ORDER BY name ASC LIMIT :limit",
+    )
+    suspend fun searchAlbumsByYearRange(minYear: Int, maxYear: Int, limit: Int = 100): List<CachedAlbumEntity>
+
+    @Query(
+        "SELECT * FROM cached_albums WHERE year = :year ORDER BY name ASC LIMIT :limit",
+    )
+    suspend fun searchAlbumsByExactYear(year: Int, limit: Int = 100): List<CachedAlbumEntity>
 
     @Query(
         "SELECT DISTINCT a.* FROM cached_albums a JOIN tracks t ON t.album_id = a.id WHERE t.cached_file_path IS NOT NULL OR t.is_downloaded = 1 ORDER BY a.name ASC",

@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class LocalSearchRepositoryTest {
@@ -28,11 +29,16 @@ class LocalSearchRepositoryTest {
     private val metadataDao = mockk<CachedMetadataDao>(relaxed = true)
     private val playlistDao = mockk<PlaylistDao>(relaxed = true)
     private val genreDao = mockk<GenreDao>(relaxed = true)
-    private val repo = LocalSearchRepository(ftsDao, trackDao, metadataDao, playlistDao, genreDao)
+    private val rebuilder = mockk<SearchIndexRebuilder>(relaxed = true)
+    private val repo = LocalSearchRepository(ftsDao, trackDao, metadataDao, playlistDao, genreDao, rebuilder)
+
+    @Before
+    fun setUp() {
+        coEvery { rebuilder.ftsCount() } returns 0
+    }
 
     @Test
     fun `empty fts falls back to LIKE`() = runTest {
-        coEvery { ftsDao.count() } returns 0
         coEvery { trackDao.searchAllTracks(any()) } returns listOf(
             TrackEntity(id = "t1", title = "Hello"),
         )
@@ -46,11 +52,12 @@ class LocalSearchRepositoryTest {
         assertEquals(1, hit.tracks.size)
         assertEquals("t1", hit.tracks[0].id)
         coVerify(exactly = 0) { ftsDao.match(any(), any()) }
+        coVerify(exactly = 0) { metadataDao.getAllAlbums() }
     }
 
     @Test
     fun `fts hydrates tracks albums artists playlists genres`() = runTest {
-        coEvery { ftsDao.count() } returns 10
+        coEvery { rebuilder.ftsCount() } returns 10
         coEvery { ftsDao.match(any(), any()) } returns listOf(
             SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "t1", body = "song"),
             SearchFtsEntity(entityType = SearchFtsTypes.LYRICS, entityId = "t2", body = "lyric"),
@@ -63,17 +70,16 @@ class LocalSearchRepositoryTest {
             TrackEntity(id = "t1", title = "Song"),
             TrackEntity(id = "t2", title = "Lyric Song"),
         )
-        coEvery { metadataDao.getAllAlbums() } returns listOf(
+        coEvery { metadataDao.getAlbumsByIds(listOf("al1")) } returns listOf(
             CachedAlbumEntity(id = "al1", name = "Album"),
-            CachedAlbumEntity(id = "al2", name = "Other"),
         )
         coEvery { metadataDao.getArtistsByIds(listOf("ar1")) } returns listOf(
             CachedArtistEntity(id = "ar1", name = "Artist"),
         )
-        coEvery { playlistDao.getAll() } returns listOf(
+        coEvery { playlistDao.getPlaylistsByIds(listOf("pl1")) } returns listOf(
             PlaylistEntity(id = "pl1", name = "PL", comment = "c"),
         )
-        coEvery { genreDao.getAllByPopularity() } returns listOf(
+        coEvery { genreDao.getGenresByNames(listOf("Rock")) } returns listOf(
             GenreEntity(name = "Rock", songCount = 10, albumCount = 1),
         )
 
@@ -86,11 +92,12 @@ class LocalSearchRepositoryTest {
         assertEquals(1, hit.artists.size)
         assertEquals(1, hit.playlists.size)
         assertEquals(1, hit.genres.size)
+        coVerify(exactly = 0) { metadataDao.getAllAlbums() }
     }
 
     @Test
     fun `playableOnly filters downloaded tracks on fts path`() = runTest {
-        coEvery { ftsDao.count() } returns 1
+        coEvery { rebuilder.ftsCount() } returns 1
         coEvery { ftsDao.match(any(), any()) } returns listOf(
             SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "t1", body = "a"),
             SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "t2", body = "b"),
@@ -107,7 +114,7 @@ class LocalSearchRepositoryTest {
 
     @Test
     fun `fts exception falls back to LIKE`() = runTest {
-        coEvery { ftsDao.count() } throws RuntimeException("no table")
+        coEvery { rebuilder.ftsCount() } throws RuntimeException("no table")
         coEvery { trackDao.searchAllTracks(any()) } returns emptyList()
         coEvery { metadataDao.searchAlbums(any()) } returns emptyList()
         coEvery { metadataDao.searchArtists(any()) } returns emptyList()
@@ -120,7 +127,7 @@ class LocalSearchRepositoryTest {
 
     @Test
     fun `empty fts match rows fall back to LIKE`() = runTest {
-        coEvery { ftsDao.count() } returns 5
+        coEvery { rebuilder.ftsCount() } returns 5
         coEvery { ftsDao.match(any(), any()) } returns emptyList()
         coEvery { trackDao.searchPlayableTracks(any()) } returns listOf(
             TrackEntity(id = "p1", title = "Playable", isDownloaded = true),
@@ -137,25 +144,24 @@ class LocalSearchRepositoryTest {
 
     @Test
     fun `soft typo matches one-edit title when FTS empty`() = runTest {
-        coEvery { ftsDao.count() } returns 3
+        coEvery { rebuilder.ftsCount() } returns 3
         coEvery { ftsDao.match(any(), any()) } returns emptyList()
         coEvery { trackDao.searchAllTracks(any()) } returns listOf(
             TrackEntity(id = "t1", title = "Beatles"),
             TrackEntity(id = "t2", title = "Other"),
         )
-        coEvery { metadataDao.getAllAlbums() } returns emptyList()
 
         val hit = repo.search("beatle")
         assertTrue(hit.usedSoftTypo)
         assertEquals(listOf("t1"), hit.tracks.map { it.id })
+        coVerify(exactly = 0) { metadataDao.getAllAlbums() }
     }
 
     @Test
     fun `year decade filters albums`() = runTest {
-        coEvery { ftsDao.count() } returns 0
-        coEvery { metadataDao.getAllAlbums() } returns listOf(
+        coEvery { rebuilder.ftsCount() } returns 0
+        coEvery { metadataDao.searchAlbumsByYearRange(1990, 1999, any()) } returns listOf(
             CachedAlbumEntity(id = "a1", name = "A", year = 1995),
-            CachedAlbumEntity(id = "a2", name = "B", year = 2005),
         )
         coEvery { trackDao.getTracksByAlbumIds(any()) } returns listOf(
             TrackEntity(id = "t1", title = "Song", albumId = "a1"),
@@ -164,5 +170,6 @@ class LocalSearchRepositoryTest {
         val hit = repo.search("90s")
         assertEquals(listOf("a1"), hit.albums.map { it.id })
         assertEquals(1990, hit.yearConstraint.minYear)
+        coVerify(exactly = 0) { metadataDao.getAllAlbums() }
     }
 }

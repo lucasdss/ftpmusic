@@ -127,17 +127,17 @@ fun SearchScreen(
         return if (cachedFile.exists() && cachedFile.length() > 0) cachedFile.absolutePath else null
     }
 
-    // Trigger artist art fetch when search results change
-    LaunchedEffect(state.artists) {
+    // Trigger artist art fetch when artist *ids* change (avoid thrash on same set)
+    val artistIdsKey = remember(state.artists) { state.artists.take(5).joinToString { it.id } }
+    LaunchedEffect(artistIdsKey) {
         state.artists.take(5).forEach { a ->
             coverArtFallback.fetchArtistArt(a.name).collect { /* file cached */ }
-            // After fetch completes, resolve local file path
             val cacheKey = "artist|${a.name.lowercase()}"
             val cachedFile = java.io.File(coverArtFallback.cacheDir, "${cacheKey.hashCode()}.jpg")
             artistArtCache[a.name] =
                 if (cachedFile.exists() && cachedFile.length() > 0) cachedFile.absolutePath else null
         }
-        artistArtVersion++
+        if (artistIdsKey.isNotEmpty()) artistArtVersion++
     }
 
     Scaffold(
@@ -273,55 +273,7 @@ fun SearchScreen(
                                 color = Color.White.copy(alpha = 0.05f),
                                 modifier = Modifier.padding(horizontal = spacingL()),
                             )
-                            // Filter by type subsection
-                            Column(
-                                Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
-                            ) {
-                                Text(
-                                    "Filter by type",
-                                    color = Color(0xFF888888),
-                                    fontSize = textLabelM(),
-                                    modifier = Modifier.padding(bottom = spacingS()),
-                                )
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(adp(6f))) {
-                                    listOf(
-                                        SearchFilterType.ALL to "All",
-                                        SearchFilterType.ARTISTS to "Artists",
-                                        SearchFilterType.ALBUMS to "Albums",
-                                        SearchFilterType.SONGS to "Songs",
-                                        SearchFilterType.PLAYLISTS to "Playlists",
-                                        SearchFilterType.GENRES to "Genres",
-                                    ).forEach { (type, label) ->
-                                        val active = state.filterType == type
-                                        Text(
-                                            label,
-                                            color = if (active) BrandTeal else Color(0xFF666666),
-                                            fontSize = textLabelM(),
-                                            fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(cornerS()))
-                                                .background(
-                                                    if (active) {
-                                                        BrandTeal.copy(alpha = 0.20f)
-                                                    } else {
-                                                        Color(0xFF252538)
-                                                    },
-                                                )
-                                                .border(
-                                                    1.dp,
-                                                    if (active) {
-                                                        BrandTeal.copy(alpha = 0.4f)
-                                                    } else {
-                                                        Color.Transparent
-                                                    },
-                                                    RoundedCornerShape(cornerS()),
-                                                )
-                                                .clickable { viewModel.setFilterType(type) }
-                                                .padding(horizontal = 10.dp, vertical = spacingXS()),
-                                        )
-                                    }
-                                }
-                            }
+                            // Downloaded only — type filters live in scrollable chip row (Phase-4)
                             HorizontalDivider(
                                 color = Color.White.copy(alpha = 0.05f),
                                 modifier = Modifier.padding(horizontal = spacingL()),
@@ -474,12 +426,26 @@ fun SearchScreen(
                     }
                 }
             }
-            // ── Filter type chips (visible after search) ──
+            // Phase-4: loading bar while debounce / search3
+            if (state.isLoading) {
+                item {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacingL()),
+                        color = BrandTeal,
+                        trackColor = Color.White.copy(alpha = 0.08f),
+                    )
+                }
+            }
+            // ── Filter type chips (single horizontal scroll, ≥48dp) ──
             if (state.hasSearched && state.resultCount > 0) {
                 item {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacingL(), vertical = spacingXS())
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         listOf(
                             SearchFilterType.ALL to "All",
@@ -490,28 +456,29 @@ fun SearchScreen(
                             SearchFilterType.GENRES to "Genres",
                         ).forEach { (type, label) ->
                             val active = state.filterType == type
-                            Text(
-                                label,
-                                color = if (active) BrandTeal else Color(0xFF777777),
-                                fontSize = textBodyM(),
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
+                            Box(
+                                Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clip(RoundedCornerShape(cornerM()))
                                     .background(
                                         if (active) BrandTeal.copy(alpha = 0.20f) else Surface,
                                     )
                                     .border(
                                         1.dp,
-                                        if (active) {
-                                            BrandTeal.copy(alpha = 0.5f)
-                                        } else {
-                                            Color.White.copy(alpha = 0.08f)
-                                        },
-                                        RoundedCornerShape(50),
+                                        if (active) BrandTeal.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.08f),
+                                        RoundedCornerShape(cornerM()),
                                     )
                                     .clickable { viewModel.setFilterType(type) }
-                                    .padding(horizontal = spacingM(), vertical = 6.dp),
-                            )
+                                    .padding(horizontal = spacingL(), vertical = spacingM()),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (active) BrandTeal else Color(0xFF777777),
+                                    fontSize = textBodyM(),
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
                     }
                 }
@@ -565,7 +532,7 @@ fun SearchScreen(
                                     .heightIn(min = 48.dp)
                                     .clip(RoundedCornerShape(cornerM()))
                                     .background(BrandTeal.copy(alpha = 0.15f))
-                                    .clickable { viewModel.onQueryChanged(decade) }
+                                    .clickable { viewModel.onDecadeChip(decade) }
                                     .padding(horizontal = spacingL(), vertical = spacingM()),
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -587,12 +554,17 @@ fun SearchScreen(
                         )
                     }
                     item {
+                        val genreColorIndex = remember(state.genres) {
+                            state.genres.mapIndexed { i, g -> g.name to i }.toMap()
+                        }
                         Column(Modifier.padding(horizontal = spacingL())) {
                             val rows = state.genres.chunked(2)
                             rows.forEach { row ->
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacingM())) {
                                     row.forEach { genre ->
-                                        val color = GENRE_COLORS[state.genres.indexOf(genre) % GENRE_COLORS.size]
+                                        val color = GENRE_COLORS[
+                                            (genreColorIndex[genre.name] ?: 0) % GENRE_COLORS.size,
+                                        ]
                                         Column(
                                             Modifier.weight(1f).clip(RoundedCornerShape(cornerM()))
                                                 .background(color.copy(alpha = 0.15f))
@@ -651,6 +623,94 @@ fun SearchScreen(
                         fontSize = textLabelM(),
                         modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
                     )
+                }
+
+                // Top result hero (Phase-4)
+                val top = state.topHit
+                if (top != null && state.filterType == SearchFilterType.ALL) {
+                    item { SectionHeader("Top result") }
+                    item {
+                        when (top) {
+                            is SearchTopHit.TrackHit -> {
+                                val t = top.track
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onTrackClick(t) }
+                                        .padding(horizontal = spacingL(), vertical = spacingM())
+                                        .heightIn(min = 48.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        t.title,
+                                        color = Color.White,
+                                        fontSize = textHeadingS(),
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TypeBadge("song")
+                                }
+                                HorizontalDivider(
+                                    color = Color.White.copy(alpha = 0.04f),
+                                    modifier = Modifier.padding(horizontal = spacingL()),
+                                )
+                            }
+                            is SearchTopHit.ArtistHit -> {
+                                val a = top.artist
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onArtistClick(a.id) }
+                                        .padding(horizontal = spacingL(), vertical = spacingM())
+                                        .heightIn(min = 48.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        a.name,
+                                        color = Color.White,
+                                        fontSize = textHeadingS(),
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TypeBadge("artist")
+                                }
+                                HorizontalDivider(
+                                    color = Color.White.copy(alpha = 0.04f),
+                                    modifier = Modifier.padding(horizontal = spacingL()),
+                                )
+                            }
+                            is SearchTopHit.AlbumHit -> {
+                                val a = top.album
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onAlbumClick(a.id) }
+                                        .padding(horizontal = spacingL(), vertical = spacingM())
+                                        .heightIn(min = 48.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        a.name,
+                                        color = Color.White,
+                                        fontSize = textHeadingS(),
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TypeBadge("album")
+                                }
+                                HorizontalDivider(
+                                    color = Color.White.copy(alpha = 0.04f),
+                                    modifier = Modifier.padding(horizontal = spacingL()),
+                                )
+                            }
+                        }
+                    }
                 }
 
                 val showArtists =
@@ -1089,11 +1149,33 @@ fun SearchScreen(
                 }
 
                 // ── No results ──
-                if (state.resultCount == 0) {
+                if (state.resultCount == 0 && !state.isLoading) {
                     item {
-                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
                             Text("No results found", color = Color(0xFF666666), fontSize = textHeadingS())
+                            Spacer(Modifier.height(spacingS()))
+                            val tip = when {
+                                viewModel.isLocalOnly() -> "Offline — try Downloaded only or sync when online"
+                                state.ftsEmpty -> "Library still indexing — pull to sync or try again shortly"
+                                state.usedSoftTypo -> "Showing close matches — check spelling"
+                                else -> "Try another spelling, an artist name, or a decade like 90s"
+                            }
+                            Text(
+                                tip,
+                                color = Color(0xFF555555),
+                                fontSize = textLabelM(),
+                                modifier = Modifier.padding(horizontal = spacingL()),
+                            )
                         }
+                    }
+                }
+            } else if (state.query.trim().length >= 2 && state.isLoading) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text("Searching…", color = Color(0xFF666666), fontSize = textHeadingS())
                     }
                 }
             }

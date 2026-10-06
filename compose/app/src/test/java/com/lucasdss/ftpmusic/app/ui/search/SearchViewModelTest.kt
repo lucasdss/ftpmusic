@@ -70,12 +70,62 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun `onQueryChanged sets query and clears results`() = runTest(testDispatcher) {
-        viewModel.onQueryChanged("test")
-        val state = viewModel.state.first { it.query == "test" }
+    fun `onQueryChanged sets query without clearing prior results`() = runTest(testDispatcher) {
+        viewModel.onQueryChanged("te")
+        val state = viewModel.state.first { it.query == "te" }
+        assertEquals("te", state.query)
+        assertTrue(state.isLoading) // ≥2 chars → loading until search
+    }
+
+    @Test
+    fun `onQueryChanged keeps painted results across keystrokes`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        coEvery { localSearch.search(any(), any(), any()) } returns LocalSearchHit(
+            artists = emptyList(),
+            albums = emptyList(),
+            tracks = listOf(
+                TrackEntity(id = "t1", title = "Rock Song", artist = "Band"),
+            ),
+        )
+        every { storage.get(any()) } returns null
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+            )
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults(artists = emptyList(), albums = emptyList(), tracks = emptyList())
+        viewModel.onQueryChanged("ro")
+        advanceUntilIdle()
+        val afterSearch = viewModel.state.first { it.hasSearched && it.tracks.isNotEmpty() }
+        assertEquals(1, afterSearch.tracks.size)
+
+        viewModel.onQueryChanged("roc")
+        val midType = viewModel.state.first { it.query == "roc" }
+        assertEquals(1, midType.tracks.size)
+        assertTrue(midType.isLoading)
+        assertTrue(midType.hasSearched)
+    }
+
+    @Test
+    fun `onQueryChanged empty clears results`() = runTest(testDispatcher) {
+        viewModel.onQueryChanged("ab")
+        viewModel.onQueryChanged("")
+        val state = viewModel.state.first { it.query.isEmpty() }
         assertTrue(state.artists.isEmpty())
         assertFalse(state.hasSearched)
-        assertEquals("test", state.query)
+        assertFalse(state.isLoading)
     }
 
     @Test

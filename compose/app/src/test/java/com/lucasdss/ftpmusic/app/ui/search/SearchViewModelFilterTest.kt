@@ -78,13 +78,14 @@ class SearchViewModelFilterTest {
     }
 
     @Test
-    fun `onQueryChanged should clear allTracks and localTrackIds`() {
+    fun `onQueryChanged with empty prior state leaves lists empty`() {
         viewModel.onQueryChanged("test")
         val state = viewModel.state.value
         assertEquals("test", state.query)
         assertTrue(state.allTracks.isEmpty())
         assertTrue(state.localTrackIds.isEmpty())
         assertTrue(state.tracks.isEmpty())
+        assertTrue(state.isLoading)
     }
 
     @Test

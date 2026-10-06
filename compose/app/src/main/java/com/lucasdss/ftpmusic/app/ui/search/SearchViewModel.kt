@@ -35,6 +35,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
+/** Best single hit shown above sectioned results (Phase-4 UX). */
+sealed class SearchTopHit {
+    data class TrackHit(val track: Track) : SearchTopHit()
+    data class ArtistHit(val artist: Artist) : SearchTopHit()
+    data class AlbumHit(val album: Album) : SearchTopHit()
+}
+
 data class SearchState(
     val query: String = "",
     val artists: List<Artist> = emptyList(),
@@ -55,6 +62,10 @@ data class SearchState(
     val localTrackIds: Set<String> = emptySet(),
     /** FTS empty while metadata sync running — show indexing empty state. */
     val isIndexingLibrary: Boolean = false,
+    /** True when local FTS index has zero rows (cold start / pre-sync). */
+    val ftsEmpty: Boolean = false,
+    val topHit: SearchTopHit? = null,
+    val usedSoftTypo: Boolean = false,
 )
 
 enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS, GENRES }
@@ -122,6 +133,7 @@ class SearchViewModel @Inject constructor(
                     val ftsEmpty = searchIndexRebuilder.ftsCount() == 0
                     _state.value = _state.value.copy(
                         isIndexingLibrary = sync.isRunning && ftsEmpty,
+                        ftsEmpty = ftsEmpty,
                     )
                 }
             } catch (_: Exception) {
@@ -199,20 +211,25 @@ class SearchViewModel @Inject constructor(
     fun onQueryChanged(query: String) {
         searchJob?.cancel()
         typeaheadJob?.cancel()
+        val trimmed = query.trim()
+        // Phase-4: keep prior results painted until new search replaces them (no flicker).
         _state.value = _state.value.copy(
             query = query,
-            artists = emptyList(),
-            albums = emptyList(),
-            tracks = emptyList(),
-            playlists = emptyList(),
-            matchedGenres = emptyList(),
-            allTracks = emptyList(),
-            localTrackIds = emptySet(),
-            filterType = SearchFilterType.ALL,
-            hasSearched = false,
-            resultCount = 0,
+            isLoading = trimmed.length >= MIN_QUERY_LEN,
+            // Clear only when query emptied
+            artists = if (trimmed.isEmpty()) emptyList() else _state.value.artists,
+            albums = if (trimmed.isEmpty()) emptyList() else _state.value.albums,
+            tracks = if (trimmed.isEmpty()) emptyList() else _state.value.tracks,
+            playlists = if (trimmed.isEmpty()) emptyList() else _state.value.playlists,
+            matchedGenres = if (trimmed.isEmpty()) emptyList() else _state.value.matchedGenres,
+            allTracks = if (trimmed.isEmpty()) emptyList() else _state.value.allTracks,
+            localTrackIds = if (trimmed.isEmpty()) emptySet() else _state.value.localTrackIds,
+            hasSearched = if (trimmed.isEmpty()) false else _state.value.hasSearched,
+            resultCount = if (trimmed.isEmpty()) 0 else _state.value.resultCount,
+            topHit = if (trimmed.isEmpty()) null else _state.value.topHit,
+            usedSoftTypo = if (trimmed.isEmpty()) false else _state.value.usedSoftTypo,
+            filterType = if (trimmed.isEmpty()) SearchFilterType.ALL else _state.value.filterType,
         )
-        val trimmed = query.trim()
         if (trimmed.length >= MIN_QUERY_LEN) {
             typeaheadJob = viewModelScope.launch {
                 delay(TYPEAHEAD_DEBOUNCE_MS)
@@ -220,7 +237,17 @@ class SearchViewModel @Inject constructor(
                     search()
                 }
             }
+        } else {
+            _state.value = _state.value.copy(isLoading = false)
         }
+    }
+
+    /** Decade chip: set query and search immediately (no blank flash). */
+    fun onDecadeChip(decade: String) {
+        typeaheadJob?.cancel()
+        searchJob?.cancel()
+        _state.value = _state.value.copy(query = decade, isLoading = true)
+        search()
     }
 
     fun search() {
@@ -260,6 +287,9 @@ class SearchViewModel @Inject constructor(
                             localPlaylists.size + matchedGenres.size,
                         hasSearched = true,
                         isLoading = false,
+                        topHit = pickTopHit(rankedTracks, rankedArtists, rankedAlbums),
+                        usedSoftTypo = hit.usedSoftTypo,
+                        ftsEmpty = !hit.usedFts && searchIndexRebuilder.ftsCount() == 0,
                     )
                     return@launch
                 }
@@ -293,6 +323,8 @@ class SearchViewModel @Inject constructor(
                     resultCount = cachedTracks.size + cachedAlbums.size + cachedArtists.size +
                         cachedPlaylists.size + matchedGenres.size,
                     hasSearched = true,
+                    topHit = pickTopHit(cachedTracks, cachedArtists, cachedAlbums),
+                    usedSoftTypo = hit.usedSoftTypo,
                 )
                 // Compute local download/cache status from Phase 1 results
                 if (cachedTracks.isNotEmpty()) {
@@ -373,6 +405,7 @@ class SearchViewModel @Inject constructor(
                     isLoading = false,
                     hasSearched = true,
                     resultCount = resultCount,
+                    topHit = pickTopHit(filteredTracks, mergedArtists, mergedAlbums),
                 )
                 saveRecentSearch(query)
                 // Cache server results to local DB for offline reuse
@@ -508,6 +541,18 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Prefer exact/prefix-ranked track, else artist, else album. */
+    private fun pickTopHit(
+        tracks: List<Track>,
+        artists: List<Artist>,
+        albums: List<Album>,
+    ): SearchTopHit? = when {
+        tracks.isNotEmpty() -> SearchTopHit.TrackHit(tracks.first())
+        artists.isNotEmpty() -> SearchTopHit.ArtistHit(artists.first())
+        albums.isNotEmpty() -> SearchTopHit.AlbumHit(albums.first())
+        else -> null
+    }
+
     private suspend fun cacheServerResults(results: SearchResults) {
         try {
             // Persist tracks so offline search finds them via trackDao.searchAllTracks
@@ -556,7 +601,7 @@ class SearchViewModel @Inject constructor(
                 }
                 metadataDao.upsertArtists(artistEntities)
             }
-            searchIndexRebuilder.scheduleRebuild()
+            searchIndexRebuilder.scheduleRebuild(debounceMs = 3_000L)
         } catch (_: Exception) {
             android.util.Log.w("ftpmusic-search", "cacheServerResults failed")
         }
