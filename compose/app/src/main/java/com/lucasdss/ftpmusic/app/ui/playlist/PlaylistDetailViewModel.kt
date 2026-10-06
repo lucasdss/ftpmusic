@@ -534,7 +534,7 @@ class PlaylistDetailViewModel @Inject constructor(
 
     /** Search the local track catalog for the Add Songs picker. */
     suspend fun searchPickerTracks(query: String): List<com.lucasdss.ftpmusic.app.data.db.TrackEntity> =
-        trackDao.searchAllTracks(query)
+        trackDao.searchAllTracks(com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer.escapeLike(query))
 
     /** Recently played tracks shown as Add Songs picker suggestions. */
     suspend fun pickerSuggestions(): List<com.lucasdss.ftpmusic.app.data.db.TrackEntity> =

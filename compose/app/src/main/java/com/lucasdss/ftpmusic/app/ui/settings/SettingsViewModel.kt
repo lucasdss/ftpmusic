@@ -62,6 +62,7 @@ data class SettingsUiState(
     val isResyncing: Boolean = false,
     val syncIntervalHours: Int = 12,
     val preferItunesArt: Boolean = false,
+    val searchLyricsEnabled: Boolean = false,
     val overwriteBehavior: OverwriteBehavior = OverwriteBehavior.ASK,
     // v43: Home & Favorites section visibility (default all ON)
     val showPlaylistsOnHome: Boolean = true,
@@ -131,6 +132,8 @@ class SettingsViewModel @Inject constructor(
         playbackManager.setContinuousPlayEnabled(resolvedContinuousPlay)
         val savedSyncInterval = storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS)?.toIntOrNull()
         val savedPreferItunesArt = storage.get(SecureStorage.KEY_PREFER_ITUNES_ART)?.toBooleanStrictOrNull() ?: false
+        val savedSearchLyrics =
+            storage.get(SecureStorage.KEY_SEARCH_LYRICS)?.toBooleanStrictOrNull() ?: false
         val savedShowPlaylists = storage.get(SecureStorage.KEY_HOME_SHOW_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
         val savedShowFavArtists = storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ARTISTS)?.toBooleanStrictOrNull() ?: true
         val savedShowFavAlbums = storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ALBUMS)?.toBooleanStrictOrNull() ?: true
@@ -161,6 +164,7 @@ class SettingsViewModel @Inject constructor(
             continuousPlayEnabled = resolvedContinuousPlay,
             syncIntervalHours = savedSyncInterval ?: 12,
             preferItunesArt = savedPreferItunesArt,
+            searchLyricsEnabled = savedSearchLyrics,
             overwriteBehavior = com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.fromKey(
                 storage.get(SecureStorage.KEY_QUEUE_OVERWRITE_BEHAVIOR),
             ),
@@ -218,6 +222,11 @@ class SettingsViewModel @Inject constructor(
     fun setPreferItunesArt(enabled: Boolean) {
         _state.value = _state.value.copy(preferItunesArt = enabled)
         storage.put(SecureStorage.KEY_PREFER_ITUNES_ART, enabled.toString())
+    }
+
+    fun setSearchLyricsEnabled(enabled: Boolean) {
+        _state.value = _state.value.copy(searchLyricsEnabled = enabled)
+        storage.put(SecureStorage.KEY_SEARCH_LYRICS, enabled.toString())
     }
 
     fun setAutoDownloadPlaylists(enabled: Boolean) {

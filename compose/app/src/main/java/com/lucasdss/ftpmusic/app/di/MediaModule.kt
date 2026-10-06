@@ -13,6 +13,7 @@ import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.playback.MediaSessionCallback
 import dagger.Module
@@ -35,7 +36,8 @@ object MediaModule {
         metadataDao: CachedMetadataDao,
         authHelper: SubsonicAuthHelper,
         api: SubsonicApi,
-    ): MediaSessionCallback = MediaSessionCallback(trackDao, metadataDao, authHelper, api)
+        localSearch: LocalSearchRepository,
+    ): MediaSessionCallback = MediaSessionCallback(trackDao, metadataDao, authHelper, api, localSearch)
 
     @Provides
     @Singleton

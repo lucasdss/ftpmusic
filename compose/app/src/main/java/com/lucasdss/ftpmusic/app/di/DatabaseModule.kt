@@ -17,10 +17,12 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
+import com.lucasdss.ftpmusic.app.data.db.SearchFtsDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackWaveformDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -49,7 +51,7 @@ object DatabaseModule {
         AppDatabase::class.java,
         "ftpmusic.db",
     )
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_58)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_59)
         // NO fallbackToDestructiveMigration: all migrations 1→46 are registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
         // instead of silently wiping the database (the playlist-loss root cause).
@@ -84,6 +86,8 @@ object DatabaseModule {
 
     @Provides fun provideListenEventDao(db: AppDatabase): ListenEventDao = db.listenEventDao()
 
+    @Provides fun provideSearchFtsDao(db: AppDatabase): SearchFtsDao = db.searchFtsDao()
+
     @Provides
     @Singleton
     fun provideCacheDir(@ApplicationContext context: Context): File {
@@ -115,9 +119,11 @@ object DatabaseModule {
         coverArtFallback: com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService,
         dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
         offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
+        searchIndexRebuilder: SearchIndexRebuilder,
     ): MetadataSyncWorker = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager = offlineModeManager,
         dailyMixRepository = dailyMixRepository,
+        searchIndexRebuilder = searchIndexRebuilder,
     )
 }

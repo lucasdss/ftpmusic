@@ -39,6 +39,31 @@ object SearchResultMerger {
         )
     }
 
+    /**
+     * Rank by best match across multiple text fields (title / artist / album).
+     * Lower composite score wins.
+     */
+    fun <T> rankByFields(
+        items: List<T>,
+        query: String,
+        fieldsOf: (T) -> List<String?>,
+    ): List<T> {
+        val q = SearchQueryNormalizer.fold(query)
+        if (q.isEmpty() || items.size <= 1) return items
+        return items.sortedWith(
+            compareBy<T> { item ->
+                fieldsOf(item)
+                    .mapNotNull { it?.takeIf { s -> s.isNotBlank() } }
+                    .minOfOrNull { rankScore(SearchQueryNormalizer.fold(it), q) }
+                    ?: 3
+            }.thenBy {
+                fieldsOf(it).firstOrNull { f -> !f.isNullOrBlank() }
+                    ?.let { SearchQueryNormalizer.fold(it) }
+                    .orEmpty()
+            },
+        )
+    }
+
     /** Lower score = better. 0 exact, 1 prefix, 2 contains, 3 other. */
     internal fun rankScore(foldedText: String, foldedQuery: String): Int = when {
         foldedText == foldedQuery -> 0

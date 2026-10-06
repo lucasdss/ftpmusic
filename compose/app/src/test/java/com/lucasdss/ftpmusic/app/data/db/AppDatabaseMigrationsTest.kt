@@ -541,6 +541,15 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 58 to 59 adds FTS and enrichment columns`() {
+        run(AppDatabase.MIGRATION_58_59)
+        verify { db.execSQL(match { it.contains("biography") }) }
+        verify { db.execSQL(match { it.contains("search_aliases") }) }
+        verify { db.execSQL(match { it.contains("notes") }) }
+        verify { db.execSQL(match { it.contains("search_fts") && it.contains("FTS4") }) }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
         assertEquals(54, AppDatabase.ALL_MIGRATIONS_54.last().endVersion)
@@ -548,6 +557,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(56, AppDatabase.ALL_MIGRATIONS_56.last().endVersion)
         assertEquals(57, AppDatabase.ALL_MIGRATIONS_57.last().endVersion)
         assertEquals(58, AppDatabase.ALL_MIGRATIONS_58.last().endVersion)
+        assertEquals(59, AppDatabase.ALL_MIGRATIONS_59.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -574,9 +584,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_52, AppDatabase.ALL_MIGRATIONS_53,
             AppDatabase.ALL_MIGRATIONS_54, AppDatabase.ALL_MIGRATIONS_55,
             AppDatabase.ALL_MIGRATIONS_56, AppDatabase.ALL_MIGRATIONS_57,
-            AppDatabase.ALL_MIGRATIONS_58,
+            AppDatabase.ALL_MIGRATIONS_58, AppDatabase.ALL_MIGRATIONS_59,
         )
-        assertEquals(49, all.size)
+        assertEquals(50, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

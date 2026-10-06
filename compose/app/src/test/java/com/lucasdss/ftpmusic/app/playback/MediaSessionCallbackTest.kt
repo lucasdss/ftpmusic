@@ -57,7 +57,13 @@ class MediaSessionCallbackTest {
         metadataDao: CachedMetadataDao = mockk(relaxed = true),
         api: SubsonicApi = mockk(relaxed = true),
     ): MediaSessionCallback =
-        MediaSessionCallback(trackDao, metadataDao, SubsonicAuthHelper(), api, CoroutineScope(Dispatchers.Unconfined))
+        MediaSessionCallback(
+            trackDao,
+            metadataDao,
+            SubsonicAuthHelper(),
+            api,
+            scope = CoroutineScope(Dispatchers.Unconfined),
+        )
 
     @Test
     fun `onAddMediaItems with single track expands to full album`() {

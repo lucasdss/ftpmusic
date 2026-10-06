@@ -1058,7 +1058,8 @@ class LibraryViewModel @Inject constructor(
     }
 
     /** Search the local track catalog for the Add Songs picker. */
-    suspend fun searchPickerTracks(query: String): List<TrackEntity> = trackDao.searchAllTracks(query)
+    suspend fun searchPickerTracks(query: String): List<TrackEntity> =
+        trackDao.searchAllTracks(SearchQueryNormalizer.escapeLike(query))
 
     /** Recently played tracks shown as Add Songs picker suggestions. */
     suspend fun pickerSuggestions(): List<TrackEntity> = trackDao.getRecentlyPlayed(limit = 50)

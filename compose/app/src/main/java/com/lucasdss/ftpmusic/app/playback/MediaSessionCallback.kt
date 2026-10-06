@@ -41,6 +41,7 @@ class MediaSessionCallback(
     private val metadataDao: CachedMetadataDao,
     private val authHelper: SubsonicAuthHelper,
     private val api: SubsonicApi,
+    private val localSearch: com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : MediaLibraryService.MediaLibrarySession.Callback {
 
@@ -142,7 +143,23 @@ class MediaSessionCallback(
         }
 
         val auth = authHelper.buildAuthParams(username, password)
-        val response = api.search3(query, songCount = 10, artistCount = 0, albumCount = 0, auth = auth)
+
+        // Prefer local FTS/LIKE corpus (same as Search tab), then search3.
+        try {
+            val local = localSearch?.search(query, limit = 10, playableOnly = false)
+            val localTrack = local?.tracks?.firstOrNull()
+            if (localTrack != null) {
+                android.util.Log.d(
+                    "ftpmusic",
+                    "[MediaSessionCallback] searchAndNavidromeExpand: local hit '$query' → ${localTrack.id}",
+                )
+                return expandToAlbum(localTrack.id, auth) ?: emptyList()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic", "[MediaSessionCallback] local search failed: ${e.message}")
+        }
+
+        val response = api.search3(query, songCount = 10, artistCount = 20, albumCount = 10, auth = auth)
         val sr = response["subsonic-response"] as? Map<*, *> ?: run {
             android.util.Log.d(
                 "ftpmusic",

@@ -720,7 +720,7 @@ class MetadataSyncWorkerTest {
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
         dailyMixRepository,
-        kotlinx.coroutines.test.UnconfinedTestDispatcher(),
+        ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(),
     )
 
     @Test
@@ -795,7 +795,7 @@ class MetadataSyncWorkerTest {
             context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
             mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
             dailyMixRepository,
-            kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
+            ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
         )
         val albums = (1..5).map { i -> CachedAlbumEntity(id = "al-$i", name = "A$i") }
         coEvery { metadataDao.albumCount() } returns albums.size
@@ -897,7 +897,7 @@ class MetadataSyncWorkerTest {
             context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
             mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
             dailyMixRepository,
-            kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
+            ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
         )
         val page1 = mapOf(
             "subsonic-response" to mapOf(

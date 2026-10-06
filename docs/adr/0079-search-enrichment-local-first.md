@@ -2,24 +2,23 @@
 
 Date: 2026-10-06
 Status: Accepted
-Related: ADR 0077, docs/NAVIDROME-API-CAPABILITIES.md
+Related: ADR 0077, ADR 0080, docs/NAVIDROME-API-CAPABILITIES.md
 
 ## Context
 
-Market apps search tags, genres, and “similar artist” names. FTP Music already
-stores Last.fm similar JSON and MusicBrainz ratings but did not query them.
-Live Discogs/Spotify would violate local-first offline guarantees.
+Market apps search tags, genres, and similar-artist names. FTP Music stores
+Last.fm similar JSON and now wires Subsonic info2 APIs for bio/notes.
 
 ## Decision
 
-1. Local genre **text** search via `GenreDao.searchGenres`; Search filter chip GENRES.
-2. Artist search also matches `similar_artists_json` (Last.fm aliases already synced).
-3. Escape LIKE metacharacters via `SearchQueryNormalizer.escapeLike` on all search DAO calls.
-4. External APIs remain **background enrichment only** — never on keystroke.
-5. Discogs / Spotify Web API catalog search: **out of scope**.
+1. Local genre text search + Genres chip (phase-1).
+2. Artist search matches `similar_artists_json`.
+3. Escape LIKE via `SearchQueryNormalizer.escapeLike`.
+4. Background `getArtistInfo2` / `getAlbumInfo2` during sync → Room columns → FTS rebuild.
+5. Never call enrichment from `search()` keystroke path.
+6. Discogs / Spotify Web API catalog search: out of scope.
 
 ## Consequences
 
-- Genre queries return Genres section + genre-matched songs (via track.genre).
-- Similar-artist name query can surface the primary cached artist.
-- `getArtistInfo2` / `getAlbumInfo2` still optional follow-ups for bio/notes FTS.
+- Enrichment rate-limited (25 artists / 15 albums per sync).
+- Offline sync skips enrichment.
