@@ -43,6 +43,7 @@ class SearchViewModelFilterTest {
                 genreDao,
                 trackDao,
                 mockk(relaxed = true),
+                mockk(relaxed = true), // playlistDao
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )

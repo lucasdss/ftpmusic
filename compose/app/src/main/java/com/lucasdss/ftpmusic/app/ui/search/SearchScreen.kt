@@ -288,6 +288,7 @@ fun SearchScreen(
                                         SearchFilterType.ALBUMS to "Albums",
                                         SearchFilterType.SONGS to "Songs",
                                         SearchFilterType.PLAYLISTS to "Playlists",
+                                        SearchFilterType.GENRES to "Genres",
                                     ).forEach { (type, label) ->
                                         val active = state.filterType == type
                                         Text(
@@ -484,6 +485,7 @@ fun SearchScreen(
                             SearchFilterType.ALBUMS to "Albums",
                             SearchFilterType.SONGS to "Songs",
                             SearchFilterType.PLAYLISTS to "Playlists",
+                            SearchFilterType.GENRES to "Genres",
                         ).forEach { (type, label) ->
                             val active = state.filterType == type
                             Text(
@@ -600,6 +602,57 @@ fun SearchScreen(
                 val showSongs = state.filterType == SearchFilterType.ALL || state.filterType == SearchFilterType.SONGS
                 val showPlaylists =
                     state.filterType == SearchFilterType.ALL || state.filterType == SearchFilterType.PLAYLISTS
+                val showGenres =
+                    state.filterType == SearchFilterType.ALL || state.filterType == SearchFilterType.GENRES
+
+                // ── GENRES section (text-matched) ──
+                if (showGenres && state.matchedGenres.isNotEmpty()) {
+                    item { SectionHeader("Genres") }
+                    items(state.matchedGenres, key = { "genre-${it.name}" }) { genre ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                onGenreClick(genre.name)
+                            }.padding(horizontal = spacingL(), vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS()))
+                                    .background(BrandTeal.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Default.Label,
+                                    null,
+                                    tint = BrandTeal,
+                                    modifier = Modifier.size(iconSmall()),
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                FittingText(
+                                    text = genre.name,
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    minFontSize = textMicro(),
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                FittingText(
+                                    text = "${genre.songCount} songs · ${genre.albumCount} albums",
+                                    color = Color(0xFF888888),
+                                    fontSize = textLabelM(),
+                                    minFontSize = textMicro(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                            TypeBadge("genre")
+                        }
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.04f),
+                            modifier = Modifier.padding(horizontal = spacingL()),
+                        )
+                    }
+                }
 
                 // ── ARTISTS section ──
                 if (showArtists && state.artists.isNotEmpty()) {
@@ -874,9 +927,11 @@ fun SearchScreen(
                                 )
                                 val subtitle = buildString {
                                     t.artist?.let { append(it) }
-                                    if (t.album != null) {
+                                    val albumLabel = t.album?.takeIf { it.isNotBlank() }
+                                        ?: if (t.albumId == null) "Singles" else null
+                                    if (albumLabel != null) {
                                         if (isNotEmpty()) append(" · ")
-                                        append(t.album)
+                                        append(albumLabel)
                                     }
                                 }
                                 if (subtitle.isNotEmpty()) {

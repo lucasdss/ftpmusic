@@ -9,6 +9,7 @@ import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreDao
 import com.lucasdss.ftpmusic.app.data.db.GenreEntity
+import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.model.Album
@@ -19,11 +20,14 @@ import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.SearchRepository
+import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
+import com.lucasdss.ftpmusic.app.data.search.SearchResultMerger
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +41,7 @@ data class SearchState(
     val albums: List<Album> = emptyList(),
     val tracks: List<Track> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
+    val matchedGenres: List<GenreEntity> = emptyList(),
     val isLoading: Boolean = false,
     val hasSearched: Boolean = false,
     val recentSearches: List<String> = emptyList(),
@@ -50,7 +55,7 @@ data class SearchState(
     val localTrackIds: Set<String> = emptySet(),
 )
 
-enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS }
+enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS, GENRES }
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
@@ -59,6 +64,7 @@ class SearchViewModel @Inject constructor(
     private val genreDao: GenreDao,
     private val trackDao: TrackDao,
     private val metadataDao: CachedMetadataDao,
+    private val playlistDao: PlaylistDao,
     private val api: SubsonicApi,
     private val offlineModeManager: OfflineModeManager,
 ) : ViewModel() {
@@ -66,13 +72,19 @@ class SearchViewModel @Inject constructor(
     companion object {
         private const val KEY_RECENT_SEARCHES = "recent_searches"
         private const val MAX_RECENT = 10
+        private const val TYPEAHEAD_DEBOUNCE_MS = 300L
+        private const val PAGE_SIZE = 50
+        private const val MIN_QUERY_LEN = 2
     }
 
     private val _state = MutableStateFlow(SearchState())
     val state: StateFlow<SearchState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private var typeaheadJob: Job? = null
     private var albumSearchOffset = 0
+    private var artistSearchOffset = 0
+    private var songSearchOffset = 0
     private var isLoadingMoreSearch = false
 
     private fun isOffline(): Boolean = try {
@@ -106,7 +118,7 @@ class SearchViewModel @Inject constructor(
                     previous = localOnly
                     if (was == null || was == localOnly) return@collect
                     val q = _state.value.query.trim()
-                    if (_state.value.hasSearched && q.length >= 2) {
+                    if (_state.value.hasSearched && q.length >= MIN_QUERY_LEN) {
                         search()
                     }
                 }
@@ -161,63 +173,64 @@ class SearchViewModel @Inject constructor(
 
     fun onQueryChanged(query: String) {
         searchJob?.cancel()
+        typeaheadJob?.cancel()
         _state.value = _state.value.copy(
             query = query,
             artists = emptyList(),
             albums = emptyList(),
             tracks = emptyList(),
             playlists = emptyList(),
+            matchedGenres = emptyList(),
             allTracks = emptyList(),
             localTrackIds = emptySet(),
             filterType = SearchFilterType.ALL,
+            hasSearched = false,
+            resultCount = 0,
         )
+        val trimmed = query.trim()
+        if (trimmed.length >= MIN_QUERY_LEN) {
+            typeaheadJob = viewModelScope.launch {
+                delay(TYPEAHEAD_DEBOUNCE_MS)
+                if (_state.value.query.trim() == trimmed) {
+                    search()
+                }
+            }
+        }
     }
 
     fun search() {
         val query = _state.value.query.trim()
-        if (query.length < 2) return
+        if (query.length < MIN_QUERY_LEN) return
+        typeaheadJob?.cancel()
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
             val filterEnabled = _state.value.filterDownloaded
             val localOnly = isLocalOnly()
+            val likeQuery = SearchQueryNormalizer.escapeLike(query)
             try {
                 // Local-only: playable Room queries only (1A) — skip full catalog + API.
                 if (localOnly) {
-                    val playableEntities = trackDao.searchPlayableTracks(query)
-                    val playableTracks = playableEntities.map { t ->
-                        Track(
-                            id = t.id,
-                            title = t.title,
-                            artist = t.artist,
-                            artistId = t.artistId,
-                            albumId = t.albumId,
-                            coverArt = t.coverArtUrl,
-                            duration = t.durationSeconds,
-                        )
-                    }
-                    val playableAlbums = metadataDao.searchPlayableAlbums(query).map {
-                        Album(
-                            id = it.id,
-                            name = it.name,
-                            artist = it.artist,
-                            artistId = it.artistId,
-                            coverArt = it.coverArt,
-                        )
-                    }
-                    val playableArtists = metadataDao.searchPlayableArtists(query).map {
-                        Artist(id = it.id, name = it.name, coverArt = it.coverArt)
-                    }
+                    val playableTracks = trackDao.searchPlayableTracks(likeQuery).map { it.toTrack() }
+                    val playableAlbums = metadataDao.searchPlayableAlbums(likeQuery).map { it.toAlbum() }
+                    val playableArtists = metadataDao.searchPlayableArtists(likeQuery).map { it.toArtist() }
+                    val localPlaylists = playlistDao.searchPlaylists(likeQuery).map { it.toPlaylist() }
+                    val matchedGenres = genreDao.searchGenres(likeQuery)
+                    val rankedArtists = SearchResultMerger.rankByQuery(playableArtists, query) { it.name }
+                    val rankedAlbums = SearchResultMerger.rankByQuery(playableAlbums, query) { it.name }
+                    val rankedTracks = SearchResultMerger.rankByQuery(playableTracks, query) { it.title }
                     val localIds = playableTracks.map { it.id }.toSet()
                     _state.value = _state.value.copy(
-                        tracks = playableTracks,
-                        albums = playableAlbums,
-                        artists = playableArtists,
-                        playlists = emptyList(),
-                        allTracks = playableTracks,
+                        tracks = rankedTracks,
+                        albums = rankedAlbums,
+                        artists = rankedArtists,
+                        playlists = localPlaylists,
+                        matchedGenres = matchedGenres,
+                        allTracks = rankedTracks,
                         localTrackIds = localIds,
                         filterDownloaded = true,
-                        resultCount = playableTracks.size + playableAlbums.size + playableArtists.size,
+                        resultCount = rankedTracks.size + rankedAlbums.size + rankedArtists.size +
+                            localPlaylists.size + matchedGenres.size,
                         hasSearched = true,
                         isLoading = false,
                     )
@@ -225,36 +238,20 @@ class SearchViewModel @Inject constructor(
                 }
 
                 // 1. Show cached results from local DB immediately
-                val cachedTrackEntities = trackDao.searchAllTracks(query)
-                val cachedTracks = cachedTrackEntities.map { t ->
-                    Track(
-                        id = t.id,
-                        title = t.title,
-                        artist = t.artist,
-                        artistId = t.artistId,
-                        albumId = t.albumId,
-                        coverArt = t.coverArtUrl,
-                        duration = t.durationSeconds,
-                    )
-                }
-                val cachedAlbums = metadataDao.searchAlbums(query).map {
-                    Album(
-                        id = it.id,
-                        name = it.name,
-                        artist = it.artist,
-                        artistId = it.artistId,
-                        coverArt = it.coverArt,
-                    )
-                }
-                val cachedArtists = metadataDao.searchArtists(query).map {
-                    Artist(id = it.id, name = it.name, coverArt = it.coverArt)
-                }
+                val cachedTracks = trackDao.searchAllTracks(likeQuery).map { it.toTrack() }
+                val cachedAlbums = metadataDao.searchAlbums(likeQuery).map { it.toAlbum() }
+                val cachedArtists = metadataDao.searchArtists(likeQuery).map { it.toArtist() }
+                val cachedPlaylists = playlistDao.searchPlaylists(likeQuery).map { it.toPlaylist() }
+                val matchedGenres = genreDao.searchGenres(likeQuery)
                 _state.value = _state.value.copy(
                     tracks = cachedTracks,
                     albums = cachedAlbums,
                     artists = cachedArtists,
+                    playlists = cachedPlaylists,
+                    matchedGenres = matchedGenres,
                     allTracks = cachedTracks,
-                    resultCount = cachedTracks.size + cachedAlbums.size + cachedArtists.size,
+                    resultCount = cachedTracks.size + cachedAlbums.size + cachedArtists.size +
+                        cachedPlaylists.size + matchedGenres.size,
                     hasSearched = true,
                 )
                 // Compute local download/cache status from Phase 1 results
@@ -282,11 +279,33 @@ class SearchViewModel @Inject constructor(
                     return@launch
                 }
                 albumSearchOffset = 0
-                val results = repository.search(query, username, password)
-                val resultCount = results.totalCount
-                val allTracks = results.tracks
-                val localEntities = if (results.tracks.isNotEmpty()) {
-                    trackDao.getTracksByIds(results.tracks.map { it.id })
+                artistSearchOffset = 0
+                songSearchOffset = 0
+                val results = repository.search(
+                    query,
+                    username,
+                    password,
+                    artistCount = PAGE_SIZE,
+                    albumCount = PAGE_SIZE,
+                    songCount = PAGE_SIZE,
+                )
+                val mergedArtists = SearchResultMerger.rankByQuery(
+                    SearchResultMerger.unionById(results.artists, cachedArtists) { it.id },
+                    query,
+                ) { it.name }
+                val mergedAlbums = SearchResultMerger.rankByQuery(
+                    SearchResultMerger.unionById(results.albums, cachedAlbums) { it.id },
+                    query,
+                ) { it.name }
+                val mergedTracksRaw = SearchResultMerger.unionById(results.tracks, cachedTracks) { it.id }
+                val mergedTracks = SearchResultMerger.rankByQuery(mergedTracksRaw, query) { it.title }
+                val mergedPlaylists = SearchResultMerger.unionById(
+                    results.playlists,
+                    cachedPlaylists,
+                ) { it.id }
+
+                val localEntities = if (mergedTracks.isNotEmpty()) {
+                    trackDao.getTracksByIds(mergedTracks.map { it.id })
                 } else {
                     emptyList()
                 }
@@ -295,20 +314,23 @@ class SearchViewModel @Inject constructor(
                     .map { it.id }
                     .toSet()
                 val filteredTracks = if (filterEnabled) {
-                    allTracks.filter { it.id in localIds }
+                    mergedTracks.filter { it.id in localIds }
                 } else {
-                    allTracks
+                    mergedTracks
                 }
+                val resultCount = mergedArtists.size + mergedAlbums.size + mergedTracks.size +
+                    mergedPlaylists.size + matchedGenres.size
                 _state.value = _state.value.copy(
-                    artists = results.artists.ifEmpty { cachedArtists },
-                    albums = results.albums.ifEmpty { cachedAlbums },
-                    tracks = filteredTracks.ifEmpty { cachedTracks },
-                    playlists = results.playlists,
-                    allTracks = allTracks.ifEmpty { cachedTracks },
+                    artists = mergedArtists,
+                    albums = mergedAlbums,
+                    tracks = filteredTracks,
+                    playlists = mergedPlaylists,
+                    matchedGenres = matchedGenres,
+                    allTracks = mergedTracks,
                     localTrackIds = localIds,
                     isLoading = false,
                     hasSearched = true,
-                    resultCount = maxOf(resultCount, cachedTracks.size + cachedAlbums.size + cachedArtists.size),
+                    resultCount = resultCount,
                 )
                 saveRecentSearch(query)
                 // Cache server results to local DB for offline reuse
@@ -367,6 +389,7 @@ class SearchViewModel @Inject constructor(
     }
 
     fun onRecentTap(query: String) {
+        typeaheadJob?.cancel()
         _state.value = _state.value.copy(query = query)
         search()
     }
@@ -375,8 +398,8 @@ class SearchViewModel @Inject constructor(
         viewModelScope.launch {
             if (isLoadingMoreSearch) return@launch
             isLoadingMoreSearch = true
-            val query = _state.value.query
-            if (query.length < 2) {
+            val query = _state.value.query.trim()
+            if (query.length < MIN_QUERY_LEN) {
                 isLoadingMoreSearch = false
                 return@launch
             }
@@ -385,7 +408,9 @@ class SearchViewModel @Inject constructor(
                 isLoadingMoreSearch = false
                 return@launch
             }
-            albumSearchOffset += 20
+            albumSearchOffset += PAGE_SIZE
+            artistSearchOffset += PAGE_SIZE
+            songSearchOffset += PAGE_SIZE
             try {
                 val username = storage.get(SecureStorage.KEY_USERNAME) ?: ""
                 val password = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
@@ -393,15 +418,47 @@ class SearchViewModel @Inject constructor(
                     isLoadingMoreSearch = false
                     return@launch
                 }
-                val results = repository.search(query, username, password, albumOffset = albumSearchOffset)
-                if (_state.value.query == query) {
+                val results = repository.search(
+                    query,
+                    username,
+                    password,
+                    artistCount = PAGE_SIZE,
+                    albumCount = PAGE_SIZE,
+                    songCount = PAGE_SIZE,
+                    artistOffset = artistSearchOffset,
+                    albumOffset = albumSearchOffset,
+                    songOffset = songSearchOffset,
+                )
+                if (_state.value.query.trim() == query) {
+                    val artists = SearchResultMerger.unionById(
+                        _state.value.artists,
+                        results.artists,
+                    ) { it.id }
+                    val albums = SearchResultMerger.unionById(
+                        _state.value.albums,
+                        results.albums,
+                    ) { it.id }
+                    val tracks = SearchResultMerger.unionById(
+                        _state.value.allTracks,
+                        results.tracks,
+                    ) { it.id }
+                    val filterEnabled = _state.value.filterDownloaded
+                    val filtered = if (filterEnabled) {
+                        tracks.filter { it.id in _state.value.localTrackIds }
+                    } else {
+                        tracks
+                    }
                     _state.value = _state.value.copy(
-                        albums = _state.value.albums + results.albums,
+                        artists = artists,
+                        albums = albums,
+                        tracks = filtered,
+                        allTracks = tracks,
+                        resultCount = artists.size + albums.size + tracks.size +
+                            _state.value.playlists.size + _state.value.matchedGenres.size,
                     )
+                    cacheServerResults(results)
                 }
-            } catch (
-                e: Exception,
-            ) {
+            } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-search", "loadMoreSearch: ${e.message}")
             } finally {
                 isLoadingMoreSearch = false
@@ -415,11 +472,18 @@ class SearchViewModel @Inject constructor(
             if (results.tracks.isNotEmpty()) {
                 val entities = results.tracks.map { t ->
                     TrackEntity(
-                        id = t.id, title = t.title, artist = t.artist,
-                        albumId = t.albumId, artistId = t.artistId,
-                        durationSeconds = t.duration, trackNumber = t.trackNumber,
-                        coverArtUrl = t.coverArt, suffix = t.suffix,
+                        id = t.id,
+                        title = t.title,
+                        artist = t.artist,
+                        album = t.album,
+                        albumId = t.albumId,
+                        artistId = t.artistId,
+                        durationSeconds = t.duration,
+                        trackNumber = t.trackNumber,
+                        coverArtUrl = t.coverArt,
+                        suffix = t.suffix,
                         contentType = t.contentType,
+                        path = t.path,
                     )
                 }
                 trackDao.upsertAll(entities)
@@ -454,4 +518,36 @@ class SearchViewModel @Inject constructor(
             android.util.Log.w("ftpmusic-search", "cacheServerResults failed")
         }
     }
+
+    private fun TrackEntity.toTrack() = Track(
+        id = id,
+        title = title,
+        artist = artist,
+        artistId = artistId,
+        album = album,
+        albumId = albumId,
+        coverArt = coverArtUrl,
+        duration = durationSeconds,
+        path = path,
+    )
+
+    private fun CachedAlbumEntity.toAlbum() = Album(
+        id = id,
+        name = name,
+        artist = artist,
+        artistId = artistId,
+        year = year,
+        coverArt = coverArt,
+        genre = genre,
+    )
+
+    private fun CachedArtistEntity.toArtist() = Artist(id = id, name = name, coverArt = coverArt)
+
+    private fun com.lucasdss.ftpmusic.app.data.db.PlaylistEntity.toPlaylist() = Playlist(
+        id = id,
+        name = name,
+        comment = comment,
+        songCount = trackCount,
+        coverArt = coverArt,
+    )
 }

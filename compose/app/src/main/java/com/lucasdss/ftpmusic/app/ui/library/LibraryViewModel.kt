@@ -32,6 +32,7 @@ import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
+import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.playback.DailyMixGenerationCoordinator
@@ -1596,7 +1597,7 @@ class LibraryViewModel @Inject constructor(
         val gen = ++albumSearchGen
         viewModelScope.launch {
             try {
-                val results = metadataDao.searchAlbums(query)
+                val results = metadataDao.searchAlbums(SearchQueryNormalizer.escapeLike(query))
                 if (gen != albumSearchGen) return@launch
                 _state.value = _state.value.copy(
                     albumSearchResults = results
@@ -1632,7 +1633,7 @@ class LibraryViewModel @Inject constructor(
         val gen = ++artistSearchGen
         viewModelScope.launch {
             try {
-                val results = metadataDao.searchArtists(query)
+                val results = metadataDao.searchArtists(SearchQueryNormalizer.escapeLike(query))
                 if (gen != artistSearchGen) return@launch
                 _state.value = _state.value.copy(
                     artistSearchResults = results.map {

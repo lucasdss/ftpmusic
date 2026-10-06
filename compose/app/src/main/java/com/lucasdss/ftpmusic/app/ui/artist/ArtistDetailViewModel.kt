@@ -14,6 +14,7 @@ import com.lucasdss.ftpmusic.app.data.network.LastFmService
 import com.lucasdss.ftpmusic.app.data.network.MusicBrainzService
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
@@ -257,7 +258,7 @@ class ArtistDetailViewModel @Inject constructor(
     fun resolveSimilarArtist(name: String, onResult: (String?) -> Unit) {
         viewModelScope.launch {
             try {
-                val hits = metadataDao.searchArtists(name)
+                val hits = metadataDao.searchArtists(SearchQueryNormalizer.escapeLike(name))
                 val exact = hits.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 onResult(exact?.id ?: hits.firstOrNull()?.id)
             } catch (_: Exception) {

@@ -533,12 +533,21 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 57 to 58 adds tracks album and artist name index`() {
+        run(AppDatabase.MIGRATION_57_58)
+        verify { db.execSQL(match { it.contains("ADD COLUMN album") }) }
+        verify { db.execSQL(match { it.contains("index_tracks_album") }) }
+        verify { db.execSQL(match { it.contains("index_cached_artists_name") }) }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
         assertEquals(54, AppDatabase.ALL_MIGRATIONS_54.last().endVersion)
         assertEquals(55, AppDatabase.ALL_MIGRATIONS_55.last().endVersion)
         assertEquals(56, AppDatabase.ALL_MIGRATIONS_56.last().endVersion)
         assertEquals(57, AppDatabase.ALL_MIGRATIONS_57.last().endVersion)
+        assertEquals(58, AppDatabase.ALL_MIGRATIONS_58.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -565,8 +574,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_52, AppDatabase.ALL_MIGRATIONS_53,
             AppDatabase.ALL_MIGRATIONS_54, AppDatabase.ALL_MIGRATIONS_55,
             AppDatabase.ALL_MIGRATIONS_56, AppDatabase.ALL_MIGRATIONS_57,
+            AppDatabase.ALL_MIGRATIONS_58,
         )
-        assertEquals(48, all.size)
+        assertEquals(49, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

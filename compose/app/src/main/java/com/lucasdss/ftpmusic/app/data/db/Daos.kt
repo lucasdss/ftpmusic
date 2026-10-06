@@ -61,7 +61,7 @@ interface TrackDao {
      *  for these; preserve the existing tracks-table values instead of overwriting
      *  valid album/artist associations established by the album-track sync. */
     @Query(
-        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cgs.id, '' as server_id, cgs.title, COALESCE(cgs.artist, t.artist), COALESCE(cgs.album_id, t.album_id), COALESCE(cgs.artist_id, t.artist_id), cgs.genre, cgs.duration, cgs.track_number, cgs.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_genre_songs cgs LEFT JOIN tracks t ON cgs.id = t.id",
+        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album, album_id, artist_id, genre, duration_seconds, track_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cgs.id, '' as server_id, cgs.title, COALESCE(cgs.artist, t.artist), t.album, COALESCE(cgs.album_id, t.album_id), COALESCE(cgs.artist_id, t.artist_id), cgs.genre, cgs.duration, cgs.track_number, cgs.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_genre_songs cgs LEFT JOIN tracks t ON cgs.id = t.id",
     )
     suspend fun populateGenresFromCachedGenreSongs()
 
@@ -71,7 +71,7 @@ interface TrackDao {
      *  tracks-table values when the album source lacks them (defensive; keeps the
      *  two populate* queries idempotent regardless of execution order). */
     @Query(
-        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, 1 as disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
+        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), COALESCE(ca.name, t.album), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, 1 as disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
     )
     suspend fun populateAllTrackGenres()
 
@@ -184,14 +184,23 @@ interface TrackDao {
     fun searchCached(query: String): Flow<List<TrackEntity>>
 
     @Query(
-        "SELECT * FROM tracks WHERE title LIKE '%' || :query || '%' OR artist LIKE '%' || :query || '%' ORDER BY title ASC LIMIT 50",
+        "SELECT * FROM tracks WHERE title LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR artist LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR album LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR genre LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR path LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "ORDER BY title ASC LIMIT 100",
     )
     suspend fun searchAllTracks(query: String): List<TrackEntity>
 
     /** Local-only search: downloaded or Room-flagged cache path (matches Library offline). */
     @Query(
-        "SELECT * FROM tracks WHERE (title LIKE '%' || :query || '%' OR artist LIKE '%' || :query || '%') " +
-            "AND (cached_file_path IS NOT NULL OR is_downloaded = 1) ORDER BY title ASC LIMIT 50",
+        "SELECT * FROM tracks WHERE (title LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR artist LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR album LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR genre LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR path LIKE '%' || :query || '%' ESCAPE '\\') " +
+            "AND (cached_file_path IS NOT NULL OR is_downloaded = 1) ORDER BY title ASC LIMIT 100",
     )
     suspend fun searchPlayableTracks(query: String): List<TrackEntity>
 
@@ -392,6 +401,12 @@ interface GenreDao {
     suspend fun getAllByPopularity(): List<GenreEntity>
 
     @Query(
+        "SELECT * FROM genres WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "ORDER BY song_count DESC LIMIT 50",
+    )
+    suspend fun searchGenres(query: String): List<GenreEntity>
+
+    @Query(
         "SELECT DISTINCT t.genre FROM tracks t WHERE t.genre IS NOT NULL AND t.play_count > 0 ORDER BY t.last_played_at DESC LIMIT 10",
     )
     suspend fun getRecentlyPlayedGenres(): List<String>
@@ -513,6 +528,12 @@ interface PlaylistDao {
 
     @Query("SELECT * FROM playlists WHERE id = :id")
     suspend fun getById(id: String): PlaylistEntity?
+
+    @Query(
+        "SELECT * FROM playlists WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR comment LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY name ASC LIMIT 50",
+    )
+    suspend fun searchPlaylists(query: String): List<PlaylistEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertEntries(entries: List<PlaylistEntryEntity>)
@@ -667,14 +688,21 @@ interface CachedMetadataDao {
     suspend fun getAlbumById(albumId: String): CachedAlbumEntity?
 
     @Query(
-        "SELECT * FROM cached_albums WHERE name LIKE '%' || :query || '%' OR artist LIKE '%' || :query || '%' ORDER BY name ASC",
+        "SELECT * FROM cached_albums WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR artist LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR genre LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR CAST(year AS TEXT) LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "ORDER BY name ASC LIMIT 100",
     )
     suspend fun searchAlbums(query: String): List<CachedAlbumEntity>
 
     /** Local-only album search — albums that have at least one playable track. */
     @Query(
         "SELECT DISTINCT a.* FROM cached_albums a JOIN tracks t ON t.album_id = a.id " +
-            "WHERE (a.name LIKE '%' || :query || '%' OR a.artist LIKE '%' || :query || '%') " +
+            "WHERE (a.name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR a.artist LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR a.genre LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR CAST(a.year AS TEXT) LIKE '%' || :query || '%' ESCAPE '\\') " +
             "AND (t.cached_file_path IS NOT NULL OR t.is_downloaded = 1) ORDER BY a.name ASC LIMIT 50",
     )
     suspend fun searchPlayableAlbums(query: String): List<CachedAlbumEntity>
@@ -729,21 +757,25 @@ interface CachedMetadataDao {
     @Query("UPDATE cached_artists SET similar_artists_json = :json WHERE id = :artistId")
     suspend fun setArtistSimilarArtists(artistId: String, json: String?)
 
-    @Query("SELECT * FROM cached_artists WHERE name LIKE '%' || :query || '%' ORDER BY name ASC")
+    @Query(
+        "SELECT * FROM cached_artists WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR similar_artists_json LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "ORDER BY name ASC LIMIT 100",
+    )
     suspend fun searchArtists(query: String): List<CachedArtistEntity>
 
     /** Local-only artist search — artists with at least one playable track. */
     @Query(
         "SELECT DISTINCT ar.* FROM cached_artists ar JOIN tracks t ON " +
             "(t.artist_id = ar.id OR (t.artist_id IS NULL AND t.artist = ar.name)) " +
-            "WHERE ar.name LIKE '%' || :query || '%' " +
+            "WHERE ar.name LIKE '%' || :query || '%' ESCAPE '\\' " +
             "AND (t.cached_file_path IS NOT NULL OR t.is_downloaded = 1) ORDER BY ar.name ASC LIMIT 50",
     )
     suspend fun searchPlayableArtists(query: String): List<CachedArtistEntity>
 
     /** Paged variant for the Custom Daily Mix artist picker ("Load more"). */
     @Query(
-        "SELECT * FROM cached_artists WHERE name LIKE '%' || :query || '%' " +
+        "SELECT * FROM cached_artists WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
             "ORDER BY name ASC LIMIT :limit OFFSET :offset",
     )
     suspend fun searchArtistsPaged(query: String, limit: Int, offset: Int): List<CachedArtistEntity>

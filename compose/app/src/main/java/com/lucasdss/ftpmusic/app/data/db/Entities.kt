@@ -80,6 +80,8 @@ data class AlbumEntity(
         Index(value = ["genre"]),
         Index(value = ["user_rating"]),
         Index(value = ["is_disliked"]),
+        // v58: album display name for multi-field search (singles may be null)
+        Index(value = ["album"]),
     ],
 )
 data class TrackEntity(
@@ -89,6 +91,8 @@ data class TrackEntity(
     @ColumnInfo(name = "artist_id") val artistId: String? = null,
     val title: String,
     val artist: String? = null,
+    /** Display album name; null for singles / unknown album. */
+    val album: String? = null,
     val genre: String? = null,
     @ColumnInfo(name = "track_number") val trackNumber: Int? = null,
     @ColumnInfo(name = "disc_number") val discNumber: Int? = null,
@@ -229,7 +233,13 @@ data class CachedAlbumTrackEntity(
     @ColumnInfo(name = "content_type") val contentType: String? = null,
 )
 
-@Entity(tableName = "cached_artists")
+@Entity(
+    tableName = "cached_artists",
+    indices = [
+        // v58: artist name search
+        Index(value = ["name"]),
+    ],
+)
 data class CachedArtistEntity(
     @PrimaryKey val id: String,
     val name: String,

@@ -35,7 +35,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
     ],
-    version = 57,
+    version = 58,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1035,5 +1035,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_57 = ALL_MIGRATIONS_56 + MIGRATION_56_57
+
+        // Migration 57→58: multi-field search — tracks.album + artist name index.
+        val MIGRATION_57_58 = object : Migration(57, 58) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE tracks ADD COLUMN album TEXT")
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_tracks_album` ON `tracks` (`album`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_cached_artists_name` ON `cached_artists` (`name`)",
+                )
+                // Backfill album display name from cached_albums when album_id known.
+                database.execSQL(
+                    """
+                    UPDATE tracks SET album = (
+                        SELECT ca.name FROM cached_albums ca WHERE ca.id = tracks.album_id
+                    ) WHERE album IS NULL AND album_id IS NOT NULL
+                    """.trimIndent(),
+                )
+            }
+        }
+        val ALL_MIGRATIONS_58 = ALL_MIGRATIONS_57 + MIGRATION_57_58
     }
 }

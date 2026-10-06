@@ -20,6 +20,7 @@ private val TYPE_COLORS = mapOf(
     "album" to BrandPurple,
     "song" to Color(0xFF5B8DEE),
     "playlist" to Color(0xFFF0A040),
+    "genre" to Color(0xFF26A69A),
 )
 
 @Composable

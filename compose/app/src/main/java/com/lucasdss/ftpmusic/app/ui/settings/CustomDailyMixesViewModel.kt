@@ -9,6 +9,7 @@ import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.repository.CustomMix
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.data.repository.MixFilters
+import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -249,7 +250,11 @@ class CustomDailyMixesViewModel @Inject constructor(
         artistSearchJob?.cancel()
         artistSearchJob = viewModelScope.launch {
             delay(ARTIST_SEARCH_DEBOUNCE_MS)
-            val results = metadataDao.searchArtistsPaged(query, ARTIST_PAGE, 0)
+            val results = metadataDao.searchArtistsPaged(
+                SearchQueryNormalizer.escapeLike(query),
+                ARTIST_PAGE,
+                0,
+            )
             updateEditor { editor ->
                 if (editor.artistQuery != query) {
                     editor
@@ -270,7 +275,11 @@ class CustomDailyMixesViewModel @Inject constructor(
         val offset = editor.artistResults.size
         artistSearchJob?.cancel()
         artistSearchJob = viewModelScope.launch {
-            val results = metadataDao.searchArtistsPaged(query, ARTIST_PAGE, offset)
+            val results = metadataDao.searchArtistsPaged(
+                SearchQueryNormalizer.escapeLike(query),
+                ARTIST_PAGE,
+                offset,
+            )
             updateEditor { current ->
                 if (current.artistQuery != query) {
                     current
