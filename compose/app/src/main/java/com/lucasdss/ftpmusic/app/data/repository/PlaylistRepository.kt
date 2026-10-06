@@ -226,7 +226,8 @@ class PlaylistRepository @Inject constructor(
             "ftpmusic-playlist",
             "createPlaylistWithTracksSynced tempId=$tempId serverId=$serverId synced=$synced",
         )
-        return serverId
+        // Only return server id when the full create+add flush succeeded (audit P0).
+        return if (synced && serverId != null) serverId else null
     }
 
     /** Mark playlist public/private on server and mirror [PlaylistEntity.isPublic]. */

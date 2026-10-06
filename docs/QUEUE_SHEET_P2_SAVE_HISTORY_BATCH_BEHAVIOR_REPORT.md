@@ -7,7 +7,8 @@ YT dismiss-session rejected. Clear = `clearPriority` only outside selection.
 
 | Feature | Behavior |
 |---------|----------|
-| Save | Local-first `PlaylistRepository`; Share unchanged (ADR-0015) |
+| Save | Local-first `PlaylistRepository` |
+| Share | Local-first + public + deep link (ADR-0076) |
 | History | `TrackDao.getRecentlyPlayed(20)`; exclude queue IDs; `playNext` |
 | Batch | Select / long-press → checkboxes → Remove descending |
 
@@ -53,4 +54,5 @@ YT dismiss-session rejected. Clear = `clearPriority` only outside selection.
 
 ## OOS
 
-Sleep timer / repeat in sheet; YT dismiss-session; Dual/Cast flatten; rework Share to local-first.
+YT dismiss-session; Dual/Cast flatten; Navidrome `createShare` guest links.
+~~Sleep/repeat in sheet~~ / ~~Share local-first publish~~ — done (ADR-0076).

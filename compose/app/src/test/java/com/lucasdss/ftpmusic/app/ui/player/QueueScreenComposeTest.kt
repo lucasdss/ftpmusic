@@ -28,6 +28,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /** Compose UI tests for QueueScreen with a mocked PlaybackViewModel and Player. */
+@Suppress("DEPRECATION")
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], application = Application::class, qualifiers = "w400dp-h800dp")

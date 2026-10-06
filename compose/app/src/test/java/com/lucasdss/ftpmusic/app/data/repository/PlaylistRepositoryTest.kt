@@ -287,4 +287,23 @@ class PlaylistRepositoryTest {
             // Expected — exception propagates to caller
         }
     }
+
+    @Test
+    fun `createPlaylistWithTracksSynced returns server id when flush succeeds`() = runTest {
+        coEvery { syncWorker.flushNowAndAwait() } returns true
+        every { syncWorker.consumeIdRemap(any()) } returns "server-pl"
+        val id = repo.createPlaylistWithTracksSynced("Queue Mix", listOf("t1", "t2"))
+        assertEquals("server-pl", id)
+        coVerify { pendingChangeDao.insert(match { it.changeType == "create" }) }
+        coVerify { pendingChangeDao.insert(match { it.changeType == "add_tracks" && it.payload == "t1,t2" }) }
+        coVerify { syncWorker.flushNowAndAwait() }
+    }
+
+    @Test
+    fun `createPlaylistWithTracksSynced returns null when flush incomplete`() = runTest {
+        coEvery { syncWorker.flushNowAndAwait() } returns false
+        every { syncWorker.consumeIdRemap(any()) } returns "server-pl"
+        val id = repo.createPlaylistWithTracksSynced("Queue Mix", listOf("t1"))
+        assertNull(id)
+    }
 }

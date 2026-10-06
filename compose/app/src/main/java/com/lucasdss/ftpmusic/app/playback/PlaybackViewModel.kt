@@ -205,6 +205,9 @@ class PlaybackViewModel @Inject constructor(
 
     fun isContinuousPlayEnabled(): Boolean = playbackManager.continuousPlayEnabled
 
+    /** Reactive Continuous Play for queue sheet (settings + in-sheet toggle). */
+    val continuousPlayEnabled: StateFlow<Boolean> = playbackManager.continuousPlayEnabledFlow
+
     fun playStream(url: String, title: String) = playbackManager.playStream(url, title)
     fun persistQueue() {
         playbackManager.persistCurrentQueue()

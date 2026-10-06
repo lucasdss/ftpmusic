@@ -55,7 +55,11 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  * **Production UI** is the in-player bottom sheet in [PlayerBar] (`queue_sheet`).
  * Keep section semantics (Queue / Next from / Autoplay) and brand tokens
  * aligned with that sheet so tests do not drift from shipping chrome.
+ *
+ * Not routed from [com.lucasdss.ftpmusic.app.ui.NavHost] — harness / Compose tests only.
+ * Prefer [PlayerBar] `queue_sheet` for new queue UX (ADR-0070 / audit remediation).
  */
+@Deprecated("Harness only — prod SoT is PlayerBar queue_sheet", ReplaceWith("PlayerBar(...)"))
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel()) {

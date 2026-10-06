@@ -242,7 +242,7 @@ class PlayerSurfacesUxTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("queue_section_priority").assertExists()
         composeRule.onNodeWithText("Next in Queue · 1").assertExists()
-        composeRule.onNodeWithText("Clear queue").assertExists()
+        composeRule.onNodeWithText("Clear Next in Queue").assertExists()
     }
 
     @Test
@@ -423,5 +423,53 @@ class PlayerSurfacesUxTest {
         assertTrue(sleep)
         composeRule.onNodeWithTag("queue_sheet_repeat").assertExists().performClick()
         assertTrue(repeat)
+    }
+
+    @Test
+    fun `queue sheet selection hides Clear and sleep strip`() {
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 3,
+                    priorityQueueSize = 1,
+                    continuousPlayEnabled = true,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                        UpcomingTrack(
+                            title = "Radio",
+                            isCurrent = false,
+                            isPriority = false,
+                            isAutoplay = true,
+                            queueIndex = 2,
+                            entryId = 3,
+                        ),
+                    ),
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_clear_priority").assertExists()
+        composeRule.onNodeWithTag("queue_clear_autoplay").assertExists()
+        composeRule.onNodeWithTag("queue_sheet_sleep").assertExists()
+        composeRule.onNodeWithTag("queue_select_enter").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_clear_priority").assertDoesNotExist()
+        composeRule.onNodeWithTag("queue_clear_autoplay").assertDoesNotExist()
+        composeRule.onNodeWithTag("queue_sheet_sleep").assertDoesNotExist()
+        composeRule.onNodeWithTag("queue_select_cancel").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_clear_priority").assertExists()
+        composeRule.onNodeWithTag("queue_sheet_sleep").assertExists()
     }
 }

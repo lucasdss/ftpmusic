@@ -17,7 +17,7 @@
     <string name="player_tracks_count">%1$d tracks</string>
     <string name="player_clear">Clear</string>
     <!-- Clear only removes manual Next in Queue (Spotify / Apple) -->
-    <string name="player_clear_queue">Clear queue</string>
+    <string name="player_clear_queue">Clear Next in Queue</string>
     <string name="player_clear_autoplay">Clear Autoplay</string>
     <string name="player_shuffle">Shuffle</string>
     <string name="player_share_queue">Share Queue</string>

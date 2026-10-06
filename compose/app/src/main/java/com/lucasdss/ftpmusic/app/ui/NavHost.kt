@@ -884,6 +884,8 @@ fun FtpmusicNavHost() {
                         { playbackViewModel.refreshQueueHistory() }
                     }
                     val queueHistory by playbackViewModel.queueHistory.collectAsStateWithLifecycle()
+                    val continuousPlayEnabled by
+                        playbackViewModel.continuousPlayEnabled.collectAsStateWithLifecycle()
 
                     PlayerBar(
                         state = PlayerBarState(
@@ -926,7 +928,7 @@ fun FtpmusicNavHost() {
                             lyricsLoading = lyricsLoading,
                             contextSource = playbackState.contextSource,
                             priorityQueueSize = playbackState.priorityQueueSize,
-                            continuousPlayEnabled = playbackViewModel.isContinuousPlayEnabled(),
+                            continuousPlayEnabled = continuousPlayEnabled,
                             queueHistory = queueHistory,
                             waveformBars = waveformBars,
                         ),

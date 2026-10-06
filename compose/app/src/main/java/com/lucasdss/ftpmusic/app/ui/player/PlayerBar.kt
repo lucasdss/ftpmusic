@@ -1146,13 +1146,25 @@ private fun BoxScope.PlayerQueuePanel(
 ) {
     with(state) {
         var selectionMode by remember { mutableStateOf(false) }
-        var selectedIndices by remember { mutableStateOf(setOf<Int>()) }
+
+        /** Selection keyed by [queueRowKey] (entryId preferred) — ADR audit remediation. */
+        var selectedKeys by remember { mutableStateOf(setOf<Any>()) }
         var showSaveDialog by remember { mutableStateOf(false) }
         LaunchedEffect(showQueue) {
             if (!showQueue) {
                 selectionMode = false
-                selectedIndices = emptySet()
+                selectedKeys = emptySet()
                 showSaveDialog = false
+            }
+        }
+        // Drop stale selection keys when the upcoming queue identity changes.
+        val upcomingSelectionKeys = remember(nextTracks) {
+            nextTracks.filter { !it.isCurrent }.map { queueRowKey(it) }
+        }
+        LaunchedEffect(upcomingSelectionKeys) {
+            if (selectionMode) {
+                val valid = upcomingSelectionKeys.toSet()
+                selectedKeys = selectedKeys.intersect(valid)
             }
         }
         // ── Queue peek strip — always composed (the sheet covers it when
@@ -1696,7 +1708,7 @@ private fun BoxScope.PlayerQueuePanel(
                                         modifier = Modifier
                                             .clickable {
                                                 selectionMode = false
-                                                selectedIndices = emptySet()
+                                                selectedKeys = emptySet()
                                             }
                                             .padding(spacingS())
                                             .heightIn(min = adp(48f))
@@ -1709,10 +1721,14 @@ private fun BoxScope.PlayerQueuePanel(
                                         fontSize = textLabelM(),
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier
-                                            .clickable(enabled = selectedIndices.isNotEmpty()) {
-                                                onRemoveFromQueueBatch(selectedIndices)
+                                            .clickable(enabled = selectedKeys.isNotEmpty()) {
+                                                val indices = reorderableTracks
+                                                    .filter { queueRowKey(it) in selectedKeys }
+                                                    .map { it.queueIndex }
+                                                    .toSet()
+                                                onRemoveFromQueueBatch(indices)
                                                 selectionMode = false
-                                                selectedIndices = emptySet()
+                                                selectedKeys = emptySet()
                                             }
                                             .padding(spacingS())
                                             .heightIn(min = adp(48f))
@@ -1810,19 +1826,22 @@ private fun BoxScope.PlayerQueuePanel(
                                             letterSpacing = 0.5.sp,
                                         )
                                         Spacer(Modifier.weight(1f))
-                                        // Spotify/Apple: Clear removes manual Next in Queue only
-                                        Text(
-                                            stringResource(R.string.player_clear_queue),
-                                            color = DestructiveRed,
-                                            fontSize = textLabelM(),
-                                            fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier
-                                                .clickable { onClearQueue() }
-                                                .padding(spacingS())
-                                                .heightIn(min = adp(48f))
-                                                .wrapContentHeight(Alignment.CenterVertically)
-                                                .testTag("queue_clear_priority"),
-                                        )
+                                        // Spotify/Apple: Clear removes manual Next in Queue only.
+                                        // Hidden in selection mode (ADR-0075 / audit).
+                                        if (!selectionMode) {
+                                            Text(
+                                                stringResource(R.string.player_clear_queue),
+                                                color = DestructiveRed,
+                                                fontSize = textLabelM(),
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier
+                                                    .clickable { onClearQueue() }
+                                                    .padding(spacingS())
+                                                    .heightIn(min = adp(48f))
+                                                    .wrapContentHeight(Alignment.CenterVertically)
+                                                    .testTag("queue_clear_priority"),
+                                            )
+                                        }
                                     }
                                     Spacer(
                                         Modifier.height(adp(1f)).fillMaxWidth()
@@ -1831,7 +1850,8 @@ private fun BoxScope.PlayerQueuePanel(
                                 }
                             }
                             items(priorityTracks, key = { queueRowKey(it) }) { track ->
-                                ReorderableItem(state = reorderableState, key = queueRowKey(track)) { isDragging ->
+                                val key = queueRowKey(track)
+                                ReorderableItem(state = reorderableState, key = key) { isDragging ->
                                     QueueDismissTrackRow(
                                         track = track,
                                         isPlaying = isPlaying,
@@ -1840,18 +1860,18 @@ private fun BoxScope.PlayerQueuePanel(
                                         onPlayQueueItem = onPlayQueueItem,
                                         onRemoveFromQueue = onRemoveFromQueue,
                                         selectionMode = selectionMode,
-                                        selected = track.queueIndex in selectedIndices,
+                                        selected = key in selectedKeys,
                                         onToggleSelect = {
-                                            selectedIndices = if (track.queueIndex in selectedIndices) {
-                                                selectedIndices - track.queueIndex
+                                            selectedKeys = if (key in selectedKeys) {
+                                                selectedKeys - key
                                             } else {
-                                                selectedIndices + track.queueIndex
+                                                selectedKeys + key
                                             }
                                         },
                                         onLongPressSelect = {
                                             if (!selectionMode) {
                                                 selectionMode = true
-                                                selectedIndices = setOf(track.queueIndex)
+                                                selectedKeys = setOf(key)
                                             }
                                         },
                                         dragHandleModifier = if (selectionMode) {
@@ -1904,7 +1924,8 @@ private fun BoxScope.PlayerQueuePanel(
                                 }
                             }
                             items(continueTracks, key = { queueRowKey(it) }) { track ->
-                                ReorderableItem(state = reorderableState, key = queueRowKey(track)) { isDragging ->
+                                val key = queueRowKey(track)
+                                ReorderableItem(state = reorderableState, key = key) { isDragging ->
                                     QueueDismissTrackRow(
                                         track = track,
                                         isPlaying = isPlaying,
@@ -1913,18 +1934,18 @@ private fun BoxScope.PlayerQueuePanel(
                                         onPlayQueueItem = onPlayQueueItem,
                                         onRemoveFromQueue = onRemoveFromQueue,
                                         selectionMode = selectionMode,
-                                        selected = track.queueIndex in selectedIndices,
+                                        selected = key in selectedKeys,
                                         onToggleSelect = {
-                                            selectedIndices = if (track.queueIndex in selectedIndices) {
-                                                selectedIndices - track.queueIndex
+                                            selectedKeys = if (key in selectedKeys) {
+                                                selectedKeys - key
                                             } else {
-                                                selectedIndices + track.queueIndex
+                                                selectedKeys + key
                                             }
                                         },
                                         onLongPressSelect = {
                                             if (!selectionMode) {
                                                 selectionMode = true
-                                                selectedIndices = setOf(track.queueIndex)
+                                                selectedKeys = setOf(key)
                                             }
                                         },
                                         dragHandleModifier = if (selectionMode) {
@@ -1985,7 +2006,7 @@ private fun BoxScope.PlayerQueuePanel(
                                         letterSpacing = 0.5.sp,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    if (autoplayTracks.isNotEmpty()) {
+                                    if (autoplayTracks.isNotEmpty() && !selectionMode) {
                                         Text(
                                             stringResource(R.string.player_clear_autoplay),
                                             color = BrandTeal,
@@ -2020,7 +2041,8 @@ private fun BoxScope.PlayerQueuePanel(
                         }
                         if (autoplayTracks.isNotEmpty()) {
                             items(autoplayTracks, key = { queueRowKey(it) }) { track ->
-                                ReorderableItem(state = reorderableState, key = queueRowKey(track)) { isDragging ->
+                                val key = queueRowKey(track)
+                                ReorderableItem(state = reorderableState, key = key) { isDragging ->
                                     QueueDismissTrackRow(
                                         track = track,
                                         isPlaying = isPlaying,
@@ -2029,18 +2051,18 @@ private fun BoxScope.PlayerQueuePanel(
                                         onPlayQueueItem = onPlayQueueItem,
                                         onRemoveFromQueue = onRemoveFromQueue,
                                         selectionMode = selectionMode,
-                                        selected = track.queueIndex in selectedIndices,
+                                        selected = key in selectedKeys,
                                         onToggleSelect = {
-                                            selectedIndices = if (track.queueIndex in selectedIndices) {
-                                                selectedIndices - track.queueIndex
+                                            selectedKeys = if (key in selectedKeys) {
+                                                selectedKeys - key
                                             } else {
-                                                selectedIndices + track.queueIndex
+                                                selectedKeys + key
                                             }
                                         },
                                         onLongPressSelect = {
                                             if (!selectionMode) {
                                                 selectionMode = true
-                                                selectedIndices = setOf(track.queueIndex)
+                                                selectedKeys = setOf(key)
                                             }
                                         },
                                         dragHandleModifier = if (selectionMode) {

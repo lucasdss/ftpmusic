@@ -13,6 +13,9 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -110,9 +113,12 @@ class PlaybackManager @Inject constructor(
     var journalCap: Int = 100
         private set
 
-    @Volatile
-    var continuousPlayEnabled: Boolean = true
-        private set
+    private val _continuousPlayEnabled = MutableStateFlow(true)
+
+    /** Reactive Continuous Play flag for UI (queue sheet / settings). */
+    val continuousPlayEnabledFlow: StateFlow<Boolean> = _continuousPlayEnabled.asStateFlow()
+    val continuousPlayEnabled: Boolean
+        get() = _continuousPlayEnabled.value
 
     private val gson = Gson()
 
@@ -324,7 +330,7 @@ class PlaybackManager @Inject constructor(
     }
 
     fun setContinuousPlayEnabled(enabled: Boolean) {
-        continuousPlayEnabled = enabled
+        _continuousPlayEnabled.value = enabled
     }
 
     // Maps trackId → original server URL for queue URL swapping when Cast connects/disconnects

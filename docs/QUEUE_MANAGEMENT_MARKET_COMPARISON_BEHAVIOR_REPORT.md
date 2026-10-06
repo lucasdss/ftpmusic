@@ -67,4 +67,5 @@ Gate: assembleDebug + targeted Compose green; ≥80% on touched UI contracts via
 1. ~~Kill `QueueAutoLoader` (PR #2)~~ — done; CP sole local end-extend.
 2. ~~Merge `playback_state` → `queue_state` (PR #3)~~ — done (DB 57).
 3. ~~P2: batch select, save-as-playlist, history band~~ — done (ADR-0075).
-4. Sleep timer strip inside queue (already on NP header) — OOS.
+4. ~~Sleep/repeat strip + Share publish~~ — done (ADR-0076).
+5. Guest `createShare` links; Cast Continuous Play; Overwrite prune — backlog.
