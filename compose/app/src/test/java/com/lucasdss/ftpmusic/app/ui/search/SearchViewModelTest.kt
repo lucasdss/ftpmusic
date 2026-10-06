@@ -60,6 +60,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
     }
 
@@ -101,6 +103,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
@@ -289,6 +293,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -326,6 +332,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         assertTrue(viewModel.isLocalOnly())
         viewModel.onQueryChanged("air")
@@ -375,6 +383,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.onQueryChanged("mid")
         viewModel.search()
@@ -406,6 +416,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 broken,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         advanceUntilIdle()
         assertFalse(viewModel.isLocalOnly())
@@ -427,6 +439,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         advanceUntilIdle()
         NetworkAvailabilityHolder.resetForTests(false)
@@ -453,6 +467,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.setFilterDownloaded(true)
         viewModel.setFilterDownloaded(false)
@@ -478,6 +494,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -535,6 +553,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.onQueryChanged("test")
         viewModel.setFilterDownloaded(true)
@@ -564,6 +584,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.onQueryChanged("more")
         viewModel.loadMoreSearchResults()
@@ -602,6 +624,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         // Seed state via search failure path with empty results
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
@@ -628,6 +652,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.onQueryChanged("ab")
         viewModel.search()
@@ -670,6 +696,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
         viewModel.onQueryChanged("rare")
         viewModel.search()

@@ -42,6 +42,24 @@ sealed class SearchTopHit {
     data class AlbumHit(val album: Album) : SearchTopHit()
 }
 
+/** External Discover row (MusicBrainz / Last.fm) — Phase-5. */
+data class DiscoverArtistHit(
+    val name: String,
+    val mbid: String? = null,
+    val disambiguation: String? = null,
+    val source: String = "musicbrainz",
+    val inLibrary: Boolean = false,
+    val localArtistId: String? = null,
+)
+
+data class DiscoverTrackHit(
+    val title: String,
+    val artistName: String? = null,
+    val mbid: String? = null,
+    val inLibrary: Boolean = false,
+    val localTrackId: String? = null,
+)
+
 data class SearchState(
     val query: String = "",
     val artists: List<Artist> = emptyList(),
@@ -66,6 +84,15 @@ data class SearchState(
     val ftsEmpty: Boolean = false,
     val topHit: SearchTopHit? = null,
     val usedSoftTypo: Boolean = false,
+    /** Idle tag chips from Room Last.fm enrich (Phase-5). */
+    val popularTags: List<String> = emptyList(),
+    val tagsEmpty: Boolean = false,
+    val hasLastFmKey: Boolean = false,
+    /** Result-header tag chips overlapping query. */
+    val matchedTags: List<String> = emptyList(),
+    val discoverArtists: List<DiscoverArtistHit> = emptyList(),
+    val discoverTracks: List<DiscoverTrackHit> = emptyList(),
+    val isDiscoverLoading: Boolean = false,
 )
 
 enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS, GENRES }
@@ -83,6 +110,8 @@ class SearchViewModel @Inject constructor(
     private val metadataSyncWorker: com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker,
     private val api: SubsonicApi,
     private val offlineModeManager: OfflineModeManager,
+    private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
+    private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
 ) : ViewModel() {
 
     companion object {
@@ -91,6 +120,7 @@ class SearchViewModel @Inject constructor(
         private const val TYPEAHEAD_DEBOUNCE_MS = 300L
         private const val PAGE_SIZE = 50
         private const val MIN_QUERY_LEN = 2
+        private const val DISCOVER_LIMIT = 8
     }
 
     private val _state = MutableStateFlow(SearchState())
@@ -98,10 +128,12 @@ class SearchViewModel @Inject constructor(
 
     private var searchJob: Job? = null
     private var typeaheadJob: Job? = null
+    private var discoverJob: Job? = null
     private var albumSearchOffset = 0
     private var artistSearchOffset = 0
     private var songSearchOffset = 0
     private var isLoadingMoreSearch = false
+    private var lastTagChipQuery: String? = null
 
     private fun isOffline(): Boolean = try {
         offlineModeManager.isOffline.value
@@ -120,8 +152,10 @@ class SearchViewModel @Inject constructor(
         // Load recent searches from storage
         val raw = storage.get(KEY_RECENT_SEARCHES) ?: ""
         val recent = raw.split("|||").filter { it.isNotBlank() }
-        _state.value = _state.value.copy(recentSearches = recent)
+        val hasKey = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank()
+        _state.value = _state.value.copy(recentSearches = recent, hasLastFmKey = hasKey)
         loadGenres()
+        loadPopularTags()
         observeLocalOnly()
         observeIndexing()
     }
@@ -199,6 +233,23 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    fun loadPopularTags() {
+        viewModelScope.launch {
+            try {
+                val hasKey = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank()
+                val tagged = metadataDao.getArtistsWithSearchTags(500)
+                val tags = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags.aggregateTags(tagged, limit = 24)
+                _state.value = _state.value.copy(
+                    popularTags = tags,
+                    tagsEmpty = tags.isEmpty(),
+                    hasLastFmKey = hasKey,
+                )
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(tagsEmpty = true)
+            }
+        }
+    }
+
     private fun saveRecentSearch(query: String) {
         val current = _state.value.recentSearches.toMutableList()
         current.remove(query) // remove duplicate if exists
@@ -211,6 +262,8 @@ class SearchViewModel @Inject constructor(
     fun onQueryChanged(query: String) {
         searchJob?.cancel()
         typeaheadJob?.cancel()
+        discoverJob?.cancel()
+        lastTagChipQuery = null
         val trimmed = query.trim()
         // Phase-4: keep prior results painted until new search replaces them (no flicker).
         _state.value = _state.value.copy(
@@ -229,6 +282,10 @@ class SearchViewModel @Inject constructor(
             topHit = if (trimmed.isEmpty()) null else _state.value.topHit,
             usedSoftTypo = if (trimmed.isEmpty()) false else _state.value.usedSoftTypo,
             filterType = if (trimmed.isEmpty()) SearchFilterType.ALL else _state.value.filterType,
+            matchedTags = if (trimmed.isEmpty()) emptyList() else _state.value.matchedTags,
+            discoverArtists = if (trimmed.isEmpty()) emptyList() else _state.value.discoverArtists,
+            discoverTracks = if (trimmed.isEmpty()) emptyList() else _state.value.discoverTracks,
+            isDiscoverLoading = false,
         )
         if (trimmed.length >= MIN_QUERY_LEN) {
             typeaheadJob = viewModelScope.launch {
@@ -246,8 +303,27 @@ class SearchViewModel @Inject constructor(
     fun onDecadeChip(decade: String) {
         typeaheadJob?.cancel()
         searchJob?.cancel()
+        discoverJob?.cancel()
+        lastTagChipQuery = null
         _state.value = _state.value.copy(query = decade, isLoading = true)
         search()
+    }
+
+    /** Tag chip: immediate local search; optional Last.fm Discover boost. */
+    fun onTagChip(tag: String) {
+        typeaheadJob?.cancel()
+        searchJob?.cancel()
+        discoverJob?.cancel()
+        lastTagChipQuery = tag
+        _state.value = _state.value.copy(query = tag, isLoading = true)
+        search()
+    }
+
+    fun onMoodChip(moodLabel: String) {
+        val mood = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags.MOODS
+            .firstOrNull { it.label.equals(moodLabel, ignoreCase = true) }
+        val q = mood?.searchQuery() ?: moodLabel.lowercase()
+        onTagChip(q)
     }
 
     fun search() {
@@ -255,6 +331,7 @@ class SearchViewModel @Inject constructor(
         if (query.length < MIN_QUERY_LEN) return
         typeaheadJob?.cancel()
         searchJob?.cancel()
+        discoverJob?.cancel()
         searchJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
             val filterEnabled = _state.value.filterDownloaded
@@ -274,6 +351,8 @@ class SearchViewModel @Inject constructor(
                         listOf(it.title, it.artist, it.album)
                     }
                     val localIds = playableTracks.map { it.id }.toSet()
+                    val matchedTags = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags
+                        .matchedTagsForQuery(hit.artists, query)
                     _state.value = _state.value.copy(
                         tracks = rankedTracks,
                         albums = rankedAlbums,
@@ -290,6 +369,10 @@ class SearchViewModel @Inject constructor(
                         topHit = pickTopHit(rankedTracks, rankedArtists, rankedAlbums),
                         usedSoftTypo = hit.usedSoftTypo,
                         ftsEmpty = !hit.usedFts && searchIndexRebuilder.ftsCount() == 0,
+                        matchedTags = matchedTags,
+                        discoverArtists = emptyList(),
+                        discoverTracks = emptyList(),
+                        isDiscoverLoading = false,
                     )
                     return@launch
                 }
@@ -313,6 +396,8 @@ class SearchViewModel @Inject constructor(
                     query,
                 ) { it.name }
                 val matchedGenres = hit.genres
+                val matchedTags = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags
+                    .matchedTagsForQuery(hit.artists, query)
                 _state.value = _state.value.copy(
                     tracks = cachedTracks,
                     albums = cachedAlbums,
@@ -325,7 +410,9 @@ class SearchViewModel @Inject constructor(
                     hasSearched = true,
                     topHit = pickTopHit(cachedTracks, cachedArtists, cachedAlbums),
                     usedSoftTypo = hit.usedSoftTypo,
+                    matchedTags = matchedTags,
                 )
+                launchDiscover(query)
                 // Compute local download/cache status from Phase 1 results
                 if (cachedTracks.isNotEmpty()) {
                     val localEntities = trackDao.getTracksByIds(cachedTracks.map { it.id })
@@ -551,6 +638,140 @@ class SearchViewModel @Inject constructor(
         artists.isNotEmpty() -> SearchTopHit.ArtistHit(artists.first())
         albums.isNotEmpty() -> SearchTopHit.AlbumHit(albums.first())
         else -> null
+    }
+
+    /**
+     * Secondary live Discover after local paint (Phase-5).
+     * Skipped when offline / local-only. Cancelled on new keystroke.
+     */
+    private fun launchDiscover(query: String) {
+        discoverJob?.cancel()
+        if (isLocalOnly() || query.length < MIN_QUERY_LEN) {
+            _state.value = _state.value.copy(
+                discoverArtists = emptyList(),
+                discoverTracks = emptyList(),
+                isDiscoverLoading = false,
+            )
+            return
+        }
+        discoverJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isDiscoverLoading = true)
+            try {
+                val tagBoost = lastTagChipQuery
+                val mbArtists = try {
+                    musicBrainzService.searchArtists(query, DISCOVER_LIMIT)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val mbTracks = try {
+                    musicBrainzService.searchRecordings(query, DISCOVER_LIMIT)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val lastFmArtists = try {
+                    if (tagBoost != null) {
+                        lastFmService.fetchTagTopArtists(tagBoost, DISCOVER_LIMIT)
+                    } else {
+                        lastFmService.searchArtists(query, DISCOVER_LIMIT)
+                    }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                val artistHits = LinkedHashMap<String, DiscoverArtistHit>()
+                for (a in mbArtists) {
+                    val local = resolveLocalArtist(a.mbid, a.name)
+                    artistHits[a.name.lowercase()] = DiscoverArtistHit(
+                        name = a.name,
+                        mbid = a.mbid,
+                        disambiguation = a.disambiguation,
+                        source = "musicbrainz",
+                        inLibrary = local != null,
+                        localArtistId = local?.id,
+                    )
+                }
+                for (a in lastFmArtists) {
+                    val key = a.name.lowercase()
+                    if (artistHits.containsKey(key)) continue
+                    val local = resolveLocalArtist(a.mbid, a.name)
+                    artistHits[key] = DiscoverArtistHit(
+                        name = a.name,
+                        mbid = a.mbid,
+                        source = "lastfm",
+                        inLibrary = local != null,
+                        localArtistId = local?.id,
+                    )
+                }
+
+                val trackHits = mbTracks.map { t ->
+                    val local = if (!t.mbid.isNullOrBlank()) {
+                        try {
+                            trackDao.getTrackByMbid(t.mbid)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                    DiscoverTrackHit(
+                        title = t.name,
+                        artistName = t.artistName,
+                        mbid = t.mbid,
+                        inLibrary = local != null,
+                        localTrackId = local?.id,
+                    )
+                }
+
+                if (_state.value.query.trim() != query) return@launch
+                _state.value = _state.value.copy(
+                    discoverArtists = artistHits.values.take(DISCOVER_LIMIT).toList(),
+                    discoverTracks = trackHits.take(DISCOVER_LIMIT),
+                    isDiscoverLoading = false,
+                )
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(isDiscoverLoading = false)
+            }
+        }
+    }
+
+    private suspend fun resolveLocalArtist(mbid: String?, name: String): CachedArtistEntity? {
+        if (!mbid.isNullOrBlank()) {
+            try {
+                metadataDao.getArtistByMbid(mbid)?.let { return it }
+            } catch (_: Exception) {
+            }
+        }
+        return try {
+            metadataDao.getArtistByExactName(name)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Soft-cache Discover artist stub into Room + FTS (never invents tracks). */
+    fun onDiscoverArtistTap(hit: DiscoverArtistHit, onNavigate: (String) -> Unit) {
+        if (hit.inLibrary && !hit.localArtistId.isNullOrBlank()) {
+            onNavigate(hit.localArtistId)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val stubId = hit.localArtistId
+                    ?: hit.mbid?.let { "mb:$it" }
+                    ?: "ext:${hit.name.lowercase().hashCode()}"
+                metadataDao.upsertArtists(
+                    listOf(
+                        CachedArtistEntity(
+                            id = stubId,
+                            name = hit.name,
+                            musicbrainzId = hit.mbid,
+                        ),
+                    ),
+                )
+                searchIndexRebuilder.scheduleRebuild(debounceMs = 3_000L)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private suspend fun cacheServerResults(results: SearchResults) {

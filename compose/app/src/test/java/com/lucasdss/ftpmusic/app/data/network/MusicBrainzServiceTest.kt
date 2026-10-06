@@ -87,4 +87,34 @@ class MusicBrainzServiceTest {
         val artists = JSONObject(json).optJSONArray("artists")
         assertTrue(artists == null || artists.length() == 0)
     }
+
+    @Test
+    fun `parseArtistHits returns multiple Discover rows`() {
+        val service = MusicBrainzService()
+        val json = JSONObject(
+            """{"artists":[
+              {"id":"a1","name":"Radiohead","disambiguation":"UK band","score":100},
+              {"id":"a2","name":"Radio Head","score":50}
+            ]}""",
+        )
+        val hits = service.parseArtistHits(json, limit = 8)
+        assertEquals(2, hits.size)
+        assertEquals("Radiohead", hits[0].name)
+        assertEquals("a1", hits[0].mbid)
+        assertEquals("UK band", hits[0].disambiguation)
+    }
+
+    @Test
+    fun `parseRecordingHits includes artist credit`() {
+        val service = MusicBrainzService()
+        val json = JSONObject(
+            """{"recordings":[
+              {"id":"r1","title":"Creep","artist-credit":[{"name":"Radiohead","artist":{"name":"Radiohead"}}]}
+            ]}""",
+        )
+        val hits = service.parseRecordingHits(json, limit = 5)
+        assertEquals(1, hits.size)
+        assertEquals("Creep", hits[0].name)
+        assertEquals("Radiohead", hits[0].artistName)
+    }
 }

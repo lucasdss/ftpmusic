@@ -121,6 +121,42 @@ class LastFmServiceTest {
         val svc = LastFmService(storage)
         assertTrue(svc.fetchSimilarArtists("X").isEmpty())
     }
+
+    @Test
+    fun `parseArtistSearch extracts names`() {
+        val json = """{"results":{"artistmatches":{"artist":[
+            {"name":"Radiohead","mbid":"a1","listeners":"100"},
+            {"name":"Radio","mbid":"","listeners":"10"}
+        ]}}}"""
+        val hits = service.parseArtistSearch(json, limit = 8)
+        assertEquals(2, hits.size)
+        assertEquals("Radiohead", hits[0].name)
+        assertEquals("a1", hits[0].mbid)
+        assertEquals(100L, hits[0].listeners)
+        assertNull(hits[1].mbid)
+    }
+
+    @Test
+    fun `parseTagTopArtists extracts names`() {
+        val json = """{"topartists":{"artist":[
+            {"name":"Brian Eno","mbid":"b1"},
+            {"name":"Aphex Twin","mbid":"b2"}
+        ]}}"""
+        val hits = service.parseTagTopArtists(json, limit = 5)
+        assertEquals(2, hits.size)
+        assertEquals("Brian Eno", hits[0].name)
+    }
+
+    @Test
+    fun `searchArtists short-circuits without key`() = kotlinx.coroutines.test.runTest {
+        val storage = io.mockk.mockk<com.lucasdss.ftpmusic.app.data.security.SecureStorage>(relaxed = true)
+        io.mockk.every {
+            storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LASTFM_API_KEY)
+        } returns ""
+        val svc = LastFmService(storage)
+        assertTrue(svc.searchArtists("radio").isEmpty())
+        assertTrue(svc.fetchTagTopArtists("chill").isEmpty())
+    }
 }
 
 /** Access the private parse method through the real service instance. */
