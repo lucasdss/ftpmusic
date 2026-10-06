@@ -10,6 +10,8 @@ import com.lucasdss.ftpmusic.app.data.model.SearchResults
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.repository.SearchRepository
+import com.lucasdss.ftpmusic.app.data.search.LocalSearchHit
+import com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import io.mockk.*
@@ -53,6 +55,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 offlineManager,
             )
@@ -208,18 +211,18 @@ class SearchViewModelTest {
 
         val trackDao = mockk<TrackDao>(relaxed = true)
         val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
-        coEvery { trackDao.searchPlayableTracks("test") } returns listOf(
-            TrackEntity(
-                id = "t1",
-                title = "Cached Song",
-                artist = "Artist",
-                coverArtUrl = "",
-                durationSeconds = 100,
-                isDownloaded = true,
-            ),
+        val localSearch = mockk<LocalSearchRepository>()
+        val playable = TrackEntity(
+            id = "t1",
+            title = "Cached Song",
+            artist = "Artist",
+            coverArtUrl = "",
+            durationSeconds = 100,
+            isDownloaded = true,
         )
-        coEvery { metadataDao.searchPlayableAlbums("test") } returns emptyList()
-        coEvery { metadataDao.searchPlayableArtists("test") } returns emptyList()
+        coEvery { localSearch.search("test", any(), playableOnly = true) } returns LocalSearchHit(
+            tracks = listOf(playable),
+        )
 
         viewModel =
             SearchViewModel(
@@ -229,6 +232,7 @@ class SearchViewModelTest {
                 trackDao,
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
+                localSearch,
                 api,
                 offlineManager,
             )
@@ -237,8 +241,7 @@ class SearchViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
-        coVerify(exactly = 1) { trackDao.searchPlayableTracks("test") }
-        coVerify(exactly = 0) { trackDao.searchAllTracks(any()) }
+        coVerify(exactly = 1) { localSearch.search("test", any(), playableOnly = true) }
         assertFalse(viewModel.state.value.isLoading)
         assertTrue(viewModel.state.value.filterDownloaded)
         assertEquals(1, viewModel.state.value.tracks.size)
@@ -253,9 +256,8 @@ class SearchViewModelTest {
 
         val trackDao = mockk<TrackDao>(relaxed = true)
         val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
-        coEvery { trackDao.searchPlayableTracks("air") } returns emptyList()
-        coEvery { metadataDao.searchPlayableAlbums("air") } returns emptyList()
-        coEvery { metadataDao.searchPlayableArtists("air") } returns emptyList()
+        val localSearch = mockk<LocalSearchRepository>()
+        coEvery { localSearch.search("air", any(), playableOnly = true) } returns LocalSearchHit()
 
         viewModel =
             SearchViewModel(
@@ -265,6 +267,7 @@ class SearchViewModelTest {
                 trackDao,
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
+                localSearch,
                 api,
                 offlineManager,
             )
@@ -274,7 +277,7 @@ class SearchViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
-        coVerify(exactly = 1) { trackDao.searchPlayableTracks("air") }
+        coVerify(exactly = 1) { localSearch.search("air", any(), playableOnly = true) }
         assertTrue(viewModel.state.value.filterDownloaded)
     }
 
@@ -287,20 +290,21 @@ class SearchViewModelTest {
         )
         val trackDao = mockk<TrackDao>(relaxed = true)
         val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
-        coEvery { trackDao.searchAllTracks("mid") } returns emptyList()
-        coEvery { trackDao.getTracksByIds(any()) } returns emptyList()
-        coEvery { trackDao.searchPlayableTracks("mid") } returns listOf(
-            TrackEntity(
-                id = "local1",
-                title = "Local",
-                artist = "A",
-                coverArtUrl = "",
-                durationSeconds = 1,
-                isDownloaded = true,
+        val localSearch = mockk<LocalSearchRepository>()
+        coEvery { localSearch.search("mid", any(), playableOnly = false) } returns LocalSearchHit()
+        coEvery { localSearch.search("mid", any(), playableOnly = true) } returns LocalSearchHit(
+            tracks = listOf(
+                TrackEntity(
+                    id = "local1",
+                    title = "Local",
+                    artist = "A",
+                    coverArtUrl = "",
+                    durationSeconds = 1,
+                    isDownloaded = true,
+                ),
             ),
         )
-        coEvery { metadataDao.searchPlayableAlbums("mid") } returns emptyList()
-        coEvery { metadataDao.searchPlayableArtists("mid") } returns emptyList()
+        coEvery { trackDao.getTracksByIds(any()) } returns emptyList()
 
         viewModel =
             SearchViewModel(
@@ -310,6 +314,7 @@ class SearchViewModelTest {
                 trackDao,
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
+                localSearch,
                 api,
                 offlineManager,
             )
@@ -321,7 +326,7 @@ class SearchViewModelTest {
         NetworkAvailabilityHolder.resetForTests(false)
         advanceUntilIdle()
 
-        coVerify(atLeast = 1) { trackDao.searchPlayableTracks("mid") }
+        coVerify(atLeast = 1) { localSearch.search("mid", any(), playableOnly = true) }
         assertEquals("local1", viewModel.state.value.tracks.firstOrNull()?.id)
         assertTrue(viewModel.state.value.filterDownloaded)
     }
@@ -338,6 +343,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 broken,
             )
@@ -356,6 +362,7 @@ class SearchViewModelTest {
                 trackDao,
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 offlineManager,
             )
@@ -379,6 +386,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 offlineManager,
             )
@@ -401,6 +409,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -416,47 +425,33 @@ class SearchViewModelTest {
 
     @Test
     fun `catch block filters cached tracks when filterDownloaded is true`() = runTest(testDispatcher) {
-        val trackDao = mockk<TrackDao>()
-        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>()
-        coEvery { trackDao.searchAllTracks("test") } returns listOf(
-            TrackEntity(
-                id = "t1",
-                title = "Track 1",
-                artist = "Artist",
-                artistId = "a1",
-                albumId = "al1",
-                coverArtUrl = "",
-                durationSeconds = 200,
-                isDownloaded = true,
-                cachedFilePath = null,
-            ),
-            TrackEntity(
-                id = "t2",
-                title = "Track 2",
-                artist = "Artist",
-                artistId = "a1",
-                albumId = "al1",
-                coverArtUrl = "",
-                durationSeconds = 180,
-                isDownloaded = false,
-                cachedFilePath = null,
-            ),
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        val localSearch = mockk<LocalSearchRepository>()
+        val t1 = TrackEntity(
+            id = "t1",
+            title = "Track 1",
+            artist = "Artist",
+            artistId = "a1",
+            albumId = "al1",
+            coverArtUrl = "",
+            durationSeconds = 200,
+            isDownloaded = true,
+            cachedFilePath = null,
         )
-        coEvery { trackDao.getTracksByIds(listOf("t1", "t2")) } returns listOf(
-            TrackEntity(
-                id = "t1",
-                title = "Track 1",
-                artist = "Artist",
-                artistId = "a1",
-                albumId = "al1",
-                coverArtUrl = "",
-                durationSeconds = 200,
-                isDownloaded = true,
-                cachedFilePath = null,
-            ),
+        val t2 = TrackEntity(
+            id = "t2",
+            title = "Track 2",
+            artist = "Artist",
+            artistId = "a1",
+            albumId = "al1",
+            coverArtUrl = "",
+            durationSeconds = 180,
+            isDownloaded = false,
+            cachedFilePath = null,
         )
-        coEvery { metadataDao.searchAlbums("test") } returns emptyList()
-        coEvery { metadataDao.searchArtists("test") } returns emptyList()
+        coEvery { localSearch.search("test", any(), playableOnly = false) } returns LocalSearchHit(tracks = listOf(t1, t2))
+        coEvery { trackDao.getTracksByIds(listOf("t1", "t2")) } returns listOf(t1)
         coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } throws RuntimeException("Network error")
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
@@ -469,6 +464,7 @@ class SearchViewModelTest {
                 trackDao,
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
+                localSearch,
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -495,6 +491,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -530,6 +527,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -553,6 +551,7 @@ class SearchViewModelTest {
                 trackDao,
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 mockk(relaxed = true),
             )
@@ -573,10 +572,11 @@ class SearchViewModelTest {
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         val trackDao = mockk<TrackDao>(relaxed = true)
         val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
-        coEvery { trackDao.searchAllTracks("rare") } returns emptyList()
-        coEvery { metadataDao.searchAlbums("rare") } returns emptyList()
-        coEvery { metadataDao.searchArtists("rare") } returns listOf(
-            com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity(id = "local-x", name = "Rare Artist X"),
+        val localSearch = mockk<LocalSearchRepository>()
+        coEvery { localSearch.search("rare", any(), playableOnly = false) } returns LocalSearchHit(
+            artists = listOf(
+                com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity(id = "local-x", name = "Rare Artist X"),
+            ),
         )
         val serverArtists = (1..20).map { Artist("s$it", "Server Artist $it") }
         coEvery {
@@ -591,6 +591,7 @@ class SearchViewModelTest {
                 trackDao,
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
+                localSearch,
                 api,
                 offlineManager,
             )

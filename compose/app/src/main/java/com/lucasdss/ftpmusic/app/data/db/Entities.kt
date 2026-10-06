@@ -204,6 +204,9 @@ data class CachedAlbumEntity(
     @ColumnInfo(name = "public_rating") val publicRating: Double? = null,
     @ColumnInfo(name = "public_rating_votes") val publicRatingVotes: Int? = null,
     @ColumnInfo(name = "musicbrainz_id") val musicbrainzId: String? = null,
+
+    // v59: getAlbumInfo2 notes for search enrichment
+    val notes: String? = null,
 )
 
 /** Lazy-cached album tracks — populated when user opens an album. Survives offline. */
@@ -254,6 +257,10 @@ data class CachedArtistEntity(
 
     // v39: Similar artists (last.fm) as JSON array of {name,mbid,match}
     @ColumnInfo(name = "similar_artists_json") val similarArtistsJson: String? = null,
+
+    // v59: search enrichment (getArtistInfo2 / aliases)
+    val biography: String? = null,
+    @ColumnInfo(name = "search_aliases") val searchAliases: String? = null,
 )
 
 @Entity(

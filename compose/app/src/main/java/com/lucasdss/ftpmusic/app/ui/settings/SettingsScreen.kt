@@ -542,6 +542,13 @@ fun SettingsScreen(
                 )
                 SectionDivider()
                 SectionToggleRow(
+                    label = "Search lyrics",
+                    subtitle = "Include cached lyrics text in local search (rebuilds after next sync)",
+                    checked = state.searchLyricsEnabled,
+                    onToggle = { viewModel.setSearchLyricsEnabled(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
                     label = "Hide navigation labels",
                     subtitle = "Show icons only in the bottom bar",
                     checked = state.hideNavLabels,

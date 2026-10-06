@@ -573,6 +573,29 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `searchAllTracks finds singles with null album_id by title and genre`() = runBlocking {
+        val trackDao = db.trackDao()
+        trackDao.upsertAll(
+            listOf(
+                TrackEntity(
+                    id = "single-1",
+                    title = "Lonely Single",
+                    artist = "Solo Act",
+                    album = null,
+                    albumId = null,
+                    genre = "Indie",
+                ),
+            ),
+        )
+        val byTitle = trackDao.searchAllTracks("Lonely")
+        assertEquals(1, byTitle.size)
+        assertNull(byTitle[0].albumId)
+        val byGenre = trackDao.searchAllTracks("Indie")
+        assertEquals(1, byGenre.size)
+        assertEquals("single-1", byGenre[0].id)
+    }
+
+    @Test
     fun `migration 47 to 48 adds composite filter columns and backfills favorites`() {
         val testDb = "migration-47-48-${System.nanoTime()}.db"
         context.deleteDatabase(testDb)

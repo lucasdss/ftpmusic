@@ -22,7 +22,8 @@
 | 11 | `getSimilarSongs2` | Instant mix / continuous playback | ScrobbleService |
 | 12 | `savePlayQueue` | Persist queue to server | ScrobbleService → MediaService |
 | 13 | `getPlayQueue` | ❌ UNUSED — defined, never called | None |
-| 14 | `getAlbumInfo2` | ❌ UNUSED — defined, never called | None |
+| 14 | `getAlbumInfo2` | ✅ Background enrich → `cached_albums.notes` + FTS | MetadataSyncWorker.enrichSearchMetadata |
+| 15 | `getArtistInfo2` | ✅ Background enrich → biography / aliases + FTS | MetadataSyncWorker.enrichSearchMetadata |
 | 15 | `getGenres` | Home genre chips | LibraryViewModel (throttled sync) |
 | 16 | `getSongsByGenre` | Genre detail screen | GenreDetailViewModel |
 | 17 | `getPlaylists` | Library Playlists tab, playlist picker | LibraryViewModel, AlbumDetailViewModel |
@@ -44,8 +45,8 @@
 | **Star Ratings** (albums/tracks) | `setRating` + parse `userRating` from `getAlbum`/`search3` | ❌ | Design shows StarRating on album cards + track rows. No `getRating` endpoint exists; ratings embedded in entity responses. Need to parse `userRating` field from existing API responses and implement `setRating`. |
 | **"Play Similar"** (Now Playing) | `getSimilarSongs2` + OpenSubsonic `sonicSimilarity` | ⚠️ PARTIAL | `getSimilarSongs2` is implemented. But design calls for "Play more like this" / "Play similar artists" — the current implementation uses a local fallback (same-artist → same-genre → random). Should use API first. |
 | **Internet Radio** (Android Auto) | `getInternetRadioStations` | ❌ | Design references "Live Radio" for Android Auto browse tree. Navidrome supports full internet radio suite. |
-| **Artist Images** | `getArtistInfo2` (last.fm) | ⚠️ WORKAROUND | Currently uses iTunes `CoverArtFallbackService`. `getArtistInfo2` returns last.fm images (small/medium/large) + biography. Would provide better artist images + bio text for Artist Detail screen. |
-| **Album Info** | `getAlbumInfo2` | ❌ | Defined but NEVER called. Returns album notes, last.fm URL, musicBrainz ID. Could enrich Album Detail screen. |
+| **Artist Images** | `getArtistInfo2` (last.fm) | ⚠️ PARTIAL | Background enrich writes biography / aliases into Room + FTS (search). Artist Detail still uses iTunes `CoverArtFallbackService` for images. |
+| **Album Info** | `getAlbumInfo2` | ⚠️ PARTIAL | Background enrich writes `cached_albums.notes` into Room + FTS (search). Album Detail UI does not yet surface notes. |
 
 ---
 
@@ -138,7 +139,7 @@ Fields returned by Subsonic API but NOT mapped in Kotlin models:
 | Track | `musicBrainzId` (String?) | `getAlbum`, `search3` | No |
 | Album | `starred` (DateTime?) | `getStarred2`, `getAlbumList2` | Yes — favorites |
 | Album | `songCount` (Int?) | `getAlbumList2`, `getArtist` | No — already have |
-| Artist | `biography` (String?) | `getArtistInfo2` | No |
+| Artist | `biography` (String?) | `getArtistInfo2` | Yes — search enrichment + FTS |
 | Artist | `largeImageUrl` (String?) | `getArtistInfo2` | Yes — artist images |
 
 ---
@@ -151,20 +152,20 @@ Fields returned by Subsonic API but NOT mapped in Kotlin models:
 | 2 | 🔴 HIGH | Parse `getSimilarSongs2` response properly, make it primary for "Play Similar" | Low |
 | 3 | 🔴 HIGH | Implement `getInternetRadioStations` for Android Auto browse tree | Low |
 | 4 | 🔴 HIGH | Implement `setRating` + parse `userRating` from entity responses + add StarRating UI | Medium |
-| 5 | 🟡 MEDIUM | Implement `getArtistInfo2` for biography + high-res images | Low |
+| 5 | 🟡 MEDIUM | Surface `getArtistInfo2` images on Artist Detail (bio already in search index) | Low |
 | 6 | 🟡 MEDIUM | Parse `getStarred2` into entities (artists + albums + tracks) | Low |
 | 7 | 🟡 MEDIUM | Fix `AlbumListType` enum: add `byGenre`, `byYear`; remove invalid `highest` | Trivial |
 | 8 | 🟡 MEDIUM | Check for `sonicSimilarity` extension + use if available | Low |
 | 9 | 🟡 MEDIUM | Implement `getTopSongs` for artist detail enrichment | Low |
 | 10 | 🟢 LOW | Implement `getScanStatus` for library scan progress | Low |
-| 11 | 🟢 LOW | Remove or wire `getPlayQueue` and `getAlbumInfo2` (dead code) | Trivial |
+| 11 | 🟢 LOW | Remove or wire `getPlayQueue` (dead code); `getAlbumInfo2` wired for search enrich | Trivial |
 
 ---
 
 ## 7. Dead Endpoints in SubsonicApi.kt
 
-Two endpoints defined but have ZERO callers:
+One endpoint defined but has ZERO callers:
 - `getPlayQueue` (line 97-98): Restore play queue from server
-- `getAlbumInfo2` (line 100-104): Album notes + last.fm images
 
-These should either be wired or removed.
+`getAlbumInfo2` / `getArtistInfo2` are wired from `MetadataSyncWorker.enrichSearchMetadata`
+into Room + FTS (search only; Detail UI may still ignore notes/bio).

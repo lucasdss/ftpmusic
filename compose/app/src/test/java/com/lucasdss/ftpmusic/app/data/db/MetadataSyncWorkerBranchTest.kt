@@ -73,7 +73,8 @@ class MetadataSyncWorkerBranchTest {
 
     private fun makeWorker() = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
-        offlineModeManager, dailyMixRepository, UnconfinedTestDispatcher(scheduler),
+        offlineModeManager, dailyMixRepository,
+        ioDispatcher = UnconfinedTestDispatcher(scheduler),
     )
 
     private fun okAlbumsResponse(albums: List<Map<String, Any?>>): Map<String, Any> = mapOf(

@@ -44,6 +44,7 @@ class SearchViewModelFilterTest {
                 trackDao,
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
+                mockk(relaxed = true), // localSearch
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )

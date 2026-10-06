@@ -210,6 +210,10 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id IN (:trackIds)")
     suspend fun getTracksByIds(trackIds: List<String>): List<TrackEntity>
 
+    /** Full scan for FTS rebuild only — not for UI. */
+    @Query("SELECT * FROM tracks")
+    suspend fun getAllTracksForSearchIndex(): List<TrackEntity>
+
     /** Reactive watch over many tracks with ONE query — re-run on any `tracks`
      *  invalidation instead of one flow per track (album detail used to register
      *  2 flows per track: 200 flows for a 100-track album re-ran 200 SELECTs on
@@ -514,6 +518,9 @@ interface LyricsCacheDao {
 
     @Query("SELECT COUNT(*) FROM lyrics_cache")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM lyrics_cache")
+    suspend fun getAll(): List<LyricsCacheEntity>
 }
 
 // ── Playlist DAO ────────────────────────────────────────────────────────────────
@@ -758,6 +765,27 @@ interface CachedMetadataDao {
     suspend fun setArtistSimilarArtists(artistId: String, json: String?)
 
     @Query(
+        "UPDATE cached_artists SET biography = :biography, search_aliases = :aliases WHERE id = :artistId",
+    )
+    suspend fun setArtistEnrichment(artistId: String, biography: String?, aliases: String?)
+
+    @Query("UPDATE cached_albums SET notes = :notes WHERE id = :albumId")
+    suspend fun setAlbumNotes(albumId: String, notes: String?)
+
+    /** Artists missing enrichment — background getArtistInfo2 fill. */
+    @Query(
+        "SELECT * FROM cached_artists WHERE biography IS NULL OR biography = '' " +
+            "ORDER BY album_count DESC LIMIT :limit",
+    )
+    suspend fun getArtistsNeedingEnrichment(limit: Int): List<CachedArtistEntity>
+
+    @Query(
+        "SELECT * FROM cached_albums WHERE notes IS NULL OR notes = '' " +
+            "ORDER BY song_count DESC LIMIT :limit",
+    )
+    suspend fun getAlbumsNeedingEnrichment(limit: Int): List<CachedAlbumEntity>
+
+    @Query(
         "SELECT * FROM cached_artists WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
             "OR similar_artists_json LIKE '%' || :query || '%' ESCAPE '\\' " +
             "ORDER BY name ASC LIMIT 100",
@@ -768,7 +796,8 @@ interface CachedMetadataDao {
     @Query(
         "SELECT DISTINCT ar.* FROM cached_artists ar JOIN tracks t ON " +
             "(t.artist_id = ar.id OR (t.artist_id IS NULL AND t.artist = ar.name)) " +
-            "WHERE ar.name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "WHERE (ar.name LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR ar.similar_artists_json LIKE '%' || :query || '%' ESCAPE '\\') " +
             "AND (t.cached_file_path IS NOT NULL OR t.is_downloaded = 1) ORDER BY ar.name ASC LIMIT 50",
     )
     suspend fun searchPlayableArtists(query: String): List<CachedArtistEntity>

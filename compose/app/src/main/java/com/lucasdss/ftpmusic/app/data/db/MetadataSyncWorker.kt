@@ -147,6 +147,7 @@ class MetadataSyncWorker(
     private val coverArtFallback: com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService,
     private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
+    private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder? = null,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
@@ -175,6 +176,16 @@ class MetadataSyncWorker(
 
         /** Rate-limit spacing between per-genre `getSongsByGenre` calls. */
         private const val GENRE_FETCH_DELAY_MS = 200L
+
+        /** Songs fetched per genre for Daily Mix + search corpus warm. */
+        private const val GENRE_SONG_FETCH_COUNT = 200
+
+        /** Top genres by song_count always warmed for local search (beyond mix picks). */
+        private const val SEARCH_INDEX_WARM_GENRE_COUNT = 40
+
+        private const val ENRICH_DELAY_MS = 250L
+        private const val ENRICH_ARTIST_LIMIT = 25
+        private const val ENRICH_ALBUM_LIMIT = 15
 
         /**
          * Choose periodic sync mode from watermark.
@@ -346,9 +357,27 @@ class MetadataSyncWorker(
                 }
                 val finalTrackCount = metadataDao.cachedTrackCount()
                 DiagnosticLog.d(TAG, "phase=tracks tracks=$finalTrackCount")
-                if (_status.value.albumTracksProgress > 0) {
+                // Always merge cached album/genre songs into `tracks` so search
+                // finds singles + never-played catalog rows (ADR 0078 / phase-2).
+                try {
                     trackDao.populateAllTrackGenres()
                     trackDao.populateGenresFromCachedGenreSongs()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "populate tracks for search index: ${e.message}")
+                }
+                try {
+                    searchIndexRebuilder?.rebuildAll()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "FTS rebuild: ${e.message}")
+                }
+                try {
+                    enrichSearchMetadata()
+                    searchIndexRebuilder?.rebuildAll()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "search enrichment: ${e.message}")
                 }
                 val current = _status.value
                 // ADR-0068: watermarks only on success — track-phase error must
@@ -614,25 +643,27 @@ class MetadataSyncWorker(
         }
         genreMixDao.replaceGenres(genres)
 
-        // 2. Fetch songs (120 each) for every genre referenced by a Custom
-        // Daily Mix. Before first-run seeding there are no mixes at all, so
-        // fall back to the CURRENT top 20 (the seeding phase later materializes
-        // those as default mixes). Users with only decade/artist mixes need no
-        // genre song fetch — skip it instead of re-downloading the top 20.
-        val selectedGenres = try {
+        // 2. Fetch songs for Custom Daily Mix genres UNION top-N by song_count
+        // for local search corpus density (singles / never-played). Cap at
+        // SEARCH_INDEX_WARM_GENRE_COUNT + mix names (deduped).
+        val mixGenres = try {
             if (dailyMixRepository.hasMixes()) {
                 dailyMixRepository.allMixGenreNames()
             } else {
-                genres.sortedByDescending { it.songCount }.take(20).map { it.name }
+                emptyList()
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            genres.sortedByDescending { it.songCount }.take(20).map { it.name }
+            emptyList()
         }
+        val warmGenres = genres.sortedByDescending { it.songCount }
+            .take(SEARCH_INDEX_WARM_GENRE_COUNT)
+            .map { it.name }
+        val selectedGenres = (mixGenres + warmGenres).distinct()
         for (genre in selectedGenres) {
             try {
                 delay(GENRE_FETCH_DELAY_MS) // rate limit between genre calls
-                val songsResp = api.getSongsByGenre(params, genre, 120)
+                val songsResp = api.getSongsByGenre(params, genre, GENRE_SONG_FETCH_COUNT)
                 val songsSr = songsResp["subsonic-response"] as? Map<*, *>
                 val songsData = songsSr?.get("songsByGenre") as? Map<*, *>
                 val songList = songsData?.get("song") as? List<*>
@@ -669,6 +700,50 @@ class MetadataSyncWorker(
     }
 
     /**
+     * Background getArtistInfo2 / getAlbumInfo2 → Room biography/notes/aliases.
+     * Never called from search keystroke path (ADR 0079).
+     */
+    internal suspend fun enrichSearchMetadata() {
+        val username = SubsonicCredentials.username
+        val password = SubsonicCredentials.password
+        if (username.isEmpty()) return
+        if (offlineModeManager.isOffline?.value == true) return
+        val params = authHelper.buildAuthParams(username, password)
+        val artists = metadataDao.getArtistsNeedingEnrichment(ENRICH_ARTIST_LIMIT)
+        for (artist in artists) {
+            try {
+                delay(ENRICH_DELAY_MS)
+                val response = api.getArtistInfo2(artist.id, params)
+                val sr = response["subsonic-response"] as? Map<*, *> ?: continue
+                val info = sr["artistInfo2"] as? Map<*, *> ?: continue
+                val bio = (info["biography"] as? String)?.take(2000)
+                val similar = (info["similarArtist"] as? List<*>)?.mapNotNull { s ->
+                    val m = s as? Map<*, *> ?: return@mapNotNull null
+                    m["name"] as? String
+                }?.joinToString(" ")
+                if (!bio.isNullOrBlank() || !similar.isNullOrBlank()) {
+                    metadataDao.setArtistEnrichment(artist.id, bio, similar)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+        val albums = metadataDao.getAlbumsNeedingEnrichment(ENRICH_ALBUM_LIMIT)
+        for (album in albums) {
+            try {
+                delay(ENRICH_DELAY_MS)
+                val response = api.getAlbumInfo2(album.id, params)
+                val sr = response["subsonic-response"] as? Map<*, *> ?: continue
+                val info = sr["albumInfo"] as? Map<*, *> ?: continue
+                val notes = (info["notes"] as? String)?.take(2000) ?: continue
+                if (notes.isNotBlank()) metadataDao.setAlbumNotes(album.id, notes)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    /**
      * Sync starred tracks, albums, artists and ratings from the Navidrome server.
      * Calls getStarred2, then mirrors server state to the local tables:
      * - tracks: star + rating (track-level)
@@ -699,15 +774,36 @@ class MetadataSyncWorker(
 
             val now = System.currentTimeMillis()
 
-            // Tracks: star + rating (collect first, batch update)
+            // Tracks: upsert metadata into Room (singles / never-played) then star + rating
             val songList = starred["song"] as? List<*> ?: emptyList<Any>()
             val starredTrackIds = mutableListOf<String>()
+            val starredEntities = mutableListOf<TrackEntity>()
             for (s in songList) {
                 val m = s as? Map<*, *> ?: continue
                 val id = m["id"] as? String ?: continue
                 starredTrackIds.add(id)
+                starredEntities.add(
+                    TrackEntity(
+                        id = id,
+                        title = m["title"] as? String ?: id,
+                        artist = m["artist"] as? String,
+                        album = m["album"] as? String,
+                        albumId = m["albumId"] as? String,
+                        artistId = m["artistId"] as? String,
+                        genre = m["genre"] as? String,
+                        durationSeconds = (m["duration"] as? Number)?.toInt(),
+                        trackNumber = (m["track"] as? Number)?.toInt(),
+                        coverArtUrl = m["coverArt"] as? String,
+                        suffix = m["suffix"] as? String,
+                        contentType = m["contentType"] as? String,
+                        path = m["path"] as? String,
+                    ),
+                )
                 val rating = (m["userRating"] as? Number)?.toInt() ?: 0
                 if (rating > 0) trackDao.setRating(id, rating)
+            }
+            if (starredEntities.isNotEmpty()) {
+                trackDao.upsertAll(starredEntities)
             }
             val localTrackIds = trackDao.getStarredIds().map { it.id }.toSet()
             val pendingUnstarTracks = trackDao.getPendingUnstarIds().toSet()

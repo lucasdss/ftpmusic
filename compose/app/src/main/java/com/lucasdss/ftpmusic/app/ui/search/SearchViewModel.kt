@@ -65,6 +65,7 @@ class SearchViewModel @Inject constructor(
     private val trackDao: TrackDao,
     private val metadataDao: CachedMetadataDao,
     private val playlistDao: PlaylistDao,
+    private val localSearch: com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository,
     private val api: SubsonicApi,
     private val offlineModeManager: OfflineModeManager,
 ) : ViewModel() {
@@ -207,18 +208,20 @@ class SearchViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true)
             val filterEnabled = _state.value.filterDownloaded
             val localOnly = isLocalOnly()
-            val likeQuery = SearchQueryNormalizer.escapeLike(query)
             try {
-                // Local-only: playable Room queries only (1A) — skip full catalog + API.
+                // Local-only: playable Room / FTS only (1A) — skip full catalog + API.
                 if (localOnly) {
-                    val playableTracks = trackDao.searchPlayableTracks(likeQuery).map { it.toTrack() }
-                    val playableAlbums = metadataDao.searchPlayableAlbums(likeQuery).map { it.toAlbum() }
-                    val playableArtists = metadataDao.searchPlayableArtists(likeQuery).map { it.toArtist() }
-                    val localPlaylists = playlistDao.searchPlaylists(likeQuery).map { it.toPlaylist() }
-                    val matchedGenres = genreDao.searchGenres(likeQuery)
+                    val hit = localSearch.search(query, playableOnly = true)
+                    val playableTracks = hit.tracks.map { it.toTrack() }
+                    val playableAlbums = hit.albums.map { it.toAlbum() }
+                    val playableArtists = hit.artists.map { it.toArtist() }
+                    val localPlaylists = hit.playlists.map { it.toPlaylist() }
+                    val matchedGenres = hit.genres
                     val rankedArtists = SearchResultMerger.rankByQuery(playableArtists, query) { it.name }
                     val rankedAlbums = SearchResultMerger.rankByQuery(playableAlbums, query) { it.name }
-                    val rankedTracks = SearchResultMerger.rankByQuery(playableTracks, query) { it.title }
+                    val rankedTracks = SearchResultMerger.rankByFields(playableTracks, query) {
+                        listOf(it.title, it.artist, it.album)
+                    }
                     val localIds = playableTracks.map { it.id }.toSet()
                     _state.value = _state.value.copy(
                         tracks = rankedTracks,
@@ -237,12 +240,25 @@ class SearchViewModel @Inject constructor(
                     return@launch
                 }
 
-                // 1. Show cached results from local DB immediately
-                val cachedTracks = trackDao.searchAllTracks(likeQuery).map { it.toTrack() }
-                val cachedAlbums = metadataDao.searchAlbums(likeQuery).map { it.toAlbum() }
-                val cachedArtists = metadataDao.searchArtists(likeQuery).map { it.toArtist() }
-                val cachedPlaylists = playlistDao.searchPlaylists(likeQuery).map { it.toPlaylist() }
-                val matchedGenres = genreDao.searchGenres(likeQuery)
+                // 1. Show cached results from local DB / FTS immediately (ranked)
+                val hit = localSearch.search(query, playableOnly = false)
+                val cachedTracks = SearchResultMerger.rankByFields(
+                    hit.tracks.map { it.toTrack() },
+                    query,
+                ) { listOf(it.title, it.artist, it.album) }
+                val cachedAlbums = SearchResultMerger.rankByQuery(
+                    hit.albums.map { it.toAlbum() },
+                    query,
+                ) { it.name }
+                val cachedArtists = SearchResultMerger.rankByQuery(
+                    hit.artists.map { it.toArtist() },
+                    query,
+                ) { it.name }
+                val cachedPlaylists = SearchResultMerger.rankByQuery(
+                    hit.playlists.map { it.toPlaylist() },
+                    query,
+                ) { it.name }
+                val matchedGenres = hit.genres
                 _state.value = _state.value.copy(
                     tracks = cachedTracks,
                     albums = cachedAlbums,
@@ -298,7 +314,9 @@ class SearchViewModel @Inject constructor(
                     query,
                 ) { it.name }
                 val mergedTracksRaw = SearchResultMerger.unionById(results.tracks, cachedTracks) { it.id }
-                val mergedTracks = SearchResultMerger.rankByQuery(mergedTracksRaw, query) { it.title }
+                val mergedTracks = SearchResultMerger.rankByFields(mergedTracksRaw, query) {
+                    listOf(it.title, it.artist, it.album)
+                }
                 val mergedPlaylists = SearchResultMerger.unionById(
                     results.playlists,
                     cachedPlaylists,
@@ -430,18 +448,18 @@ class SearchViewModel @Inject constructor(
                     songOffset = songSearchOffset,
                 )
                 if (_state.value.query.trim() == query) {
-                    val artists = SearchResultMerger.unionById(
-                        _state.value.artists,
-                        results.artists,
-                    ) { it.id }
-                    val albums = SearchResultMerger.unionById(
-                        _state.value.albums,
-                        results.albums,
-                    ) { it.id }
-                    val tracks = SearchResultMerger.unionById(
-                        _state.value.allTracks,
-                        results.tracks,
-                    ) { it.id }
+                    val artists = SearchResultMerger.rankByQuery(
+                        SearchResultMerger.unionById(_state.value.artists, results.artists) { it.id },
+                        query,
+                    ) { it.name }
+                    val albums = SearchResultMerger.rankByQuery(
+                        SearchResultMerger.unionById(_state.value.albums, results.albums) { it.id },
+                        query,
+                    ) { it.name }
+                    val tracks = SearchResultMerger.rankByFields(
+                        SearchResultMerger.unionById(_state.value.allTracks, results.tracks) { it.id },
+                        query,
+                    ) { listOf(it.title, it.artist, it.album) }
                     val filterEnabled = _state.value.filterDownloaded
                     val filtered = if (filterEnabled) {
                         tracks.filter { it.id in _state.value.localTrackIds }

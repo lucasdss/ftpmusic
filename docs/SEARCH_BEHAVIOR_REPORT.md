@@ -1,60 +1,44 @@
 # SEARCH_BEHAVIOR_REPORT
 
-Caveman style. FTP Music search — post WS1–WS6 improvement pass.
+Caveman style. FTP Music search — Phase-2 complete.
 
 ## Surfaces
 
 | Surface | Trigger | Corpus |
 |---------|---------|--------|
-| Global Search tab | Typeahead 300ms (≥2 chars) + IME Search | Room multi-field ∪ search3 |
+| Global Search tab | Typeahead 300ms (≥2 chars) + IME Search | FTS (or LIKE fallback) ∪ search3 |
 | Library Artists/Albums filter | Debounce 300ms | `cached_*` LIKE (escaped) |
-| Add-songs picker | Debounce | `tracks` |
+| Add-songs / playlist picker | Debounce | `tracks` LIKE escaped |
 | Custom Daily Mix artist picker | Debounce | `searchArtistsPaged` escaped |
-| Voice / MediaSession | Immediate | search3 songs |
+| Voice / MediaSession | Immediate | LocalSearch first → search3 |
 
 ## Data flow (Global Search)
 
 ```
 onQueryChanged → debounce → search()
-  → escapeLike(query)
-  → local-only? playable DAOs + playlists + genres
-  → else phase1 Room (tracks album/genre/path, albums, artists+similar JSON, playlists, genres)
-  → search3 (page 50) → id-union merge + rank → cacheServerResults
-  → loadMore: artist/album/song offsets += 50
+  → LocalSearchRepository (FTS MATCH or LIKE)
+  → local-only? stop (playable filter)
+  → else search3 page 50 → id-union merge + composite rank → cacheServerResults
+  → loadMore: offsets += 50 + re-rank
 ```
 
-## Bug fixed (P0)
+## Phase-2 shipped
 
-`results.artists.ifEmpty { cached }` **clobbered** local artists when search3 returned any page.
-Now: `SearchResultMerger.unionById` + `rankByQuery` (exact → prefix → contains, diacritic fold).
+- Composite track rank (title/artist/album); phase-1 + load-more ranked
+- Corpus warm: top-40 genres × 200 songs; always populate tracks; starred upsert
+- FTS `search_fts` (Room FTS4/unicode61) + rebuild after sync/enrichment
+- getArtistInfo2 / getAlbumInfo2 background → biography / notes / aliases
+- Settings: Search lyrics (opt-in FTS)
+- Voice: local search first
 
-## Fields searched locally
+## Fields
 
-| Entity | Fields |
-|--------|--------|
-| Track | title, artist, album, genre, path |
-| Album | name, artist, genre, year |
-| Artist | name, similar_artists_json |
-| Playlist | name, comment |
-| Genre | name |
+Track: title, artist, album, genre, path (+ lyrics if enabled)
+Album: name, artist, genre, year, notes
+Artist: name, similar JSON, biography, aliases
+Playlist: name, comment
+Genre: name
 
-Singles: `album_id` null → UI label **Singles**; `tracks.album` column (v58) backfilled from `cached_albums`.
+## Local-first
 
-## Market gaps remaining
-
-| Gap | Status |
-|-----|--------|
-| FTS5 / typo | Deferred ADR 0080 — multi-field LIKE + rank for now |
-| Live Discogs/Spotify search | Out of scope (local-first) |
-| Lyrics FTS | Deferred |
-| getArtistInfo2 wire | Partial — similar JSON already searchable |
-
-## Local-first rule
-
-Query never blocks on MB/Last.fm/iTunes. Enrichment = background → Room only.
-
-## Tests
-
-- `SearchResultMergerTest`, `SearchQueryNormalizerTest`
-- `SearchViewModelTest` union clobber regression
-- Migration 57→58
+Query never blocks on enrichment APIs. Rebuild FTS offline-capable from Room.

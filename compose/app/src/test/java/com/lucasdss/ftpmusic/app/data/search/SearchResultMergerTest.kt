@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.data.search
 
 import com.lucasdss.ftpmusic.app.data.model.Artist
+import com.lucasdss.ftpmusic.app.data.model.Track
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,5 +51,18 @@ class SearchResultMergerTest {
         val items = listOf(Artist("1", "Björk"), Artist("2", "Other"))
         val ranked = SearchResultMerger.rankByQuery(items, "bjork") { it.name }
         assertEquals("Björk", ranked.first().name)
+    }
+
+    @Test
+    fun `rankByFields prefers artist match over weak title contains`() {
+        val items = listOf(
+            Track("1", title = "Misc Song", artist = "Other"),
+            Track("2", title = "B-side", artist = "Pink Floyd"),
+            Track("3", title = "Pink Floyd Tribute", artist = "Cover Band"),
+        )
+        val ranked = SearchResultMerger.rankByFields(items, "pink floyd") {
+            listOf(it.title, it.artist, it.album)
+        }
+        assertEquals("2", ranked.first().id)
     }
 }

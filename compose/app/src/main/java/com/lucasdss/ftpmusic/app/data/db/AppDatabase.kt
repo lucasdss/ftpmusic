@@ -34,8 +34,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrackWaveformEntity::class,
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
+        SearchFtsEntity::class,
     ],
-    version = 58,
+    version = 59,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,6 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun trackWaveformDao(): TrackWaveformDao
     abstract fun radioFavoriteDao(): RadioFavoriteDao
     abstract fun listenEventDao(): ListenEventDao
+    abstract fun searchFtsDao(): SearchFtsDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -1057,5 +1059,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_58 = ALL_MIGRATIONS_57 + MIGRATION_57_58
+
+        // Migration 58→59: FTS search index + enrichment columns (ADR 0080).
+        val MIGRATION_58_59 = object : Migration(58, 59) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE cached_artists ADD COLUMN biography TEXT")
+                database.execSQL("ALTER TABLE cached_artists ADD COLUMN search_aliases TEXT")
+                database.execSQL("ALTER TABLE cached_albums ADD COLUMN notes TEXT")
+                database.execSQL(
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS `search_fts`
+                    USING FTS4(`entity_type`, `entity_id`, `body`, tokenize=unicode61)
+                    """.trimIndent(),
+                )
+            }
+        }
+        val ALL_MIGRATIONS_59 = ALL_MIGRATIONS_58 + MIGRATION_58_59
     }
 }

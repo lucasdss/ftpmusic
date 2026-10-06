@@ -138,6 +138,19 @@ interface SubsonicApi {
         @Query("title") title: String? = null,
     ): Map<String, Any>
 
+    @GET("rest/getArtistInfo2")
+    suspend fun getArtistInfo2(
+        @Query("id") id: String,
+        @QueryMap auth: Map<String, String>,
+        @Query("count") count: Int = 20,
+    ): Map<String, Any>
+
+    @GET("rest/getAlbumInfo2")
+    suspend fun getAlbumInfo2(
+        @Query("id") id: String,
+        @QueryMap auth: Map<String, String>,
+    ): Map<String, Any>
+
     @GET("rest/getInternetRadioStations")
     suspend fun getInternetRadioStations(@QueryMap params: Map<String, String>): Map<String, Any>
 
