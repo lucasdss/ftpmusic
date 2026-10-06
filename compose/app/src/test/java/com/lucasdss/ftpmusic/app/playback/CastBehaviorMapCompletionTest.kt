@@ -48,7 +48,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -98,7 +98,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(title = "T", trackIndex = 3, queueSize = 19, duration = 1000))
         val state = viewModel.state.first { it.trackIndex == 3 }
@@ -122,7 +122,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(title = "Track 1", isPlaying = true, duration = 240000))
         assertTrue(viewModel.state.first().isPlaying)
@@ -151,7 +151,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(title = "T", queueSize = 50, trackIndex = 45, duration = 240000))
         val state = viewModel.state.first { it.queueSize == 50 }
@@ -196,7 +196,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -246,7 +246,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -290,7 +290,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", queueSize = 15))
         val state15 = viewModel.state.first { it.queueSize == 15 }
@@ -317,7 +317,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", queueSize = 20))
         val state20 = viewModel.state.first { it.queueSize == 20 }
@@ -386,7 +386,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Simulate what would be restored from Room
         provider.emit(
@@ -414,7 +414,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Simulate restore of Cast state from previous session
         provider.emit(
@@ -501,7 +501,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -574,7 +574,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", volume = 0.3f))
         val cast1 = viewModel.state.first { it.isCasting }
@@ -612,7 +612,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -691,7 +691,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(title = "T", isCasting = true, castDeviceName = "TV", isPlaying = true, duration = 240000),
@@ -713,7 +713,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(title = "T", isCasting = true, castDeviceName = "TV", isPlaying = true, duration = 240000),
@@ -737,7 +737,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(title = "T", isCasting = true, castDeviceName = "TV", position = 50000, duration = 240000),
@@ -759,7 +759,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Simulate onMediaItemTransition during Cast (3 skips)
         provider.emit(
@@ -791,7 +791,7 @@ class CastBehaviorMapCompletionTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Simulate: Cast device volume changed to 40/100
         provider.emit(

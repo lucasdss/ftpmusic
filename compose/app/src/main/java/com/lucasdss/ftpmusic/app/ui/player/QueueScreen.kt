@@ -238,38 +238,53 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                     }
                 }
                 item(key = "hdr-autoplay") {
-                    Row(
+                    val isCasting = playbackState.isCasting
+                    Column(
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = spacingL(), vertical = spacingS()),
-                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                if (autoplayRows.isNotEmpty()) {
+                                    stringResource(R.string.player_autoplay_section, autoplayRows.size)
+                                } else {
+                                    stringResource(R.string.player_autoplay_empty)
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isCasting) NavUnselected else BrandTeal,
+                                modifier = Modifier.weight(1f),
+                            )
                             if (autoplayRows.isNotEmpty()) {
-                                stringResource(R.string.player_autoplay_section, autoplayRows.size)
-                            } else {
-                                stringResource(R.string.player_autoplay_empty)
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = BrandTeal,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (autoplayRows.isNotEmpty()) {
-                            TextButton(onClick = { viewModel.clearAutoplayQueue() }) {
-                                Text(stringResource(R.string.player_clear_autoplay), color = BrandTeal)
+                                TextButton(onClick = { viewModel.clearAutoplayQueue() }) {
+                                    Text(stringResource(R.string.player_clear_autoplay), color = BrandTeal)
+                                }
                             }
+                            Switch(
+                                checked = continuousPlayOn,
+                                onCheckedChange = {
+                                    continuousPlayOn = it
+                                    viewModel.setContinuousPlayEnabled(it)
+                                },
+                                enabled = !isCasting,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Foreground,
+                                    checkedTrackColor = BrandTeal,
+                                ),
+                                modifier = Modifier.testTag("queue_continuous_play_switch"),
+                            )
                         }
-                        Switch(
-                            checked = continuousPlayOn,
-                            onCheckedChange = {
-                                continuousPlayOn = it
-                                viewModel.setContinuousPlayEnabled(it)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Foreground,
-                                checkedTrackColor = BrandTeal,
-                            ),
-                        )
+                        if (isCasting) {
+                            Text(
+                                stringResource(R.string.player_autoplay_unavailable_cast),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NavUnselected,
+                                modifier = Modifier.testTag("queue_autoplay_cast_unavailable"),
+                            )
+                        }
                     }
                 }
                 if (autoplayRows.isNotEmpty()) {

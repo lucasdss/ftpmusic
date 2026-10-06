@@ -121,7 +121,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         viewModel.toggleRepeat()
@@ -140,7 +140,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         viewModel.toggleShuffle()
@@ -292,7 +292,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         // Connect to Cast and play
@@ -347,7 +347,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", volume = 0.3f, muted = true))
@@ -637,7 +637,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         // Simulate: was playing on Cast
@@ -673,7 +673,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         provider.emit(
@@ -763,7 +763,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV"))
@@ -787,7 +787,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         provider.emit(
@@ -814,7 +814,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         provider.emit(PlaybackState(title = "T", isCasting = true, castDeviceName = "TV"))
@@ -847,7 +847,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         // 1. Connect to Cast
@@ -1097,7 +1097,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", volume = 0.5f))
@@ -1214,7 +1214,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         // Device A
@@ -1246,7 +1246,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         // Connect to Mini Speaker
@@ -1627,7 +1627,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         // Play track 0 locally
@@ -1674,7 +1674,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         // Connect → play → disconnect

@@ -48,7 +48,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Simulate: Cast session was already active when listener added
         provider.emit(
@@ -85,7 +85,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -132,7 +132,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(title = "T", isPlaying = true, duration = 240000))
         val playing = viewModel.state.first { it.isPlaying }
@@ -156,7 +156,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         for (i in 1..5) {
             provider.emit(PlaybackState(title = "T", isPlaying = true, duration = 240000))
@@ -188,7 +188,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(title = "T", isPlaying = true, duration = 240000))
         val playing = viewModel.state.first { it.isPlaying }
@@ -223,7 +223,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", sleepTimerEndMs = 1719000000000L))
         val state = viewModel.state.first { it.isCasting }
@@ -243,7 +243,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Production: onDeviceVolumeChanged(volume=40, muted=false) sends
         // VolumeChanged(40/100f=0.4f, muted=false)
@@ -275,7 +275,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", playbackSpeed = 1.25f))
         val cast = viewModel.state.first { it.isCasting }
@@ -306,7 +306,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -340,7 +340,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Cast session playing
         provider.emit(
@@ -388,7 +388,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Cast session playing, then paused
         provider.emit(
@@ -448,7 +448,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Cast session playing with position
         provider.emit(
@@ -509,7 +509,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         // Start: local playback
         provider.emit(
@@ -605,7 +605,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(
             PlaybackState(
@@ -647,7 +647,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", volume = 0.3f, muted = true))
         val cast = viewModel.state.first { it.isCasting }

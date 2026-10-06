@@ -305,5 +305,6 @@ class PlaylistRepositoryTest {
         every { syncWorker.consumeIdRemap(any()) } returns "server-pl"
         val id = repo.createPlaylistWithTracksSynced("Queue Mix", listOf("t1"))
         assertNull(id)
+        verify(exactly = 0) { syncWorker.consumeIdRemap(any()) }
     }
 }

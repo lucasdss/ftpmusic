@@ -49,7 +49,7 @@ class PlaybackViewModelStreamTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         val url = viewModel.buildStreamUrl("track123")
 
@@ -76,7 +76,7 @@ class PlaybackViewModelStreamTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         val track = Track(id = "t1", title = "Test", artist = "Artist")
         viewModel.playSingleTrack(track, "http://example.com/stream")
@@ -103,7 +103,7 @@ class PlaybackViewModelStreamTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         val url = viewModel.buildStreamUrl("t1")
 

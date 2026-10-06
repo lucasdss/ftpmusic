@@ -47,7 +47,7 @@ class PlaybackViewModelTest {
             mockk(relaxed = true),
             mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
             mockk(relaxed = true), // playlistRepository
-            mockk<SubsonicApi>(relaxed = true),
+
         )
     }
 
@@ -191,7 +191,7 @@ class PlaybackViewModelTest {
             trackDao,
             mockk(relaxed = true),
             mockk(relaxed = true), // playlistRepository
-            mockk<SubsonicApi>(relaxed = true),
+
         )
         provider.emit(PlaybackState(currentTrackId = "t1", title = "One"))
         vm.toggleLike()

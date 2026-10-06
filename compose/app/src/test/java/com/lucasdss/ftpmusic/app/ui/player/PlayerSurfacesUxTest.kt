@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.ui.player
 import android.app.Application
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -345,7 +346,10 @@ class PlayerSurfacesUxTest {
         composeRule.onNodeWithTag("queue_peek_strip").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("queue_autoplay_cast_unavailable").assertExists()
-        composeRule.onNodeWithTag("queue_continuous_play_switch").assertExists().performClick()
+        composeRule.onNodeWithTag("queue_cast_flatten_notice").assertExists()
+        composeRule.onNodeWithTag("queue_clear_autoplay").assertExists()
+        composeRule.onNodeWithTag("queue_continuous_play_switch").assertIsOn()
+        composeRule.onNodeWithTag("queue_continuous_play_switch").performClick()
         assertEquals(null, continuous)
     }
 
@@ -503,9 +507,31 @@ class PlayerSurfacesUxTest {
         composeRule.onNodeWithTag("queue_clear_priority").assertDoesNotExist()
         composeRule.onNodeWithTag("queue_clear_autoplay").assertDoesNotExist()
         composeRule.onNodeWithTag("queue_sheet_sleep").assertDoesNotExist()
+        composeRule.onNodeWithTag("queue_sheet_repeat").assertDoesNotExist()
         composeRule.onNodeWithTag("queue_select_cancel").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("queue_clear_priority").assertExists()
         composeRule.onNodeWithTag("queue_sheet_sleep").assertExists()
+    }
+
+    @Test
+    fun `queue sheet shows cast flatten notice when casting`() {
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    isCasting = true,
+                    queueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                    ),
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_cast_flatten_notice").assertExists()
     }
 }

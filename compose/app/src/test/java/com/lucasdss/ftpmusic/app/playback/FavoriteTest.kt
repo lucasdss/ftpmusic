@@ -2,7 +2,6 @@ package com.lucasdss.ftpmusic.app.playback
 
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
-import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -58,7 +57,6 @@ class FavoriteTest {
         favoriteRepo: FavoriteRepository,
         trackDao: TrackDao,
         queueDao: com.lucasdss.ftpmusic.app.data.db.QueueDao = mockk(relaxed = true),
-        api: SubsonicApi = mockk(relaxed = true),
         playlistRepository: com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository = mockk(relaxed = true),
         playbackManager: PlaybackManager = mockk(relaxed = true),
     ): Pair<PlaybackViewModel, FakePlaybackStateProvider> {
@@ -71,7 +69,6 @@ class FavoriteTest {
             trackDao,
             queueDao,
             playlistRepository,
-            api,
         )
         return viewModel to provider
     }
@@ -196,8 +193,7 @@ class FavoriteTest {
         val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
         val trackDao = mockk<TrackDao>(relaxed = true)
         coEvery { trackDao.getTrack("track-5") } returns null
-        val api = mockk<SubsonicApi>(relaxed = true)
-        val (viewModel, provider) = vm(favoriteRepo, trackDao, api = api)
+        val (viewModel, provider) = vm(favoriteRepo, trackDao)
         provider.emit(PlaybackState(currentTrackId = "track-5"))
 
         viewModel.rateCurrent(4)
@@ -689,6 +685,63 @@ class FavoriteTest {
             testDispatcher.scheduler.advanceUntilIdle()
             coVerify(exactly = 0) { playlistRepo.createPlaylist(any()) }
             coVerify(exactly = 0) { playlistRepo.addToPlaylist(any(), any()) }
+        } finally {
+            PlayerHolder.exoPlayer = null
+        }
+    }
+
+    @Test
+    fun `refreshQueueHistory excludes tracks already in queue`() = runTest {
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getRecentlyPlayed(limit = 20) } returns listOf(
+            TrackEntity(id = "t1", title = "One"),
+            TrackEntity(id = "t2", title = "Two"),
+        )
+        val (viewModel, _) = vm(mockk(relaxed = true), trackDao)
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 1
+        every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        every { player.currentMediaItem } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        PlayerHolder.exoPlayer = player
+        try {
+            viewModel.refreshQueueHistory()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertEquals(listOf("t2"), viewModel.queueHistory.value.map { it.id })
+        } finally {
+            PlayerHolder.exoPlayer = null
+        }
+    }
+
+    @Test
+    fun `playNextFromHistory loads track and refreshes history`() = runTest {
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        val playbackManager = mockk<PlaybackManager>(relaxed = true)
+        coEvery { trackDao.getTrack("hist-1") } returns TrackEntity(
+            id = "hist-1",
+            title = "History",
+            artist = "Artist",
+        )
+        coEvery { trackDao.getRecentlyPlayed(limit = 20) } returns emptyList()
+        val storage = mockk<com.lucasdss.ftpmusic.app.data.security.SecureStorage>(relaxed = true)
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_USERNAME) } returns "u"
+        every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_PASSWORD) } returns "p"
+        val provider = FakePlaybackStateProvider()
+        val viewModel = PlaybackViewModel(
+            provider,
+            playbackManager,
+            mockk(relaxed = true),
+            storage,
+            trackDao,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+        PlayerHolder.exoPlayer = mockk<androidx.media3.common.Player>(relaxed = true)
+        try {
+            viewModel.playNextFromHistory("hist-1")
+            testDispatcher.scheduler.advanceUntilIdle()
+            coVerify { playbackManager.playNext(any(), any()) }
         } finally {
             PlayerHolder.exoPlayer = null
         }

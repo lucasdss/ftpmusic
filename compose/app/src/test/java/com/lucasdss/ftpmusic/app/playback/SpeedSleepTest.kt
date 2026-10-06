@@ -119,7 +119,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         viewModel.toggleSpeed()
@@ -139,7 +139,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         val beforeMs = System.currentTimeMillis()
@@ -164,7 +164,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         viewModel.startSleepTimer(30)
@@ -186,7 +186,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         val beforeMs = System.currentTimeMillis()
@@ -212,7 +212,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
 
         viewModel.startSleepTimer(30)
@@ -239,7 +239,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 dao,
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -268,7 +268,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 dao,
                 mockk(relaxed = true), // playlistRepository
-                mockk<SubsonicApi>(relaxed = true),
+
             )
         testDispatcher.scheduler.advanceUntilIdle()
 

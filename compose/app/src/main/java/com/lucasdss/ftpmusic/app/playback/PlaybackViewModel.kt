@@ -2,10 +2,10 @@ package com.lucasdss.ftpmusic.app.playback
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.model.Track
-import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
@@ -38,7 +38,6 @@ class PlaybackViewModel @Inject constructor(
     private val trackDao: TrackDao,
     private val queueDao: QueueDao,
     private val playlistRepository: PlaylistRepository,
-    private val api: SubsonicApi,
 ) : ViewModel() {
     private val authHelper = SubsonicAuthHelper()
 
@@ -454,7 +453,7 @@ class PlaybackViewModel @Inject constructor(
                     withContext(Dispatchers.Main) {
                         android.widget.Toast.makeText(
                             context,
-                            "Saved locally — couldn't publish for sharing",
+                            context.getString(R.string.player_share_publish_failed_local),
                             android.widget.Toast.LENGTH_SHORT,
                         ).show()
                     }
@@ -465,7 +464,7 @@ class PlaybackViewModel @Inject constructor(
                     withContext(Dispatchers.Main) {
                         android.widget.Toast.makeText(
                             context,
-                            "Playlist saved but couldn't make it public — share cancelled",
+                            context.getString(R.string.player_share_public_failed),
                             android.widget.Toast.LENGTH_SHORT,
                         ).show()
                     }
@@ -480,11 +479,14 @@ class PlaybackViewModel @Inject constructor(
                         putExtra(android.content.Intent.EXTRA_TEXT, shareText)
                     }
                     context.startActivity(
-                        android.content.Intent.createChooser(shareIntent, "Share Queue"),
+                        android.content.Intent.createChooser(
+                            shareIntent,
+                            context.getString(R.string.player_share_chooser_title),
+                        ),
                     )
                     android.widget.Toast.makeText(
                         context,
-                        "Shared \"$playlistName\" (public)",
+                        context.getString(R.string.player_share_success, playlistName),
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -493,7 +495,7 @@ class PlaybackViewModel @Inject constructor(
                 withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         context,
-                        "Failed to share queue",
+                        context.getString(R.string.player_share_failed),
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -531,7 +533,7 @@ class PlaybackViewModel @Inject constructor(
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         context,
-                        "Saved \"$trimmed\" (${trackIds.size} tracks)",
+                        context.getString(R.string.player_save_success, trimmed, trackIds.size),
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -540,7 +542,7 @@ class PlaybackViewModel @Inject constructor(
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         context,
-                        "Failed to save queue",
+                        context.getString(R.string.player_save_failed),
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }

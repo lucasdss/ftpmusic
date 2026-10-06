@@ -131,9 +131,6 @@ fun PlayerBar(
     onRemoveFromQueue: (Int) -> Unit = {},
     onPlayQueueItem: (Int) -> Unit = {},
     onSleepTimer: () -> Unit = {},
-    onAddToPlaylist: () -> Unit = {},
-    onSongInfo: () -> Unit = {},
-    onEqualizer: () -> Unit = {},
     onCast: () -> Unit = {},
     onMoveQueueItem: (Int, Int) -> Unit = { _, _ -> },
     onBeginQueueReorder: (entryId: Int, fromIndex: Int) -> Unit = { _, _ -> },
@@ -446,7 +443,7 @@ private fun PlayerMiniBar(
                     )
                     val artistLine = artist ?: ""
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isCasting && castDeviceName != null) {
+                        if (isCasting) {
                             // Casting — show EQ bars + device name per design spec
                             Row(
                                 verticalAlignment = Alignment.Bottom,
@@ -462,7 +459,8 @@ private fun PlayerMiniBar(
                             }
                             Spacer(Modifier.width(spacingXS()))
                             FittingText(
-                                text = castDeviceName!!,
+                                text = castDeviceName
+                                    ?: stringResource(R.string.player_casting),
                                 color = if (!isQueueSynced) Color(0xFFF0A040) else BrandTeal,
                                 fontSize = textMicro(),
                                 minFontSize = textMicro(),
@@ -1454,7 +1452,7 @@ private fun BoxScope.PlayerQueuePanel(
                     ) {
                         // Cast flatten notice
                         item(key = "cast-notice") {
-                            if (isCasting && castDeviceName != null) {
+                            if (isCasting) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingS())
                                         .clip(RoundedCornerShape(cornerM()))
@@ -1464,7 +1462,8 @@ private fun BoxScope.PlayerQueuePanel(
                                             BrandTeal.copy(alpha = 0.18f),
                                             RoundedCornerShape(cornerM()),
                                         )
-                                        .padding(horizontal = spacingM(), vertical = spacingS()),
+                                        .padding(horizontal = spacingM(), vertical = spacingS())
+                                        .testTag("queue_cast_flatten_notice"),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(

@@ -34,4 +34,4 @@ semantics (PRIORITY-only).
 - Two playlist paths: Share (remote) vs Save (Room + pending sync).
 - History band uses muted section styling (not purple PRIORITY).
 - Selection mode disables swipe-dismiss and reorder handles while active.
-- Sleep timer / repeat strip in sheet remain OOS (NP header).
+- Sleep timer / repeat strip in sheet: shipped in [ADR-0076](0076-queue-sheet-sleep-repeat-and-share-publish.md).
