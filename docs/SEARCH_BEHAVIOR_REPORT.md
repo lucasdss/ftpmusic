@@ -1,6 +1,6 @@
 # SEARCH_BEHAVIOR_REPORT
 
-Caveman style. FTP Music search — Phase-7 FTS5 + BM25 (Room 2.7.2 SupportSQLite).
+Caveman style. FTP Music search — Phase-7 FTS5 + BM25 (Room 2.7.2 SupportSQLite). Scope D review.
 
 ## Surfaces
 
@@ -15,72 +15,42 @@ Caveman style. FTP Music search — Phase-7 FTS5 + BM25 (Room 2.7.2 SupportSQLit
 ## Data flow
 
 ```
-maybeEnableSearchLyrics (unset + lyrics count>0 → KEY=true + rebuild 500ms)
-onQueryChanged → keep prior + isLoading
-  → LocalSearch FTS5 MATCH ORDER BY bm25 → hydrate-by-id (preserve order)
-  → split lyric-only vs title tracks
-  → rank (exact → BM25 → lexical → play_count/recency)
-  → pickTopHit (exact artist/album > first track)
+ensureIndexed (ftsCount==0 && Room corpus → rebuildAll)
+maybeEnableSearchLyrics …
+onQueryChanged → clear ftsRanks/searchError; keep prior paint + isLoading
+  → LocalSearch FTS5 MATCH (skip if match query empty) → hydrate
+  → rank exact → BM25 → lexical → popularity
   → search3 ∪ Discover
+  → server fail → searchError + Retry
 ```
 
-## FTS5 / BM25 (shipped)
+## FTS5 / BM25
 
-Room **2.7.2** + **SupportSQLite** (no `BundledSQLiteDriver` this cycle).
-Driver deferred: Support-only migrations + `SearchFtsDao.openHelper` break under
-`setDriver` — see ADR 0084 amendment.
-No `@Fts5` in Room API → `search_fts` via migration 60→61 +
-`FTS5_CALLBACK` (onCreate/onOpen try/catch); `SearchFtsDao` store.
-`bm25(search_fts, 1.0, 0.0, 10.0)` — body weighted. Over-fetch `limit * 3`.
-`ftsRanks` = min BM25 per entityId; loadMore reuses ranks from state.
-Rebuild clear+insert in one transaction.
+Room **2.7.2** SupportSQLite (no BundledSQLiteDriver). ADR 0084.
+`replaceAll` fail → invalidate cache (`null`), not force 0.
+`ensureIndexed` cold/post-upgrade backstop.
+Discover stub → `indexArtistStub` immediate FTS row + debounce rebuild.
+Over-fetch `limit * 3`. loadMore offsets bump only after success.
+Punct-only MATCH → `""` → LIKE path.
 
-## Corpus densify (2A)
-
-Genre warm top-**100**; album drain cap **400**/delta sync.
-Enrich caps: bio 40 / album 25 / alias 30 / tag 30 (MB + Last.fm only).
-Singles (`album_id` null): year filter **keeps** them (FTS body may hold decade).
-Track FTS body: path + folder tokens + genre + year/decade/mbid.
-Top hit: cover art + title + artist · album|"Singles" (≥48dp). Soft-typo empty:
-"No close matches — check spelling".
-
-## Market UI (P0/P1 shipped)
+## Market UI (Scope D)
 
 | Gap | Fix |
 |-----|-----|
-| Soft-typo tip lied | Honest empty copy when `usedSoftTypo` |
-| Discover artist dead tap | Stub upsert → navigate |
-| Top hit text-only | Cover + title + subtitle, ≥48dp |
-| Recents only when focused | Idle empty query shows Recents |
-| Offline silent | Banner "Offline · downloaded only" |
-| Discover offline silent | "Discover unavailable offline" |
-| Loading thin | 6 skeleton rows while loading |
-| Lyrics Singles | Same Singles subtitle rule |
-| Tiny hit targets | Recent ✕ / Tune ≥48dp |
-| Weak tip contrast | Secondary tip text `#888`/`#999` |
+| Soft-typo / offline / Top hit art / Recents idle / skeletons / Singles / 48dp chips | Prior cycle |
+| Silent server fail | `searchError` banner + Retry |
+| Filter chips hide on zero | Show when `hasSearched` |
+| Result rows &lt;48dp | `heightIn(48)` list + autocomplete |
+| Top hit no Play | Track Play IconButton 48dp |
+| Lyrics plain | BrandTeal query highlight in snippet |
+| Discover text-only | Placeholder thumb |
+| Section headers weak | SemiBold white |
 
-**OOS (P2):** mic/voice, entity typeahead, sticky filter chips on zero,
-Did-you-mean chip, Lyrics filter chip.
+**OOS:** mic/voice, cloud typeahead, Did-you-mean, Lyrics filter chip, PTR sync.
 
-## Market gap (local-first)
-
-| Cap | Spotify/Apple/YT | FTP Music |
-|-----|------------------|-----------|
-| Relevance | Cloud ML | **BM25 + fusion** |
-| Offline | Weak | Strong local FTS5 + banners |
-| Singles | First-class | Densify + Singles label |
-| Tags | Graph | Last.fm `search_tags` + mood chips |
-| New APIs | — | Discogs/Spotify/AcoustID **OOS** |
-
-## Coverage (Phase-7 review)
-
-JaCoCo unit gate (Compose UI excluded — no screenshot tests this cycle):
+## Coverage gate
 
 | Package | Line | Branch |
 |---------|------|--------|
-| `data/search` | ~97% | ~85% |
-| `SearchFts*` (db) | ~96% | — |
-
-Branch coverage raised via merger early-return / exact>BM25, LocalSearch
-playable/LIKE/soft-typo/match-throw, ViewModel Discover navigate + loadMore ranks,
-FTS5 callback CREATE test.
+| `data/search` | ~96% | ~83% |
+| `SearchFts*` (db) | ≥80% line | — |

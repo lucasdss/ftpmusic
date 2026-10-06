@@ -100,6 +100,8 @@ data class SearchState(
     val searchLyricsEnabled: Boolean = false,
     /** Local FTS bm25 ranks (entity id → score); kept across loadMore. */
     val ftsRanks: Map<String, Double> = emptyMap(),
+    /** Server search failure message; null when ok / cleared on new query. */
+    val searchError: String? = null,
 )
 
 enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS, GENRES }
@@ -172,6 +174,18 @@ class SearchViewModel @Inject constructor(
         maybeEnableSearchLyricsDefault()
         observeLocalOnly()
         observeIndexing()
+        ensureSearchIndex()
+    }
+
+    private fun ensureSearchIndex() {
+        viewModelScope.launch {
+            try {
+                searchIndexRebuilder.ensureIndexed()
+                val ftsEmpty = searchIndexRebuilder.ftsCount() == 0
+                _state.value = _state.value.copy(ftsEmpty = ftsEmpty)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private fun maybeEnableSearchLyricsDefault() {
@@ -300,10 +314,10 @@ class SearchViewModel @Inject constructor(
         lastTagChipQuery = null
         val trimmed = query.trim()
         // Phase-4: keep prior results painted until new search replaces them (no flicker).
+        // Always clear ftsRanks / soft-typo / searchError on text change (stale BM25 during debounce).
         _state.value = _state.value.copy(
             query = query,
             isLoading = trimmed.length >= MIN_QUERY_LEN,
-            // Clear only when query emptied
             artists = if (trimmed.isEmpty()) emptyList() else _state.value.artists,
             albums = if (trimmed.isEmpty()) emptyList() else _state.value.albums,
             tracks = if (trimmed.isEmpty()) emptyList() else _state.value.tracks,
@@ -314,13 +328,14 @@ class SearchViewModel @Inject constructor(
             hasSearched = if (trimmed.isEmpty()) false else _state.value.hasSearched,
             resultCount = if (trimmed.isEmpty()) 0 else _state.value.resultCount,
             topHit = if (trimmed.isEmpty()) null else _state.value.topHit,
-            usedSoftTypo = if (trimmed.isEmpty()) false else _state.value.usedSoftTypo,
+            usedSoftTypo = false,
             filterType = if (trimmed.isEmpty()) SearchFilterType.ALL else _state.value.filterType,
             matchedTags = if (trimmed.isEmpty()) emptyList() else _state.value.matchedTags,
             discoverArtists = if (trimmed.isEmpty()) emptyList() else _state.value.discoverArtists,
             discoverTracks = if (trimmed.isEmpty()) emptyList() else _state.value.discoverTracks,
             lyricsMatches = if (trimmed.isEmpty()) emptyList() else _state.value.lyricsMatches,
-            ftsRanks = if (trimmed.isEmpty()) emptyMap() else _state.value.ftsRanks,
+            ftsRanks = emptyMap(),
+            searchError = null,
             isDiscoverLoading = false,
         )
         if (trimmed.length >= MIN_QUERY_LEN) {
@@ -369,10 +384,13 @@ class SearchViewModel @Inject constructor(
         searchJob?.cancel()
         discoverJob?.cancel()
         searchJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true)
+            _state.value = _state.value.copy(isLoading = true, searchError = null)
             val filterEnabled = _state.value.filterDownloaded
             val localOnly = isLocalOnly()
             try {
+                if (_state.value.ftsEmpty) {
+                    searchIndexRebuilder.ensureIndexed()
+                }
                 // Local-only: playable Room / FTS only (1A) — skip full catalog + API.
                 if (localOnly) {
                     val hit = localSearch.search(query, playableOnly = true)
@@ -389,6 +407,11 @@ class SearchViewModel @Inject constructor(
                         bm25Of = { ranks[it.id] },
                     ) { it.name }
                     val rankedTracks = rankTracks(split.songTracks, query, ranks)
+                    val rankedPlaylists = SearchResultMerger.rankByQuery(
+                        split.playlists,
+                        query,
+                        bm25Of = { ranks[it.id] },
+                    ) { it.name }
                     val localIds = hit.tracks.map { it.id }.toSet()
                     val matchedTags = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags
                         .matchedTagsForQuery(hit.artists, query)
@@ -396,13 +419,13 @@ class SearchViewModel @Inject constructor(
                         tracks = rankedTracks,
                         albums = rankedAlbums,
                         artists = rankedArtists,
-                        playlists = split.playlists,
+                        playlists = rankedPlaylists,
                         matchedGenres = hit.genres,
                         allTracks = rankedTracks,
                         localTrackIds = localIds,
                         filterDownloaded = true,
                         resultCount = rankedTracks.size + rankedAlbums.size + rankedArtists.size +
-                            split.playlists.size + hit.genres.size + split.lyricsMatches.size,
+                            rankedPlaylists.size + hit.genres.size + split.lyricsMatches.size,
                         hasSearched = true,
                         isLoading = false,
                         topHit = pickTopHit(query, rankedTracks, rankedArtists, rankedAlbums),
@@ -414,6 +437,7 @@ class SearchViewModel @Inject constructor(
                         discoverTracks = emptyList(),
                         isDiscoverLoading = false,
                         ftsRanks = ranks,
+                        searchError = null,
                     )
                     return@launch
                 }
@@ -433,7 +457,11 @@ class SearchViewModel @Inject constructor(
                     query,
                     bm25Of = { ranks[it.id] },
                 ) { it.name }
-                val cachedPlaylists = SearchResultMerger.rankByQuery(split.playlists, query) { it.name }
+                val cachedPlaylists = SearchResultMerger.rankByQuery(
+                    split.playlists,
+                    query,
+                    bm25Of = { ranks[it.id] },
+                ) { it.name }
                 val matchedGenres = hit.genres
                 val matchedTags = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags
                     .matchedTagsForQuery(hit.artists, query)
@@ -452,6 +480,7 @@ class SearchViewModel @Inject constructor(
                     matchedTags = matchedTags,
                     lyricsMatches = split.lyricsMatches,
                     ftsRanks = ranks,
+                    ftsEmpty = !hit.usedFts && searchIndexRebuilder.ftsCount() == 0,
                 )
                 launchDiscover(query)
                 // Compute local download/cache status from Phase 1 results
@@ -501,10 +530,11 @@ class SearchViewModel @Inject constructor(
                 ) { it.name }
                 val mergedTracksRaw = SearchResultMerger.unionById(results.tracks, cachedTracks) { it.id }
                 val mergedTracks = rankTracks(mergedTracksRaw, query, ranks)
-                val mergedPlaylists = SearchResultMerger.unionById(
-                    results.playlists,
-                    cachedPlaylists,
-                ) { it.id }
+                val mergedPlaylists = SearchResultMerger.rankByQuery(
+                    SearchResultMerger.unionById(results.playlists, cachedPlaylists) { it.id },
+                    query,
+                    bm25Of = { ranks[it.id] },
+                ) { it.name }
 
                 val localEntities = if (mergedTracks.isNotEmpty()) {
                     trackDao.getTracksByIds(mergedTracks.map { it.id })
@@ -535,6 +565,7 @@ class SearchViewModel @Inject constructor(
                     hasSearched = true,
                     resultCount = resultCount,
                     topHit = pickTopHit(query, filteredTracks, mergedArtists, mergedAlbums),
+                    searchError = null,
                 )
                 saveRecentSearch(query)
                 // Cache server results to local DB for offline reuse
@@ -543,16 +574,28 @@ class SearchViewModel @Inject constructor(
                 // Network failed — keep cached results visible with download filter applied
                 android.util.Log.w("ftpmusic-search", "Server search failed: ${e.message}")
                 val current = _state.value
-                // Re-apply download filter on cached tracks if enabled
                 val filtered = if (current.filterDownloaded && current.allTracks.isNotEmpty()) {
                     current.allTracks.filter { it.id in current.localTrackIds }
                 } else {
                     current.tracks
                 }
-                _state.value = current.copy(tracks = filtered, isLoading = false)
+                val hasLocal = filtered.isNotEmpty() || current.artists.isNotEmpty() ||
+                    current.albums.isNotEmpty() || current.playlists.isNotEmpty() ||
+                    current.lyricsMatches.isNotEmpty()
+                _state.value = current.copy(
+                    tracks = filtered,
+                    isLoading = false,
+                    searchError = if (hasLocal) {
+                        "Server unavailable — showing library"
+                    } else {
+                        "Can't reach server"
+                    },
+                )
             }
         }
     }
+
+    fun retrySearch() = search()
 
     fun clearAllRecent() {
         _state.value = _state.value.copy(recentSearches = emptyList())
@@ -612,9 +655,6 @@ class SearchViewModel @Inject constructor(
                 isLoadingMoreSearch = false
                 return@launch
             }
-            albumSearchOffset += PAGE_SIZE
-            artistSearchOffset += PAGE_SIZE
-            songSearchOffset += PAGE_SIZE
             try {
                 val username = storage.get(SecureStorage.KEY_USERNAME) ?: ""
                 val password = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
@@ -622,6 +662,9 @@ class SearchViewModel @Inject constructor(
                     isLoadingMoreSearch = false
                     return@launch
                 }
+                val nextAlbum = albumSearchOffset + PAGE_SIZE
+                val nextArtist = artistSearchOffset + PAGE_SIZE
+                val nextSong = songSearchOffset + PAGE_SIZE
                 val results = repository.search(
                     query,
                     username,
@@ -629,10 +672,14 @@ class SearchViewModel @Inject constructor(
                     artistCount = PAGE_SIZE,
                     albumCount = PAGE_SIZE,
                     songCount = PAGE_SIZE,
-                    artistOffset = artistSearchOffset,
-                    albumOffset = albumSearchOffset,
-                    songOffset = songSearchOffset,
+                    artistOffset = nextArtist,
+                    albumOffset = nextAlbum,
+                    songOffset = nextSong,
                 )
+                // Bump offsets only after successful fetch
+                albumSearchOffset = nextAlbum
+                artistSearchOffset = nextArtist
+                songSearchOffset = nextSong
                 if (_state.value.query.trim() == query) {
                     val ranks = _state.value.ftsRanks
                     val artists = SearchResultMerger.rankByQuery(
@@ -662,12 +709,23 @@ class SearchViewModel @Inject constructor(
                         tracks = filtered,
                         allTracks = tracks,
                         resultCount = artists.size + albums.size + tracks.size +
-                            _state.value.playlists.size + _state.value.matchedGenres.size,
+                            _state.value.playlists.size + _state.value.matchedGenres.size +
+                            _state.value.lyricsMatches.size,
+                        searchError = null,
                     )
                     cacheServerResults(results)
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-search", "loadMoreSearch: ${e.message}")
+                val current = _state.value
+                val hasLocal = current.resultCount > 0
+                _state.value = current.copy(
+                    searchError = if (hasLocal) {
+                        "Server unavailable — showing library"
+                    } else {
+                        "Can't reach server"
+                    },
+                )
             } finally {
                 isLoadingMoreSearch = false
             }
@@ -883,6 +941,7 @@ class SearchViewModel @Inject constructor(
                         ),
                     ),
                 )
+                searchIndexRebuilder.indexArtistStub(stubId, hit.name, hit.mbid)
                 searchIndexRebuilder.scheduleRebuild(debounceMs = 3_000L)
             } catch (_: Exception) {
             }

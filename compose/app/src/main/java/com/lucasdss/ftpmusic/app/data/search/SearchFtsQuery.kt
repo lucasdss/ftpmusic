@@ -11,7 +11,8 @@ object SearchFtsQuery {
             .filter { it.length >= 2 }
         if (tokens.isEmpty()) {
             val single = folded.replace(Regex("[^\\p{L}\\p{N}]+"), "")
-            return if (single.isEmpty()) "a" else "$single*"
+            // No alnum → empty (caller skips MATCH; no noisy sentinel "a")
+            return if (single.isEmpty()) "" else "$single*"
         }
         return tokens.joinToString(" ") { "$it*" }
     }

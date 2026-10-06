@@ -31,9 +31,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -355,10 +358,14 @@ fun SearchScreen(
                                         HorizontalDivider(color = Color.White.copy(alpha = 0.04f))
                                     }
                                     Row(
-                                        Modifier.fillMaxWidth().clickable {
-                                            viewModel.onRecentTap(term)
-                                            isFocused = false
-                                        }.padding(horizontal = spacingL(), vertical = 10.dp),
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .clickable {
+                                                viewModel.onRecentTap(term)
+                                                isFocused = false
+                                            }
+                                            .padding(horizontal = spacingL(), vertical = spacingS()),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Icon(
@@ -446,8 +453,8 @@ fun SearchScreen(
                     }
                 }
             }
-            // ── Filter type chips (single horizontal scroll, ≥48dp) ──
-            if (state.hasSearched && state.resultCount > 0) {
+            // ── Filter type chips (sticky when searched, even zero results) ──
+            if (state.hasSearched) {
                 item {
                     Row(
                         Modifier
@@ -497,14 +504,7 @@ fun SearchScreen(
             // ── Content area ──
             if (state.query.isEmpty()) {
                 if (viewModel.isLocalOnly()) {
-                    item {
-                        Text(
-                            "Offline · downloaded only",
-                            color = Color(0xFF999999),
-                            fontSize = textLabelM(),
-                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
-                        )
-                    }
+                    item { SearchStatusBanner("Offline · downloaded only") }
                 }
                 if (state.isIndexingLibrary) {
                     item {
@@ -815,20 +815,15 @@ fun SearchScreen(
                     )
                 }
                 if (viewModel.isLocalOnly()) {
+                    item { SearchStatusBanner("Offline · downloaded only") }
+                    item { SearchStatusBanner("Discover unavailable offline") }
+                }
+                state.searchError?.let { err ->
                     item {
-                        Text(
-                            "Offline · downloaded only",
-                            color = Color(0xFF999999),
-                            fontSize = textLabelM(),
-                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
-                        )
-                    }
-                    item {
-                        Text(
-                            "Discover unavailable offline",
-                            color = Color(0xFF999999),
-                            fontSize = textLabelM(),
-                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                        SearchStatusBanner(
+                            message = err,
+                            actionLabel = "Retry",
+                            onAction = { viewModel.retrySearch() },
                         )
                     }
                 }
@@ -883,6 +878,17 @@ fun SearchScreen(
                                         if (sub.isNotBlank()) {
                                             Text(sub, color = Color(0xFF999999), fontSize = textLabelM(), maxLines = 1)
                                         }
+                                    }
+                                    IconButton(
+                                        onClick = { onTrackClick(t) },
+                                        modifier = Modifier.size(48.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = "Play",
+                                            tint = BrandTeal,
+                                            modifier = Modifier.size(28.dp),
+                                        )
                                     }
                                     TypeBadge("song")
                                 }
@@ -1008,9 +1014,11 @@ fun SearchScreen(
                     item { SectionHeader("Genres") }
                     items(state.matchedGenres, key = { "genre-${it.name}" }) { genre ->
                         Row(
-                            Modifier.fillMaxWidth().clickable {
-                                onGenreClick(genre.name)
-                            }.padding(horizontal = spacingL(), vertical = 10.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { onGenreClick(genre.name) }
+                                .padding(horizontal = spacingL(), vertical = spacingS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
@@ -1134,9 +1142,11 @@ fun SearchScreen(
                         items(state.artists, key = { it.id }) { a ->
                             val artUrl = artistArtCache[a.name] ?: artistArtUrl(a.name)
                             Row(
-                                Modifier.fillMaxWidth().clickable {
-                                    onArtistClick(a.id)
-                                }.padding(horizontal = spacingL(), vertical = 10.dp),
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .clickable { onArtistClick(a.id) }
+                                    .padding(horizontal = spacingL(), vertical = spacingS()),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Box(
@@ -1202,9 +1212,11 @@ fun SearchScreen(
                     item { SectionHeader("Albums") }
                     items(state.albums, key = { it.id }) { album ->
                         Row(
-                            Modifier.fillMaxWidth().clickable {
-                                onAlbumClick(album.id)
-                            }.padding(horizontal = spacingL(), vertical = 10.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { onAlbumClick(album.id) }
+                                .padding(horizontal = spacingL(), vertical = spacingS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             val albumCoverUrl = rememberCoverArtUrl(album.coverArt, 120)
@@ -1312,13 +1324,23 @@ fun SearchScreen(
                                     }
                                 }
                                 if (lyricSub.isNotBlank()) {
-                                    Text(
-                                        lyricSub,
-                                        color = Color(0xFF999999),
-                                        fontSize = textLabelM(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                                    if (hit.snippet != null) {
+                                        Text(
+                                            highlightQuery(lyricSub, state.query),
+                                            color = Color(0xFF999999),
+                                            fontSize = textLabelM(),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    } else {
+                                        Text(
+                                            lyricSub,
+                                            color = Color(0xFF999999),
+                                            fontSize = textLabelM(),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
                                 }
                             }
                             TypeBadge("lyrics")
@@ -1335,9 +1357,11 @@ fun SearchScreen(
                     item { SectionHeader("Songs") }
                     items(state.tracks, key = { it.id }) { t ->
                         Row(
-                            Modifier.fillMaxWidth().clickable {
-                                onTrackClick(t)
-                            }.padding(horizontal = spacingL(), vertical = 10.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { onTrackClick(t) }
+                                .padding(horizontal = spacingL(), vertical = spacingS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             val trackCoverUrl = rememberCoverArtUrl(t.coverArt, 120)
@@ -1418,9 +1442,11 @@ fun SearchScreen(
                     item { SectionHeader("Playlists") }
                     items(state.playlists, key = { it.id }) { pl ->
                         Row(
-                            Modifier.fillMaxWidth().clickable {
-                                onPlaylistClick(pl.id)
-                            }.padding(horizontal = spacingL(), vertical = 10.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { onPlaylistClick(pl.id) }
+                                .padding(horizontal = spacingL(), vertical = spacingS()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             val plCoverUrl = rememberCoverArtUrl(pl.coverArt, 120)
@@ -1505,6 +1531,8 @@ fun SearchScreen(
                                 .heightIn(min = 48.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            SearchCoverThumb(null, hit.name, circle = true)
+                            Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     hit.name,
@@ -1552,6 +1580,8 @@ fun SearchScreen(
                                 .heightIn(min = 48.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            SearchCoverThumb(null, hit.title, circle = false)
+                            Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     hit.title,
@@ -1595,6 +1625,7 @@ fun SearchScreen(
                             Text("No results found", color = Color(0xFF888888), fontSize = textHeadingS())
                             Spacer(Modifier.height(spacingS()))
                             val tip = when {
+                                state.searchError != null -> state.searchError!!
                                 viewModel.isLocalOnly() -> "Offline — try Downloaded only or sync when online"
                                 state.ftsEmpty -> "Library still indexing — pull to sync or try again shortly"
                                 state.usedSoftTypo -> "No close matches — check spelling"
@@ -1607,11 +1638,63 @@ fun SearchScreen(
                                 fontSize = textLabelM(),
                                 modifier = Modifier.padding(horizontal = spacingL()),
                             )
+                            if (state.searchError != null) {
+                                Spacer(Modifier.height(spacingM()))
+                                TextButton(onClick = { viewModel.retrySearch() }) {
+                                    Text("Retry", color = BrandTeal, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SearchStatusBanner(message: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacingL(), vertical = spacingXS())
+            .heightIn(min = 40.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Info,
+            contentDescription = null,
+            tint = Color(0xFF999999),
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            message,
+            color = Color(0xFF999999),
+            fontSize = textLabelM(),
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel, color = BrandTeal, fontWeight = FontWeight.SemiBold, fontSize = textLabelM())
+            }
+        }
+    }
+}
+
+private fun highlightQuery(text: String, query: String): androidx.compose.ui.text.AnnotatedString {
+    val q = query.trim()
+    if (q.isEmpty()) return buildAnnotatedString { append(text) }
+    val idx = text.indexOf(q, ignoreCase = true)
+    if (idx < 0) return buildAnnotatedString { append(text) }
+    return buildAnnotatedString {
+        append(text.substring(0, idx))
+        withStyle(SpanStyle(color = BrandTeal, fontWeight = FontWeight.SemiBold)) {
+            append(text.substring(idx, idx + q.length))
+        }
+        append(text.substring(idx + q.length))
     }
 }
 
@@ -1675,8 +1758,9 @@ private fun SearchSkeletonRow() {
 private fun SectionHeader(title: String) {
     Text(
         title,
-        color = Color(0xFF888888),
+        color = Color.White,
         fontSize = textLabelL(),
+        fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
     )
 }

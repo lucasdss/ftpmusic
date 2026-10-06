@@ -24,8 +24,8 @@ class SearchFtsQueryTest {
     }
 
     @Test
-    fun `toMatchQuery empty-ish input returns sentinel a`() {
-        assertEquals("a", SearchFtsQuery.toMatchQuery("   "))
-        assertEquals("a", SearchFtsQuery.toMatchQuery("!!"))
+    fun `toMatchQuery empty-ish input returns empty string`() {
+        assertEquals("", SearchFtsQuery.toMatchQuery("   "))
+        assertEquals("", SearchFtsQuery.toMatchQuery("!!"))
     }
 }

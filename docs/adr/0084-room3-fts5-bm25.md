@@ -43,6 +43,10 @@ Bundled driver is therefore **deferred**.
 
 - DB version **61**. Existing installs DROP FTS4 + CREATE FTS5; index empty
   until next `SearchIndexRebuilder.rebuildAll`.
+- **Empty-FTS backstop:** `ensureIndexed()` rebuilds when `ftsCount==0` and
+  Room still has tracks/artists/albums (cold start / sync skipped).
+- `replaceAll` failure invalidates `cachedFtsCount` (null) so next count
+  re-queries the live table — does not force permanent LIKE.
 - Schema JSON no longer lists `search_fts` (external virtual table).
 - Devices without FTS5: CREATE fails quietly → LIKE fallback.
 - ADR 0080/0083 engine decisions superseded; lyrics SERP + popularity

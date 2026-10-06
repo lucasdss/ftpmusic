@@ -135,8 +135,44 @@ class SearchIndexRebuilder @Inject constructor(
                 ftsDao.replaceAll(rows)
                 cachedFtsCount = rows.size
             } catch (_: Exception) {
-                cachedFtsCount = 0
+                // Invalidate — do not force 0 (table may still hold prior rows after TX rollback)
+                cachedFtsCount = null
             }
+        }
+    }
+
+    /**
+     * Cold-start / post-upgrade backstop: if FTS empty but Room has corpus, rebuild once.
+     * MetadataSyncWorker remains the primary densify path.
+     */
+    suspend fun ensureIndexed() {
+        if (ftsCount() > 0) return
+        val hasCorpus = try {
+            trackDao.getAllTracksForSearchIndex().isNotEmpty() ||
+                metadataDao.getAllArtists().isNotEmpty() ||
+                metadataDao.getAllAlbums().isNotEmpty()
+        } catch (_: Exception) {
+            false
+        }
+        if (!hasCorpus) return
+        rebuildAll()
+    }
+
+    /** Immediate single ARTIST row so Discover stubs are FTS-findable before debounce rebuild. */
+    suspend fun indexArtistStub(id: String, name: String, mbid: String? = null) {
+        try {
+            ftsDao.insertAll(
+                listOf(
+                    SearchFtsEntity(
+                        entityType = SearchFtsTypes.ARTIST,
+                        entityId = id,
+                        body = listOfNotNull(name, mbid).joinToString(" "),
+                    ),
+                ),
+            )
+            cachedFtsCount = null
+        } catch (_: Exception) {
+            scheduleRebuild(debounceMs = 0L)
         }
     }
 

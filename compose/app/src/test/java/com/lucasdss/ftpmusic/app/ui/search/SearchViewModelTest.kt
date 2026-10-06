@@ -736,6 +736,7 @@ class SearchViewModelTest {
     @Test
     fun `onDiscoverArtistTap navigates after stub upsert`() = runTest(testDispatcher) {
         val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        val rebuilder = mockk<com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder>(relaxed = true)
         viewModel =
             SearchViewModel(
                 repository,
@@ -745,7 +746,7 @@ class SearchViewModelTest {
                 metadataDao,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk(relaxed = true),
+                rebuilder,
                 mockk(relaxed = true),
                 api,
                 offlineManager,
@@ -767,6 +768,7 @@ class SearchViewModelTest {
         coVerify {
             metadataDao.upsertArtists(match { it.single().id == "mb:mbid-1" })
         }
+        coVerify { rebuilder.indexArtistStub("mb:mbid-1", "Ext Artist", "mbid-1") }
     }
 
     @Test
@@ -820,5 +822,119 @@ class SearchViewModelTest {
         advanceUntilIdle()
         assertEquals("strong", viewModel.state.value.tracks.first().id)
         assertEquals(mapOf("strong" to 0.1, "weak" to 5.0), viewModel.state.value.ftsRanks)
+    }
+
+    @Test
+    fun `onQueryChanged clears ftsRanks immediately`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        every { storage.get(any()) } returns null
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { localSearch.search(any(), any(), any()) } returns LocalSearchHit(
+            tracks = listOf(TrackEntity(id = "t1", title = "Song")),
+            ftsRanks = mapOf("t1" to 0.2),
+        )
+        coEvery {
+            repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } returns SearchResults()
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("so")
+        viewModel.search()
+        advanceUntilIdle()
+        assertEquals(mapOf("t1" to 0.2), viewModel.state.value.ftsRanks)
+        viewModel.onQueryChanged("son")
+        assertTrue(viewModel.state.value.ftsRanks.isEmpty())
+        assertNull(viewModel.state.value.searchError)
+    }
+
+    @Test
+    fun `server search failure sets searchError with library message`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        every { storage.get(any()) } returns null
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { localSearch.search(any(), any(), any()) } returns LocalSearchHit(
+            tracks = listOf(TrackEntity(id = "t1", title = "Song")),
+        )
+        coEvery {
+            repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } throws RuntimeException("network")
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("so")
+        viewModel.search()
+        advanceUntilIdle()
+        assertEquals("Server unavailable — showing library", viewModel.state.value.searchError)
+        assertEquals(1, viewModel.state.value.tracks.size)
+    }
+
+    @Test
+    fun `loadMore failure sets searchError and does not clear results`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        every { storage.get(any()) } returns null
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { localSearch.search(any(), any(), any()) } returns LocalSearchHit(
+            tracks = listOf(TrackEntity(id = "t1", title = "Song")),
+        )
+        coEvery {
+            repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } returns SearchResults(tracks = listOf(Track("t1", "Song"))) andThenThrows RuntimeException("boom")
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("so")
+        viewModel.search()
+        advanceUntilIdle()
+        assertNull(viewModel.state.value.searchError)
+        viewModel.loadMoreSearchResults()
+        advanceUntilIdle()
+        assertEquals("Server unavailable — showing library", viewModel.state.value.searchError)
+        assertTrue(viewModel.state.value.tracks.isNotEmpty())
     }
 }

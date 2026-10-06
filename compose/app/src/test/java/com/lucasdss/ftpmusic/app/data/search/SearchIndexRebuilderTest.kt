@@ -195,19 +195,65 @@ class SearchIndexRebuilderTest {
     }
 
     @Test
-    fun `replaceAll failure invalidates cached count to zero`() = runTest {
+    fun `replaceAll failure invalidates cache then re-queries count`() = runTest {
         every { storage.get(SecureStorage.KEY_SEARCH_LYRICS) } returns "false"
         coEvery { trackDao.getAllTracksForSearchIndex() } returns emptyList()
         coEvery { metadataDao.getAllAlbums() } returns emptyList()
         coEvery { metadataDao.getAllArtists() } returns emptyList()
         coEvery { playlistDao.getAll() } returns emptyList()
         coEvery { genreDao.getAllByPopularity() } returns emptyList()
-        coEvery { ftsDao.count() } returns 5
+        coEvery { ftsDao.count() } returnsMany listOf(5, 5)
         assertEquals(5, rebuilder.ftsCount())
         coEvery { ftsDao.replaceAll(any()) } throws RuntimeException("fts missing")
         rebuilder.rebuildAll()
-        assertEquals(0, rebuilder.ftsCount())
-        coVerify(exactly = 1) { ftsDao.count() }
+        // Cache invalidated — next ftsCount re-queries live table (not stuck at 0)
+        assertEquals(5, rebuilder.ftsCount())
+        coVerify(exactly = 2) { ftsDao.count() }
+    }
+
+    @Test
+    fun `ensureIndexed rebuilds when FTS empty and corpus exists`() = runTest {
+        every { storage.get(SecureStorage.KEY_SEARCH_LYRICS) } returns "false"
+        coEvery { ftsDao.count() } returns 0
+        coEvery { trackDao.getAllTracksForSearchIndex() } returns listOf(
+            TrackSearchIndexRow(
+                id = "t1",
+                title = "Song",
+                artist = null,
+                album = null,
+                genre = null,
+                path = null,
+                year = null,
+                musicbrainzId = null,
+            ),
+        )
+        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+        coEvery { metadataDao.getAllArtists() } returns emptyList()
+        coEvery { playlistDao.getAll() } returns emptyList()
+        coEvery { genreDao.getAllByPopularity() } returns emptyList()
+        rebuilder.ensureIndexed()
+        coVerify { ftsDao.replaceAll(any()) }
+    }
+
+    @Test
+    fun `ensureIndexed skips when FTS already populated`() = runTest {
+        coEvery { ftsDao.count() } returns 10
+        rebuilder.ensureIndexed()
+        coVerify(exactly = 0) { ftsDao.replaceAll(any()) }
+    }
+
+    @Test
+    fun `indexArtistStub inserts FTS artist row`() = runTest {
+        rebuilder.indexArtistStub("mb:1", "Ext Artist", "mbid")
+        coVerify {
+            ftsDao.insertAll(
+                match { rows ->
+                    rows.single().entityType == SearchFtsTypes.ARTIST &&
+                        rows.single().entityId == "mb:1" &&
+                        rows.single().body.contains("Ext Artist")
+                },
+            )
+        }
     }
 
     @Test

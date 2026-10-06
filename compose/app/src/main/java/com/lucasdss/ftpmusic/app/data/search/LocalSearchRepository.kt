@@ -57,14 +57,16 @@ class LocalSearchRepository @Inject constructor(
         }
         if (ftsCount > 0 && textQuery.isNotBlank()) {
             val match = SearchFtsQuery.toMatchQuery(textQuery)
-            // BM25 orders results — over-fetch so albums/artists aren't starved by tracks
-            val rows = try {
-                ftsDao.match(match, limit * 3)
-            } catch (_: Exception) {
-                emptyList()
-            }
-            if (rows.isNotEmpty()) {
-                return hydrateFts(rows, limit, playableOnly, parsed.year)
+            if (match.isNotEmpty()) {
+                // BM25 orders results — over-fetch so albums/artists aren't starved by tracks
+                val rows = try {
+                    ftsDao.match(match, limit * 3)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                if (rows.isNotEmpty()) {
+                    return hydrateFts(rows, limit, playableOnly, parsed.year)
+                }
             }
             if (SearchQueryNormalizer.fold(textQuery).length >= 4) {
                 softTypo(textQuery, limit, playableOnly, parsed.year)?.let { return it }
