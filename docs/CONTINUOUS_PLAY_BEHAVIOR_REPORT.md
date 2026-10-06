@@ -47,7 +47,11 @@ Upsert on sourced context start when **both** `sourceType` + `sourceId` set:
 
 ## Cast
 
-Continuous Play skipped while casting.
+Continuous Play skipped while casting (`ContinuousPlayGate`).
+
+**UI honesty (2026-10):** Queue sheet Autoplay Switch is disabled while casting
+with caption “Unavailable while casting” so the preference ON state does not
+imply CP will extend the Cast timeline. Preference still applies after Cast ends.
 
 ## Tests
 

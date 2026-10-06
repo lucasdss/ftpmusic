@@ -311,6 +311,42 @@ class PlayerSurfacesUxTest {
         assertEquals(false, continuous)
         composeRule.onNodeWithTag("queue_clear_autoplay").assertExists().performClick()
         assertTrue(clearedAutoplay)
+        composeRule.onNodeWithTag("queue_autoplay_cast_unavailable").assertDoesNotExist()
+    }
+
+    @Test
+    fun `queue sheet Autoplay switch disabled while casting`() {
+        var continuous: Boolean? = null
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    isCasting = true,
+                    castDeviceName = "Living Room",
+                    continuousPlayEnabled = true,
+                    queueSize = 2,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Radio",
+                            isCurrent = false,
+                            isPriority = false,
+                            isAutoplay = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+                onContinuousPlayChange = { continuous = it },
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_autoplay_cast_unavailable").assertExists()
+        composeRule.onNodeWithTag("queue_continuous_play_switch").assertExists().performClick()
+        assertEquals(null, continuous)
     }
 
     @Test

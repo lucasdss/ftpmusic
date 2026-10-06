@@ -14,18 +14,16 @@ ADR-0074/75/76 + audit remediation (selection Clear hide, entryId keys, sync-gat
 
 ## Follow-up: Cast Continuous Play
 
-**Not this PR.** Market:
+**Step 1 (shipped):** UX honesty — Autoplay Switch disabled while casting +
+“Unavailable while casting” caption (`queue_autoplay_cast_unavailable`).
+`ContinuousPlayGate` still `isCasting → false` (ADR-0031). Preference value
+preserved for after Cast ends.
 
-- Apple AirPlay/HomePod — AutoPlay continues while remote.
-- Spotify Chromecast — autoplay after playlist end weak/inconsistent.
-- FTPMusic — `ContinuousPlayGate(isCasting=true)` → false (ADR-0031).
+**Step 2 (still follow-up):** Optional enable — Dual append + Cast mutation;
+no Cast timeline callback triggers; ADR update.
 
-**Next Cast CP PR (when scheduled):**
-
-1. UX honesty — Autoplay control unavailable/disabled while casting (toggle must not imply CP will fire).
-2. Optional enable — Dual append + Cast mutation; no Cast timeline callback triggers; ADR update.
-
-Until then: keep Cast CP off.
+Market: Apple AirPlay keeps AutoPlay; Spotify Chromecast autoplay is weak —
+keep CP off on Cast until step 2.
 
 ## Other backlog (unchanged)
 

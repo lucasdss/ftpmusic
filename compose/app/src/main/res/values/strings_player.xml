@@ -12,6 +12,7 @@
     <string name="player_autoplay_section">Autoplay · %1$d</string>
     <string name="player_autoplay_empty">Autoplay · similar tracks when queue ends</string>
     <string name="player_autoplay_cd">Autoplay</string>
+    <string name="player_autoplay_unavailable_cast">Unavailable while casting</string>
     <string name="player_queue_empty">Next in Queue is empty</string>
     <string name="player_queue_empty_hint">Use \"Play Next\" or \"Add to Queue\" from any track. Album or playlist tracks stay under Next from.</string>
     <string name="player_tracks_count">%1$d tracks</string>

@@ -1963,11 +1963,13 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
 
-                        // Apple: Autoplay band + in-queue toggle always visible (ADR-0074)
+                        // Apple: Autoplay band + in-queue toggle always visible (ADR-0074).
+                        // While casting: CP does not load (ContinuousPlayGate) — disable switch (honesty).
                         item(key = "hdr-autoplay") {
                             var continuousPlayOn by remember(continuousPlayEnabled) {
                                 mutableStateOf(continuousPlayEnabled)
                             }
+                            val autoplayAccent = if (isCasting) NavUnselected else BrandTeal
                             Spacer(Modifier.height(spacingS()))
                             Column(
                                 Modifier.fillMaxWidth().padding(horizontal = spacingXL())
@@ -1975,10 +1977,10 @@ private fun BoxScope.PlayerQueuePanel(
                                     .clip(RoundedCornerShape(cornerM()))
                                     .border(
                                         1.dp,
-                                        BrandTeal.copy(alpha = 0.28f),
+                                        autoplayAccent.copy(alpha = 0.28f),
                                         RoundedCornerShape(cornerM()),
                                     )
-                                    .background(BrandTeal.copy(alpha = 0.05f)),
+                                    .background(autoplayAccent.copy(alpha = 0.05f)),
                             ) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(
@@ -1990,7 +1992,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     Icon(
                                         Icons.Default.AutoAwesome,
                                         null,
-                                        tint = BrandTeal,
+                                        tint = autoplayAccent,
                                         modifier = Modifier.size(adp(14f)),
                                     )
                                     Spacer(Modifier.width(spacingS()))
@@ -2000,7 +2002,7 @@ private fun BoxScope.PlayerQueuePanel(
                                         } else {
                                             stringResource(R.string.player_autoplay_empty)
                                         },
-                                        color = BrandTeal,
+                                        color = autoplayAccent,
                                         fontSize = textLabelS(),
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 0.5.sp,
@@ -2026,15 +2028,30 @@ private fun BoxScope.PlayerQueuePanel(
                                             continuousPlayOn = it
                                             onContinuousPlayChange(it)
                                         },
+                                        enabled = !isCasting,
                                         colors = SwitchDefaults.colors(
                                             checkedThumbColor = Foreground,
                                             checkedTrackColor = BrandTeal,
                                             uncheckedThumbColor = NavUnselected,
                                             uncheckedTrackColor = Dimmed,
+                                            disabledCheckedThumbColor = Foreground.copy(alpha = 0.5f),
+                                            disabledCheckedTrackColor = BrandTeal.copy(alpha = 0.35f),
+                                            disabledUncheckedThumbColor = NavUnselected.copy(alpha = 0.5f),
+                                            disabledUncheckedTrackColor = Dimmed.copy(alpha = 0.5f),
                                         ),
                                         modifier = Modifier
                                             .defaultMinSize(minHeight = adp(48f))
                                             .testTag("queue_continuous_play_switch"),
+                                    )
+                                }
+                                if (isCasting) {
+                                    Text(
+                                        stringResource(R.string.player_autoplay_unavailable_cast),
+                                        color = NavUnselected,
+                                        fontSize = textLabelS(),
+                                        modifier = Modifier
+                                            .padding(start = spacingM(), end = spacingM(), bottom = spacingS())
+                                            .testTag("queue_autoplay_cast_unavailable"),
                                     )
                                 }
                             }
