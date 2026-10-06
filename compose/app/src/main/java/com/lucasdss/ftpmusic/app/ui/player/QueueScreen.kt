@@ -25,7 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -103,7 +105,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
             TopAppBar(
                 title = {
                     Column {
-                        Text("Queue (${playbackState.queueSize})", color = Color.White)
+                        Text("Queue (${playbackState.queueSize})", color = Foreground)
                         if (playbackState.isCasting && playbackState.castDeviceName != null) {
                             Text(
                                 "Casting to ${playbackState.castDeviceName}",
@@ -115,7 +117,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.Close, "Close", tint = Color.White)
+                        Icon(Icons.Default.Close, "Close", tint = Foreground)
                     }
                 },
                 actions = {
@@ -131,8 +133,8 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = SurfaceElevated,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
+                    titleContentColor = Foreground,
+                    navigationIconContentColor = Foreground,
                     actionIconContentColor = BrandTeal,
                 ),
             )
@@ -260,7 +262,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                                 viewModel.setContinuousPlayEnabled(it)
                             },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
+                                checkedThumbColor = Foreground,
                                 checkedTrackColor = BrandTeal,
                             ),
                         )
@@ -311,13 +313,13 @@ private fun QueueDismissRow(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Red),
+                    .background(DestructiveRed),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Icon(
                     Icons.Default.Delete,
                     "Remove",
-                    tint = Color.White,
+                    tint = Foreground,
                     modifier = Modifier.padding(end = spacingXL()),
                 )
             }
@@ -346,14 +348,15 @@ private fun QueueItemRow(
 ) {
     val bgColor = when {
         isDragging -> MaterialTheme.colorScheme.surfaceVariant
-        item.isCurrent -> BrandTeal.copy(alpha = 0.08f)
-        else -> Color.Transparent
+        item.isCurrent -> BrandTeal.copy(alpha = 0.08f).compositeOver(SurfaceElevated)
+        else -> SurfaceElevated
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(bgColor)
+            .testTag("queue_track_row")
             .clickable { onClick() }
             .padding(vertical = adp(10f), horizontal = spacingL()),
         verticalAlignment = Alignment.CenterVertically,
@@ -362,7 +365,7 @@ private fun QueueItemRow(
         Icon(
             Icons.Default.DragHandle,
             null,
-            tint = Color(0xFF333333),
+            tint = NavUnselected,
             modifier = Modifier
                 .size(adp(14f))
                 .then(dragHandleModifier),
@@ -379,7 +382,7 @@ private fun QueueItemRow(
                     contentScale = ContentScale.Crop,
                 )
             } else {
-                Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().background(Surface), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(adp(16f)))
                 }
             }
@@ -423,13 +426,13 @@ private fun QueueItemRow(
                 fontSize = textHeadingS(),
                 minFontSize = textMicro(),
                 fontWeight = FontWeight.Medium,
-                color = if (item.isCurrent) BrandTeal else Color.White,
+                color = if (item.isCurrent) BrandTeal else Foreground,
                 modifier = Modifier.fillMaxWidth(),
             )
             item.artist?.let { a ->
                 FittingText(
                     text = a,
-                    color = Color(0xFF888888),
+                    color = NavUnselected,
                     fontSize = textLabelM(),
                     minFontSize = textMicro(),
                     modifier = Modifier.fillMaxWidth(),
@@ -443,7 +446,7 @@ private fun QueueItemRow(
             val minutes = (item.durationMs / 1000) / 60
             Text(
                 "$minutes:${seconds.toString().padStart(2, '0')}",
-                color = Color(0xFF666666),
+                color = Dimmed,
                 fontSize = asp(12f),
                 fontFamily = interFontFamily(),
             )

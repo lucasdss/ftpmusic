@@ -1526,20 +1526,20 @@ private fun BoxScope.PlayerQueuePanel(
                                     Row(
                                         Modifier.padding(horizontal = spacingS(), vertical = spacingXS())
                                             .clip(RoundedCornerShape(cornerS()))
-                                            .background(Color(0xFFFFC800).copy(alpha = 0.12f))
+                                            .background(OfflineYellow.copy(alpha = 0.12f))
                                             .padding(horizontal = spacingS(), vertical = adp(3f)),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Icon(
                                             Icons.Default.CloudOff,
                                             null,
-                                            tint = Color(0xFFFFC800),
+                                            tint = OfflineYellow,
                                             modifier = Modifier.size(adp(10f)),
                                         )
                                         Spacer(Modifier.width(spacingXS()))
                                         Text(
                                             stringResource(R.string.player_offline),
-                                            color = Color(0xFFFFC800),
+                                            color = OfflineYellow,
                                             fontSize = textMicro(),
                                             fontWeight = FontWeight.SemiBold,
                                         )
@@ -1570,20 +1570,20 @@ private fun BoxScope.PlayerQueuePanel(
                                     Row(
                                         Modifier.padding(horizontal = spacingS(), vertical = spacingXS())
                                             .clip(RoundedCornerShape(cornerS()))
-                                            .background(Color(0xFFFFC800).copy(alpha = 0.1f))
+                                            .background(OfflineYellow.copy(alpha = 0.1f))
                                             .padding(horizontal = spacingS(), vertical = adp(3f)),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Icon(
                                             Icons.Default.ErrorOutline,
                                             null,
-                                            tint = Color(0xFFFFC800),
+                                            tint = OfflineYellow,
                                             modifier = Modifier.size(adp(10f)),
                                         )
                                         Spacer(Modifier.width(spacingXS()))
                                         Text(
                                             stringResource(R.string.player_saving),
-                                            color = Color(0xFFFFC800),
+                                            color = OfflineYellow,
                                             fontSize = textMicro(),
                                             fontWeight = FontWeight.SemiBold,
                                         )
@@ -1619,13 +1619,13 @@ private fun BoxScope.PlayerQueuePanel(
                                     Icon(
                                         Icons.Filled.Delete,
                                         null,
-                                        tint = Color(0xFFE84040),
+                                        tint = DestructiveRed,
                                         modifier = Modifier.size(iconSmall()),
                                     )
                                     Spacer(Modifier.width(spacingXS()))
                                     Text(
                                         stringResource(R.string.player_clear),
-                                        color = Color(0xFFE84040),
+                                        color = DestructiveRed,
                                         fontSize = textLabelM(),
                                     )
                                 }
@@ -1675,7 +1675,7 @@ private fun BoxScope.PlayerQueuePanel(
                                         Spacer(Modifier.weight(1f))
                                         Text(
                                             stringResource(R.string.player_clear),
-                                            color = Color(0xFFE84040),
+                                            color = DestructiveRed,
                                             fontSize = textMicro(),
                                             modifier = Modifier
                                                 .clickable { onClearQueue() }
@@ -2214,6 +2214,10 @@ internal fun queueRowKey(track: com.lucasdss.ftpmusic.app.playback.UpcomingTrack
     else -> "qi-${track.queueIndex}-${track.title}"
 }
 
+/** Idle (non-drag) fill for queue rows — opaque so swipe-delete red cannot bleed. */
+@VisibleForTesting
+internal val QueueTrackRowIdleBackground = SurfaceElevated
+
 /** Swipe-to-remove wrapper around [QueueTrackRow] for the prod queue sheet. */
 @Composable
 private fun QueueDismissTrackRow(
@@ -2238,13 +2242,13 @@ private fun QueueDismissTrackRow(
         ),
         backgroundContent = {
             Box(
-                Modifier.fillMaxSize().background(Color(0xFFE84040)),
+                Modifier.fillMaxSize().background(DestructiveRed),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Icon(
                     Icons.Default.Delete,
                     stringResource(R.string.player_remove),
-                    tint = Color.White,
+                    tint = Foreground,
                     modifier = Modifier.padding(end = spacingXL()),
                 )
             }
@@ -2277,9 +2281,11 @@ private fun QueueTrackRow(
     isDragging: Boolean = false,
     dragHandleModifier: Modifier = Modifier,
 ) {
+    val rowBg = if (isDragging) MaterialTheme.colorScheme.surfaceVariant else QueueTrackRowIdleBackground
     Row(
         Modifier.fillMaxWidth()
-            .background(if (isDragging) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
+            .background(rowBg)
+            .testTag("queue_track_row")
             .clickable { onPlayQueueItem(index) }
             .padding(vertical = adp(6f), horizontal = spacingS()),
         verticalAlignment = Alignment.CenterVertically,
@@ -2304,7 +2310,7 @@ private fun QueueTrackRow(
                     contentScale = ContentScale.Crop,
                 )
             } else {
-                Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().background(Surface), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(adp(16f)))
                 }
             }
@@ -2344,7 +2350,7 @@ private fun QueueTrackRow(
         Column(Modifier.weight(1f)) {
             FittingText(
                 text = track.title,
-                color = if (dimmed) NavUnselected else Color.White,
+                color = if (dimmed) NavUnselected else Foreground,
                 fontSize = textHeadingS(),
                 minFontSize = textMicro(),
                 fontWeight = FontWeight.Medium,
