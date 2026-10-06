@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.data.search
 import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.model.Track
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -60,9 +61,32 @@ class SearchResultMergerTest {
             Track("2", title = "B-side", artist = "Pink Floyd"),
             Track("3", title = "Pink Floyd Tribute", artist = "Cover Band"),
         )
-        val ranked = SearchResultMerger.rankByFields(items, "pink floyd") {
-            listOf(it.title, it.artist, it.album)
-        }
+        val ranked = SearchResultMerger.rankByFields(
+            items,
+            "pink floyd",
+            fieldsOf = { listOf(it.title, it.artist, it.album) },
+        )
         assertEquals("2", ranked.first().id)
+    }
+
+    @Test
+    fun `rankByFields popularity tie-break prefers higher playCount`() {
+        val items = listOf(
+            Track("1", title = "Rock Song", playCount = 1),
+            Track("2", title = "Rock Anthem", playCount = 50),
+        )
+        val ranked = SearchResultMerger.rankByFields(
+            items,
+            "rock",
+            fieldsOf = { listOf(it.title) },
+            popularityOf = { SearchResultMerger.trackPopularity(it.playCount, it.lastPlayedAt) },
+        )
+        assertEquals("2", ranked.first().id)
+    }
+
+    @Test
+    fun `isExactName folds query`() {
+        assertTrue(SearchResultMerger.isExactName("Radiohead", "radiohead"))
+        assertFalse(SearchResultMerger.isExactName("Radiohead", "radio"))
     }
 }

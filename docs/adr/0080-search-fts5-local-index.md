@@ -24,3 +24,5 @@ Phase-3 keeps index fresh and adds soft typo + year tokens.
 - DB v59 FTS + enrichment; v60 `search_tags`.
 - Cold start: LIKE until sync rebuilds; Search shows "Indexing library…".
 - Voice search prefers LocalSearchRepository then search3.
+- **BM25 / FTS5 still blocked** on Room 3 + BundledSQLiteDriver (Phase-6 keeps FTS4;
+  app-side ranking + lyrics SERP instead — ADR 0083).

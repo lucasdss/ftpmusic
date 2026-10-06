@@ -29,6 +29,9 @@ data class Track(
     val coverArt: String? = null,
     val sizeBytes: Int? = null,
     val userRating: Int? = null,
+    /** Local play signals for search ranking (Phase-6). */
+    val playCount: Int = 0,
+    val lastPlayedAt: Long? = null,
 ) {
     val formattedDuration: String
         get() {

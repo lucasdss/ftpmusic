@@ -22,6 +22,8 @@ data class LocalSearchHit(
     val genres: List<GenreEntity> = emptyList(),
     /** Track ids matched via lyrics FTS (hydrate separately if needed). */
     val lyricTrackIds: List<String> = emptyList(),
+    /** Track ids matched via title/meta TRACK FTS rows (not lyrics-only). */
+    val trackMatchIds: List<String> = emptyList(),
     val usedFts: Boolean = false,
     val usedSoftTypo: Boolean = false,
     val yearConstraint: SearchYearConstraint = SearchYearConstraint(),
@@ -125,6 +127,7 @@ class LocalSearchRepository @Inject constructor(
             playlists = playlists.take(limit),
             genres = genres.take(limit),
             lyricTrackIds = lyricIds,
+            trackMatchIds = trackIds,
             usedFts = true,
             yearConstraint = year,
         )
