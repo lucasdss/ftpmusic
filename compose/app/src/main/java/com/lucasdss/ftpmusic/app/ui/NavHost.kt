@@ -871,6 +871,19 @@ fun FtpmusicNavHost() {
                     val onCast = remember { { CastButtonState.showDialog.value = true } }
                     val onShareQueue =
                         remember(playbackViewModel, appContext) { { playbackViewModel.shareQueue(appContext) } }
+                    val onSaveQueueAsPlaylist = remember(playbackViewModel, appContext) {
+                        { name: String -> playbackViewModel.saveQueueAsPlaylist(appContext, name) }
+                    }
+                    val onPlayHistoryTrack = remember(playbackViewModel) {
+                        { trackId: String -> playbackViewModel.playNextFromHistory(trackId) }
+                    }
+                    val onRemoveFromQueueBatch = remember(playbackViewModel) {
+                        { indices: Set<Int> -> playbackViewModel.removeFromQueueBatch(indices) }
+                    }
+                    val onQueueSheetOpened = remember(playbackViewModel) {
+                        { playbackViewModel.refreshQueueHistory() }
+                    }
+                    val queueHistory by playbackViewModel.queueHistory.collectAsStateWithLifecycle()
 
                     PlayerBar(
                         state = PlayerBarState(
@@ -914,6 +927,7 @@ fun FtpmusicNavHost() {
                             contextSource = playbackState.contextSource,
                             priorityQueueSize = playbackState.priorityQueueSize,
                             continuousPlayEnabled = playbackViewModel.isContinuousPlayEnabled(),
+                            queueHistory = queueHistory,
                             waveformBars = waveformBars,
                         ),
                         position = position,
@@ -946,6 +960,11 @@ fun FtpmusicNavHost() {
                         onBeginQueueReorder = onBeginQueueReorder,
                         onCommitQueueReorder = onCommitQueueReorder,
                         onShareQueue = onShareQueue,
+                        onSaveQueueAsPlaylist = onSaveQueueAsPlaylist,
+                        onPlayHistoryTrack = onPlayHistoryTrack,
+                        onRemoveFromQueueBatch = onRemoveFromQueueBatch,
+                        onQueueSheetOpened = onQueueSheetOpened,
+                        defaultQueuePlaylistName = playbackViewModel.defaultQueuePlaylistName(),
                         modifier = Modifier,
                     )
 

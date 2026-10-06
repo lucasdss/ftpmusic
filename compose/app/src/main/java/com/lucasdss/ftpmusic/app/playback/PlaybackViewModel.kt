@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
+import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
+import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.ui.player.CastButtonState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.ConcurrentHashMap
@@ -33,6 +36,7 @@ class PlaybackViewModel @Inject constructor(
     private val storage: SecureStorage,
     private val trackDao: TrackDao,
     private val queueDao: QueueDao,
+    private val playlistRepository: PlaylistRepository,
     private val api: SubsonicApi,
 ) : ViewModel() {
     private val authHelper = SubsonicAuthHelper()
@@ -53,6 +57,11 @@ class PlaybackViewModel @Inject constructor(
 
     @Suppress("ktlint:standard:backing-property-naming")
     private val _downloadedTrackIds = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Recently played tracks for queue sheet history band (ADR-0075). */
+    @Suppress("ktlint:standard:backing-property-naming")
+    private val _queueHistory = MutableStateFlow<List<QueueHistoryTrack>>(emptyList())
+    val queueHistory: StateFlow<List<QueueHistoryTrack>> = _queueHistory.asStateFlow()
 
     /** Combined state: provider (Player) state + local non-player state. */
     private val _state = MutableStateFlow(PlaybackState())
@@ -172,6 +181,12 @@ class PlaybackViewModel @Inject constructor(
         playbackManager.playQueueItem(index)
     }
     fun removeFromQueue(index: Int) = playbackManager.removeFromQueue(index)
+
+    /** Remove selected queue indices descending so earlier removals don't shift later ones. */
+    fun removeFromQueueBatch(indices: Collection<Int>) {
+        indices.sortedDescending().forEach { playbackManager.removeFromQueue(it) }
+    }
+
     fun clearQueue() = playbackManager.clearQueue()
 
     /** Clear manual Queue only (Spotify / Apple Clear) — keep Continue Playing. */
@@ -488,6 +503,103 @@ class PlaybackViewModel @Inject constructor(
             }
         }
     }
+
+    /** Default name for save-as-playlist (local-first, ADR-0075). */
+    fun defaultQueuePlaylistName(): String {
+        val dateStr = java.text.SimpleDateFormat("MMM dd", java.util.Locale.US)
+            .format(java.util.Date())
+        return "Queue - $dateStr"
+    }
+
+    private fun currentQueueTrackIds(): List<String> {
+        val player = PlayerHolder.exoPlayer ?: PlayerHolder.player ?: return emptyList()
+        if (player.mediaItemCount == 0) return emptyList()
+        return (0 until player.mediaItemCount).mapNotNull { i ->
+            player.getMediaItemAt(i)?.mediaId?.takeIf { it.isNotEmpty() }
+        }
+    }
+
+    /**
+     * Save current queue as a local-first playlist (ADR-0075).
+     * Unlike [shareQueue], this uses [PlaylistRepository] Room + pending sync.
+     */
+    fun saveQueueAsPlaylist(context: android.content.Context, name: String) {
+        val trackIds = currentQueueTrackIds()
+        if (trackIds.isEmpty()) return
+        val trimmed = name.trim().ifEmpty { defaultQueuePlaylistName() }
+        viewModelScope.launch {
+            try {
+                val tempId = playlistRepository.createPlaylist(trimmed)
+                playlistRepository.addToPlaylist(tempId, trackIds)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Saved \"$trimmed\" (${trackIds.size} tracks)",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "saveQueueAsPlaylist failed: ${e.message}")
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Failed to save queue",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+        }
+    }
+
+    /** Refresh Recently Played band, excluding IDs already in the active queue. */
+    fun refreshQueueHistory() {
+        viewModelScope.launch {
+            try {
+                val exclude = currentQueueTrackIds().toSet() +
+                    setOfNotNull(PlayerHolder.player?.currentMediaItem?.mediaId)
+                val rows = trackDao.getRecentlyPlayed(limit = 20)
+                _queueHistory.value = rows
+                    .filter { it.id !in exclude }
+                    .map {
+                        QueueHistoryTrack(
+                            id = it.id,
+                            title = it.title,
+                            artist = it.artist,
+                            coverArtId = it.coverArtUrl,
+                        )
+                    }
+            } catch (_: Exception) {
+                _queueHistory.value = emptyList()
+            }
+        }
+    }
+
+    fun playNextFromHistory(trackId: String) {
+        viewModelScope.launch {
+            try {
+                val entity = trackDao.getTrack(trackId) ?: return@launch
+                val track = Track(
+                    id = entity.id,
+                    title = entity.title,
+                    artist = entity.artist,
+                    albumId = entity.albumId,
+                    artistId = entity.artistId,
+                    duration = entity.durationSeconds,
+                    coverArt = entity.coverArtUrl,
+                    bitrate = entity.bitrate,
+                    suffix = entity.suffix,
+                    contentType = entity.contentType,
+                    path = entity.path,
+                )
+                val url = buildStreamUrl(track.id)
+                playbackManager.playNext(track, url)
+                refreshQueueHistory()
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "playNextFromHistory failed: ${e.message}")
+            }
+        }
+    }
+
     fun refreshQueueDownloadStatus() {
         viewModelScope.launch {
             try {
@@ -568,4 +680,13 @@ data class UpcomingTrack(
     val entryId: Int = 0,
     val isPriority: Boolean = false,
     val isAutoplay: Boolean = false,
+)
+
+/** Recently played row for queue sheet history band (ADR-0075). */
+@androidx.compose.runtime.Immutable
+data class QueueHistoryTrack(
+    val id: String,
+    val title: String,
+    val artist: String? = null,
+    val coverArtId: String? = null,
 )

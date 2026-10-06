@@ -139,6 +139,11 @@ fun PlayerBar(
     onBeginQueueReorder: (entryId: Int, fromIndex: Int) -> Unit = { _, _ -> },
     onCommitQueueReorder: () -> Unit = {},
     onShareQueue: () -> Unit = {},
+    onSaveQueueAsPlaylist: (String) -> Unit = {},
+    onPlayHistoryTrack: (String) -> Unit = {},
+    onRemoveFromQueueBatch: (Set<Int>) -> Unit = {},
+    onQueueSheetOpened: () -> Unit = {},
+    defaultQueuePlaylistName: String = "Queue",
     modifier: Modifier = Modifier,
 ) {
     with(state) {
@@ -280,7 +285,10 @@ fun PlayerBar(
                         queueOffset = queueOffset,
                         queueScope = queueScope,
                         queueSheetHeightPx = queueSheetHeightPx,
-                        onShowQueueChange = { showQueue = it },
+                        onShowQueueChange = { open ->
+                            showQueue = open
+                            if (open) onQueueSheetOpened()
+                        },
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
@@ -291,6 +299,10 @@ fun PlayerBar(
                         onBeginQueueReorder = onBeginQueueReorder,
                         onCommitQueueReorder = onCommitQueueReorder,
                         onShareQueue = onShareQueue,
+                        onSaveQueueAsPlaylist = onSaveQueueAsPlaylist,
+                        onPlayHistoryTrack = onPlayHistoryTrack,
+                        onRemoveFromQueueBatch = onRemoveFromQueueBatch,
+                        defaultQueuePlaylistName = defaultQueuePlaylistName,
                     )
 
                     // ── Lyrics overlay — slides up over the player ──
@@ -1123,8 +1135,22 @@ private fun BoxScope.PlayerQueuePanel(
     onBeginQueueReorder: (entryId: Int, fromIndex: Int) -> Unit,
     onCommitQueueReorder: () -> Unit,
     onShareQueue: () -> Unit,
+    onSaveQueueAsPlaylist: (String) -> Unit,
+    onPlayHistoryTrack: (String) -> Unit,
+    onRemoveFromQueueBatch: (Set<Int>) -> Unit,
+    defaultQueuePlaylistName: String,
 ) {
     with(state) {
+        var selectionMode by remember { mutableStateOf(false) }
+        var selectedIndices by remember { mutableStateOf(setOf<Int>()) }
+        var showSaveDialog by remember { mutableStateOf(false) }
+        LaunchedEffect(showQueue) {
+            if (!showQueue) {
+                selectionMode = false
+                selectedIndices = emptySet()
+                showSaveDialog = false
+            }
+        }
         // ── Queue peek strip — always composed (the sheet covers it when
         // open). Swipe up with finger-follow: the sheet translates live
         // during the drag and springs to an anchor on release. ──
@@ -1597,26 +1623,84 @@ private fun BoxScope.PlayerQueuePanel(
                                     }
                                 }
                                 Spacer(Modifier.weight(1f))
-                                Icon(
-                                    Icons.Default.Shuffle,
-                                    stringResource(R.string.player_shuffle),
-                                    tint = if (shuffleModeEnabled) BrandTeal else NavUnselected,
-                                    modifier = Modifier
-                                        .size(adp(48f))
-                                        .padding(end = spacingXS())
-                                        .clickable { onShuffleToggle() }
-                                        .testTag("queue_sheet_shuffle"),
-                                )
-                                Icon(
-                                    Icons.Default.Share,
-                                    stringResource(R.string.player_share_queue),
-                                    tint = NavUnselected,
-                                    modifier = Modifier
-                                        .size(adp(48f))
-                                        .padding(end = spacingXS())
-                                        .clickable { onShareQueue() }
-                                        .testTag("queue_sheet_share"),
-                                )
+                                if (selectionMode) {
+                                    Text(
+                                        stringResource(R.string.player_cancel_select),
+                                        color = NavUnselected,
+                                        fontSize = textLabelM(),
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .clickable {
+                                                selectionMode = false
+                                                selectedIndices = emptySet()
+                                            }
+                                            .padding(spacingS())
+                                            .heightIn(min = adp(48f))
+                                            .wrapContentHeight(Alignment.CenterVertically)
+                                            .testTag("queue_select_cancel"),
+                                    )
+                                    Text(
+                                        stringResource(R.string.player_remove_selected),
+                                        color = DestructiveRed,
+                                        fontSize = textLabelM(),
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .clickable(enabled = selectedIndices.isNotEmpty()) {
+                                                onRemoveFromQueueBatch(selectedIndices)
+                                                selectionMode = false
+                                                selectedIndices = emptySet()
+                                            }
+                                            .padding(spacingS())
+                                            .heightIn(min = adp(48f))
+                                            .wrapContentHeight(Alignment.CenterVertically)
+                                            .testTag("queue_select_remove"),
+                                    )
+                                } else {
+                                    if (reorderableTracks.isNotEmpty()) {
+                                        Text(
+                                            stringResource(R.string.player_select),
+                                            color = NavUnselected,
+                                            fontSize = textLabelM(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier
+                                                .clickable { selectionMode = true }
+                                                .padding(spacingS())
+                                                .heightIn(min = adp(48f))
+                                                .wrapContentHeight(Alignment.CenterVertically)
+                                                .testTag("queue_select_enter"),
+                                        )
+                                    }
+                                    Icon(
+                                        Icons.Default.Shuffle,
+                                        stringResource(R.string.player_shuffle),
+                                        tint = if (shuffleModeEnabled) BrandTeal else NavUnselected,
+                                        modifier = Modifier
+                                            .size(adp(48f))
+                                            .padding(end = spacingXS())
+                                            .clickable { onShuffleToggle() }
+                                            .testTag("queue_sheet_shuffle"),
+                                    )
+                                    Icon(
+                                        Icons.Default.PlaylistAdd,
+                                        stringResource(R.string.player_save_queue),
+                                        tint = NavUnselected,
+                                        modifier = Modifier
+                                            .size(adp(48f))
+                                            .padding(end = spacingXS())
+                                            .clickable { showSaveDialog = true }
+                                            .testTag("queue_sheet_save"),
+                                    )
+                                    Icon(
+                                        Icons.Default.Share,
+                                        stringResource(R.string.player_share_queue),
+                                        tint = NavUnselected,
+                                        modifier = Modifier
+                                            .size(adp(48f))
+                                            .padding(end = spacingXS())
+                                            .clickable { onShareQueue() }
+                                            .testTag("queue_sheet_share"),
+                                    )
+                                }
                                 Spacer(Modifier.width(spacingS()))
                                 Text(
                                     stringResource(R.string.player_tracks_count, queueSize),
@@ -1687,16 +1771,35 @@ private fun BoxScope.PlayerQueuePanel(
                                     QueueDismissTrackRow(
                                         track = track,
                                         isPlaying = isPlaying,
-                                        isDragging = isDragging,
+                                        isDragging = isDragging && !selectionMode,
                                         downloadedTrackIds = downloadedTrackIds,
                                         onPlayQueueItem = onPlayQueueItem,
                                         onRemoveFromQueue = onRemoveFromQueue,
-                                        dragHandleModifier = Modifier.draggableHandle(
-                                            onDragStarted = {
-                                                onBeginQueueReorder(track.entryId, track.queueIndex)
-                                            },
-                                            onDragStopped = { onCommitQueueReorder() },
-                                        ),
+                                        selectionMode = selectionMode,
+                                        selected = track.queueIndex in selectedIndices,
+                                        onToggleSelect = {
+                                            selectedIndices = if (track.queueIndex in selectedIndices) {
+                                                selectedIndices - track.queueIndex
+                                            } else {
+                                                selectedIndices + track.queueIndex
+                                            }
+                                        },
+                                        onLongPressSelect = {
+                                            if (!selectionMode) {
+                                                selectionMode = true
+                                                selectedIndices = setOf(track.queueIndex)
+                                            }
+                                        },
+                                        dragHandleModifier = if (selectionMode) {
+                                            Modifier
+                                        } else {
+                                            Modifier.draggableHandle(
+                                                onDragStarted = {
+                                                    onBeginQueueReorder(track.entryId, track.queueIndex)
+                                                },
+                                                onDragStopped = { onCommitQueueReorder() },
+                                            )
+                                        },
                                     )
                                 }
                             }
@@ -1741,16 +1844,35 @@ private fun BoxScope.PlayerQueuePanel(
                                     QueueDismissTrackRow(
                                         track = track,
                                         isPlaying = isPlaying,
-                                        isDragging = isDragging,
+                                        isDragging = isDragging && !selectionMode,
                                         downloadedTrackIds = downloadedTrackIds,
                                         onPlayQueueItem = onPlayQueueItem,
                                         onRemoveFromQueue = onRemoveFromQueue,
-                                        dragHandleModifier = Modifier.draggableHandle(
-                                            onDragStarted = {
-                                                onBeginQueueReorder(track.entryId, track.queueIndex)
-                                            },
-                                            onDragStopped = { onCommitQueueReorder() },
-                                        ),
+                                        selectionMode = selectionMode,
+                                        selected = track.queueIndex in selectedIndices,
+                                        onToggleSelect = {
+                                            selectedIndices = if (track.queueIndex in selectedIndices) {
+                                                selectedIndices - track.queueIndex
+                                            } else {
+                                                selectedIndices + track.queueIndex
+                                            }
+                                        },
+                                        onLongPressSelect = {
+                                            if (!selectionMode) {
+                                                selectionMode = true
+                                                selectedIndices = setOf(track.queueIndex)
+                                            }
+                                        },
+                                        dragHandleModifier = if (selectionMode) {
+                                            Modifier
+                                        } else {
+                                            Modifier.draggableHandle(
+                                                onDragStarted = {
+                                                    onBeginQueueReorder(track.entryId, track.queueIndex)
+                                                },
+                                                onDragStopped = { onCommitQueueReorder() },
+                                            )
+                                        },
                                     )
                                 }
                             }
@@ -1838,18 +1960,59 @@ private fun BoxScope.PlayerQueuePanel(
                                     QueueDismissTrackRow(
                                         track = track,
                                         isPlaying = isPlaying,
-                                        isDragging = isDragging,
+                                        isDragging = isDragging && !selectionMode,
                                         downloadedTrackIds = downloadedTrackIds,
                                         onPlayQueueItem = onPlayQueueItem,
                                         onRemoveFromQueue = onRemoveFromQueue,
-                                        dragHandleModifier = Modifier.draggableHandle(
-                                            onDragStarted = {
-                                                onBeginQueueReorder(track.entryId, track.queueIndex)
-                                            },
-                                            onDragStopped = { onCommitQueueReorder() },
-                                        ),
+                                        selectionMode = selectionMode,
+                                        selected = track.queueIndex in selectedIndices,
+                                        onToggleSelect = {
+                                            selectedIndices = if (track.queueIndex in selectedIndices) {
+                                                selectedIndices - track.queueIndex
+                                            } else {
+                                                selectedIndices + track.queueIndex
+                                            }
+                                        },
+                                        onLongPressSelect = {
+                                            if (!selectionMode) {
+                                                selectionMode = true
+                                                selectedIndices = setOf(track.queueIndex)
+                                            }
+                                        },
+                                        dragHandleModifier = if (selectionMode) {
+                                            Modifier
+                                        } else {
+                                            Modifier.draggableHandle(
+                                                onDragStarted = {
+                                                    onBeginQueueReorder(track.entryId, track.queueIndex)
+                                                },
+                                                onDragStopped = { onCommitQueueReorder() },
+                                            )
+                                        },
                                     )
                                 }
+                            }
+                        }
+
+                        if (queueHistory.isNotEmpty() && !selectionMode) {
+                            item(key = "hdr-history") {
+                                Spacer(Modifier.height(spacingM()))
+                                Text(
+                                    stringResource(R.string.player_recently_played_section, queueHistory.size),
+                                    color = NavUnselected,
+                                    fontSize = textLabelS(),
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                    modifier = Modifier
+                                        .padding(horizontal = spacingXL(), vertical = spacingS())
+                                        .testTag("queue_section_history"),
+                                )
+                            }
+                            items(queueHistory, key = { "hist-${it.id}" }) { hist ->
+                                QueueHistoryRow(
+                                    track = hist,
+                                    onPlayNext = { onPlayHistoryTrack(hist.id) },
+                                )
                             }
                         }
 
@@ -1884,6 +2047,16 @@ private fun BoxScope.PlayerQueuePanel(
                         }
                         item(key = "footer-spacer") { Spacer(Modifier.height(spacing3XL())) }
                     }
+                }
+                if (showSaveDialog) {
+                    QueueSavePlaylistDialog(
+                        initialName = defaultQueuePlaylistName,
+                        onSave = { name ->
+                            showSaveDialog = false
+                            onSaveQueueAsPlaylist(name)
+                        },
+                        onDismiss = { showSaveDialog = false },
+                    )
                 }
             }
         }
@@ -1999,6 +2172,8 @@ data class PlayerBarState(
     val priorityQueueSize: Int = 0,
     /** Apple-style Autoplay / Continuous Play (ADR-0053 / ADR-0074). */
     val continuousPlayEnabled: Boolean = true,
+    /** Recently played for history band (ADR-0075); empty = hide section. */
+    val queueHistory: List<com.lucasdss.ftpmusic.app.playback.QueueHistoryTrack> = emptyList(),
     val waveformBars: List<Float> = emptyList(),
 )
 
@@ -2283,8 +2458,29 @@ private fun QueueDismissTrackRow(
     downloadedTrackIds: Set<String>,
     onPlayQueueItem: (Int) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onLongPressSelect: () -> Unit = {},
     dragHandleModifier: Modifier = Modifier,
 ) {
+    if (selectionMode) {
+        QueueTrackRow(
+            index = track.queueIndex,
+            track = track,
+            isPlaying = isPlaying,
+            onPlayQueueItem = onPlayQueueItem,
+            onRemoveFromQueue = onRemoveFromQueue,
+            downloadedTrackIds = downloadedTrackIds,
+            isDragging = isDragging,
+            selectionMode = true,
+            selected = selected,
+            onToggleSelect = onToggleSelect,
+            onLongPressSelect = onLongPressSelect,
+            dragHandleModifier = dragHandleModifier,
+        )
+        return
+    }
     SwipeToDismissBox(
         state = rememberSwipeToDismissBoxState(
             confirmValueChange = { value ->
@@ -2319,6 +2515,10 @@ private fun QueueDismissTrackRow(
             onRemoveFromQueue = onRemoveFromQueue,
             downloadedTrackIds = downloadedTrackIds,
             isDragging = isDragging,
+            selectionMode = false,
+            selected = false,
+            onToggleSelect = onToggleSelect,
+            onLongPressSelect = onLongPressSelect,
             dragHandleModifier = dragHandleModifier,
         )
     }
@@ -2335,27 +2535,57 @@ private fun QueueTrackRow(
     downloadedTrackIds: Set<String>,
     dimmed: Boolean = false,
     isDragging: Boolean = false,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onLongPressSelect: () -> Unit = {},
     dragHandleModifier: Modifier = Modifier,
 ) {
-    val rowBg = if (isDragging) MaterialTheme.colorScheme.surfaceVariant else QueueTrackRowIdleBackground
+    val rowBg = when {
+        selected -> MaterialTheme.colorScheme.surfaceVariant
+        isDragging -> MaterialTheme.colorScheme.surfaceVariant
+        else -> QueueTrackRowIdleBackground
+    }
     Row(
         Modifier.fillMaxWidth()
             .background(rowBg)
             .testTag("queue_track_row")
-            .clickable { onPlayQueueItem(index) }
+            .pointerInput(selectionMode, selected) {
+                detectTapGestures(
+                    onLongPress = { onLongPressSelect() },
+                    onTap = {
+                        if (selectionMode) onToggleSelect() else onPlayQueueItem(index)
+                    },
+                )
+            }
             .padding(vertical = adp(6f), horizontal = spacingS()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            Icons.Default.DragHandle,
-            stringResource(R.string.player_drag_handle),
-            tint = NavUnselected,
-            modifier = Modifier
-                .size(adp(48f))
-                .padding(spacingS())
-                .then(dragHandleModifier)
-                .testTag("queue_drag_handle"),
-        )
+        if (selectionMode) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onToggleSelect() },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = BrandTeal,
+                    uncheckedColor = NavUnselected,
+                    checkmarkColor = Foreground,
+                ),
+                modifier = Modifier
+                    .size(adp(48f))
+                    .testTag("queue_select_checkbox"),
+            )
+        } else {
+            Icon(
+                Icons.Default.DragHandle,
+                stringResource(R.string.player_drag_handle),
+                tint = NavUnselected,
+                modifier = Modifier
+                    .size(adp(48f))
+                    .padding(spacingS())
+                    .then(dragHandleModifier)
+                    .testTag("queue_drag_handle"),
+            )
+        }
         Spacer(Modifier.width(spacingXS()))
         Box(Modifier.size(adp(40f)).clip(RoundedCornerShape(cornerS())), contentAlignment = Alignment.Center) {
             if (track.coverArtUrl != null) {
@@ -2434,19 +2664,183 @@ private fun QueueTrackRow(
             DownloadDot("downloaded")
             Spacer(Modifier.width(spacingS()))
         }
+        if (!selectionMode) {
+            Box(
+                Modifier
+                    .size(adp(48f))
+                    .clickable { onRemoveFromQueue(index) }
+                    .testTag("queue_remove"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    stringResource(R.string.player_remove),
+                    tint = NavUnselected,
+                    modifier = Modifier.size(iconSmall()),
+                )
+            }
+        }
+    }
+}
+
+/** Recently Played band row — no drag; tap / Play Next → PRIORITY insert. */
+@Composable
+private fun QueueHistoryRow(track: com.lucasdss.ftpmusic.app.playback.QueueHistoryTrack, onPlayNext: () -> Unit) {
+    val coverUrl = com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl(track.coverArtId, size = 80)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(QueueTrackRowIdleBackground)
+            .clickable(onClick = onPlayNext)
+            .padding(vertical = adp(6f), horizontal = spacingS())
+            .testTag("queue_history_row"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(adp(40f)).clip(RoundedCornerShape(cornerS())),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (coverUrl != null) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Box(Modifier.fillMaxSize().background(Surface), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(adp(16f)))
+                }
+            }
+        }
+        Spacer(Modifier.width(spacingM()))
+        Column(Modifier.weight(1f)) {
+            FittingText(
+                text = track.title,
+                color = Foreground,
+                fontSize = textHeadingS(),
+                minFontSize = textMicro(),
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            track.artist?.let {
+                FittingText(
+                    text = it,
+                    color = NavUnselected,
+                    fontSize = textLabelM(),
+                    minFontSize = textMicro(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
         Box(
             Modifier
                 .size(adp(48f))
-                .clickable { onRemoveFromQueue(index) }
-                .testTag("queue_remove"),
+                .clickable(onClick = onPlayNext)
+                .testTag("queue_history_play_next"),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Default.Close,
-                stringResource(R.string.player_remove),
+                Icons.Default.PlaylistPlay,
+                stringResource(R.string.player_play_next),
                 tint = NavUnselected,
                 modifier = Modifier.size(iconSmall()),
             )
+        }
+    }
+}
+
+/** Compact save-queue-as-playlist dialog (mirrors Album CreatePlaylistDialog). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QueueSavePlaylistDialog(initialName: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var saving by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Surface,
+        shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
+    ) {
+        Column(Modifier.padding(horizontal = spacingXL(), vertical = spacingM())) {
+            Box(Modifier.fillMaxWidth().padding(top = spacingS()), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .width(adp(32f))
+                        .height(adp(4f))
+                        .clip(RoundedCornerShape(adp(2f)))
+                        .background(Color(0xFF444444)),
+                )
+            }
+            Spacer(Modifier.height(spacingL()))
+            Text(
+                stringResource(R.string.player_save_queue_title),
+                color = Foreground,
+                fontSize = textHeadingM(),
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(spacingL()))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = {
+                    Text(stringResource(R.string.player_save_queue), color = Color(0xFF666666))
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Foreground,
+                    unfocusedTextColor = Foreground,
+                    focusedBorderColor = BrandTeal,
+                    unfocusedBorderColor = Foreground.copy(alpha = 0.1f),
+                    focusedContainerColor = Color(0xFF252538),
+                    unfocusedContainerColor = Color(0xFF252538),
+                    cursorColor = BrandTeal,
+                ),
+                modifier = Modifier.fillMaxWidth().testTag("queue_save_name_field"),
+                shape = RoundedCornerShape(cornerM()),
+                singleLine = true,
+            )
+            Spacer(Modifier.height(spacingL()))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacingM())) {
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF252538)),
+                    modifier = Modifier.weight(1f).height(adp(48f)),
+                ) {
+                    Text(
+                        stringResource(R.string.player_cancel_select),
+                        color = NavUnselected,
+                        fontSize = textBodyM(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Button(
+                    onClick = {
+                        saving = true
+                        onSave(name.trim())
+                    },
+                    enabled = name.isNotBlank() && !saving,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent.copy(alpha = 0.4f),
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(adp(48f))
+                        .background(
+                            Brush.linearGradient(listOf(BrandTeal, BrandPurple)),
+                            RoundedCornerShape(cornerM()),
+                        )
+                        .testTag("queue_save_confirm"),
+                ) {
+                    Text(
+                        stringResource(R.string.player_save_queue),
+                        color = Foreground,
+                        fontSize = textBodyM(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Spacer(Modifier.height(spacingXL()))
         }
     }
 }

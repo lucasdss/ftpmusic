@@ -21,6 +21,13 @@
     <string name="player_clear_autoplay">Clear Autoplay</string>
     <string name="player_shuffle">Shuffle</string>
     <string name="player_share_queue">Share Queue</string>
+    <string name="player_save_queue">Save as playlist</string>
+    <string name="player_save_queue_title">Save queue as playlist</string>
+    <string name="player_select">Select</string>
+    <string name="player_cancel_select">Cancel</string>
+    <string name="player_remove_selected">Remove</string>
+    <string name="player_recently_played_section">Recently Played · %1$d</string>
+    <string name="player_play_next">Play Next</string>
     <string name="player_remove">Remove</string>
     <string name="player_offline">Offline</string>
     <string name="player_synced">Synced</string>

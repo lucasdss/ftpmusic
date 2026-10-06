@@ -59,15 +59,18 @@ class FavoriteTest {
         trackDao: TrackDao,
         queueDao: com.lucasdss.ftpmusic.app.data.db.QueueDao = mockk(relaxed = true),
         api: SubsonicApi = mockk(relaxed = true),
+        playlistRepository: com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository = mockk(relaxed = true),
+        playbackManager: PlaybackManager = mockk(relaxed = true),
     ): Pair<PlaybackViewModel, FakePlaybackStateProvider> {
         val provider = FakePlaybackStateProvider()
         val viewModel = PlaybackViewModel(
             provider,
-            mockk(relaxed = true),
+            playbackManager,
             favoriteRepo,
             mockk(relaxed = true),
             trackDao,
             queueDao,
+            playlistRepository,
             api,
         )
         return viewModel to provider
@@ -557,6 +560,76 @@ class FavoriteTest {
             // no crash, no API call
         } finally {
             PlayerHolder.exoPlayer = null
+        }
+    }
+
+    // ── saveQueueAsPlaylist (local-first, ADR-0075) ─────────────────────────
+
+    @Test
+    fun `saveQueueAsPlaylist creates playlist and adds tracks`() = runTest {
+        val playlistRepo =
+            mockk<com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository>(relaxed = true)
+        coEvery { playlistRepo.createPlaylist(any()) } returns "temp-pl-1"
+        val (viewModel, _) = vm(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            playlistRepository = playlistRepo,
+        )
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 2
+        every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        every { player.getMediaItemAt(1) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t2").build()
+        PlayerHolder.exoPlayer = player
+        mockkStatic(android.widget.Toast::class)
+        try {
+            every {
+                android.widget.Toast.makeText(any<android.content.Context>(), any<CharSequence>(), any<Int>())
+            } returns mockk(relaxed = true)
+            viewModel.saveQueueAsPlaylist(mockk(relaxed = true), "My Queue")
+            testDispatcher.scheduler.advanceUntilIdle()
+            coVerify { playlistRepo.createPlaylist("My Queue") }
+            coVerify { playlistRepo.addToPlaylist("temp-pl-1", listOf("t1", "t2")) }
+        } finally {
+            PlayerHolder.exoPlayer = null
+            unmockkStatic(android.widget.Toast::class)
+        }
+    }
+
+    @Test
+    fun `saveQueueAsPlaylist no-ops on empty queue`() = runTest {
+        val playlistRepo =
+            mockk<com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository>(relaxed = true)
+        val (viewModel, _) = vm(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            playlistRepository = playlistRepo,
+        )
+        PlayerHolder.exoPlayer = mockk<androidx.media3.common.Player>(relaxed = true)
+        try {
+            viewModel.saveQueueAsPlaylist(mockk(relaxed = true), "Empty")
+            testDispatcher.scheduler.advanceUntilIdle()
+            coVerify(exactly = 0) { playlistRepo.createPlaylist(any()) }
+            coVerify(exactly = 0) { playlistRepo.addToPlaylist(any(), any()) }
+        } finally {
+            PlayerHolder.exoPlayer = null
+        }
+    }
+
+    @Test
+    fun `removeFromQueueBatch removes descending`() = runTest {
+        val playbackManager = mockk<PlaybackManager>(relaxed = true)
+        val (viewModel, _) = vm(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            playbackManager = playbackManager,
+        )
+        viewModel.removeFromQueueBatch(listOf(1, 4, 2))
+        io.mockk.verifyOrder {
+            playbackManager.removeFromQueue(4)
+            playbackManager.removeFromQueue(2)
+            playbackManager.removeFromQueue(1)
         }
     }
 }

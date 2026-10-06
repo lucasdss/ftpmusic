@@ -312,4 +312,92 @@ class PlayerSurfacesUxTest {
         composeRule.onNodeWithTag("queue_clear_autoplay").assertExists().performClick()
         assertTrue(clearedAutoplay)
     }
+
+    @Test
+    fun `queue sheet save tag opens save affordance`() {
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 2,
+                    priorityQueueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_sheet_save").assertExists().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_save_name_field").assertExists()
+    }
+
+    @Test
+    fun `queue sheet shows Recently Played when history fed`() {
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueHistory = listOf(
+                        com.lucasdss.ftpmusic.app.playback.QueueHistoryTrack(
+                            id = "h1",
+                            title = "Old Song",
+                            artist = "Past Artist",
+                        ),
+                    ),
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_section_history").assertExists()
+        composeRule.onNodeWithTag("queue_history_row").assertExists()
+    }
+
+    @Test
+    fun `queue sheet selection enter and remove batch`() {
+        var removed: Set<Int>? = null
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 2,
+                    priorityQueueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+                onRemoveFromQueueBatch = { removed = it },
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_select_enter").assertExists().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_select_checkbox").assertExists().performClick()
+        composeRule.onNodeWithTag("queue_select_remove").assertExists().performClick()
+        assertEquals(setOf(1), removed)
+    }
 }

@@ -120,6 +120,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -138,6 +139,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -289,6 +291,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -343,6 +346,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -632,6 +636,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -667,6 +672,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -756,6 +762,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -779,6 +786,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -805,6 +813,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -837,6 +846,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -1086,6 +1096,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -1202,6 +1213,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -1233,6 +1245,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -1613,6 +1626,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -1659,6 +1673,7 @@ class PlaybackControlsTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
                 mockk<SubsonicApi>(relaxed = true),
             )
 
