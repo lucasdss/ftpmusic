@@ -1250,49 +1250,22 @@ class MediaServiceCastQueueTest {
         assertTrue("generation change must cancel the retry", shouldCancel)
     }
 
-    // ── Lazy-loader guard (queue growth 113→163 regression) ─────────────
+    // ── QueueAutoLoader removed (ADR-0074) — Cast/local Dual SoT only ───
 
     @Test
-    fun `lazy loader is disabled during Cast`() {
-        // During Cast the full queue is already on the receiver; the truncated
-        // ExoPlayer window must NOT trigger the lazy-loader (it appends chunks
-        // to the dual-queue priority list, growing 113 → 163).
-        PlayerHolder.isCasting = true
-
-        val totalLoaded = 63
-        val currentIndex = 63
-        val shouldLoad = !PlayerHolder.isCasting &&
-            MediaService.QueueAutoLoader.shouldLoadMore(currentIndex, totalLoaded)
-        assertFalse("lazy loader must be disabled while casting", shouldLoad)
-    }
-
-    @Test
-    fun `lazy loader enabled locally when near end of window`() {
-        PlayerHolder.isCasting = false
-
-        val totalLoaded = 63
-        val currentIndex = 63
-        val shouldLoad = !PlayerHolder.isCasting &&
-            MediaService.QueueAutoLoader.shouldLoadMore(currentIndex, totalLoaded)
-        assertTrue("lazy loader must fire locally near window end", shouldLoad)
-    }
-
-    @Test
-    fun `lazy loader does not fire when not near window end`() {
-        PlayerHolder.isCasting = false
-
-        val totalLoaded = 113
-        val currentIndex = 10
-        val shouldLoad = !PlayerHolder.isCasting &&
-            MediaService.QueueAutoLoader.shouldLoadMore(currentIndex, totalLoaded)
-        assertFalse("must not load when far from window end", shouldLoad)
+    fun `QueueAutoLoader type no longer exists on MediaService`() {
+        // Regression: vestigial Room chunk append raced Continuous Play and
+        // grew PRIORITY during Cast→local (113→163). Kill confirmed by reflection.
+        val nested = MediaService::class.java.declaredClasses
+            .any { it.simpleName == "QueueAutoLoader" }
+        assertFalse("QueueAutoLoader must be deleted", nested)
     }
 
     @Test
     fun `switch to local restore clears priority queue via sourceType`() {
         // The restore passes sourceType="restore" so playAlbum clears the
         // dual-queue PRIORITY list before setting the context. Without it,
-        // accumulated lazy-loader chunks merge on top (113 context + 50 priority).
+        // historical AutoLoader chunks merged on top (113 context + 50 priority).
         val restoreSourceType = "restore"
         val clearsPriority = restoreSourceType != null
         assertTrue("restore must clear the priority queue", clearsPriority)

@@ -834,56 +834,16 @@ class MediaService : MediaLibraryService() {
                     "[DEBUG-aud] mediaItem.uri=${mediaItem.localConfiguration?.uri} player=${PlayerHolder.player}",
                 )
 
-                // Continuous play: journal-based smart track selection (ADR-0053)
+                // Continuous play: journal-based smart track selection (ADR-0053).
+                // Sole local end-extend path (ADR-0074): vestigial QueueAutoLoader removed —
+                // Dual/playAll already holds the full local queue; Cast loads Dual-only via
+                // ensureExoMatchesDual / loadFullQueueToReceiver.
                 if (player != null) {
                     maybeLoadContinuousPlay(
                         player = player,
                         previousTrackId = previousTrackId,
                         mediaId = mediaItem.mediaId,
                     )
-                }
-
-                // Lazy-load more tracks when approaching end of window.
-                // Read from ExoPlayer (full queue), not active player (windowed during Cast).
-                // CRITICAL: never run during Cast — the full queue is already on the
-                // receiver, and during the Cast→local switch onMediaItemTransition fires
-                // repeatedly with a truncated ExoPlayer queue, making shouldLoadMore()
-                // true each time. Each firing APPENDS a chunk to the dual-queue PRIORITY
-                // queue (never cleared by the context restore in switchToLocalPlayback),
-                // so the merged queue grew by 50 tracks in a real session (113 → 163).
-                val totalLoaded = PlayerHolder.exoPlayer?.mediaItemCount ?: 0
-                val currentIndex = PlayerHolder.player?.currentMediaItemIndex ?: 0
-                if (!PlayerHolder.isCasting && QueueAutoLoader.shouldLoadMore(currentIndex, totalLoaded)) {
-                    scope.launch(Dispatchers.Main) {
-                        val saved = persistenceManager.restore()
-                        if (saved != null && saved.tracks.size > totalLoaded) {
-                            // Dedup gate: the continuous-play coroutine (launched earlier in
-                            // this same transition) may have appended journal-selected tracks
-                            // BEFORE we snapshot the queue here, so the persisted queue now
-                            // contains them while `totalLoaded` was captured before the
-                            // append. Re-read the live player queue and skip tracks already
-                            // present, otherwise the chunk re-appends the same tracks
-                            // (duplicated queue growth).
-                            val playerQueue = PlayerHolder.exoPlayer
-                            val existingIds = if (playerQueue != null) {
-                                (0 until playerQueue.mediaItemCount).mapNotNull {
-                                    playerQueue.getMediaItemAt(it)?.mediaId
-                                }.toSet()
-                            } else {
-                                emptySet()
-                            }
-                            val nextChunk = saved.tracks.drop(totalLoaded)
-                                .zip(saved.urls.drop(totalLoaded))
-                                .filter { (track, _) -> track.id !in existingIds }
-                                .take(QueueAutoLoader.CHUNK_SIZE)
-                            if (nextChunk.isNotEmpty()) {
-                                playbackManager.appendToContext(
-                                    nextChunk.map { it.first },
-                                    nextChunk.map { it.second },
-                                )
-                            }
-                        }
-                    }
                 }
             } else {
                 // Suppress clear during transient null transitions (e.g., Cast setup).
@@ -2048,17 +2008,6 @@ class MediaService : MediaLibraryService() {
                 continuousPlayInFlight = false
             }
         }
-    }
-
-    internal object QueueAutoLoader {
-        /** Load more tracks when within this many items of the end of the window. */
-        const val LOAD_AHEAD_THRESHOLD = 2
-
-        /** Number of tracks to load per chunk from database. */
-        const val CHUNK_SIZE = 5
-
-        fun shouldLoadMore(currentIndex: Int, totalLoaded: Int): Boolean = totalLoaded > LOAD_AHEAD_THRESHOLD &&
-            currentIndex >= totalLoaded - LOAD_AHEAD_THRESHOLD
     }
 
     /** Bounded main-thread wait for the last-chance persistence on the user

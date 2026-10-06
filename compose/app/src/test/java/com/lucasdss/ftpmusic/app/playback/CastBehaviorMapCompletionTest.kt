@@ -133,20 +133,11 @@ class CastBehaviorMapCompletionTest {
     }
 
     // ═════════════════════════════════════════════════════════════════
-    // L7: Continuous Play / QueueAutoLoader
+    // L7: Continuous Play (QueueAutoLoader removed — ADR-0074)
     // ═════════════════════════════════════════════════════════════════
 
     @Test
-    fun `L7 - QueueAutoLoader triggers when within 2 of end`() {
-        // shouldLoadMore(currentIndex, totalLoaded) when near end
-        assertTrue(MediaService.QueueAutoLoader.shouldLoadMore(98, 100)) // within 2
-        assertTrue(MediaService.QueueAutoLoader.shouldLoadMore(99, 100)) // at edge
-        assertFalse(MediaService.QueueAutoLoader.shouldLoadMore(97, 100)) // not near
-        assertFalse(MediaService.QueueAutoLoader.shouldLoadMore(0, 5)) // small queue
-    }
-
-    @Test
-    fun `L7 - queue empty near end triggers load when threshold met`() = runTest {
+    fun `L7 - QueueAutoLoader removed - near-end state still surfaces`() = runTest {
         val provider = FakePlaybackStateProvider()
         val viewModel =
             PlaybackViewModel(
@@ -162,7 +153,7 @@ class CastBehaviorMapCompletionTest {
         val state = viewModel.state.first { it.queueSize == 50 }
         assertEquals(50, state.queueSize)
         assertEquals(45, state.trackIndex)
-        // QueueAutoLoader.shouldLoadMore(45, 50) == true — triggers load
+        // End-extend is Continuous Play only (maybeLoadContinuousPlay), not Room chunks.
     }
 
     // ═════════════════════════════════════════════════════════════════

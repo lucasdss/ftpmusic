@@ -29,7 +29,7 @@ Scope: phone + Cast. P0 fixes this cycle.
 | Edge | Status |
 |------|--------|
 | Dual≠Player mid-drag | Known; commit on drag stop |
-| CP vs QueueAutoLoader dual-append | P1 backlog; local AutoLoader vestigial |
+| CP vs QueueAutoLoader dual-append | **Fixed** — AutoLoader killed (ADR-0074) |
 | Process death flag maps | Room `is_priority` / `is_autoplay` / entryId |
 | Cast ack fail | `onCastCommandAck` rollback + Dual resync |
 | `clearQueue` keep current | Persist remaining Dual (was wipe Room) |
@@ -57,7 +57,7 @@ Gate: PlaybackManager ≥80% line+branch. MediaService whole-file below bar hist
 
 ## P1 / P2 backlog (no code this cycle)
 
-- Kill local `QueueAutoLoader`; Cast load from Dual only — **follow-up PR #2** (ADR-0074)
+- ~~Kill local `QueueAutoLoader`~~ — **done** (ADR-0074 PR #2)
 - Merge `playback_state` into `queue_state` (ADR 0007 open) — **follow-up PR #3**
 - Prune Overwrite PUSH / settings triad if unused in prod
 - Delete legacy `QueueScreen` (prod = PlayerBar sheet; ADR-0070 ports reorder/remove into sheet first)

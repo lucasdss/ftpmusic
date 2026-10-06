@@ -24,8 +24,8 @@ about bands; Apple places **AutoPlay control in the queue**.
    (“Next in Queue” / “Next from”).
 3. **UI SoT** remains `PlayerBar` `queue_sheet`. Wire Continuous Play toggle +
    clear-autoplay into prod sheet (end harness-only drift).
-4. **Sequenced debt (follow-ups, not this ship):**
-   - PR #2: Kill local `QueueAutoLoader`; Cast load Dual-only.
+4. **Sequenced debt:**
+   - PR #2: Kill local `QueueAutoLoader`; Cast load Dual-only. **Done.**
    - PR #3: Merge `playback_state` → `queue_state` (ADR-0007 open).
 5. Complexity tax accepted because removing Dual breaks mid-album Play Next,
    Clear-manual-only, and process-death section restore.
