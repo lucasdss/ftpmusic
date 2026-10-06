@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
@@ -125,6 +126,8 @@ fun PlayerBar(
     onBack: () -> Unit = {},
     onClick: () -> Unit = {},
     onClearQueue: () -> Unit = {},
+    onClearAutoplayQueue: () -> Unit = {},
+    onContinuousPlayChange: (Boolean) -> Unit = {},
     onRemoveFromQueue: (Int) -> Unit = {},
     onPlayQueueItem: (Int) -> Unit = {},
     onSleepTimer: () -> Unit = {},
@@ -281,6 +284,8 @@ fun PlayerBar(
                         onPlayQueueItem = onPlayQueueItem,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onClearQueue = onClearQueue,
+                        onClearAutoplayQueue = onClearAutoplayQueue,
+                        onContinuousPlayChange = onContinuousPlayChange,
                         onShuffleToggle = onShuffleToggle,
                         onMoveQueueItem = onMoveQueueItem,
                         onBeginQueueReorder = onBeginQueueReorder,
@@ -1111,6 +1116,8 @@ private fun BoxScope.PlayerQueuePanel(
     onPlayQueueItem: (Int) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
+    onClearAutoplayQueue: () -> Unit,
+    onContinuousPlayChange: (Boolean) -> Unit,
     onShuffleToggle: () -> Unit,
     onMoveQueueItem: (Int, Int) -> Unit,
     onBeginQueueReorder: (entryId: Int, fromIndex: Int) -> Unit,
@@ -1491,7 +1498,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(
-                                        Icons.Default.List,
+                                        Icons.AutoMirrored.Filled.List,
                                         null,
                                         tint = NavUnselected,
                                         modifier = Modifier.size(adp(12f)),
@@ -1607,28 +1614,9 @@ private fun BoxScope.PlayerQueuePanel(
                                     modifier = Modifier
                                         .size(adp(48f))
                                         .padding(end = spacingXS())
-                                        .clickable { onShareQueue() },
+                                        .clickable { onShareQueue() }
+                                        .testTag("queue_sheet_share"),
                                 )
-                                Row(
-                                    Modifier
-                                        .clickable { onClearQueue() }
-                                        .padding(horizontal = spacingS(), vertical = spacingXS())
-                                        .heightIn(min = adp(48f)),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Delete,
-                                        null,
-                                        tint = DestructiveRed,
-                                        modifier = Modifier.size(iconSmall()),
-                                    )
-                                    Spacer(Modifier.width(spacingXS()))
-                                    Text(
-                                        stringResource(R.string.player_clear),
-                                        color = DestructiveRed,
-                                        fontSize = textLabelM(),
-                                    )
-                                }
                                 Spacer(Modifier.width(spacingS()))
                                 Text(
                                     stringResource(R.string.player_tracks_count, queueSize),
@@ -1643,13 +1631,14 @@ private fun BoxScope.PlayerQueuePanel(
                                 Spacer(Modifier.height(spacingS()))
                                 Column(
                                     Modifier.fillMaxWidth().padding(horizontal = spacingXL())
+                                        .testTag("queue_section_priority")
                                         .clip(RoundedCornerShape(cornerM()))
                                         .border(
                                             1.dp,
                                             BrandPurple.copy(alpha = 0.3f),
                                             RoundedCornerShape(cornerM()),
                                         )
-                                        .background(BrandPurple.copy(alpha = 0.04f)),
+                                        .background(BrandPurple.copy(alpha = 0.06f)),
                                 ) {
                                     Row(
                                         Modifier.fillMaxWidth().padding(
@@ -1662,24 +1651,29 @@ private fun BoxScope.PlayerQueuePanel(
                                             Icons.AutoMirrored.Filled.QueueMusic,
                                             null,
                                             tint = BrandPurple,
-                                            modifier = Modifier.size(adp(12f)),
+                                            modifier = Modifier.size(adp(14f)),
                                         )
                                         Spacer(Modifier.width(spacingS()))
                                         Text(
-                                            stringResource(R.string.player_queue_section, priorityQueueSize),
+                                            stringResource(R.string.player_queue_section, priorityTracks.size),
                                             color = BrandPurple,
                                             fontSize = textLabelS(),
                                             fontWeight = FontWeight.Bold,
                                             letterSpacing = 0.5.sp,
                                         )
                                         Spacer(Modifier.weight(1f))
+                                        // Spotify/Apple: Clear removes manual Next in Queue only
                                         Text(
-                                            stringResource(R.string.player_clear),
+                                            stringResource(R.string.player_clear_queue),
                                             color = DestructiveRed,
-                                            fontSize = textMicro(),
+                                            fontSize = textLabelM(),
+                                            fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier
                                                 .clickable { onClearQueue() }
-                                                .padding(spacingS()),
+                                                .padding(spacingS())
+                                                .heightIn(min = adp(48f))
+                                                .wrapContentHeight(Alignment.CenterVertically)
+                                                .testTag("queue_clear_priority"),
                                         )
                                     }
                                     Spacer(
@@ -1712,14 +1706,17 @@ private fun BoxScope.PlayerQueuePanel(
                         if (continueTracks.isNotEmpty()) {
                             item(key = "hdr-next-from") {
                                 Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingXS()),
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = spacingXL(), vertical = spacingS())
+                                        .testTag("queue_section_next_from"),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.QueueMusic,
+                                        Icons.AutoMirrored.Filled.List,
                                         null,
                                         tint = NavUnselected,
-                                        modifier = Modifier.size(adp(12f)),
+                                        modifier = Modifier.size(adp(14f)),
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
@@ -1759,29 +1756,83 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
 
-                        if (autoplayTracks.isNotEmpty()) {
-                            item(key = "hdr-autoplay") {
+                        // Apple: Autoplay band + in-queue toggle always visible (ADR-0074)
+                        item(key = "hdr-autoplay") {
+                            var continuousPlayOn by remember(continuousPlayEnabled) {
+                                mutableStateOf(continuousPlayEnabled)
+                            }
+                            Spacer(Modifier.height(spacingS()))
+                            Column(
+                                Modifier.fillMaxWidth().padding(horizontal = spacingXL())
+                                    .testTag("queue_section_autoplay")
+                                    .clip(RoundedCornerShape(cornerM()))
+                                    .border(
+                                        1.dp,
+                                        BrandTeal.copy(alpha = 0.28f),
+                                        RoundedCornerShape(cornerM()),
+                                    )
+                                    .background(BrandTeal.copy(alpha = 0.05f)),
+                            ) {
                                 Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingXS()),
+                                    Modifier.fillMaxWidth().padding(
+                                        horizontal = spacingM(),
+                                        vertical = spacingXS(),
+                                    ),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.QueueMusic,
+                                        Icons.Default.AutoAwesome,
                                         null,
                                         tint = BrandTeal,
-                                        modifier = Modifier.size(adp(12f)),
+                                        modifier = Modifier.size(adp(14f)),
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
-                                        stringResource(R.string.player_autoplay_section, autoplayTracks.size),
+                                        if (autoplayTracks.isNotEmpty()) {
+                                            stringResource(R.string.player_autoplay_section, autoplayTracks.size)
+                                        } else {
+                                            stringResource(R.string.player_autoplay_empty)
+                                        },
                                         color = BrandTeal,
                                         fontSize = textLabelS(),
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 0.5.sp,
                                         modifier = Modifier.weight(1f),
                                     )
+                                    if (autoplayTracks.isNotEmpty()) {
+                                        Text(
+                                            stringResource(R.string.player_clear_autoplay),
+                                            color = BrandTeal,
+                                            fontSize = textLabelM(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier
+                                                .clickable { onClearAutoplayQueue() }
+                                                .padding(spacingS())
+                                                .heightIn(min = adp(48f))
+                                                .wrapContentHeight(Alignment.CenterVertically)
+                                                .testTag("queue_clear_autoplay"),
+                                        )
+                                    }
+                                    Switch(
+                                        checked = continuousPlayOn,
+                                        onCheckedChange = {
+                                            continuousPlayOn = it
+                                            onContinuousPlayChange(it)
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Foreground,
+                                            checkedTrackColor = BrandTeal,
+                                            uncheckedThumbColor = NavUnselected,
+                                            uncheckedTrackColor = Dimmed,
+                                        ),
+                                        modifier = Modifier
+                                            .defaultMinSize(minHeight = adp(48f))
+                                            .testTag("queue_continuous_play_switch"),
+                                    )
                                 }
                             }
+                        }
+                        if (autoplayTracks.isNotEmpty()) {
                             items(autoplayTracks, key = { queueRowKey(it) }) { track ->
                                 ReorderableItem(state = reorderableState, key = queueRowKey(track)) { isDragging ->
                                     QueueDismissTrackRow(
@@ -1802,10 +1853,13 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
 
-                        if (nextTracks.none { !it.isCurrent }) {
+                        if (priorityTracks.isEmpty() && continueTracks.isEmpty() && autoplayTracks.isEmpty()) {
                             item(key = "empty-queue") {
                                 Spacer(Modifier.height(spacing2XL()))
-                                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(horizontal = spacingXL()),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.QueueMusic,
                                         null,
@@ -1821,7 +1875,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     Spacer(Modifier.height(spacingXS()))
                                     Text(
                                         stringResource(R.string.player_queue_empty_hint),
-                                        color = NavUnselected,
+                                        color = Dimmed,
                                         fontSize = textLabelM(),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                     )
@@ -1943,6 +1997,8 @@ data class PlayerBarState(
     val lyricsLoading: Boolean = false,
     val contextSource: String? = null,
     val priorityQueueSize: Int = 0,
+    /** Apple-style Autoplay / Continuous Play (ADR-0053 / ADR-0074). */
+    val continuousPlayEnabled: Boolean = true,
     val waveformBars: List<Float> = emptyList(),
 )
 

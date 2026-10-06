@@ -5,15 +5,20 @@
     <string name="player_up_next">Up Next</string>
     <string name="player_queue_next">Queue Next</string>
     <string name="player_end_of_queue">End of queue</string>
-    <string name="player_queue_section">Queue · %1$d</string>
+    <!-- Spotify-explicit dual band (ADR-0074): manual PRIORITY queue -->
+    <string name="player_queue_section">Next in Queue · %1$d</string>
     <string name="player_next_from_section">Next from · %1$d</string>
     <string name="player_next_from_source_section">Next from · %1$s · %2$d</string>
     <string name="player_autoplay_section">Autoplay · %1$d</string>
-    <string name="player_autoplay_empty">Autoplay · journal when queue ends</string>
-    <string name="player_queue_empty">Queue is empty</string>
-    <string name="player_queue_empty_hint">Use \"Play Next\" or \"Add to Queue\" from any track</string>
+    <string name="player_autoplay_empty">Autoplay · similar tracks when queue ends</string>
+    <string name="player_autoplay_cd">Autoplay</string>
+    <string name="player_queue_empty">Next in Queue is empty</string>
+    <string name="player_queue_empty_hint">Use \"Play Next\" or \"Add to Queue\" from any track. Album or playlist tracks stay under Next from.</string>
     <string name="player_tracks_count">%1$d tracks</string>
     <string name="player_clear">Clear</string>
+    <!-- Clear only removes manual Next in Queue (Spotify / Apple) -->
+    <string name="player_clear_queue">Clear queue</string>
+    <string name="player_clear_autoplay">Clear Autoplay</string>
     <string name="player_shuffle">Shuffle</string>
     <string name="player_share_queue">Share Queue</string>
     <string name="player_remove">Remove</string>

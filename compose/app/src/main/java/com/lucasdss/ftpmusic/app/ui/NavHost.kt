@@ -848,6 +848,11 @@ fun FtpmusicNavHost() {
                         }
                     }
                     val onClearQueue = remember(playbackViewModel) { { playbackViewModel.clearPriorityQueue() } }
+                    val onClearAutoplayQueue =
+                        remember(playbackViewModel) { { playbackViewModel.clearAutoplayQueue() } }
+                    val onContinuousPlayChange = remember(playbackViewModel) {
+                        { enabled: Boolean -> playbackViewModel.setContinuousPlayEnabled(enabled) }
+                    }
                     val onRemoveFromQueue =
                         remember(playbackViewModel) { { index: Int -> playbackViewModel.removeFromQueue(index) } }
                     val onPlayQueueItem =
@@ -908,6 +913,7 @@ fun FtpmusicNavHost() {
                             lyricsLoading = lyricsLoading,
                             contextSource = playbackState.contextSource,
                             priorityQueueSize = playbackState.priorityQueueSize,
+                            continuousPlayEnabled = playbackViewModel.isContinuousPlayEnabled(),
                             waveformBars = waveformBars,
                         ),
                         position = position,
@@ -927,6 +933,8 @@ fun FtpmusicNavHost() {
                         onBack = onBack,
                         onClick = {},
                         onClearQueue = onClearQueue,
+                        onClearAutoplayQueue = onClearAutoplayQueue,
+                        onContinuousPlayChange = onContinuousPlayChange,
                         onRemoveFromQueue = onRemoveFromQueue,
                         onPlayQueueItem = onPlayQueueItem,
                         onSleepTimer = onSleepTimerClick,

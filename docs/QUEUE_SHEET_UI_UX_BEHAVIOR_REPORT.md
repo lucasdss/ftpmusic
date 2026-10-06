@@ -1,7 +1,7 @@
 # Queue Sheet UI/UX Behavior Report
 
-Caveman. Surface = prod `PlayerBar` `queue_sheet` (ADR-0070). Harness = `QueueScreen`.
-Cycle: red-bleed fix + token parity. No Dual/playback behavior change.
+Caveman. Surface = prod `PlayerBar` `queue_sheet` (ADR-0070 / ADR-0074). Harness = `QueueScreen`.
+Cycle: red-bleed fix + token parity + Apple Autoplay controls + Spotify Next in Queue lexicon.
 
 ## Root cause (all rows RED)
 

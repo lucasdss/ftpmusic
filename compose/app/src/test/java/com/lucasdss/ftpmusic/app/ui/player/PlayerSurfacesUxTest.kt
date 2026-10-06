@@ -214,4 +214,102 @@ class PlayerSurfacesUxTest {
         assertTrue(QueueTrackRowIdleBackground.alpha >= 1f)
         assertNotEquals(DestructiveRed, QueueTrackRowIdleBackground)
     }
+
+    @Test
+    fun `queue sheet uses Spotify Next in Queue lexicon for priority section`() {
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 2,
+                    priorityQueueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_section_priority").assertExists()
+        composeRule.onNodeWithText("Next in Queue · 1").assertExists()
+        composeRule.onNodeWithText("Clear queue").assertExists()
+    }
+
+    @Test
+    fun `queue sheet Clear queue invokes onClearQueue only`() {
+        var cleared = false
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 2,
+                    priorityQueueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+                onClearQueue = { cleared = true },
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_clear_priority").assertExists().performClick()
+        assertTrue(cleared)
+    }
+
+    @Test
+    fun `queue sheet Autoplay toggle and clear-autoplay wired`() {
+        var continuous: Boolean? = null
+        var clearedAutoplay = false
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    continuousPlayEnabled = true,
+                    queueSize = 2,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Radio",
+                            isCurrent = false,
+                            isPriority = false,
+                            isAutoplay = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+                onContinuousPlayChange = { continuous = it },
+                onClearAutoplayQueue = { clearedAutoplay = true },
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_section_autoplay").assertExists()
+        composeRule.onNodeWithTag("queue_continuous_play_switch").assertExists().performClick()
+        assertEquals(false, continuous)
+        composeRule.onNodeWithTag("queue_clear_autoplay").assertExists().performClick()
+        assertTrue(clearedAutoplay)
+    }
 }

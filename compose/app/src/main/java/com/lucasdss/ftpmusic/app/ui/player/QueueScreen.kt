@@ -178,7 +178,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                 if (queueRows.isNotEmpty()) {
                     item(key = "hdr-queue") {
                         Text(
-                            "Queue · ${queueRows.size}",
+                            stringResource(R.string.player_queue_section, queueRows.size),
                             style = MaterialTheme.typography.labelLarge,
                             color = BrandPurple,
                             modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
@@ -242,9 +242,9 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                     ) {
                         Text(
                             if (autoplayRows.isNotEmpty()) {
-                                "Autoplay · ${autoplayRows.size}"
+                                stringResource(R.string.player_autoplay_section, autoplayRows.size)
                             } else {
-                                "Autoplay · journal when queue ends"
+                                stringResource(R.string.player_autoplay_empty)
                             },
                             style = MaterialTheme.typography.labelLarge,
                             color = BrandTeal,
@@ -252,7 +252,7 @@ fun QueueScreen(onBack: () -> Unit, viewModel: PlaybackViewModel = hiltViewModel
                         )
                         if (autoplayRows.isNotEmpty()) {
                             TextButton(onClick = { viewModel.clearAutoplayQueue() }) {
-                                Text("Clear", color = BrandTeal)
+                                Text(stringResource(R.string.player_clear_autoplay), color = BrandTeal)
                             }
                         }
                         Switch(
