@@ -180,6 +180,23 @@ class MusicBrainzService @Inject constructor() {
         return Pair(rating, mbid)
     }
 
+    /**
+     * Fetch artist aliases from MusicBrainz (aka names for search).
+     * Lookup: /artist/{mbid}?inc=aliases&fmt=json
+     */
+    suspend fun fetchArtistAliases(mbid: String): List<String> {
+        if (mbid.isBlank()) return emptyList()
+        val url = "$BASE/artist/$mbid?inc=aliases&fmt=json"
+        val json = getJson(url) ?: return emptyList()
+        val aliases = json.optJSONArray("aliases") ?: return emptyList()
+        val out = ArrayList<String>(aliases.length())
+        for (i in 0 until aliases.length()) {
+            val name = aliases.getJSONObject(i).optString("name").takeIf { it.isNotBlank() } ?: continue
+            out.add(name)
+        }
+        return out.distinct()
+    }
+
     /** Search track by artist+title, then fetch its rating. */
     suspend fun fetchTrackRating(artistName: String, trackTitle: String): Pair<MusicBrainzRating, String?> {
         val mbid = searchTrackMbid(artistName, trackTitle) ?: return Pair(MusicBrainzRating(null, null), null)

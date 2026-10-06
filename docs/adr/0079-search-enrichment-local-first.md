@@ -1,24 +1,28 @@
 # ADR 0079 — Search enrichment local-first
 
 Date: 2026-10-06
-Status: Accepted
+Status: Accepted (Phase-3)
 Related: ADR 0077, ADR 0080, docs/NAVIDROME-API-CAPABILITIES.md
 
 ## Context
 
-Market apps search tags, genres, and similar-artist names. FTP Music stores
-Last.fm similar JSON and now wires Subsonic info2 APIs for bio/notes.
+Market apps search tags, genres, and aka names. Phase-2 stuffed similar-artist
+names into `search_aliases`. Phase-3 separates real aliases vs tags.
 
 ## Decision
 
-1. Local genre text search + Genres chip (phase-1).
-2. Artist search matches `similar_artists_json`.
+1. Local genre text search + Genres chip.
+2. Artist LIKE matches similar JSON + aliases + tags + biography.
 3. Escape LIKE via `SearchQueryNormalizer.escapeLike`.
-4. Background `getArtistInfo2` / `getAlbumInfo2` during sync → Room columns → FTS rebuild.
-5. Never call enrichment from `search()` keystroke path.
-6. Discogs / Spotify Web API catalog search: out of scope.
+4. Background sync enrichment (never keystroke):
+   - `getArtistInfo2` / `getAlbumInfo2` → biography / notes
+   - MusicBrainz aliases → `search_aliases`
+   - Last.fm top-tags → `search_tags` (v60)
+   - MBID token in FTS body
+5. Discogs / Spotify Web API catalog search: out of scope.
 
 ## Consequences
 
-- Enrichment rate-limited (25 artists / 15 albums per sync).
+- Enrichment rate-limited (25 bio / 15 aliases / 15 tags / 15 albums per sync).
 - Offline sync skips enrichment.
+- Requires Last.fm API key for tags; MB aliases need network.

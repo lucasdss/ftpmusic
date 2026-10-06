@@ -51,7 +51,7 @@ object DatabaseModule {
         AppDatabase::class.java,
         "ftpmusic.db",
     )
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_59)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_60)
         // NO fallbackToDestructiveMigration: all migrations 1→46 are registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
         // instead of silently wiping the database (the playlist-loss root cause).
@@ -120,10 +120,14 @@ object DatabaseModule {
         dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
         offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
         searchIndexRebuilder: SearchIndexRebuilder,
+        musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
+        lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
     ): MetadataSyncWorker = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager = offlineModeManager,
         dailyMixRepository = dailyMixRepository,
         searchIndexRebuilder = searchIndexRebuilder,
+        musicBrainzService = musicBrainzService,
+        lastFmService = lastFmService,
     )
 }

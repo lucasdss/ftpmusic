@@ -134,4 +134,35 @@ class LocalSearchRepositoryTest {
         assertFalse(hit.usedFts)
         assertEquals("p1", hit.tracks.single().id)
     }
+
+    @Test
+    fun `soft typo matches one-edit title when FTS empty`() = runTest {
+        coEvery { ftsDao.count() } returns 3
+        coEvery { ftsDao.match(any(), any()) } returns emptyList()
+        coEvery { trackDao.searchAllTracks(any()) } returns listOf(
+            TrackEntity(id = "t1", title = "Beatles"),
+            TrackEntity(id = "t2", title = "Other"),
+        )
+        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+
+        val hit = repo.search("beatle")
+        assertTrue(hit.usedSoftTypo)
+        assertEquals(listOf("t1"), hit.tracks.map { it.id })
+    }
+
+    @Test
+    fun `year decade filters albums`() = runTest {
+        coEvery { ftsDao.count() } returns 0
+        coEvery { metadataDao.getAllAlbums() } returns listOf(
+            CachedAlbumEntity(id = "a1", name = "A", year = 1995),
+            CachedAlbumEntity(id = "a2", name = "B", year = 2005),
+        )
+        coEvery { trackDao.getTracksByAlbumIds(any()) } returns listOf(
+            TrackEntity(id = "t1", title = "Song", albumId = "a1"),
+        )
+
+        val hit = repo.search("90s")
+        assertEquals(listOf("a1"), hit.albums.map { it.id })
+        assertEquals(1990, hit.yearConstraint.minYear)
+    }
 }

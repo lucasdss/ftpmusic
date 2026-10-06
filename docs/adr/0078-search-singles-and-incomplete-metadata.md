@@ -18,10 +18,13 @@ were hard to find. `tracks` lacked an `album` column; search cache from
 4. Search UI: null `album_id` → subtitle **"Singles"**.
 5. Multi-field song search includes album + genre + path.
 6. **Phase-2:** Always run `populateAllTrackGenres` + `populateGenresFromCachedGenreSongs`
-   after sync (not gated on albumTracksProgress). Warm top-40 genres × 200 songs
+   after sync (not gated on albumTracksProgress). Warm top genres × 200 songs
    for search corpus. Upsert starred songs into `tracks` (incl. null album_id).
+7. **Phase-3:** Genre warm top-60; non-force album-track drain capped at 200/sync
+   so delta syncs steadily densify `cached_album_tracks` → `tracks`.
 
 ## Consequences
 
 - Singles searchable once present in `tracks` (genre sync / starred / search cache / play).
-- Genre warm increases sync network cost; rate-limited 200ms between genre calls.
+- Genre warm + album drain increase sync network cost; rate-limited.
+- Full force sync still drains all pending albums.

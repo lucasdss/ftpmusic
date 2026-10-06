@@ -45,6 +45,8 @@ class SearchViewModelFilterTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )

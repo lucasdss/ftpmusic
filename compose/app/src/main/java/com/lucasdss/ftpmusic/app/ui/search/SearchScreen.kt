@@ -6,10 +6,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -517,6 +519,61 @@ fun SearchScreen(
 
             // ── Content area ──
             if (state.query.isEmpty()) {
+                if (state.isIndexingLibrary) {
+                    item {
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXL()),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                "Indexing library…",
+                                color = Color.White,
+                                fontSize = textHeadingS(),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(spacingXS()))
+                            Text(
+                                "Local search improves as sync finishes",
+                                color = Color(0xFF888888),
+                                fontSize = textLabelM(),
+                            )
+                        }
+                    }
+                }
+                // Decade chips (Phase-3 WS-I)
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Browse Decades",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelL(),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                    )
+                }
+                item {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacingL())
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                    ) {
+                        listOf("60s", "70s", "80s", "90s", "2000s", "2010s", "2020s").forEach { decade ->
+                            Box(
+                                Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clip(RoundedCornerShape(cornerM()))
+                                    .background(BrandTeal.copy(alpha = 0.15f))
+                                    .clickable { viewModel.onQueryChanged(decade) }
+                                    .padding(horizontal = spacingL(), vertical = spacingM()),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(decade, color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                }
                 // ═══ Idle state: Browse Genres ═══
                 if (state.genres.isNotEmpty()) {
                     item {

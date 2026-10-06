@@ -56,6 +56,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
             )
@@ -233,6 +235,8 @@ class SearchViewModelTest {
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
                 localSearch,
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
             )
@@ -268,6 +272,8 @@ class SearchViewModelTest {
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
                 localSearch,
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
             )
@@ -315,6 +321,8 @@ class SearchViewModelTest {
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
                 localSearch,
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
             )
@@ -344,6 +352,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 broken,
             )
@@ -363,6 +373,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
             )
@@ -387,6 +399,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
             )
@@ -410,6 +424,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -465,6 +481,8 @@ class SearchViewModelTest {
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
                 localSearch,
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -492,6 +510,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -528,6 +548,8 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
             )
@@ -552,6 +574,8 @@ class SearchViewModelTest {
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
                 mockk(relaxed = true), // localSearch
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk(relaxed = true),
             )
@@ -592,6 +616,8 @@ class SearchViewModelTest {
                 metadataDao,
                 mockk(relaxed = true), // playlistDao
                 localSearch,
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
                 api,
                 offlineManager,
             )

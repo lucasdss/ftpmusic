@@ -260,7 +260,10 @@ data class CachedArtistEntity(
 
     // v59: search enrichment (getArtistInfo2 / aliases)
     val biography: String? = null,
+    /** Real aka / MusicBrainz aliases (Phase-3). Not similar-artist names. */
     @ColumnInfo(name = "search_aliases") val searchAliases: String? = null,
+    /** Last.fm / server tags for FTS (Phase-3 v60). */
+    @ColumnInfo(name = "search_tags") val searchTags: String? = null,
 )
 
 @Entity(

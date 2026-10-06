@@ -53,6 +53,8 @@ data class SearchState(
     val allTracks: List<Track> = emptyList(),
     // Track IDs that are downloaded or cached locally
     val localTrackIds: Set<String> = emptySet(),
+    /** FTS empty while metadata sync running — show indexing empty state. */
+    val isIndexingLibrary: Boolean = false,
 )
 
 enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS, GENRES }
@@ -66,6 +68,8 @@ class SearchViewModel @Inject constructor(
     private val metadataDao: CachedMetadataDao,
     private val playlistDao: PlaylistDao,
     private val localSearch: com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository,
+    private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder,
+    private val metadataSyncWorker: com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker,
     private val api: SubsonicApi,
     private val offlineModeManager: OfflineModeManager,
 ) : ViewModel() {
@@ -89,9 +93,13 @@ class SearchViewModel @Inject constructor(
     private var isLoadingMoreSearch = false
 
     private fun isOffline(): Boolean = try {
-        offlineModeManager.isOffline?.value == true
+        offlineModeManager.isOffline.value
     } catch (_: Exception) {
-        false
+        try {
+            offlineModeManager.isOfflineEnabled()
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** Simulate Offline or no OS INTERNET — playable Room only. */
@@ -104,13 +112,29 @@ class SearchViewModel @Inject constructor(
         _state.value = _state.value.copy(recentSearches = recent)
         loadGenres()
         observeLocalOnly()
+        observeIndexing()
+    }
+
+    private fun observeIndexing() {
+        viewModelScope.launch {
+            try {
+                metadataSyncWorker.status.collect { sync ->
+                    val ftsEmpty = searchIndexRebuilder.ftsCount() == 0
+                    _state.value = _state.value.copy(
+                        isIndexingLibrary = sync.isRunning && ftsEmpty,
+                    )
+                }
+            } catch (_: Exception) {
+                // unit tests / missing mocks
+            }
+        }
     }
 
     /** Airplane / Simulate Offline flip mid-session → re-run active search (ADR 0051). */
     private fun observeLocalOnly() {
         viewModelScope.launch {
             try {
-                val offlineFlow = offlineModeManager.isOffline ?: return@launch
+                val offlineFlow = offlineModeManager.isOffline
                 var previous: Boolean? = null
                 combine(offlineFlow, NetworkAvailabilityHolder.hasOsNetwork) { offline, hasNet ->
                     LocalOnlyPolicy.isLocalOnly(offline, hasNet)
@@ -532,6 +556,7 @@ class SearchViewModel @Inject constructor(
                 }
                 metadataDao.upsertArtists(artistEntities)
             }
+            searchIndexRebuilder.scheduleRebuild()
         } catch (_: Exception) {
             android.util.Log.w("ftpmusic-search", "cacheServerResults failed")
         }

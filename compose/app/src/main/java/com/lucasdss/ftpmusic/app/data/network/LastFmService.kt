@@ -64,6 +64,42 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
             }
         }
 
+    /**
+     * Fetch top tags for an artist (Last.fm artist.getTopTags).
+     * Returns empty if no API key or network failure.
+     */
+    suspend fun fetchArtistTopTags(artistName: String, limit: Int = 8): List<String> =
+        withContext(Dispatchers.IO) {
+            val apiKey = currentApiKey()
+            if (apiKey.isEmpty() || artistName.isBlank()) return@withContext emptyList()
+            try {
+                val url = "$BASE?method=artist.getTopTags&artist=" +
+                    java.net.URLEncoder.encode(artistName, "UTF-8") +
+                    "&api_key=$apiKey&format=json"
+                val request = Request.Builder().url(url).build()
+                val body = client.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    resp.body?.string() ?: return@withContext emptyList()
+                }
+                parseTopTags(body, limit)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+    internal fun parseTopTags(json: String, limit: Int = 8): List<String> {
+        return try {
+            val root = JSONObject(json)
+            val toptags = root.optJSONObject("toptags") ?: return emptyList()
+            val tags = toptags.optJSONArray("tag") ?: return emptyList()
+            (0 until minOf(tags.length(), limit)).mapNotNull { i ->
+                tags.getJSONObject(i).optString("name").takeIf { it.isNotBlank() }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     /** Parse the last.fm response into SimilarArtist objects. */
     internal fun parseSimilarArtists(json: String): List<SimilarArtist> {
         return try {
