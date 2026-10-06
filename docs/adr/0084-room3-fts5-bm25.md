@@ -51,3 +51,5 @@ Bundled driver is therefore **deferred**.
 - Devices without FTS5: CREATE fails quietly → LIKE fallback.
 - ADR 0080/0083 engine decisions superseded; lyrics SERP + popularity
   tie-break remain.
+- **Amendment (1.6.0 / ADR 0086):** year-active track filters drop null-
+  `albumId` orphans (do not keep singles solely because year is unknown).

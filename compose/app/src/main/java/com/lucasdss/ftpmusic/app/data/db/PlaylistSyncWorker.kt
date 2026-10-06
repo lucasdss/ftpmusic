@@ -134,12 +134,22 @@ class PlaylistSyncWorker(
                 when (change.changeType) {
                     "rename" -> {
                         val name = extractPayload(change.payload)
-                        api.updatePlaylist(params, playlistId = playlistId, name = name)
+                        val response = api.updatePlaylist(params, playlistId = playlistId, name = name)
+                        if (!authHelper.checkResponseStatus(response)) {
+                            Log.w(TAG, "rename failed status for $playlistId")
+                            anyNetworkFailure = true
+                            continue
+                        }
                     }
 
                     "create" -> {
                         val name = extractPayload(change.payload)
                         val response = api.createPlaylist(params, name = name)
+                        if (!authHelper.checkResponseStatus(response)) {
+                            Log.w(TAG, "create failed status for ${change.playlistId}")
+                            anyNetworkFailure = true
+                            continue
+                        }
                         val sr = response["subsonic-response"] as? Map<*, *>
                         val pl = sr?.get("playlist") as? Map<*, *>
                         val serverId = pl?.get("id") as? String
@@ -171,7 +181,12 @@ class PlaylistSyncWorker(
                     }
 
                     "delete" -> {
-                        api.deletePlaylist(params, id = playlistId)
+                        val response = api.deletePlaylist(params, id = playlistId)
+                        if (!authHelper.checkResponseStatus(response)) {
+                            Log.w(TAG, "delete failed status for $playlistId")
+                            anyNetworkFailure = true
+                            continue
+                        }
                         // Remove from local DB after successful server deletion
                         playlistDao.clearEntries(playlistId)
                         playlistDao.delete(playlistId)
@@ -181,15 +196,25 @@ class PlaylistSyncWorker(
                         // Full track sync: clear server then re-add
                         val entries = playlistDao.getEntries(playlistId)
                         val serverList = api.getPlaylist(params, id = playlistId)
+                        if (!authHelper.checkResponseStatus(serverList)) {
+                            Log.w(TAG, "sync_tracks getPlaylist failed status for $playlistId")
+                            anyNetworkFailure = true
+                            continue
+                        }
                         val serverCount = (serverList["songCount"] as? Number)?.toInt() ?: 0
                         val removeIndices = if (serverCount > 0) (0 until serverCount).joinToString(",") else ""
                         val addIds = entries.joinToString(",") { it.trackId }
-                        api.updatePlaylist(
+                        val response = api.updatePlaylist(
                             params,
                             playlistId = playlistId,
                             removeIndices = removeIndices,
                             addIds = addIds,
                         )
+                        if (!authHelper.checkResponseStatus(response)) {
+                            Log.w(TAG, "sync_tracks update failed status for $playlistId")
+                            anyNetworkFailure = true
+                            continue
+                        }
 
                         // Update track count in local metadata
                         val updatedMeta = playlistDao.getById(playlistId)?.copy(
@@ -201,12 +226,23 @@ class PlaylistSyncWorker(
 
                     "add_tracks" -> {
                         val trackIds = change.payload
-                        api.updatePlaylist(params, playlistId = playlistId, addIds = trackIds)
+                        val response = api.updatePlaylist(params, playlistId = playlistId, addIds = trackIds)
+                        if (!authHelper.checkResponseStatus(response)) {
+                            Log.w(TAG, "add_tracks failed status for $playlistId")
+                            anyNetworkFailure = true
+                            continue
+                        }
                     }
 
                     "remove_tracks" -> {
                         val indices = change.payload
-                        api.updatePlaylist(params, playlistId = playlistId, removeIndices = indices)
+                        val response =
+                            api.updatePlaylist(params, playlistId = playlistId, removeIndices = indices)
+                        if (!authHelper.checkResponseStatus(response)) {
+                            Log.w(TAG, "remove_tracks failed status for $playlistId")
+                            anyNetworkFailure = true
+                            continue
+                        }
                     }
                 }
                 pendingDao.markFlushed(change.id)

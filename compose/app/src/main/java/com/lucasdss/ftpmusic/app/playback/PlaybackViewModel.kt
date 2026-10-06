@@ -97,6 +97,11 @@ class PlaybackViewModel @Inject constructor(
 
     private fun reactionMutex(trackId: String): Mutex = reactionMutexes.getOrPut(trackId) { Mutex() }
 
+    private val shareMutex = Mutex()
+
+    @Volatile
+    private var shareInFlight = false
+
     init {
         // Restore sleep timer from queue_state (ADR-0074) — NOT PlayerHolder,
         // which is process-local and empty right after process death. The
@@ -182,9 +187,9 @@ class PlaybackViewModel @Inject constructor(
     }
     fun removeFromQueue(index: Int) = playbackManager.removeFromQueue(index)
 
-    /** Remove selected queue indices descending so earlier removals don't shift later ones. */
+    /** Remove selected queue indices with one optimistic snapshot (Cast ACK safe). */
     fun removeFromQueueBatch(indices: Collection<Int>) {
-        indices.sortedDescending().forEach { playbackManager.removeFromQueue(it) }
+        playbackManager.removeFromQueueBatch(indices)
     }
 
     fun clearQueue() = playbackManager.clearQueue()
@@ -442,11 +447,14 @@ class PlaybackViewModel @Inject constructor(
      * ADR-0076 — replaces prior server-only shareQueue exception (ADR-0015 row 18).
      */
     fun shareQueue(context: android.content.Context) {
+        if (shareInFlight) return
         val trackIds = currentQueueTrackIds()
         if (trackIds.isEmpty()) return
         val playlistName = defaultQueuePlaylistName()
 
         viewModelScope.launch {
+            if (!shareMutex.tryLock()) return@launch
+            shareInFlight = true
             try {
                 val serverId = playlistRepository.createPlaylistWithTracksSynced(playlistName, trackIds)
                 if (serverId == null) {
@@ -477,13 +485,13 @@ class PlaybackViewModel @Inject constructor(
                     val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    context.startActivity(
-                        android.content.Intent.createChooser(
-                            shareIntent,
-                            context.getString(R.string.player_share_chooser_title),
-                        ),
-                    )
+                    val chooser = android.content.Intent.createChooser(
+                        shareIntent,
+                        context.getString(R.string.player_share_chooser_title),
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(chooser)
                     android.widget.Toast.makeText(
                         context,
                         context.getString(R.string.player_share_success, playlistName),
@@ -499,6 +507,9 @@ class PlaybackViewModel @Inject constructor(
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }
+            } finally {
+                shareInFlight = false
+                shareMutex.unlock()
             }
         }
     }

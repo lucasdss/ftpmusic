@@ -87,6 +87,17 @@ class OptimisticQueueDelegateTest {
     }
 
     @Test
+    fun `removeBatchOptimistic single snapshot rolls back all removals`() {
+        dualQueue.setContext(listOf(item("a"), item("b"), item("c"), item("d")))
+        val (removed, snap) = delegate.removeBatchOptimistic(listOf(1, 3))
+        assertEquals(listOf("d", "b"), removed.map { it.mediaId })
+        assertEquals(listOf("a", "c"), dualQueue.getMerged().map { it.mediaId })
+        assertEquals(listOf("a", "b", "c", "d"), snap.items.map { it.mediaId })
+        delegate.rollback()
+        assertEquals(listOf("a", "b", "c", "d"), dualQueue.getMerged().map { it.mediaId })
+    }
+
+    @Test
     fun `removeOptimistic followed by rollback reverts`() {
         dualQueue.setContext(listOf(item("a"), item("b"), item("c")))
         val (removed, _) = delegate.removeOptimistic(1)

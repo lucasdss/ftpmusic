@@ -120,11 +120,11 @@ class LocalSearchRepository @Inject constructor(
             } else {
                 metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
             }
-            // Singles (null albumId): keep — FTS body may already carry year/decade tokens;
-            // do not drop solely because albumYears[null] is missing (ADR 0084 / 0078 amend).
+            // Singles (null albumId): drop under active year — cannot verify album year
+            // (text+year queries otherwise keep modern orphans; ADR 0084 amend 1.6.0).
             tracks = tracks.filter { t ->
-                val albumId = t.albumId
-                if (albumId == null) true else year.matches(albumYears[albumId])
+                val albumId = t.albumId ?: return@filter false
+                year.matches(albumYears[albumId])
             }
         }
         val artists = if (artistIds.isNotEmpty()) {
@@ -200,8 +200,8 @@ class LocalSearchRepository @Inject constructor(
                     metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
                 }
                 tracks = tracks.filter { t ->
-                    val albumId = t.albumId
-                    if (albumId == null) true else year.matches(albumYears[albumId])
+                    val albumId = t.albumId ?: return@filter false
+                    year.matches(albumYears[albumId])
                 }
             }
         }
@@ -260,8 +260,8 @@ class LocalSearchRepository @Inject constructor(
                 metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
             }
             tracks = tracks.filter { t ->
-                val albumId = t.albumId
-                if (albumId == null) true else year.matches(albumYears[albumId])
+                val albumId = t.albumId ?: return@filter false
+                year.matches(albumYears[albumId])
             }
         }
         if (tracks.isEmpty()) return null

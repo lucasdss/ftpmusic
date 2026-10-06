@@ -851,6 +851,35 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `upsertTracksPreserveCache fills path and mbid from densify onto stub`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(
+            TrackEntity(
+                id = "t-path",
+                title = "Stub",
+                path = null,
+                musicbrainzId = null,
+                albumId = "al-1",
+            ),
+        )
+        tracks.upsertTracksPreserveCache(
+            listOf(
+                TrackEntity(
+                    id = "t-path",
+                    title = "Stub",
+                    path = "/music/a.mp3",
+                    musicbrainzId = "mb-track",
+                    albumId = null,
+                ),
+            ),
+        )
+        val row = tracks.getTrack("t-path")!!
+        assertEquals("/music/a.mp3", row.path)
+        assertEquals("mb-track", row.musicbrainzId)
+        assertEquals("al-1", row.albumId)
+    }
+
+    @Test
     fun `orphan track without album_id persists and counts once`() = runBlocking {
         val tracks = db.trackDao()
         tracks.upsertTracksPreserveCache(

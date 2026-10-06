@@ -26,6 +26,7 @@ import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -139,6 +140,7 @@ class SearchViewModel @Inject constructor(
     private var searchJob: Job? = null
     private var typeaheadJob: Job? = null
     private var discoverJob: Job? = null
+    private var loadMoreJob: Job? = null
     private var albumSearchOffset = 0
     private var artistSearchOffset = 0
     private var songSearchOffset = 0
@@ -311,6 +313,11 @@ class SearchViewModel @Inject constructor(
         searchJob?.cancel()
         typeaheadJob?.cancel()
         discoverJob?.cancel()
+        loadMoreJob?.cancel()
+        isLoadingMoreSearch = false
+        albumSearchOffset = 0
+        artistSearchOffset = 0
+        songSearchOffset = 0
         lastTagChipQuery = null
         val trimmed = query.trim()
         // Phase-4: keep prior results painted until new search replaces them (no flicker).
@@ -383,6 +390,11 @@ class SearchViewModel @Inject constructor(
         typeaheadJob?.cancel()
         searchJob?.cancel()
         discoverJob?.cancel()
+        loadMoreJob?.cancel()
+        isLoadingMoreSearch = false
+        albumSearchOffset = 0
+        artistSearchOffset = 0
+        songSearchOffset = 0
         searchJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, searchError = null)
             val filterEnabled = _state.value.filterDownloaded
@@ -570,6 +582,8 @@ class SearchViewModel @Inject constructor(
                 saveRecentSearch(query)
                 // Cache server results to local DB for offline reuse
                 cacheServerResults(results)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Network failed — keep cached results visible with download filter applied
                 android.util.Log.w("ftpmusic-search", "Server search failed: ${e.message}")
@@ -642,26 +656,18 @@ class SearchViewModel @Inject constructor(
     }
 
     fun loadMoreSearchResults() {
-        viewModelScope.launch {
-            if (isLoadingMoreSearch) return@launch
+        if (isLoadingMoreSearch) return
+        val query = _state.value.query.trim()
+        if (query.length < MIN_QUERY_LEN) return
+        // Pagination requires the network — skip when local-only
+        if (isLocalOnly()) return
+        loadMoreJob?.cancel()
+        loadMoreJob = viewModelScope.launch {
             isLoadingMoreSearch = true
-            val query = _state.value.query.trim()
-            if (query.length < MIN_QUERY_LEN) {
-                isLoadingMoreSearch = false
-                return@launch
-            }
-            // Pagination requires the network — skip when local-only
-            if (isLocalOnly()) {
-                isLoadingMoreSearch = false
-                return@launch
-            }
             try {
                 val username = storage.get(SecureStorage.KEY_USERNAME) ?: ""
                 val password = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
-                if (username.isEmpty()) {
-                    isLoadingMoreSearch = false
-                    return@launch
-                }
+                if (username.isEmpty()) return@launch
                 val nextAlbum = albumSearchOffset + PAGE_SIZE
                 val nextArtist = artistSearchOffset + PAGE_SIZE
                 val nextSong = songSearchOffset + PAGE_SIZE
@@ -676,45 +682,46 @@ class SearchViewModel @Inject constructor(
                     albumOffset = nextAlbum,
                     songOffset = nextSong,
                 )
-                // Bump offsets only after successful fetch
+                // Only commit page + offsets when query still matches (typeahead cancel-safe).
+                if (_state.value.query.trim() != query) return@launch
                 albumSearchOffset = nextAlbum
                 artistSearchOffset = nextArtist
                 songSearchOffset = nextSong
-                if (_state.value.query.trim() == query) {
-                    val ranks = _state.value.ftsRanks
-                    val artists = SearchResultMerger.rankByQuery(
-                        SearchResultMerger.unionById(_state.value.artists, results.artists) { it.id },
-                        query,
-                        bm25Of = { ranks[it.id] },
-                    ) { it.name }
-                    val albums = SearchResultMerger.rankByQuery(
-                        SearchResultMerger.unionById(_state.value.albums, results.albums) { it.id },
-                        query,
-                        bm25Of = { ranks[it.id] },
-                    ) { it.name }
-                    val tracks = rankTracks(
-                        SearchResultMerger.unionById(_state.value.allTracks, results.tracks) { it.id },
-                        query,
-                        ranks,
-                    )
-                    val filterEnabled = _state.value.filterDownloaded
-                    val filtered = if (filterEnabled) {
-                        tracks.filter { it.id in _state.value.localTrackIds }
-                    } else {
-                        tracks
-                    }
-                    _state.value = _state.value.copy(
-                        artists = artists,
-                        albums = albums,
-                        tracks = filtered,
-                        allTracks = tracks,
-                        resultCount = artists.size + albums.size + tracks.size +
-                            _state.value.playlists.size + _state.value.matchedGenres.size +
-                            _state.value.lyricsMatches.size,
-                        searchError = null,
-                    )
-                    cacheServerResults(results)
+                val ranks = _state.value.ftsRanks
+                val artists = SearchResultMerger.rankByQuery(
+                    SearchResultMerger.unionById(_state.value.artists, results.artists) { it.id },
+                    query,
+                    bm25Of = { ranks[it.id] },
+                ) { it.name }
+                val albums = SearchResultMerger.rankByQuery(
+                    SearchResultMerger.unionById(_state.value.albums, results.albums) { it.id },
+                    query,
+                    bm25Of = { ranks[it.id] },
+                ) { it.name }
+                val tracks = rankTracks(
+                    SearchResultMerger.unionById(_state.value.allTracks, results.tracks) { it.id },
+                    query,
+                    ranks,
+                )
+                val filterEnabled = _state.value.filterDownloaded
+                val filtered = if (filterEnabled) {
+                    tracks.filter { it.id in _state.value.localTrackIds }
+                } else {
+                    tracks
                 }
+                _state.value = _state.value.copy(
+                    artists = artists,
+                    albums = albums,
+                    tracks = filtered,
+                    allTracks = tracks,
+                    resultCount = artists.size + albums.size + tracks.size +
+                        _state.value.playlists.size + _state.value.matchedGenres.size +
+                        _state.value.lyricsMatches.size,
+                    searchError = null,
+                )
+                cacheServerResults(results)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-search", "loadMoreSearch: ${e.message}")
                 val current = _state.value
@@ -984,7 +991,7 @@ class SearchViewModel @Inject constructor(
                         genre = a.genre,
                     )
                 }
-                metadataDao.upsertAlbums(albumEntities)
+                metadataDao.upsertAlbumsPreserveEnrich(albumEntities)
             }
             // Persist artists so offline search finds them via metadataDao.searchArtists
             if (results.artists.isNotEmpty()) {
@@ -995,7 +1002,7 @@ class SearchViewModel @Inject constructor(
                         coverArt = a.coverArt,
                     )
                 }
-                metadataDao.upsertArtists(artistEntities)
+                metadataDao.upsertArtistsPreserveEnrich(artistEntities)
             }
             searchIndexRebuilder.scheduleRebuild(debounceMs = 3_000L)
         } catch (_: Exception) {

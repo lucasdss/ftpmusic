@@ -745,6 +745,38 @@ class PlaybackManager @Inject constructor(
         )
     }
 
+    /** Batch remove with one optimistic snapshot (Cast ACK restores pre-batch). */
+    fun removeFromQueueBatch(indices: Collection<Int>) {
+        if (indices.isEmpty()) return
+        val sorted = indices.sortedDescending()
+        val (removed, _) = optimist.removeBatchOptimistic(sorted)
+        if (removed.isEmpty()) return
+        if (!PlayerHolder.isCasting) {
+            val player = PlayerHolder.player
+            for (index in sorted) {
+                player?.removeMediaItem(index)
+            }
+        } else {
+            syncDualQueueToPlayer()
+        }
+        val (tracks, urls) = buildQueueStateFromDual()
+        if (tracks.isEmpty()) {
+            scope.launch { persistenceManager.clear() }
+        } else {
+            persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
+        }
+        if (PlayerHolder.isCasting) {
+            // Single ClearAndPlay so one ACK covers the whole batch.
+            emitClearAndPlayOrCommit(dualQueue.getMerged(), currentCanonicalIndex().coerceAtLeast(0))
+        } else {
+            optimist.commit()
+        }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "queueEdit action=removeBatch count=${removed.size} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+        )
+    }
+
     /**
      * Trim upcoming items after the current track (keep Now Playing).
      * Cast: ClearAndPlay remaining Dual. Persist Dual (ADR 0067); clear Room only

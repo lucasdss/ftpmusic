@@ -540,13 +540,18 @@ class FavoriteTest {
             every {
                 android.widget.Toast.makeText(any<android.content.Context>(), any<CharSequence>(), any<Int>())
             } returns mockk(relaxed = true)
-            every { android.content.Intent.createChooser(any(), any()) } returns mockk(relaxed = true)
+            val chooserIntent = mockk<android.content.Intent>(relaxed = true)
+            every { android.content.Intent.createChooser(any(), any()) } returns chooserIntent
+            every { chooserIntent.addFlags(any()) } returns chooserIntent
             viewModel.shareQueue(context)
             testDispatcher.scheduler.advanceUntilIdle()
 
             coVerify { playlistRepo.createPlaylistWithTracksSynced(any(), listOf("t1", "t2")) }
             coVerify { playlistRepo.setPlaylistPublic("pl-1", true) }
-            io.mockk.verify { context.startActivity(any()) }
+            io.mockk.verify {
+                chooserIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            io.mockk.verify { context.startActivity(chooserIntent) }
         } finally {
             PlayerHolder.exoPlayer = null
             unmockkStatic(android.widget.Toast::class)
@@ -748,7 +753,7 @@ class FavoriteTest {
     }
 
     @Test
-    fun `removeFromQueueBatch removes descending`() = runTest {
+    fun `removeFromQueueBatch delegates single batch call`() = runTest {
         val playbackManager = mockk<PlaybackManager>(relaxed = true)
         val (viewModel, _) = vm(
             mockk(relaxed = true),
@@ -756,10 +761,9 @@ class FavoriteTest {
             playbackManager = playbackManager,
         )
         viewModel.removeFromQueueBatch(listOf(1, 4, 2))
-        io.mockk.verifyOrder {
-            playbackManager.removeFromQueue(4)
-            playbackManager.removeFromQueue(2)
-            playbackManager.removeFromQueue(1)
+        io.mockk.verify(exactly = 1) {
+            playbackManager.removeFromQueueBatch(listOf(1, 4, 2))
         }
+        io.mockk.verify(exactly = 0) { playbackManager.removeFromQueue(any()) }
     }
 }

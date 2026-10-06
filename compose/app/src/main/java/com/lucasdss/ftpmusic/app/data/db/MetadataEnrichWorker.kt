@@ -64,7 +64,7 @@ class MetadataEnrichRunner @Inject constructor(
                 .addTag(UNIQUE_WORK_NAME)
                 .build()
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.KEEP, request)
+                .enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
             Log.d(TAG, "Enqueued metadata enrich work")
         } catch (e: IllegalStateException) {
             Log.d(TAG, "WorkManager unavailable — enrich skipped: ${e.message}")

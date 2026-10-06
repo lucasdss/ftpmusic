@@ -88,6 +88,19 @@ class OptimisticQueueDelegate @Inject constructor(private val dualQueue: DualQue
         return Pair(removed, snap)
     }
 
+    /**
+     * Batch remove with a single snapshot so Cast ACK fail rolls back the whole batch.
+     * Indices must be applied descending so earlier removals do not shift later indices.
+     */
+    fun removeBatchOptimistic(indices: Collection<Int>): Pair<List<MediaItem>, Snapshot> {
+        val snap = snapshot()
+        val removed = ArrayList<MediaItem>(indices.size)
+        for (index in indices.sortedDescending()) {
+            dualQueue.remove(index)?.let { removed.add(it) }
+        }
+        return Pair(removed, snap)
+    }
+
     /** Move with optimistic snapshot. */
     fun moveOptimistic(from: Int, to: Int): Pair<Boolean, Snapshot> {
         val snap = snapshot()

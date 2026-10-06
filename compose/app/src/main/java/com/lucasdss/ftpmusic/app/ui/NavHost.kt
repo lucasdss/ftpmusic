@@ -886,6 +886,9 @@ fun FtpmusicNavHost() {
                     val queueHistory by playbackViewModel.queueHistory.collectAsStateWithLifecycle()
                     val continuousPlayEnabled by
                         playbackViewModel.continuousPlayEnabled.collectAsStateWithLifecycle()
+                    val queueRevision by
+                        com.lucasdss.ftpmusic.app.playback.QueueRevisionTracker.revision
+                            .collectAsStateWithLifecycle()
 
                     PlayerBar(
                         state = PlayerBarState(
@@ -913,7 +916,9 @@ fun FtpmusicNavHost() {
                             isOffline = playbackState.isOffline,
                             isQueueSynced = playbackState.isQueueSynced,
                             nextTracks = remember(
+                                queueRevision,
                                 playbackState.queueSize,
+                                playbackState.priorityQueueSize,
                                 playbackState.trackIndex,
                                 playbackState.currentTrackId,
                             ) {

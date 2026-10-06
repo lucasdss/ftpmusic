@@ -314,4 +314,35 @@ class PlaylistSyncWorkerTest {
         coVerify(exactly = 1) { api.updatePlaylist(any(), any(), any(), any(), any()) }
         worker.stop()
     }
+
+    @Test
+    fun `add_tracks failed Subsonic status does not markFlushed`() = runTest {
+        val change =
+            PendingPlaylistChangeEntity(id = 50, playlistId = "pl-50", changeType = "add_tracks", payload = "t1,t2")
+        coEvery { pendingDao.getPending() } returns listOf(change)
+        coEvery { api.updatePlaylist(any(), "pl-50", addIds = "t1,t2") } returns mapOf(
+            "subsonic-response" to mapOf("status" to "failed"),
+        )
+
+        worker.flushNow()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { pendingDao.markFlushed(50) }
+    }
+
+    @Test
+    fun `create failed Subsonic status does not remap or markFlushed`() = runTest {
+        val change =
+            PendingPlaylistChangeEntity(id = 51, playlistId = "new-1", changeType = "create", payload = "name=Q")
+        coEvery { pendingDao.getPending() } returns listOf(change)
+        coEvery { api.createPlaylist(any(), name = "Q") } returns mapOf(
+            "subsonic-response" to mapOf("status" to "failed"),
+        )
+
+        worker.flushNow()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { pendingDao.markFlushed(51) }
+        coVerify(exactly = 0) { playlistDao.delete(any()) }
+    }
 }

@@ -937,4 +937,170 @@ class SearchViewModelTest {
         assertEquals("Server unavailable — showing library", viewModel.state.value.searchError)
         assertTrue(viewModel.state.value.tracks.isNotEmpty())
     }
+
+    @Test
+    fun `cancelled server search does not set searchError`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        every { storage.get(any()) } returns null
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { localSearch.search(any(), any(), any()) } returns LocalSearchHit(
+            tracks = listOf(TrackEntity(id = "t1", title = "Song")),
+        )
+        coEvery {
+            repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } coAnswers {
+            kotlinx.coroutines.delay(10_000)
+            SearchResults()
+        }
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("so")
+        viewModel.search()
+        testDispatcher.scheduler.advanceTimeBy(50)
+        viewModel.onQueryChanged("song")
+        advanceUntilIdle()
+        assertNull(viewModel.state.value.searchError)
+    }
+
+    @Test
+    fun `cacheServerResults uses preserve-enrich album and artist upserts`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        every { storage.get(any()) } returns null
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { localSearch.search(any(), any(), any()) } returns LocalSearchHit()
+        coEvery {
+            repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } returns SearchResults(
+            artists = listOf(Artist(id = "ar1", name = "Artist")),
+            albums = listOf(Album(id = "al1", name = "Album", artist = "Artist")),
+            tracks = listOf(Track(id = "t1", title = "Song", artist = "Artist", albumId = "al1")),
+        )
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                metadataDao,
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("so")
+        viewModel.search()
+        advanceUntilIdle()
+        coVerify { metadataDao.upsertAlbumsPreserveEnrich(match { it.any { a -> a.id == "al1" } }) }
+        coVerify { metadataDao.upsertArtistsPreserveEnrich(match { it.any { a -> a.id == "ar1" } }) }
+        coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.upsertArtists(any()) }
+    }
+
+    @Test
+    fun `loadMore after query change does not merge into new query`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        every { storage.get(any()) } returns null
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { localSearch.search(match { it.startsWith("aa") }, any(), any()) } returns LocalSearchHit(
+            tracks = listOf(TrackEntity(id = "a1", title = "Alpha")),
+        )
+        coEvery { localSearch.search(match { it.startsWith("bb") }, any(), any()) } returns LocalSearchHit(
+            tracks = listOf(TrackEntity(id = "b1", title = "Beta")),
+        )
+        coEvery {
+            repository.search(
+                match { it == "aa" },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                artistOffset = 0,
+                albumOffset = 0,
+                songOffset = 0,
+            )
+        } returns SearchResults(tracks = listOf(Track("a1", "Alpha")))
+        coEvery {
+            repository.search(
+                match { it == "aa" },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                artistOffset = 50,
+                albumOffset = 50,
+                songOffset = 50,
+            )
+        } coAnswers {
+            kotlinx.coroutines.delay(5_000)
+            SearchResults(tracks = listOf(Track("a2", "Alpha Two")))
+        }
+        coEvery {
+            repository.search(
+                match { it == "bb" },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        } returns SearchResults(tracks = listOf(Track("b1", "Beta")))
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("aa")
+        viewModel.search()
+        advanceUntilIdle()
+        assertEquals(listOf("a1"), viewModel.state.value.tracks.map { it.id })
+        viewModel.loadMoreSearchResults()
+        testDispatcher.scheduler.advanceTimeBy(50)
+        viewModel.onQueryChanged("bb")
+        viewModel.search()
+        advanceUntilIdle()
+        assertEquals(listOf("b1"), viewModel.state.value.tracks.map { it.id })
+        assertFalse(viewModel.state.value.tracks.any { it.id == "a2" })
+    }
 }

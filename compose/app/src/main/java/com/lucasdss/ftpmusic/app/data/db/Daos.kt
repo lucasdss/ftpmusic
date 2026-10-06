@@ -246,6 +246,8 @@ interface TrackDao {
                             suffix = row.suffix ?: old.suffix,
                             contentType = row.contentType ?: old.contentType,
                             bitrate = row.bitrate ?: old.bitrate,
+                            path = row.path ?: old.path,
+                            musicbrainzId = row.musicbrainzId ?: old.musicbrainzId,
                         )
                     },
                 )

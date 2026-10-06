@@ -203,12 +203,13 @@ class PlaylistSyncWorkerBranchTest {
     }
 
     @Test
-    fun `flushNow no-ops when already flushing`() = runTest {
+    fun `flushNow serializes via mutex when already flushing`() = runTest {
         val c = change(7, "pl-re", "rename", "name=A")
-        coEvery { pendingDao.getPending() } returns listOf(c)
+        // First flush sees pending; second (queued behind mutex) sees empty after markFlushed.
+        coEvery { pendingDao.getPending() } returnsMany listOf(listOf(c), emptyList())
 
-        worker.flushNow() // sets isFlushing = true, launches
-        worker.flushNow() // CAS fails → returns immediately
+        worker.flushNow()
+        worker.flushNow()
         advanceUntilIdle()
 
         coVerify(exactly = 1) { api.updatePlaylist(any(), any(), name = "A") }
