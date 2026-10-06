@@ -210,6 +210,9 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id IN (:trackIds)")
     suspend fun getTracksByIds(trackIds: List<String>): List<TrackEntity>
 
+    @Query("SELECT * FROM tracks WHERE musicbrainz_id = :mbid LIMIT 1")
+    suspend fun getTrackByMbid(mbid: String): TrackEntity?
+
     /** Full scan for FTS rebuild only — not for UI. Joins album year for decade search. */
     @Query(
         """
@@ -815,6 +818,19 @@ interface CachedMetadataDao {
             "ORDER BY album_count DESC LIMIT :limit",
     )
     suspend fun getArtistsNeedingTags(limit: Int): List<CachedArtistEntity>
+
+    /** Artists with Last.fm / enrich tags — Search idle chip aggregation (Phase-5). */
+    @Query(
+        "SELECT * FROM cached_artists WHERE search_tags IS NOT NULL AND search_tags != '' " +
+            "ORDER BY album_count DESC LIMIT :limit",
+    )
+    suspend fun getArtistsWithSearchTags(limit: Int = 500): List<CachedArtistEntity>
+
+    @Query("SELECT * FROM cached_artists WHERE musicbrainz_id = :mbid LIMIT 1")
+    suspend fun getArtistByMbid(mbid: String): CachedArtistEntity?
+
+    @Query("SELECT * FROM cached_artists WHERE LOWER(name) = LOWER(:name) LIMIT 1")
+    suspend fun getArtistByExactName(name: String): CachedArtistEntity?
 
     @Query(
         "SELECT * FROM cached_albums WHERE notes IS NULL OR notes = '' " +

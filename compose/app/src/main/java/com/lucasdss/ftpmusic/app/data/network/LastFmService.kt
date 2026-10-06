@@ -32,6 +32,9 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
 
     data class SimilarArtist(val name: String, val mbid: String?, val match: Double?)
 
+    /** Live Discover / tag browse hit (Phase-5). */
+    data class SearchArtistHit(val name: String, val mbid: String?, val listeners: Long? = null)
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -86,6 +89,80 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
                 emptyList()
             }
         }
+
+    /** Live artist.search for Discover (Phase-5). */
+    suspend fun searchArtists(query: String, limit: Int = 8): List<SearchArtistHit> =
+        withContext(Dispatchers.IO) {
+            val apiKey = currentApiKey()
+            if (apiKey.isEmpty() || query.isBlank()) return@withContext emptyList()
+            try {
+                val url = "$BASE?method=artist.search&artist=" +
+                    java.net.URLEncoder.encode(query, "UTF-8") +
+                    "&api_key=$apiKey&format=json&limit=$limit"
+                val request = Request.Builder().url(url).build()
+                val body = client.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    resp.body?.string() ?: return@withContext emptyList()
+                }
+                parseArtistSearch(body, limit)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+    /** tag.getTopArtists — boost Discover when user taps a tag chip (Phase-5). */
+    suspend fun fetchTagTopArtists(tag: String, limit: Int = 8): List<SearchArtistHit> =
+        withContext(Dispatchers.IO) {
+            val apiKey = currentApiKey()
+            if (apiKey.isEmpty() || tag.isBlank()) return@withContext emptyList()
+            try {
+                val url = "$BASE?method=tag.getTopArtists&tag=" +
+                    java.net.URLEncoder.encode(tag, "UTF-8") +
+                    "&api_key=$apiKey&format=json&limit=$limit"
+                val request = Request.Builder().url(url).build()
+                val body = client.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    resp.body?.string() ?: return@withContext emptyList()
+                }
+                parseTagTopArtists(body, limit)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+    internal fun parseArtistSearch(json: String, limit: Int = 8): List<SearchArtistHit> {
+        return try {
+            val root = JSONObject(json)
+            val results = root.optJSONObject("results") ?: return emptyList()
+            val matches = results.optJSONObject("artistmatches") ?: return emptyList()
+            val artists = matches.optJSONArray("artist") ?: return emptyList()
+            (0 until minOf(artists.length(), limit)).mapNotNull { i ->
+                val a = artists.getJSONObject(i)
+                val name = a.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val mbid = a.optString("mbid").takeIf { it.isNotBlank() }
+                val listeners = a.optString("listeners").toLongOrNull()
+                SearchArtistHit(name, mbid, listeners)
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    internal fun parseTagTopArtists(json: String, limit: Int = 8): List<SearchArtistHit> {
+        return try {
+            val root = JSONObject(json)
+            val topartists = root.optJSONObject("topartists") ?: return emptyList()
+            val artists = topartists.optJSONArray("artist") ?: return emptyList()
+            (0 until minOf(artists.length(), limit)).mapNotNull { i ->
+                val a = artists.getJSONObject(i)
+                val name = a.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val mbid = a.optString("mbid").takeIf { it.isNotBlank() }
+                SearchArtistHit(name, mbid, null)
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
 
     internal fun parseTopTags(json: String, limit: Int = 8): List<String> {
         return try {

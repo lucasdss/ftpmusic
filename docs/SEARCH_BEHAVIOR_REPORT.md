@@ -1,34 +1,36 @@
 # SEARCH_BEHAVIOR_REPORT
 
-Caveman style. FTP Music search — Phase-4 UX/perf complete.
+Caveman style. FTP Music search — Phase-5 tags + Discover.
 
 ## Surfaces
 
 | Surface | Trigger | Corpus |
 |---------|---------|--------|
-| Global Search tab | Typeahead 300ms (≥2 chars) + IME Search | FTS (or LIKE / soft typo) ∪ search3 |
-| Decade chips | Idle → immediate search | Year filter |
+| Global Search tab | Typeahead 300ms (≥2 chars) + IME Search | FTS ∪ search3 ∪ Discover |
+| Decade / Mood / Tag chips | Idle → immediate search | Year / tag tokens / Last.fm tags |
 | Filter chips | Horizontal scroll ≥48dp | Type filter |
+| Discover section | After local paint, online | MusicBrainz + Last.fm |
 | Library / pickers | Debounce | LIKE escaped |
-| Voice | Immediate | LocalSearch first → search3 |
 
 ## Data flow
 
 ```
-onQueryChanged → update query only (keep prior hits) + isLoading
+onQueryChanged → keep prior hits + isLoading
   → debounce → search()
-  → LocalSearch (FTS hydrate-by-id / soft typo / LIKE)
-  → paint topHit + sections
-  → search3 union → scheduleRebuild(3s)
+  → LocalSearch (FTS hydrate-by-id)
+  → paint topHit + sections + matchedTags
+  → search3 union
+  → launchDiscover (MB artists/recordings + Last.fm artist.search or tag.getTopArtists)
+  → scheduleRebuild(3s) on cache / soft-stub
 ```
 
-## Phase-4 shipped
+## Phase-5 shipped
 
-- Keep results while typing; LinearProgress + Searching…; Top result row
-- Single scrollable filter chips; rich empty tips; decade chip immediate search
-- `getAlbumsByIds` / year rows / playlist+genre by id — no `getAllAlbums` on search hot path
-- Single FTS rebuild after sync enrich; ftsCount cache; 3s post-search rebuild debounce
+- Mood chips (curated token map) + Tag chips from Room `search_tags`
+- Matched tag strip on results; Last.fm empty tip
+- Discover lane: MusicBrainz + Last.fm; in-library badge; soft-cache artist stub on tap
+- Offline / local-only: Discover hidden; Room tags still work
 
 ## Local-first
 
-No keystroke enrichment. Discogs/Spotify catalog out of scope.
+Local paint always first. Live Discover secondary. Discogs/Spotify Web API still OOS.

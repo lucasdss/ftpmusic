@@ -49,6 +49,14 @@ class MusicBrainzService @Inject constructor() {
     /** Data class holding a MusicBrainz rating result. */
     data class MusicBrainzRating(val value: Double?, val votes: Int?)
 
+    /** Live Discover hit (Phase-5). */
+    data class MbSearchHit(
+        val name: String,
+        val mbid: String,
+        val disambiguation: String? = null,
+        val artistName: String? = null,
+    )
+
     /**
      * Enforce the 1 request/second rate limit by serializing all calls
      * and spacing them at least [MIN_INTERVAL_MS] apart.
@@ -88,14 +96,57 @@ class MusicBrainzService @Inject constructor() {
      * Search for an artist by name. Returns the top-scoring MBID or null.
      * Query format: /artist?query=artist:{name}&fmt=json&limit=1
      */
-    suspend fun searchArtistMbid(artistName: String): String? {
+    suspend fun searchArtistMbid(artistName: String): String? =
+        searchArtists(artistName, limit = 1).firstOrNull()?.mbid
+
+    /** Multi-hit artist search for Discover (Phase-5). */
+    suspend fun searchArtists(artistName: String, limit: Int = 8): List<MbSearchHit> {
         val query = encodeQueryParam(artistName)
-        if (query.isEmpty()) return null
-        val url = "$BASE/artist?query=artist:$query&fmt=json&limit=1"
-        val json = getJson(url) ?: return null
-        val artists = json.optJSONArray("artists") ?: return null
-        if (artists.length() == 0) return null
-        return artists.getJSONObject(0).optString("id").takeIf { it.isNotEmpty() }
+        if (query.isEmpty()) return emptyList()
+        val url = "$BASE/artist?query=artist:$query&fmt=json&limit=$limit"
+        val json = getJson(url) ?: return emptyList()
+        return parseArtistHits(json, limit)
+    }
+
+    /** Multi-hit recording search for Discover (Phase-5). */
+    suspend fun searchRecordings(queryText: String, limit: Int = 8): List<MbSearchHit> {
+        val query = encodeQueryParam(queryText)
+        if (query.isEmpty()) return emptyList()
+        val url = "$BASE/recording?query=$query&fmt=json&limit=$limit"
+        val json = getJson(url) ?: return emptyList()
+        return parseRecordingHits(json, limit)
+    }
+
+    internal fun parseArtistHits(json: JSONObject, limit: Int = 8): List<MbSearchHit> {
+        val artists = json.optJSONArray("artists") ?: return emptyList()
+        val out = ArrayList<MbSearchHit>(minOf(artists.length(), limit))
+        for (i in 0 until minOf(artists.length(), limit)) {
+            val a = artists.getJSONObject(i)
+            val id = a.optString("id").takeIf { it.isNotEmpty() } ?: continue
+            val name = a.optString("name").takeIf { it.isNotBlank() } ?: continue
+            val disambig = a.optString("disambiguation").takeIf { it.isNotBlank() }
+            out.add(MbSearchHit(name = name, mbid = id, disambiguation = disambig))
+        }
+        return out
+    }
+
+    internal fun parseRecordingHits(json: JSONObject, limit: Int = 8): List<MbSearchHit> {
+        val recordings = json.optJSONArray("recordings") ?: return emptyList()
+        val out = ArrayList<MbSearchHit>(minOf(recordings.length(), limit))
+        for (i in 0 until minOf(recordings.length(), limit)) {
+            val r = recordings.getJSONObject(i)
+            val id = r.optString("id").takeIf { it.isNotEmpty() } ?: continue
+            val title = r.optString("title").takeIf { it.isNotBlank() } ?: continue
+            var artistName: String? = null
+            val credits = r.optJSONArray("artist-credit")
+            if (credits != null && credits.length() > 0) {
+                artistName = credits.getJSONObject(0).optJSONObject("artist")
+                    ?.optString("name")?.takeIf { it.isNotBlank() }
+                    ?: credits.getJSONObject(0).optString("name").takeIf { it.isNotBlank() }
+            }
+            out.add(MbSearchHit(name = title, mbid = id, artistName = artistName))
+        }
+        return out
     }
 
     /**

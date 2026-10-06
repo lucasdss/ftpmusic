@@ -541,6 +541,96 @@ fun SearchScreen(
                         }
                     }
                 }
+                // Moods chips (Phase-5)
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Browse Moods",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelL(),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                    )
+                }
+                item {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacingL())
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                    ) {
+                        com.lucasdss.ftpmusic.app.data.search.SearchMoodTags.MOODS.forEach { mood ->
+                            Box(
+                                Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clip(RoundedCornerShape(cornerM()))
+                                    .background(BrandPurple.copy(alpha = 0.15f))
+                                    .border(1.dp, BrandPurple.copy(alpha = 0.35f), RoundedCornerShape(cornerM()))
+                                    .clickable { viewModel.onMoodChip(mood.label) }
+                                    .padding(horizontal = spacingL(), vertical = spacingM()),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(mood.label, color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                }
+                // Tags chips (Phase-5)
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Browse Tags",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelL(),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                    )
+                }
+                if (state.popularTags.isNotEmpty()) {
+                    item {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacingL())
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                        ) {
+                            state.popularTags.forEach { tag ->
+                                Box(
+                                    Modifier
+                                        .heightIn(min = 48.dp)
+                                        .clip(RoundedCornerShape(cornerM()))
+                                        .background(BrandTeal.copy(alpha = 0.12f))
+                                        .border(1.dp, BrandTeal.copy(alpha = 0.3f), RoundedCornerShape(cornerM()))
+                                        .clickable { viewModel.onTagChip(tag) }
+                                        .padding(horizontal = spacingL(), vertical = spacingM()),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        tag.replaceFirstChar { it.uppercase() },
+                                        color = Color.White,
+                                        fontSize = textHeadingS(),
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else if (state.tagsEmpty) {
+                    item {
+                        Text(
+                            if (state.hasLastFmKey) {
+                                "Tags appear after library sync enrichment"
+                            } else {
+                                "Add Last.fm API key in Settings to unlock tags"
+                            },
+                            color = Color(0xFF666666),
+                            fontSize = textLabelM(),
+                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                        )
+                    }
+                }
                 // ═══ Idle state: Browse Genres ═══
                 if (state.genres.isNotEmpty()) {
                     item {
@@ -721,6 +811,39 @@ fun SearchScreen(
                     state.filterType == SearchFilterType.ALL || state.filterType == SearchFilterType.PLAYLISTS
                 val showGenres =
                     state.filterType == SearchFilterType.ALL || state.filterType == SearchFilterType.GENRES
+
+                // Matched tags chip strip (Phase-5)
+                if (state.matchedTags.isNotEmpty() && state.filterType == SearchFilterType.ALL) {
+                    item {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacingL(), vertical = spacingXS())
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                        ) {
+                            state.matchedTags.forEach { tag ->
+                                Box(
+                                    Modifier
+                                        .heightIn(min = 48.dp)
+                                        .clip(RoundedCornerShape(cornerM()))
+                                        .background(BrandPurple.copy(alpha = 0.12f))
+                                        .border(1.dp, BrandPurple.copy(alpha = 0.3f), RoundedCornerShape(cornerM()))
+                                        .clickable { viewModel.onTagChip(tag) }
+                                        .padding(horizontal = spacingL(), vertical = spacingM()),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        tag.replaceFirstChar { it.uppercase() },
+                                        color = Color.White,
+                                        fontSize = textLabelM(),
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // ── GENRES section (text-matched) ──
                 if (showGenres && state.matchedGenres.isNotEmpty()) {
@@ -1148,8 +1271,95 @@ fun SearchScreen(
                     }
                 }
 
+                // Discover (MusicBrainz / Last.fm) — Phase-5
+                if (state.filterType == SearchFilterType.ALL &&
+                    (state.discoverArtists.isNotEmpty() || state.discoverTracks.isNotEmpty() || state.isDiscoverLoading)
+                ) {
+                    item { SectionHeader("Discover") }
+                    if (state.isDiscoverLoading && state.discoverArtists.isEmpty() && state.discoverTracks.isEmpty()) {
+                        item {
+                            Text(
+                                "Searching MusicBrainz…",
+                                color = Color(0xFF666666),
+                                fontSize = textLabelM(),
+                                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                            )
+                        }
+                    }
+                    items(state.discoverArtists, key = { "disc-ar-${it.mbid ?: it.name}" }) { hit ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.onDiscoverArtistTap(hit) { id -> onArtistClick(id) }
+                                }
+                                .padding(horizontal = spacingL(), vertical = spacingM())
+                                .heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    hit.name,
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                val sub = when {
+                                    hit.inLibrary -> "In library"
+                                    !hit.disambiguation.isNullOrBlank() -> hit.disambiguation
+                                    else -> "Not in library · ${hit.source}"
+                                }
+                                Text(sub, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
+                            }
+                            TypeBadge("artist")
+                        }
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.04f),
+                            modifier = Modifier.padding(horizontal = spacingL()),
+                        )
+                    }
+                    items(state.discoverTracks, key = { "disc-tr-${it.mbid ?: it.title}" }) { hit ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacingL(), vertical = spacingM())
+                                .heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    hit.title,
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    buildString {
+                                        hit.artistName?.let { append(it); append(" · ") }
+                                        append(if (hit.inLibrary) "In library" else "Not in library")
+                                    },
+                                    color = Color(0xFF888888),
+                                    fontSize = textLabelM(),
+                                    maxLines = 1,
+                                )
+                            }
+                            TypeBadge("song")
+                        }
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.04f),
+                            modifier = Modifier.padding(horizontal = spacingL()),
+                        )
+                    }
+                }
+
                 // ── No results ──
-                if (state.resultCount == 0 && !state.isLoading) {
+                if (state.resultCount == 0 && !state.isLoading &&
+                    state.discoverArtists.isEmpty() && state.discoverTracks.isEmpty()
+                ) {
                     item {
                         Column(
                             Modifier.fillMaxWidth().padding(32.dp),

@@ -20,9 +20,13 @@ names into `search_aliases`. Phase-3 separates real aliases vs tags.
    - Last.fm top-tags → `search_tags` (v60)
    - MBID token in FTS body
 5. Discogs / Spotify Web API catalog search: out of scope.
+6. **Amendment (Phase-5 / ADR 0082):** secondary live Discover via MusicBrainz
+   + Last.fm after local paint is allowed. Does not replace local results.
+   Discogs / Spotify Web API remain out of scope.
 
 ## Consequences
 
 - Enrichment rate-limited (25 bio / 15 aliases / 15 tags / 15 albums per sync).
 - Offline sync skips enrichment.
 - Requires Last.fm API key for tags; MB aliases need network.
+- Discover skipped when offline / local-only (ADR 0082).

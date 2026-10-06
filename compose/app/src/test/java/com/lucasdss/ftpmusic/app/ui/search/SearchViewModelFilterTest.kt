@@ -49,6 +49,8 @@ class SearchViewModelFilterTest {
                 mockk(relaxed = true), // metadataSyncWorker
                 api,
                 mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
             )
     }
 
