@@ -461,6 +461,16 @@ class PlaybackViewModel @Inject constructor(
                     return@launch
                 }
                 val published = playlistRepository.setPlaylistPublic(serverId, true)
+                if (!published) {
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Playlist saved but couldn't make it public — share cancelled",
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    return@launch
+                }
                 val base = DynamicBaseUrl.url.trimEnd('/')
                 val deepLink = "$base/app/#/playlist/$serverId/show"
                 val shareText = "\"$playlistName\" (${trackIds.size} tracks)\n$deepLink"
@@ -474,11 +484,7 @@ class PlaybackViewModel @Inject constructor(
                     )
                     android.widget.Toast.makeText(
                         context,
-                        if (published) {
-                            "Shared \"$playlistName\" (public)"
-                        } else {
-                            "Shared \"$playlistName\" (public flag failed)"
-                        },
+                        "Shared \"$playlistName\" (public)",
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }

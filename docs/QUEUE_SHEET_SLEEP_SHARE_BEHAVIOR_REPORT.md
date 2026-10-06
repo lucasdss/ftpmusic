@@ -18,7 +18,7 @@ Caveman. Surface = prod `PlayerBar` `queue_sheet` (ADR-0076).
 | Selection mode | Sleep/repeat strip hidden |
 | Empty queue share | No-op |
 | Offline / flush fail | Local playlist kept; toast; no public/chooser link |
-| Public API fail | Still opens chooser with deep link; toast notes flag fail |
+| Public API fail | Toast; **no chooser** (Round 2 gate) |
 | NP header | Sleep/repeat unchanged |
 
 ## Perf Agent
@@ -47,3 +47,4 @@ Caveman. Surface = prod `PlayerBar` `queue_sheet` (ADR-0076).
 ## OOS
 
 YT dismiss-session; Dual/Cast flatten; Navidrome `createShare` guest links.
+**Follow-up:** Cast Continuous Play (UX honesty / optional enable) — see `QUEUE_AUDIT_ROUND2_BEHAVIOR_REPORT.md`.

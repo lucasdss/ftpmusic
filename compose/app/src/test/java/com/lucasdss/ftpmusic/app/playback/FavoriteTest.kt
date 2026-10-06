@@ -537,19 +537,24 @@ class FavoriteTest {
         every { player.getMediaItemAt(1) } returns
             androidx.media3.common.MediaItem.Builder().setMediaId("t2").build()
         PlayerHolder.exoPlayer = player
+        val context = mockk<android.content.Context>(relaxed = true)
         mockkStatic(android.widget.Toast::class)
+        mockkStatic(android.content.Intent::class)
         try {
             every {
                 android.widget.Toast.makeText(any<android.content.Context>(), any<CharSequence>(), any<Int>())
             } returns mockk(relaxed = true)
-            viewModel.shareQueue(mockk(relaxed = true))
+            every { android.content.Intent.createChooser(any(), any()) } returns mockk(relaxed = true)
+            viewModel.shareQueue(context)
             testDispatcher.scheduler.advanceUntilIdle()
 
             coVerify { playlistRepo.createPlaylistWithTracksSynced(any(), listOf("t1", "t2")) }
             coVerify { playlistRepo.setPlaylistPublic("pl-1", true) }
+            io.mockk.verify { context.startActivity(any()) }
         } finally {
             PlayerHolder.exoPlayer = null
             unmockkStatic(android.widget.Toast::class)
+            unmockkStatic(android.content.Intent::class)
         }
     }
 
@@ -587,14 +592,48 @@ class FavoriteTest {
         every { player.getMediaItemAt(0) } returns
             androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
         PlayerHolder.exoPlayer = player
+        val context = mockk<android.content.Context>(relaxed = true)
         mockkStatic(android.widget.Toast::class)
         try {
             every {
                 android.widget.Toast.makeText(any<android.content.Context>(), any<CharSequence>(), any<Int>())
             } returns mockk(relaxed = true)
-            viewModel.shareQueue(mockk(relaxed = true))
+            viewModel.shareQueue(context)
             testDispatcher.scheduler.advanceUntilIdle()
             coVerify(exactly = 0) { playlistRepo.setPlaylistPublic(any(), any()) }
+            io.mockk.verify(exactly = 0) { context.startActivity(any()) }
+        } finally {
+            PlayerHolder.exoPlayer = null
+            unmockkStatic(android.widget.Toast::class)
+        }
+    }
+
+    @Test
+    fun `shareQueue does not open chooser when public flag fails`() = runTest {
+        val playlistRepo =
+            mockk<com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository>(relaxed = true)
+        coEvery { playlistRepo.createPlaylistWithTracksSynced(any(), any()) } returns "pl-1"
+        coEvery { playlistRepo.setPlaylistPublic("pl-1", true) } returns false
+        val (viewModel, _) = vm(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            playlistRepository = playlistRepo,
+        )
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 1
+        every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        PlayerHolder.exoPlayer = player
+        val context = mockk<android.content.Context>(relaxed = true)
+        mockkStatic(android.widget.Toast::class)
+        try {
+            every {
+                android.widget.Toast.makeText(any<android.content.Context>(), any<CharSequence>(), any<Int>())
+            } returns mockk(relaxed = true)
+            viewModel.shareQueue(context)
+            testDispatcher.scheduler.advanceUntilIdle()
+            coVerify { playlistRepo.setPlaylistPublic("pl-1", true) }
+            io.mockk.verify(exactly = 0) { context.startActivity(any()) }
         } finally {
             PlayerHolder.exoPlayer = null
             unmockkStatic(android.widget.Toast::class)

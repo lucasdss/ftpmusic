@@ -29,9 +29,13 @@ Caveman. Remediation after audit of ADR-0074/75/76 ships.
 
 ## Intentional (document only)
 
-- Share chooser still opens if `setPlaylistPublic` fails
 - History refresh on sheet open (+ after play-next-from-history); not live while open
 - YT dismiss-session / Dual-Cast flatten / `createShare` — OOS
+- ~~Share chooser if `setPlaylistPublic` fails~~ — **fixed Round 2** (no chooser)
+
+## Follow-up
+
+- **Cast Continuous Play** — keep gate off (Spotify-Cast-aligned); UX honesty when casting; optional Apple-like enable later (`QUEUE_AUDIT_ROUND2_BEHAVIOR_REPORT.md`)
 
 ## Coverage
 
