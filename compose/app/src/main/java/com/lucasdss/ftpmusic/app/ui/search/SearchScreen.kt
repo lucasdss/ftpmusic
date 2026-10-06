@@ -208,10 +208,10 @@ fun SearchScreen(
                                 focusManager.clearFocus()
                             }),
                         )
-                        // Search Options toggle button (design v3)
+                        // Search Options toggle (≥48dp hit target)
                         Box(
                             Modifier
-                                .size(44.dp)
+                                .size(48.dp)
                                 .clip(RoundedCornerShape(cornerM()))
                                 .background(
                                     if (showOptions || state.filterDownloaded) {
@@ -413,12 +413,17 @@ fun SearchScreen(
                                                 fillMaxWidth = false,
                                             )
                                         }
-                                        Icon(
-                                            Icons.Default.Close,
-                                            "Remove",
-                                            tint = Color(0xFF444444),
-                                            modifier = Modifier.size(11.dp).clickable { viewModel.clearRecent(term) },
-                                        )
+                                        IconButton(
+                                            onClick = { viewModel.clearRecent(term) },
+                                            modifier = Modifier.size(48.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                "Remove",
+                                                tint = Color(0xFF888888),
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
                                     }
                                 } // key(term)
                             }
@@ -426,7 +431,7 @@ fun SearchScreen(
                     }
                 }
             }
-            // Phase-4: loading bar while debounce / search3
+            // Loading bar + skeleton rows (market: Spotify/YT placeholder rows)
             if (state.isLoading) {
                 item {
                     LinearProgressIndicator(
@@ -434,6 +439,11 @@ fun SearchScreen(
                         color = BrandTeal,
                         trackColor = Color.White.copy(alpha = 0.08f),
                     )
+                }
+                if (state.hasSearched || state.query.trim().length >= 2) {
+                    items(6, key = { "skel-$it" }) {
+                        SearchSkeletonRow()
+                    }
                 }
             }
             // ── Filter type chips (single horizontal scroll, ≥48dp) ──
@@ -486,6 +496,16 @@ fun SearchScreen(
 
             // ── Content area ──
             if (state.query.isEmpty()) {
+                if (viewModel.isLocalOnly()) {
+                    item {
+                        Text(
+                            "Offline · downloaded only",
+                            color = Color(0xFF999999),
+                            fontSize = textLabelM(),
+                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                        )
+                    }
+                }
                 if (state.isIndexingLibrary) {
                     item {
                         Column(
@@ -500,11 +520,81 @@ fun SearchScreen(
                             )
                             Spacer(Modifier.height(spacingXS()))
                             Text(
-                                "Local search improves as sync finishes",
-                                color = Color(0xFF888888),
+                                "Search works offline once FTS5 index finishes — sync in progress",
+                                color = Color(0xFF999999),
                                 fontSize = textLabelM(),
                             )
                         }
+                    }
+                }
+                // Idle Recents (market: Spotify/Apple show when query empty)
+                if (state.recentSearches.isNotEmpty() && !isFocused) {
+                    item {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacingL(), vertical = spacingS()),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Recent searches",
+                                color = Color(0xFF888888),
+                                fontSize = textLabelL(),
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "Clear all",
+                                color = Color(0xFFE84040),
+                                fontSize = textLabelM(),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clickable { viewModel.clearAllRecent() }
+                                    .wrapContentHeight(Alignment.CenterVertically),
+                            )
+                        }
+                    }
+                    items(state.recentSearches, key = { "idle-recent-$it" }) { term ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { viewModel.onRecentTap(term) }
+                                .padding(horizontal = spacingL(), vertical = spacingS()),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Schedule,
+                                null,
+                                tint = Color(0xFF666666),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                term,
+                                color = Color.White,
+                                fontSize = textBodyM(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { viewModel.clearRecent(term) },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    "Remove",
+                                    tint = Color(0xFF888888),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.04f),
+                            modifier = Modifier.padding(horizontal = spacingL()),
+                        )
                     }
                 }
                 // Decade chips (Phase-3 WS-I)
@@ -536,7 +626,12 @@ fun SearchScreen(
                                     .padding(horizontal = spacingL(), vertical = spacingM()),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(decade, color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Medium)
+                                Text(
+                                    decade,
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Medium,
+                                )
                             }
                         }
                     }
@@ -571,7 +666,12 @@ fun SearchScreen(
                                     .padding(horizontal = spacingL(), vertical = spacingM()),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(mood.label, color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Medium)
+                                Text(
+                                    mood.label,
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Medium,
+                                )
                             }
                         }
                     }
@@ -714,8 +814,36 @@ fun SearchScreen(
                         modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
                     )
                 }
+                if (viewModel.isLocalOnly()) {
+                    item {
+                        Text(
+                            "Offline · downloaded only",
+                            color = Color(0xFF999999),
+                            fontSize = textLabelM(),
+                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                        )
+                    }
+                    item {
+                        Text(
+                            "Discover unavailable offline",
+                            color = Color(0xFF999999),
+                            fontSize = textLabelM(),
+                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                        )
+                    }
+                }
+                if (state.usedSoftTypo && state.resultCount > 0) {
+                    item {
+                        Text(
+                            "Close matches — check spelling",
+                            color = Color(0xFF999999),
+                            fontSize = textLabelM(),
+                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                        )
+                    }
+                }
 
-                // Top result hero (Phase-4)
+                // Top result hero — cover art + ≥48dp row (market P1)
                 val top = state.topHit
                 if (top != null && state.filterType == SearchFilterType.ALL) {
                     item { SectionHeader("Top result") }
@@ -723,14 +851,17 @@ fun SearchScreen(
                         when (top) {
                             is SearchTopHit.TrackHit -> {
                                 val t = top.track
+                                val coverUrl = rememberCoverArtUrl(t.coverArt, 160)
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
                                         .clickable { onTrackClick(t) }
                                         .padding(horizontal = spacingL(), vertical = spacingM())
-                                        .heightIn(min = 48.dp),
+                                        .heightIn(min = 56.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    SearchCoverThumb(coverUrl, t.title)
+                                    Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(
                                             t.title,
@@ -740,9 +871,17 @@ fun SearchScreen(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
-                                        val sub = listOfNotNull(t.artist, t.album).joinToString(" · ")
+                                        val sub = buildString {
+                                            t.artist?.let { append(it) }
+                                            val albumLabel = t.album?.takeIf { it.isNotBlank() }
+                                                ?: if (t.albumId == null) "Singles" else null
+                                            if (albumLabel != null) {
+                                                if (isNotEmpty()) append(" · ")
+                                                append(albumLabel)
+                                            }
+                                        }
                                         if (sub.isNotBlank()) {
-                                            Text(sub, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
+                                            Text(sub, color = Color(0xFF999999), fontSize = textLabelM(), maxLines = 1)
                                         }
                                     }
                                     TypeBadge("song")
@@ -752,16 +891,20 @@ fun SearchScreen(
                                     modifier = Modifier.padding(horizontal = spacingL()),
                                 )
                             }
+
                             is SearchTopHit.ArtistHit -> {
                                 val a = top.artist
+                                val coverUrl = rememberCoverArtUrl(a.coverArt, 160)
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
                                         .clickable { onArtistClick(a.id) }
                                         .padding(horizontal = spacingL(), vertical = spacingM())
-                                        .heightIn(min = 48.dp),
+                                        .heightIn(min = 56.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    SearchCoverThumb(coverUrl, a.name, circle = true)
+                                    Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(
                                             a.name,
@@ -771,7 +914,7 @@ fun SearchScreen(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
-                                        Text("Artist", color = Color(0xFF888888), fontSize = textLabelM())
+                                        Text("Artist", color = Color(0xFF999999), fontSize = textLabelM())
                                     }
                                     TypeBadge("artist")
                                 }
@@ -780,16 +923,20 @@ fun SearchScreen(
                                     modifier = Modifier.padding(horizontal = spacingL()),
                                 )
                             }
+
                             is SearchTopHit.AlbumHit -> {
                                 val a = top.album
+                                val coverUrl = rememberCoverArtUrl(a.coverArt, 160)
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
                                         .clickable { onAlbumClick(a.id) }
                                         .padding(horizontal = spacingL(), vertical = spacingM())
-                                        .heightIn(min = 48.dp),
+                                        .heightIn(min = 56.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    SearchCoverThumb(coverUrl, a.name)
+                                    Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(
                                             a.name,
@@ -800,7 +947,7 @@ fun SearchScreen(
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         a.artist?.let {
-                                            Text(it, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
+                                            Text(it, color = Color(0xFF999999), fontSize = textLabelM(), maxLines = 1)
                                         }
                                     }
                                     TypeBadge("album")
@@ -1155,13 +1302,24 @@ fun SearchScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                Text(
-                                    hit.snippet ?: listOfNotNull(t.artist, t.album).joinToString(" · "),
-                                    color = Color(0xFF888888),
-                                    fontSize = textLabelM(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                val lyricSub = hit.snippet ?: buildString {
+                                    t.artist?.let { append(it) }
+                                    val albumLabel = t.album?.takeIf { it.isNotBlank() }
+                                        ?: if (t.albumId == null) "Singles" else null
+                                    if (albumLabel != null) {
+                                        if (isNotEmpty()) append(" · ")
+                                        append(albumLabel)
+                                    }
+                                }
+                                if (lyricSub.isNotBlank()) {
+                                    Text(
+                                        lyricSub,
+                                        color = Color(0xFF999999),
+                                        fontSize = textLabelM(),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                             TypeBadge("lyrics")
                         }
@@ -1371,9 +1529,25 @@ fun SearchScreen(
                         )
                     }
                     items(state.discoverTracks, key = { "disc-tr-${it.mbid ?: it.title}" }) { hit ->
+                        val localId = hit.localTrackId
                         Row(
                             Modifier
                                 .fillMaxWidth()
+                                .then(
+                                    if (localId != null) {
+                                        Modifier.clickable {
+                                            onTrackClick(
+                                                com.lucasdss.ftpmusic.app.data.model.Track(
+                                                    id = localId,
+                                                    title = hit.title,
+                                                    artist = hit.artistName,
+                                                ),
+                                            )
+                                        }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
                                 .padding(horizontal = spacingL(), vertical = spacingM())
                                 .heightIn(min = 48.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1389,10 +1563,13 @@ fun SearchScreen(
                                 )
                                 Text(
                                     buildString {
-                                        hit.artistName?.let { append(it); append(" · ") }
+                                        hit.artistName?.let {
+                                            append(it)
+                                            append(" · ")
+                                        }
                                         append(if (hit.inLibrary) "In library" else "Not in library")
                                     },
-                                    color = Color(0xFF888888),
+                                    color = Color(0xFF999999),
                                     fontSize = textLabelM(),
                                     maxLines = 1,
                                 )
@@ -1415,31 +1592,81 @@ fun SearchScreen(
                             Modifier.fillMaxWidth().padding(32.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text("No results found", color = Color(0xFF666666), fontSize = textHeadingS())
+                            Text("No results found", color = Color(0xFF888888), fontSize = textHeadingS())
                             Spacer(Modifier.height(spacingS()))
                             val tip = when {
                                 viewModel.isLocalOnly() -> "Offline — try Downloaded only or sync when online"
                                 state.ftsEmpty -> "Library still indexing — pull to sync or try again shortly"
-                                state.usedSoftTypo -> "Showing close matches — check spelling"
+                                state.usedSoftTypo -> "No close matches — check spelling"
                                 !state.searchLyricsEnabled -> "Enable Search lyrics in Settings to match song words"
                                 else -> "Try another spelling, an artist name, or a decade like 90s"
                             }
                             Text(
                                 tip,
-                                color = Color(0xFF555555),
+                                color = Color(0xFF999999),
                                 fontSize = textLabelM(),
                                 modifier = Modifier.padding(horizontal = spacingL()),
                             )
                         }
                     }
                 }
-            } else if (state.query.trim().length >= 2 && state.isLoading) {
-                item {
-                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text("Searching…", color = Color(0xFF666666), fontSize = textHeadingS())
-                    }
-                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchCoverThumb(url: String?, contentDesc: String, circle: Boolean = false) {
+    val shape = if (circle) CircleShape else RoundedCornerShape(6.dp)
+    if (url != null) {
+        AsyncImage(
+            model = url,
+            contentDescription = contentDesc,
+            modifier = Modifier.size(56.dp).clip(shape),
+            contentScale = ContentScale.Crop,
+        )
+    } else {
+        Box(
+            Modifier.size(56.dp).clip(shape).background(Color(0xFF1E1E1E)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (circle) Icons.Default.Person else Icons.Default.MusicNote,
+                null,
+                tint = NavUnselected,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchSkeletonRow() {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .padding(horizontal = spacingL(), vertical = spacingS()),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF1E1E1E)))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Box(
+                Modifier
+                    .fillMaxWidth(0.55f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF252525)),
+            )
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth(0.35f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF1E1E1E)),
+            )
         }
     }
 }

@@ -31,8 +31,36 @@ class SearchYearParserTest {
         assertEquals(2000, p.year.minYear)
         assertEquals(2009, p.year.maxYear)
     }
-}
 
+    @Test
+    fun `empty query inactive year matches any`() {
+        val p = SearchYearParser.parse("")
+        assertFalse(p.year.isActive)
+        assertTrue(p.year.matches(null))
+        assertTrue(p.year.matches(1990))
+    }
+
+    @Test
+    fun `active year rejects null album year`() {
+        val y = SearchYearConstraint(exactYear = 1994)
+        assertTrue(y.isActive)
+        assertFalse(y.matches(null))
+    }
+
+    @Test
+    fun `decade range rejects out of band`() {
+        val y = SearchYearConstraint(minYear = 1970, maxYear = 1979)
+        assertTrue(y.matches(1975))
+        assertFalse(y.matches(1980))
+    }
+
+    @Test
+    fun `no year token leaves text intact`() {
+        val p = SearchYearParser.parse("radiohead")
+        assertEquals("radiohead", p.text)
+        assertFalse(p.year.isActive)
+    }
+}
 class EditDistanceTest {
     @Test
     fun `distance zero for equal`() {

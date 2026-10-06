@@ -183,16 +183,16 @@ class MetadataSyncWorker(
         private const val GENRE_SONG_FETCH_COUNT = 200
 
         /** Top genres by song_count always warmed for local search (beyond mix picks). */
-        private const val SEARCH_INDEX_WARM_GENRE_COUNT = 60
+        private const val SEARCH_INDEX_WARM_GENRE_COUNT = 100
 
-        /** Cap pending album-track drain per non-force sync (Phase-3 corpus). */
-        private const val SEARCH_CORPUS_ALBUM_DRAIN_CAP = 200
+        /** Cap pending album-track drain per non-force sync (Phase-7 densify). */
+        private const val SEARCH_CORPUS_ALBUM_DRAIN_CAP = 400
 
         private const val ENRICH_DELAY_MS = 250L
-        private const val ENRICH_ARTIST_LIMIT = 25
-        private const val ENRICH_ALBUM_LIMIT = 15
-        private const val ENRICH_ALIAS_LIMIT = 15
-        private const val ENRICH_TAG_LIMIT = 15
+        private const val ENRICH_ARTIST_LIMIT = 40
+        private const val ENRICH_ALBUM_LIMIT = 25
+        private const val ENRICH_ALIAS_LIMIT = 30
+        private const val ENRICH_TAG_LIMIT = 30
 
         /**
          * Choose periodic sync mode from watermark.
@@ -748,7 +748,12 @@ class MetadataSyncWorker(
                     delay(ENRICH_DELAY_MS)
                     val mbid = artist.musicbrainzId ?: mb.searchArtistMbid(artist.name) ?: continue
                     if (artist.musicbrainzId.isNullOrBlank()) {
-                        metadataDao.setArtistPublicRating(artist.id, artist.publicRating, artist.publicRatingVotes, mbid)
+                        metadataDao.setArtistPublicRating(
+                            artist.id,
+                            artist.publicRating,
+                            artist.publicRatingVotes,
+                            mbid,
+                        )
                     }
                     val aliases = mb.fetchArtistAliases(mbid)
                     if (aliases.isNotEmpty()) {

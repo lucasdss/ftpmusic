@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.data.search
 
+import com.lucasdss.ftpmusic.app.data.db.AlbumYearRow
 import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -171,5 +172,206 @@ class LocalSearchRepositoryTest {
         assertEquals(listOf("a1"), hit.albums.map { it.id })
         assertEquals(1990, hit.yearConstraint.minYear)
         coVerify(exactly = 0) { metadataDao.getAllAlbums() }
+    }
+
+    @Test
+    fun `fts year filter keeps singles with null albumId`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 2
+        coEvery { ftsDao.match(any(), any()) } returns listOf(
+            SearchFtsEntity(
+                entityType = SearchFtsTypes.TRACK,
+                entityId = "single",
+                body = "Hit 1990s",
+                rank = 0.5,
+            ),
+            SearchFtsEntity(
+                entityType = SearchFtsTypes.TRACK,
+                entityId = "albumed",
+                body = "Other",
+                rank = 1.0,
+            ),
+        )
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(
+            TrackEntity(id = "single", title = "Hit", albumId = null),
+            TrackEntity(id = "albumed", title = "Other", albumId = "al-old"),
+        )
+        coEvery { metadataDao.getAlbumYearRows(listOf("al-old")) } returns listOf(
+            AlbumYearRow(id = "al-old", year = 1980),
+        )
+
+        val hit = repo.search("hit 90s")
+        assertTrue(hit.usedFts)
+        assertEquals(listOf("single"), hit.tracks.map { it.id })
+        assertTrue(hit.ftsRanks.containsKey("single"))
+    }
+
+    @Test
+    fun `fts preserves bm25 order when hydrating`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 2
+        coEvery { ftsDao.match(any(), any()) } returns listOf(
+            SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "best", body = "a", rank = 0.1),
+            SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "worse", body = "a", rank = 2.0),
+        )
+        // DAO returns reverse order — hydrate must re-order by FTS
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(
+            TrackEntity(id = "worse", title = "A"),
+            TrackEntity(id = "best", title = "A"),
+        )
+
+        val hit = repo.search("a")
+        assertEquals(listOf("best", "worse"), hit.tracks.map { it.id })
+    }
+
+    @Test
+    fun `like year filter keeps singles with null albumId`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 0
+        coEvery { trackDao.searchAllTracks(any()) } returns listOf(
+            TrackEntity(id = "s1", title = "Solo", albumId = null),
+            TrackEntity(id = "a1", title = "Albumed", albumId = "al1"),
+        )
+        coEvery { metadataDao.searchAlbums(any()) } returns emptyList()
+        coEvery { metadataDao.searchArtists(any()) } returns emptyList()
+        coEvery { playlistDao.searchPlaylists(any()) } returns emptyList()
+        coEvery { genreDao.searchGenres(any()) } returns emptyList()
+        coEvery { metadataDao.getAlbumYearRows(listOf("al1")) } returns listOf(
+            AlbumYearRow(id = "al1", year = 2005),
+        )
+
+        val hit = repo.search("solo 90s")
+        assertEquals(listOf("s1"), hit.tracks.map { it.id })
+    }
+
+    @Test
+    fun `soft typo year filter keeps singles`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 3
+        coEvery { ftsDao.match(any(), any()) } returns emptyList()
+        coEvery { trackDao.searchAllTracks(any()) } returns listOf(
+            TrackEntity(id = "s1", title = "Beatles", albumId = null),
+        )
+
+        val hit = repo.search("beatle 90s")
+        assertTrue(hit.usedSoftTypo)
+        assertEquals(listOf("s1"), hit.tracks.map { it.id })
+    }
+
+    @Test
+    fun `exact year query uses album year lookup`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 0
+        coEvery { metadataDao.searchAlbumsByExactYear(1994, any()) } returns listOf(
+            CachedAlbumEntity(id = "a1", name = "A", year = 1994),
+        )
+        coEvery { trackDao.getTracksByAlbumIds(any()) } returns emptyList()
+
+        val hit = repo.search("1994")
+        assertEquals(listOf("a1"), hit.albums.map { it.id })
+        assertEquals(1994, hit.yearConstraint.exactYear)
+    }
+
+    @Test
+    fun `playableOnly keeps cachedFilePath tracks`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 1
+        coEvery { ftsDao.match(any(), any()) } returns listOf(
+            SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "c1", body = "x", rank = 0.1),
+        )
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(
+            TrackEntity(id = "c1", title = "Cached", cachedFilePath = "/tmp/c1.mp3"),
+        )
+
+        val hit = repo.search("cached", playableOnly = true)
+        assertEquals(listOf("c1"), hit.tracks.map { it.id })
+    }
+
+    @Test
+    fun `fts match throw falls back to LIKE`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 5
+        coEvery { ftsDao.match(any(), any()) } throws RuntimeException("fts")
+        coEvery { trackDao.searchAllTracks(any()) } returns listOf(TrackEntity(id = "t1", title = "Hello"))
+        coEvery { metadataDao.searchAlbums(any()) } returns emptyList()
+        coEvery { metadataDao.searchArtists(any()) } returns emptyList()
+        coEvery { playlistDao.searchPlaylists(any()) } returns emptyList()
+        coEvery { genreDao.searchGenres(any()) } returns emptyList()
+
+        val hit = repo.search("hello")
+        assertFalse(hit.usedFts)
+        assertEquals("t1", hit.tracks.single().id)
+    }
+
+    @Test
+    fun `ftsRanks keeps min score when track and lyrics share id`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 2
+        coEvery { ftsDao.match(any(), any()) } returns listOf(
+            SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "t1", body = "a", rank = 2.0),
+            SearchFtsEntity(entityType = SearchFtsTypes.LYRICS, entityId = "t1", body = "a", rank = 0.5),
+        )
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(TrackEntity(id = "t1", title = "A"))
+
+        val hit = repo.search("a")
+        assertEquals(0.5, hit.ftsRanks["t1"]!!, 0.0)
+    }
+
+    @Test
+    fun `soft typo miss falls through to LIKE`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 3
+        coEvery { ftsDao.match(any(), any()) } returns emptyList()
+        coEvery { trackDao.searchAllTracks(any()) } returnsMany listOf(
+            listOf(TrackEntity(id = "x", title = "zzzz")), // soft typo candidates
+            listOf(TrackEntity(id = "like", title = "hello")), // LIKE fallback
+        )
+        coEvery { metadataDao.searchAlbums(any()) } returns emptyList()
+        coEvery { metadataDao.searchArtists(any()) } returns emptyList()
+        coEvery { playlistDao.searchPlaylists(any()) } returns emptyList()
+        coEvery { genreDao.searchGenres(any()) } returns emptyList()
+
+        val hit = repo.search("hello")
+        assertFalse(hit.usedSoftTypo)
+        assertEquals("like", hit.tracks.single().id)
+    }
+
+    @Test
+    fun `ftsCount throw falls back to LIKE`() = runTest {
+        coEvery { rebuilder.ftsCount() } throws RuntimeException("boom")
+        coEvery { trackDao.searchAllTracks(any()) } returns listOf(TrackEntity(id = "t1", title = "Hi"))
+        coEvery { metadataDao.searchAlbums(any()) } returns emptyList()
+        coEvery { metadataDao.searchArtists(any()) } returns emptyList()
+        coEvery { playlistDao.searchPlaylists(any()) } returns emptyList()
+        coEvery { genreDao.searchGenres(any()) } returns emptyList()
+
+        val hit = repo.search("hi")
+        assertFalse(hit.usedFts)
+        assertEquals("t1", hit.tracks.single().id)
+    }
+
+    @Test
+    fun `year filter keeps singles with null albumId`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 2
+        coEvery { ftsDao.match(any(), any()) } returns listOf(
+            SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "s1", body = "90s", rank = 0.1),
+            SearchFtsEntity(entityType = SearchFtsTypes.TRACK, entityId = "a1", body = "90s", rank = 0.2),
+        )
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(
+            TrackEntity(id = "s1", title = "Single", albumId = null),
+            TrackEntity(id = "a1", title = "AlbumTrack", albumId = "alb-bad"),
+        )
+        coEvery { metadataDao.getAlbumYearRows(any()) } returns listOf(
+            AlbumYearRow(id = "alb-bad", year = 2005),
+        )
+
+        val hit = repo.search("beat 90s")
+        assertEquals(listOf("s1"), hit.tracks.map { it.id })
+    }
+
+    @Test
+    fun `playableOnly year-only filters downloaded album tracks`() = runTest {
+        coEvery { rebuilder.ftsCount() } returns 0
+        coEvery { metadataDao.searchAlbumsByExactYear(1994, any()) } returns listOf(
+            CachedAlbumEntity(id = "al1", name = "A", year = 1994),
+        )
+        coEvery { trackDao.getTracksByAlbumIds(listOf("al1")) } returns listOf(
+            TrackEntity(id = "d1", title = "Down", albumId = "al1", isDownloaded = true),
+            TrackEntity(id = "n1", title = "Net", albumId = "al1", isDownloaded = false),
+        )
+
+        val hit = repo.search("1994", playableOnly = true)
+        assertEquals(listOf("d1"), hit.tracks.map { it.id })
     }
 }

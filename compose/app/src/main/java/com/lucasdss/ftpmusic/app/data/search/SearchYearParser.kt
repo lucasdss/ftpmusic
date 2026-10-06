@@ -4,11 +4,7 @@ package com.lucasdss.ftpmusic.app.data.search
  * Parse year / decade tokens from a search query (ADR Phase-3 WS-I).
  * Examples: "1994", "90s", "1990s", "pink floyd 70s"
  */
-data class SearchYearConstraint(
-    val exactYear: Int? = null,
-    val minYear: Int? = null,
-    val maxYear: Int? = null,
-) {
+data class SearchYearConstraint(val exactYear: Int? = null, val minYear: Int? = null, val maxYear: Int? = null) {
     val isActive: Boolean get() = exactYear != null || (minYear != null && maxYear != null)
 
     fun matches(year: Int?): Boolean {

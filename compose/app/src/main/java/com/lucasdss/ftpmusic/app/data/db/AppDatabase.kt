@@ -34,9 +34,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrackWaveformEntity::class,
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
-        SearchFtsEntity::class,
+        // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 60,
+    version = 61,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -56,7 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun trackWaveformDao(): TrackWaveformDao
     abstract fun radioFavoriteDao(): RadioFavoriteDao
     abstract fun listenEventDao(): ListenEventDao
-    abstract fun searchFtsDao(): SearchFtsDao
+    // search_fts via SearchFtsDao @Singleton (not Room @Dao) — ADR 0084
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -1083,5 +1083,40 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_60 = ALL_MIGRATIONS_59 + MIGRATION_59_60
+
+        // Migration 60→61: FTS4 → FTS5 + bm25 (ADR 0084). Index rebuilt after sync.
+        val MIGRATION_60_61 = object : Migration(60, 61) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(SearchFtsSchema.DROP)
+                try {
+                    database.execSQL(SearchFtsSchema.CREATE_FTS5)
+                } catch (_: Exception) {
+                    // No FTS5 on this SQLite — LIKE fallback until device supports it.
+                }
+            }
+        }
+        val ALL_MIGRATIONS_61 = ALL_MIGRATIONS_60 + MIGRATION_60_61
+
+        /**
+         * Fresh installs + repair: create FTS5 (not a Room entity).
+         * try/catch — devices without FTS5 fall back to LIKE search.
+         */
+        val FTS5_CALLBACK = object : Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                ensureFts5(db)
+            }
+
+            override fun onOpen(db: SupportSQLiteDatabase) {
+                ensureFts5(db)
+            }
+
+            private fun ensureFts5(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL(SearchFtsSchema.CREATE_FTS5)
+                } catch (_: Exception) {
+                    // Framework SQLite without FTS5 — LocalSearch LIKE fallback.
+                }
+            }
+        }
     }
 }

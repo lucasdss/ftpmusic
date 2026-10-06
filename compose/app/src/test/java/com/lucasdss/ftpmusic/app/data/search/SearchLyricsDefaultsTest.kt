@@ -62,4 +62,68 @@ class SearchLyricsDefaultsTest {
     fun `snippet null entity returns null`() {
         assertNull(SearchLyricsDefaults.snippet(null, "x"))
     }
+
+    @Test
+    fun `maybeEnable returns false when count throws`() = runTest {
+        val storage = mockk<SecureStorage>(relaxed = true)
+        val dao = mockk<LyricsCacheDao>()
+        every { storage.get(SecureStorage.KEY_SEARCH_LYRICS) } returns null
+        coEvery { dao.count() } throws RuntimeException("db")
+        assertFalse(SearchLyricsDefaults.maybeEnable(storage, dao))
+    }
+
+    @Test
+    fun `snippet blank query returns null`() {
+        val entity = LyricsCacheEntity(trackId = "t1", artist = "A", title = "T", unstructuredText = "hi")
+        assertNull(SearchLyricsDefaults.snippet(entity, "   "))
+    }
+
+    @Test
+    fun `snippet uses synced json when unstructured null`() {
+        val entity = LyricsCacheEntity(
+            trackId = "t1",
+            artist = "A",
+            title = "T",
+            unstructuredText = null,
+            syncedLinesJson = "Line one lyric\nLine two",
+        )
+        assertEquals("Line one lyric", SearchLyricsDefaults.snippet(entity, "lyric"))
+    }
+
+    @Test
+    fun `snippet falls back to first nonempty when no match`() {
+        val entity = LyricsCacheEntity(
+            trackId = "t1",
+            artist = "A",
+            title = "T",
+            unstructuredText = "\n\nFirst line here\nSecond",
+        )
+        assertEquals("First line here", SearchLyricsDefaults.snippet(entity, "zzzznotfound"))
+    }
+
+    @Test
+    fun `snippet truncates long line with ellipsis`() {
+        val long = "x".repeat(100)
+        val entity = LyricsCacheEntity(
+            trackId = "t1",
+            artist = "A",
+            title = "T",
+            unstructuredText = long,
+        )
+        val snip = SearchLyricsDefaults.snippet(entity, "xx", maxLen = 20)
+        assertEquals(20, snip!!.length)
+        assertTrue(snip.endsWith("…"))
+    }
+
+    @Test
+    fun `snippet null when no text fields`() {
+        val entity = LyricsCacheEntity(
+            trackId = "t1",
+            artist = "A",
+            title = "T",
+            unstructuredText = null,
+            syncedLinesJson = null,
+        )
+        assertNull(SearchLyricsDefaults.snippet(entity, "hi"))
+    }
 }

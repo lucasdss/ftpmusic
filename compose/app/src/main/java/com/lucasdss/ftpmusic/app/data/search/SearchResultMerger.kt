@@ -2,16 +2,11 @@ package com.lucasdss.ftpmusic.app.data.search
 
 /**
  * Union server + local search hits by id, then rank by query relevance.
- * Phase-6: composite lexical + popularity tie-break (FTS4 kept; no BM25).
- * Lower primary score = better.
+ * Phase-7: BM25 (lower better) primary when present, then lexical + popularity.
  */
 object SearchResultMerger {
 
-    fun <T> unionById(
-        server: List<T>,
-        local: List<T>,
-        idOf: (T) -> String,
-    ): List<T> {
+    fun <T> unionById(server: List<T>, local: List<T>, idOf: (T) -> String): List<T> {
         if (server.isEmpty()) return local
         if (local.isEmpty()) return server
         val seen = LinkedHashSet<String>()
@@ -30,31 +25,52 @@ object SearchResultMerger {
     fun <T> rankByQuery(
         items: List<T>,
         query: String,
+        bm25Of: ((T) -> Double?)? = null,
         textOf: (T) -> String,
     ): List<T> {
         val q = SearchQueryNormalizer.fold(query)
         if (q.isEmpty() || items.size <= 1) return items
         return items.sortedWith(
-            compareBy<T> { rankScore(SearchQueryNormalizer.fold(textOf(it)), q) }
+            compareBy<T> { item ->
+                // Exact name always wins over BM25 noise (parity with rankByFields)
+                if (rankScore(SearchQueryNormalizer.fold(textOf(item)), q) == 0) -1.0 else 0.0
+            }.thenBy { item ->
+                bm25Of?.invoke(item) ?: Double.POSITIVE_INFINITY
+            }.thenBy { rankScore(SearchQueryNormalizer.fold(textOf(it)), q) }
                 .thenBy { SearchQueryNormalizer.fold(textOf(it)) },
         )
     }
 
     /**
      * Rank by best match across multiple text fields (title / artist / album).
-     * Lower composite score wins. Optional [popularityOf] is a descending tie-break
-     * (higher play count / recency wins when lexical tier ties).
+     * Order: exact lexical → BM25 (lower better) → lexical tier → popularity.
+     * Optional [popularityOf] is a descending tie-break.
      */
     fun <T> rankByFields(
         items: List<T>,
         query: String,
         fieldsOf: (T) -> List<String?>,
         popularityOf: ((T) -> Long)? = null,
+        bm25Of: ((T) -> Double?)? = null,
     ): List<T> {
         val q = SearchQueryNormalizer.fold(query)
         if (q.isEmpty() || items.size <= 1) return items
+        val hasBm25 = bm25Of != null
         return items.sortedWith(
             compareBy<T> { item ->
+                // Exact name always wins over BM25 noise
+                val lexical = fieldsOf(item)
+                    .mapNotNull { it?.takeIf { s -> s.isNotBlank() } }
+                    .minOfOrNull { rankScore(SearchQueryNormalizer.fold(it), q) }
+                    ?: 3
+                if (lexical == 0) -1.0 else 0.0
+            }.thenBy { item ->
+                if (hasBm25) {
+                    bm25Of?.invoke(item) ?: Double.POSITIVE_INFINITY
+                } else {
+                    0.0
+                }
+            }.thenBy { item ->
                 fieldsOf(item)
                     .mapNotNull { it?.takeIf { s -> s.isNotBlank() } }
                     .minOfOrNull { rankScore(SearchQueryNormalizer.fold(it), q) }

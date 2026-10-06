@@ -138,9 +138,10 @@ class SearchViewModelTest {
     fun `search triggers API call and populates results`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults(
-            artists = listOf(Artist("a1", "Rock Band")),
-        )
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults(
+                artists = listOf(Artist("a1", "Rock Band")),
+            )
 
         viewModel.onQueryChanged("rock")
         viewModel.search()
@@ -156,11 +157,12 @@ class SearchViewModelTest {
     fun `search returns artists albums and tracks`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults(
-            artists = listOf(Artist("a1", "Artist X")),
-            albums = listOf(Album("al1", "Album X")),
-            tracks = listOf(Track("t1", "Track X", duration = 180)),
-        )
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults(
+                artists = listOf(Artist("a1", "Artist X")),
+                albums = listOf(Album("al1", "Album X")),
+                tracks = listOf(Track("t1", "Track X", duration = 180)),
+            )
 
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -178,7 +180,8 @@ class SearchViewModelTest {
     fun `onRecentTap sets query and searches`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults()
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults()
 
         viewModel.onRecentTap("pink floyd")
         advanceUntilIdle()
@@ -193,7 +196,8 @@ class SearchViewModelTest {
         // Simulate two searches to populate recents
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults()
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults()
         every { storage.put(any(), any()) } returns Unit
 
         // Perform searches to populate recents
@@ -219,7 +223,8 @@ class SearchViewModelTest {
     fun `saveRecentSearch preserves MutableStateFlow order and caps at MAX_RECENT`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults()
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults()
 
         // Perform 12 different searches — each calls saveRecentSearch which caps at 10
         every { storage.put(any(), any()) } returns Unit
@@ -238,7 +243,8 @@ class SearchViewModelTest {
     fun `duplicate recent search moves to front`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults()
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults()
         every { storage.put(any(), any()) } returns Unit
 
         // pre-populate with some queries
@@ -353,9 +359,10 @@ class SearchViewModelTest {
     fun `OS network loss mid-session re-runs active search as playable-only`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults(
-            tracks = listOf(Track("online1", "Online", duration = 1)),
-        )
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults(
+                tracks = listOf(Track("online1", "Online", duration = 1)),
+            )
         val trackDao = mockk<TrackDao>(relaxed = true)
         val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
         val localSearch = mockk<LocalSearchRepository>()
@@ -487,7 +494,8 @@ class SearchViewModelTest {
     fun `catch block reapplies download filter on API failure`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } throws RuntimeException("Network error")
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } throws
+            RuntimeException("Network error")
 
         viewModel =
             SearchViewModel(
@@ -543,9 +551,11 @@ class SearchViewModelTest {
             isDownloaded = false,
             cachedFilePath = null,
         )
-        coEvery { localSearch.search("test", any(), playableOnly = false) } returns LocalSearchHit(tracks = listOf(t1, t2))
+        coEvery { localSearch.search("test", any(), playableOnly = false) } returns
+            LocalSearchHit(tracks = listOf(t1, t2))
         coEvery { trackDao.getTracksByIds(listOf("t1", "t2")) } returns listOf(t1)
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } throws RuntimeException("Network error")
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } throws
+            RuntimeException("Network error")
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
 
@@ -642,9 +652,10 @@ class SearchViewModelTest {
         // Seed state via search failure path with empty results
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns SearchResults(
-            tracks = listOf(Track("t1", "A", duration = 1), Track("t2", "B", duration = 1)),
-        )
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults(
+                tracks = listOf(Track("t1", "A", duration = 1), Track("t2", "B", duration = 1)),
+            )
         val trackDao = mockk<TrackDao>(relaxed = true)
         coEvery { trackDao.searchAllTracks(any()) } returns emptyList()
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(
@@ -720,5 +731,94 @@ class SearchViewModelTest {
         val artists = viewModel.state.value.artists
         assertTrue("local artist must survive server page", artists.any { it.id == "local-x" })
         assertTrue(artists.size >= 21)
+    }
+
+    @Test
+    fun `onDiscoverArtistTap navigates after stub upsert`() = runTest(testDispatcher) {
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                mockk(relaxed = true),
+                metadataDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        val navigated = mutableListOf<String>()
+        val hit = DiscoverArtistHit(
+            name = "Ext Artist",
+            mbid = "mbid-1",
+            inLibrary = false,
+            localArtistId = null,
+            source = "musicbrainz",
+        )
+        viewModel.onDiscoverArtistTap(hit) { navigated.add(it) }
+        advanceUntilIdle()
+        assertEquals(listOf("mb:mbid-1"), navigated)
+        coVerify {
+            metadataDao.upsertArtists(match { it.single().id == "mb:mbid-1" })
+        }
+    }
+
+    @Test
+    fun `loadMoreSearchResults preserves BM25 ranks from state`() = runTest(testDispatcher) {
+        val localSearch = mockk<LocalSearchRepository>(relaxed = true)
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        every { storage.get(any()) } returns null
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { localSearch.search(any(), any(), any()) } returns LocalSearchHit(
+            tracks = listOf(
+                TrackEntity(id = "weak", title = "zzz weak", artist = "A"),
+                TrackEntity(id = "strong", title = "strong hit", artist = "A"),
+            ),
+            ftsRanks = mapOf("strong" to 0.1, "weak" to 5.0),
+        )
+        coEvery {
+            repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } returns SearchResults()
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                metadataDao,
+                mockk(relaxed = true),
+                localSearch,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                api,
+                offlineManager,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        viewModel.onQueryChanged("strong")
+        viewModel.search()
+        advanceUntilIdle()
+        val afterSearch = viewModel.state.value
+        assertEquals(mapOf("strong" to 0.1, "weak" to 5.0), afterSearch.ftsRanks)
+        assertEquals("strong", afterSearch.tracks.first().id)
+
+        coEvery {
+            repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } returns SearchResults(
+            tracks = listOf(Track("extra", "extra song", "A")),
+        )
+        viewModel.loadMoreSearchResults()
+        advanceUntilIdle()
+        assertEquals("strong", viewModel.state.value.tracks.first().id)
+        assertEquals(mapOf("strong" to 0.1, "weak" to 5.0), viewModel.state.value.ftsRanks)
     }
 }

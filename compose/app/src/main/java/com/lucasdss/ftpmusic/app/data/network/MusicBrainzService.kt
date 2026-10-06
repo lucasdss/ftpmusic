@@ -96,8 +96,7 @@ class MusicBrainzService @Inject constructor() {
      * Search for an artist by name. Returns the top-scoring MBID or null.
      * Query format: /artist?query=artist:{name}&fmt=json&limit=1
      */
-    suspend fun searchArtistMbid(artistName: String): String? =
-        searchArtists(artistName, limit = 1).firstOrNull()?.mbid
+    suspend fun searchArtistMbid(artistName: String): String? = searchArtists(artistName, limit = 1).firstOrNull()?.mbid
 
     /** Multi-hit artist search for Discover (Phase-5). */
     suspend fun searchArtists(artistName: String, limit: Int = 8): List<MbSearchHit> {

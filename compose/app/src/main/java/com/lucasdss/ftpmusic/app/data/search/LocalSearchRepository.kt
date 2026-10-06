@@ -8,6 +8,7 @@ import com.lucasdss.ftpmusic.app.data.db.GenreEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.data.db.SearchFtsDao
+import com.lucasdss.ftpmusic.app.data.db.SearchFtsEntity
 import com.lucasdss.ftpmusic.app.data.db.SearchFtsTypes
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
@@ -24,14 +25,16 @@ data class LocalSearchHit(
     val lyricTrackIds: List<String> = emptyList(),
     /** Track ids matched via title/meta TRACK FTS rows (not lyrics-only). */
     val trackMatchIds: List<String> = emptyList(),
+    /** entity_id → bm25 rank (lower better). Empty when LIKE / soft-typo. */
+    val ftsRanks: Map<String, Double> = emptyMap(),
     val usedFts: Boolean = false,
     val usedSoftTypo: Boolean = false,
     val yearConstraint: SearchYearConstraint = SearchYearConstraint(),
 )
 
 /**
- * Local-first search: FTS when index populated, else LIKE fallback.
- * Phase-4: hydrate-by-id (no getAllAlbums on hot path).
+ * Local-first search: FTS5+bm25 when index populated, else LIKE fallback.
+ * Phase-7: BM25 order + singles year-filter fix (ADR 0084).
  */
 @Singleton
 class LocalSearchRepository @Inject constructor(
@@ -54,6 +57,7 @@ class LocalSearchRepository @Inject constructor(
         }
         if (ftsCount > 0 && textQuery.isNotBlank()) {
             val match = SearchFtsQuery.toMatchQuery(textQuery)
+            // BM25 orders results — over-fetch so albums/artists aren't starved by tracks
             val rows = try {
                 ftsDao.match(match, limit * 3)
             } catch (_: Exception) {
@@ -70,7 +74,7 @@ class LocalSearchRepository @Inject constructor(
     }
 
     private suspend fun hydrateFts(
-        rows: List<com.lucasdss.ftpmusic.app.data.db.SearchFtsEntity>,
+        rows: List<SearchFtsEntity>,
         limit: Int,
         playableOnly: Boolean,
         year: SearchYearConstraint,
@@ -81,9 +85,19 @@ class LocalSearchRepository @Inject constructor(
         val artistIds = rows.filter { it.entityType == SearchFtsTypes.ARTIST }.map { it.entityId }
         val playlistIds = rows.filter { it.entityType == SearchFtsTypes.PLAYLIST }.map { it.entityId }
         val genreIds = rows.filter { it.entityType == SearchFtsTypes.GENRE }.map { it.entityId }
+        // Prefer best (min) BM25 when TRACK + LYRICS share an entity_id
+        val ftsRanks = buildMap<String, Double> {
+            for (row in rows) {
+                val prev = this[row.entityId]
+                if (prev == null || row.rank < prev) this[row.entityId] = row.rank
+            }
+        }
 
-        var tracks = if (trackIds.isNotEmpty() || lyricIds.isNotEmpty()) {
-            trackDao.getTracksByIds((trackIds + lyricIds).distinct())
+        val trackIdOrder = (trackIds + lyricIds).distinct()
+        var tracks = if (trackIdOrder.isNotEmpty()) {
+            val byId = trackDao.getTracksByIds(trackIdOrder).associateBy { it.id }
+            // Preserve BM25 order from FTS rows
+            trackIdOrder.mapNotNull { byId[it] }
         } else {
             emptyList()
         }
@@ -91,7 +105,8 @@ class LocalSearchRepository @Inject constructor(
             tracks = tracks.filter { it.isDownloaded || it.cachedFilePath != null }
         }
         var albums = if (albumIds.isNotEmpty()) {
-            metadataDao.getAlbumsByIds(albumIds)
+            val byId = metadataDao.getAlbumsByIds(albumIds).associateBy { it.id }
+            albumIds.mapNotNull { byId[it] }
         } else {
             emptyList()
         }
@@ -103,15 +118,22 @@ class LocalSearchRepository @Inject constructor(
             } else {
                 metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
             }
-            tracks = tracks.filter { year.matches(albumYears[it.albumId]) }
+            // Singles (null albumId): keep — FTS body may already carry year/decade tokens;
+            // do not drop solely because albumYears[null] is missing (ADR 0084 / 0078 amend).
+            tracks = tracks.filter { t ->
+                val albumId = t.albumId
+                if (albumId == null) true else year.matches(albumYears[albumId])
+            }
         }
         val artists = if (artistIds.isNotEmpty()) {
-            metadataDao.getArtistsByIds(artistIds)
+            val byId = metadataDao.getArtistsByIds(artistIds).associateBy { it.id }
+            artistIds.mapNotNull { byId[it] }
         } else {
             emptyList()
         }
         val playlists = if (playlistIds.isNotEmpty()) {
-            playlistDao.getPlaylistsByIds(playlistIds)
+            val byId = playlistDao.getPlaylistsByIds(playlistIds).associateBy { it.id }
+            playlistIds.mapNotNull { byId[it] }
         } else {
             emptyList()
         }
@@ -128,6 +150,7 @@ class LocalSearchRepository @Inject constructor(
             genres = genres.take(limit),
             lyricTrackIds = lyricIds,
             trackMatchIds = trackIds,
+            ftsRanks = ftsRanks,
             usedFts = true,
             yearConstraint = year,
         )
@@ -174,7 +197,10 @@ class LocalSearchRepository @Inject constructor(
                 } else {
                     metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
                 }
-                tracks = tracks.filter { year.matches(albumYears[it.albumId]) }
+                tracks = tracks.filter { t ->
+                    val albumId = t.albumId
+                    if (albumId == null) true else year.matches(albumYears[albumId])
+                }
             }
         }
         val artists = if (textQuery.isBlank()) {
@@ -231,7 +257,10 @@ class LocalSearchRepository @Inject constructor(
             } else {
                 metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
             }
-            tracks = tracks.filter { year.matches(albumYears[it.albumId]) }
+            tracks = tracks.filter { t ->
+                val albumId = t.albumId
+                if (albumId == null) true else year.matches(albumYears[albumId])
+            }
         }
         if (tracks.isEmpty()) return null
         return LocalSearchHit(

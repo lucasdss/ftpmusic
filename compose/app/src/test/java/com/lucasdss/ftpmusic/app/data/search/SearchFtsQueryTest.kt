@@ -17,4 +17,15 @@ class SearchFtsQueryTest {
         assertTrue(q.contains("rock"))
         assertTrue(q.endsWith("*") || q.contains("*"))
     }
+
+    @Test
+    fun `toMatchQuery single short token uses fallback star`() {
+        assertEquals("a*", SearchFtsQuery.toMatchQuery("a"))
+    }
+
+    @Test
+    fun `toMatchQuery empty-ish input returns sentinel a`() {
+        assertEquals("a", SearchFtsQuery.toMatchQuery("   "))
+        assertEquals("a", SearchFtsQuery.toMatchQuery("!!"))
+    }
 }

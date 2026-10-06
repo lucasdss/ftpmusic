@@ -26,7 +26,8 @@ names into `search_aliases`. Phase-3 separates real aliases vs tags.
 
 ## Consequences
 
-- Enrichment rate-limited (25 bio / 15 aliases / 15 tags / 15 albums per sync).
+- Enrichment rate-limited (Phase-7: 40 bio / 30 aliases / 30 tags / 25 albums per sync).
 - Offline sync skips enrichment.
 - Requires Last.fm API key for tags; MB aliases need network.
 - Discover skipped when offline / local-only (ADR 0082).
+- Discogs / Spotify / AcoustID remain out of scope (scope lock 2A).

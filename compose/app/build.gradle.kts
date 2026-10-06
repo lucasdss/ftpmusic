@@ -178,8 +178,11 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-datasource-okhttp:$media3Version")
 
-    // Room
-    val roomVersion = "2.6.1"
+    // Room 2.7 → FTS5/bm25 on framework SQLite (ADR 0084).
+    // Stay on 2.7.x: Room 2.8.x pulls kotlinx-serialization 1.8 (Kotlin 2.1+)
+    // which ICE's KSP against this project's Kotlin 2.0.21.
+    // BundledSQLiteDriver deferred until migrations dual-override SQLiteConnection.
+    val roomVersion = "2.7.2"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")

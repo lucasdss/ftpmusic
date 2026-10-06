@@ -27,7 +27,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Rebuilds the unified FTS search_fts table from Room metadata (ADR 0080 / Phase-3).
+ * Rebuilds the unified FTS5 search_fts table from Room metadata (ADR 0084).
  * Call after metadata sync / enrichment / debounced upserts — never on keystroke.
  */
 @Singleton
@@ -43,6 +43,7 @@ class SearchIndexRebuilder @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private var debounceJob: Job? = null
+
     @Volatile private var cachedFtsCount: Int? = null
 
     /** Debounced full rebuild — coalesces rapid upserts (search cache, lyrics toggle). */
@@ -72,7 +73,11 @@ class SearchIndexRebuilder @Inject constructor(
                         entityType = SearchFtsTypes.ALBUM,
                         entityId = a.id,
                         body = listOfNotNull(
-                            a.name, a.artist, a.genre, a.year?.toString(), a.notes,
+                            a.name,
+                            a.artist,
+                            a.genre,
+                            a.year?.toString(),
+                            a.notes,
                             decadeLabel(a.year),
                         ).joinToString(" "),
                     ),
@@ -126,9 +131,12 @@ class SearchIndexRebuilder @Inject constructor(
                     )
                 }
             }
-            ftsDao.clearAll()
-            rows.chunked(500).forEach { chunk -> ftsDao.insertAll(chunk) }
-            cachedFtsCount = rows.size
+            try {
+                ftsDao.replaceAll(rows)
+                cachedFtsCount = rows.size
+            } catch (_: Exception) {
+                cachedFtsCount = 0
+            }
         }
     }
 
@@ -142,12 +150,17 @@ class SearchIndexRebuilder @Inject constructor(
         }
     }
 
-    private fun trackBody(t: TrackSearchIndexRow): String =
-        listOfNotNull(
-            t.title, t.artist, t.album, t.genre, t.path,
+    private fun trackBody(t: TrackSearchIndexRow): String {
+        val pathTokens = t.path
+            ?.replace('/', ' ')
+            ?.replace('_', ' ')
+            ?.replace('-', ' ')
+            ?.takeIf { it.isNotBlank() }
+        return listOfNotNull(
+            t.title, t.artist, t.album, t.genre, t.path, pathTokens,
             t.year?.toString(), decadeLabel(t.year), t.musicbrainzId,
         ).joinToString(" ")
-
+    }
     private fun decadeLabel(year: Int?): String? {
         if (year == null || year < 1900) return null
         val start = (year / 10) * 10

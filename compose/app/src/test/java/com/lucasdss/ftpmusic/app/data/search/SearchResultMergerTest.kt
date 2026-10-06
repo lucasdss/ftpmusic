@@ -89,4 +89,87 @@ class SearchResultMergerTest {
         assertTrue(SearchResultMerger.isExactName("Radiohead", "radiohead"))
         assertFalse(SearchResultMerger.isExactName("Radiohead", "radio"))
     }
+
+    @Test
+    fun `rankByFields bm25 prefers lower score over lexical contains`() {
+        val items = listOf(
+            Track("weak", title = "zzz rock tribute"),
+            Track("strong", title = "other"),
+        )
+        val ranked = SearchResultMerger.rankByFields(
+            items,
+            "rock",
+            fieldsOf = { listOf(it.title) },
+            bm25Of = { if (it.id == "strong") 0.5 else 5.0 },
+        )
+        assertEquals("strong", ranked.first().id)
+    }
+
+    @Test
+    fun `rankByFields exact still beats better bm25`() {
+        val items = listOf(
+            Track("exact", title = "Rock"),
+            Track("bm25", title = "zzz"),
+        )
+        val ranked = SearchResultMerger.rankByFields(
+            items,
+            "rock",
+            fieldsOf = { listOf(it.title) },
+            bm25Of = { if (it.id == "bm25") 0.1 else 9.0 },
+        )
+        assertEquals("exact", ranked.first().id)
+    }
+
+    @Test
+    fun `rankByQuery uses bm25 when provided`() {
+        val items = listOf(
+            Artist("a", "Alpha Rock"),
+            Artist("b", "Beta"),
+        )
+        val ranked = SearchResultMerger.rankByQuery(
+            items,
+            "rock",
+            bm25Of = { if (it.id == "b") 0.2 else 8.0 },
+        ) { it.name }
+        assertEquals("b", ranked.first().id)
+    }
+
+    @Test
+    fun `rankByQuery exact beats better bm25`() {
+        val items = listOf(
+            Artist("exact", "Rock"),
+            Artist("bm25", "Other"),
+        )
+        val ranked = SearchResultMerger.rankByQuery(
+            items,
+            "rock",
+            bm25Of = { if (it.id == "bm25") 0.1 else 9.0 },
+        ) { it.name }
+        assertEquals("exact", ranked.first().id)
+    }
+
+    @Test
+    fun `rankByQuery early return for empty query or single item`() {
+        val one = listOf(Artist("a", "A"))
+        assertEquals(one, SearchResultMerger.rankByQuery(one, "a") { it.name })
+        val many = listOf(Artist("a", "A"), Artist("b", "B"))
+        assertEquals(many, SearchResultMerger.rankByQuery(many, "") { it.name })
+    }
+
+    @Test
+    fun `isExactName null and empty query are false`() {
+        assertFalse(SearchResultMerger.isExactName(null, "x"))
+        assertFalse(SearchResultMerger.isExactName("Rock", ""))
+    }
+
+    @Test
+    fun `trackPopularity null lastPlayed uses zero recency`() {
+        assertEquals(50_000_000L, SearchResultMerger.trackPopularity(50, null))
+    }
+
+    @Test
+    fun `union empty local keeps server`() {
+        val server = listOf(Artist("s", "S"))
+        assertEquals(server, SearchResultMerger.unionById(server, emptyList()) { it.id })
+    }
 }

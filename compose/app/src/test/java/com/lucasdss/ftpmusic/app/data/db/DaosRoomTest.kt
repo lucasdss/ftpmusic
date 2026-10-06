@@ -37,6 +37,8 @@ class DaosRoomTest {
     @Before
     fun setup() {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            // No BundledSQLiteDriver / FTS5 callback: Robolectric framework SQLite
+            // lacks FTS5 JNI. Production DatabaseModule wires both (ADR 0084).
             .allowMainThreadQueries()
             .build()
     }

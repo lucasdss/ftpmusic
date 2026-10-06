@@ -17,7 +17,6 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
-import com.lucasdss.ftpmusic.app.data.db.SearchFtsDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackWaveformDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
@@ -51,8 +50,12 @@ object DatabaseModule {
         AppDatabase::class.java,
         "ftpmusic.db",
     )
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_60)
-        // NO fallbackToDestructiveMigration: all migrations 1→46 are registered,
+        // SupportSQLite path required: existing migrations only override
+        // migrate(SupportSQLiteDatabase). BundledSQLiteDriver deferred until
+        // all migrations dual-override migrate(SQLiteConnection) — ADR 0084.
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_61)
+        .addCallback(AppDatabase.FTS5_CALLBACK)
+        // NO fallbackToDestructiveMigration: all migrations registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
         // instead of silently wiping the database (the playlist-loss root cause).
         .build()
@@ -85,8 +88,6 @@ object DatabaseModule {
     @Provides fun provideRadioFavoriteDao(db: AppDatabase): RadioFavoriteDao = db.radioFavoriteDao()
 
     @Provides fun provideListenEventDao(db: AppDatabase): ListenEventDao = db.listenEventDao()
-
-    @Provides fun provideSearchFtsDao(db: AppDatabase): SearchFtsDao = db.searchFtsDao()
 
     @Provides
     @Singleton

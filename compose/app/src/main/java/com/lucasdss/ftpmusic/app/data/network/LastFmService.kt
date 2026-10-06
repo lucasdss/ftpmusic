@@ -71,64 +71,61 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
      * Fetch top tags for an artist (Last.fm artist.getTopTags).
      * Returns empty if no API key or network failure.
      */
-    suspend fun fetchArtistTopTags(artistName: String, limit: Int = 8): List<String> =
-        withContext(Dispatchers.IO) {
-            val apiKey = currentApiKey()
-            if (apiKey.isEmpty() || artistName.isBlank()) return@withContext emptyList()
-            try {
-                val url = "$BASE?method=artist.getTopTags&artist=" +
-                    java.net.URLEncoder.encode(artistName, "UTF-8") +
-                    "&api_key=$apiKey&format=json"
-                val request = Request.Builder().url(url).build()
-                val body = client.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) return@withContext emptyList()
-                    resp.body?.string() ?: return@withContext emptyList()
-                }
-                parseTopTags(body, limit)
-            } catch (_: Exception) {
-                emptyList()
+    suspend fun fetchArtistTopTags(artistName: String, limit: Int = 8): List<String> = withContext(Dispatchers.IO) {
+        val apiKey = currentApiKey()
+        if (apiKey.isEmpty() || artistName.isBlank()) return@withContext emptyList()
+        try {
+            val url = "$BASE?method=artist.getTopTags&artist=" +
+                java.net.URLEncoder.encode(artistName, "UTF-8") +
+                "&api_key=$apiKey&format=json"
+            val request = Request.Builder().url(url).build()
+            val body = client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext emptyList()
+                resp.body?.string() ?: return@withContext emptyList()
             }
+            parseTopTags(body, limit)
+        } catch (_: Exception) {
+            emptyList()
         }
+    }
 
     /** Live artist.search for Discover (Phase-5). */
-    suspend fun searchArtists(query: String, limit: Int = 8): List<SearchArtistHit> =
-        withContext(Dispatchers.IO) {
-            val apiKey = currentApiKey()
-            if (apiKey.isEmpty() || query.isBlank()) return@withContext emptyList()
-            try {
-                val url = "$BASE?method=artist.search&artist=" +
-                    java.net.URLEncoder.encode(query, "UTF-8") +
-                    "&api_key=$apiKey&format=json&limit=$limit"
-                val request = Request.Builder().url(url).build()
-                val body = client.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) return@withContext emptyList()
-                    resp.body?.string() ?: return@withContext emptyList()
-                }
-                parseArtistSearch(body, limit)
-            } catch (_: Exception) {
-                emptyList()
+    suspend fun searchArtists(query: String, limit: Int = 8): List<SearchArtistHit> = withContext(Dispatchers.IO) {
+        val apiKey = currentApiKey()
+        if (apiKey.isEmpty() || query.isBlank()) return@withContext emptyList()
+        try {
+            val url = "$BASE?method=artist.search&artist=" +
+                java.net.URLEncoder.encode(query, "UTF-8") +
+                "&api_key=$apiKey&format=json&limit=$limit"
+            val request = Request.Builder().url(url).build()
+            val body = client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext emptyList()
+                resp.body?.string() ?: return@withContext emptyList()
             }
+            parseArtistSearch(body, limit)
+        } catch (_: Exception) {
+            emptyList()
         }
+    }
 
     /** tag.getTopArtists — boost Discover when user taps a tag chip (Phase-5). */
-    suspend fun fetchTagTopArtists(tag: String, limit: Int = 8): List<SearchArtistHit> =
-        withContext(Dispatchers.IO) {
-            val apiKey = currentApiKey()
-            if (apiKey.isEmpty() || tag.isBlank()) return@withContext emptyList()
-            try {
-                val url = "$BASE?method=tag.getTopArtists&tag=" +
-                    java.net.URLEncoder.encode(tag, "UTF-8") +
-                    "&api_key=$apiKey&format=json&limit=$limit"
-                val request = Request.Builder().url(url).build()
-                val body = client.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) return@withContext emptyList()
-                    resp.body?.string() ?: return@withContext emptyList()
-                }
-                parseTagTopArtists(body, limit)
-            } catch (_: Exception) {
-                emptyList()
+    suspend fun fetchTagTopArtists(tag: String, limit: Int = 8): List<SearchArtistHit> = withContext(Dispatchers.IO) {
+        val apiKey = currentApiKey()
+        if (apiKey.isEmpty() || tag.isBlank()) return@withContext emptyList()
+        try {
+            val url = "$BASE?method=tag.getTopArtists&tag=" +
+                java.net.URLEncoder.encode(tag, "UTF-8") +
+                "&api_key=$apiKey&format=json&limit=$limit"
+            val request = Request.Builder().url(url).build()
+            val body = client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext emptyList()
+                resp.body?.string() ?: return@withContext emptyList()
             }
+            parseTagTopArtists(body, limit)
+        } catch (_: Exception) {
+            emptyList()
         }
+    }
 
     internal fun parseArtistSearch(json: String, limit: Int = 8): List<SearchArtistHit> {
         return try {

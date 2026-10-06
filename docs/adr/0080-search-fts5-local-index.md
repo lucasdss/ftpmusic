@@ -1,8 +1,8 @@
 # ADR 0080 — Search FTS local index
 
 Date: 2026-10-06
-Status: Accepted (Phase-3)
-Related: ADR 0077–0079
+Status: Superseded (engine → ADR 0084 FTS5/BM25)
+Related: ADR 0077–0079, ADR 0084
 
 ## Context
 
@@ -24,5 +24,5 @@ Phase-3 keeps index fresh and adds soft typo + year tokens.
 - DB v59 FTS + enrichment; v60 `search_tags`.
 - Cold start: LIKE until sync rebuilds; Search shows "Indexing library…".
 - Voice search prefers LocalSearchRepository then search3.
-- **BM25 / FTS5 still blocked** on Room 3 + BundledSQLiteDriver (Phase-6 keeps FTS4;
-  app-side ranking + lyrics SERP instead — ADR 0083).
+- **Superseded:** Phase-7 migrates to FTS5 + bm25 via Room 2.8 +
+  BundledSQLiteDriver (ADR 0084). Rebuild/hydrate patterns retained.

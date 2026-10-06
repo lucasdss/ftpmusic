@@ -28,3 +28,6 @@ were hard to find. `tracks` lacked an `album` column; search cache from
 - Singles searchable once present in `tracks` (genre sync / starred / search cache / play).
 - Genre warm + album drain increase sync network cost; rate-limited.
 - Full force sync still drains all pending albums.
+- **Phase-7 amend:** genre warm top-100; album drain cap 400/delta;
+  year/decade filter **keeps** null-`album_id` singles (do not drop when
+  album year missing — FTS body may already carry decade tokens). ADR 0084.

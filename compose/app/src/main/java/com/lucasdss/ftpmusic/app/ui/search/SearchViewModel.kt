@@ -61,10 +61,7 @@ data class DiscoverTrackHit(
 )
 
 /** Lyrics FTS hit shown in “From lyrics” section (Phase-6). */
-data class LyricSearchHit(
-    val track: Track,
-    val snippet: String? = null,
-)
+data class LyricSearchHit(val track: Track, val snippet: String? = null)
 
 data class SearchState(
     val query: String = "",
@@ -101,6 +98,8 @@ data class SearchState(
     val isDiscoverLoading: Boolean = false,
     val lyricsMatches: List<LyricSearchHit> = emptyList(),
     val searchLyricsEnabled: Boolean = false,
+    /** Local FTS bm25 ranks (entity id → score); kept across loadMore. */
+    val ftsRanks: Map<String, Double> = emptyMap(),
 )
 
 enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS, GENRES }
@@ -321,6 +320,7 @@ class SearchViewModel @Inject constructor(
             discoverArtists = if (trimmed.isEmpty()) emptyList() else _state.value.discoverArtists,
             discoverTracks = if (trimmed.isEmpty()) emptyList() else _state.value.discoverTracks,
             lyricsMatches = if (trimmed.isEmpty()) emptyList() else _state.value.lyricsMatches,
+            ftsRanks = if (trimmed.isEmpty()) emptyMap() else _state.value.ftsRanks,
             isDiscoverLoading = false,
         )
         if (trimmed.length >= MIN_QUERY_LEN) {
@@ -377,9 +377,18 @@ class SearchViewModel @Inject constructor(
                 if (localOnly) {
                     val hit = localSearch.search(query, playableOnly = true)
                     val split = splitLyricHits(hit, query)
-                    val rankedArtists = SearchResultMerger.rankByQuery(split.artists, query) { it.name }
-                    val rankedAlbums = SearchResultMerger.rankByQuery(split.albums, query) { it.name }
-                    val rankedTracks = rankTracks(split.songTracks, query)
+                    val ranks = hit.ftsRanks
+                    val rankedArtists = SearchResultMerger.rankByQuery(
+                        split.artists,
+                        query,
+                        bm25Of = { ranks[it.id] },
+                    ) { it.name }
+                    val rankedAlbums = SearchResultMerger.rankByQuery(
+                        split.albums,
+                        query,
+                        bm25Of = { ranks[it.id] },
+                    ) { it.name }
+                    val rankedTracks = rankTracks(split.songTracks, query, ranks)
                     val localIds = hit.tracks.map { it.id }.toSet()
                     val matchedTags = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags
                         .matchedTagsForQuery(hit.artists, query)
@@ -404,6 +413,7 @@ class SearchViewModel @Inject constructor(
                         discoverArtists = emptyList(),
                         discoverTracks = emptyList(),
                         isDiscoverLoading = false,
+                        ftsRanks = ranks,
                     )
                     return@launch
                 }
@@ -411,9 +421,18 @@ class SearchViewModel @Inject constructor(
                 // 1. Show cached results from local DB / FTS immediately (ranked)
                 val hit = localSearch.search(query, playableOnly = false)
                 val split = splitLyricHits(hit, query)
-                val cachedTracks = rankTracks(split.songTracks, query)
-                val cachedAlbums = SearchResultMerger.rankByQuery(split.albums, query) { it.name }
-                val cachedArtists = SearchResultMerger.rankByQuery(split.artists, query) { it.name }
+                val ranks = hit.ftsRanks
+                val cachedTracks = rankTracks(split.songTracks, query, ranks)
+                val cachedAlbums = SearchResultMerger.rankByQuery(
+                    split.albums,
+                    query,
+                    bm25Of = { ranks[it.id] },
+                ) { it.name }
+                val cachedArtists = SearchResultMerger.rankByQuery(
+                    split.artists,
+                    query,
+                    bm25Of = { ranks[it.id] },
+                ) { it.name }
                 val cachedPlaylists = SearchResultMerger.rankByQuery(split.playlists, query) { it.name }
                 val matchedGenres = hit.genres
                 val matchedTags = com.lucasdss.ftpmusic.app.data.search.SearchMoodTags
@@ -432,6 +451,7 @@ class SearchViewModel @Inject constructor(
                     usedSoftTypo = hit.usedSoftTypo,
                     matchedTags = matchedTags,
                     lyricsMatches = split.lyricsMatches,
+                    ftsRanks = ranks,
                 )
                 launchDiscover(query)
                 // Compute local download/cache status from Phase 1 results
@@ -472,13 +492,15 @@ class SearchViewModel @Inject constructor(
                 val mergedArtists = SearchResultMerger.rankByQuery(
                     SearchResultMerger.unionById(results.artists, cachedArtists) { it.id },
                     query,
+                    bm25Of = { ranks[it.id] },
                 ) { it.name }
                 val mergedAlbums = SearchResultMerger.rankByQuery(
                     SearchResultMerger.unionById(results.albums, cachedAlbums) { it.id },
                     query,
+                    bm25Of = { ranks[it.id] },
                 ) { it.name }
                 val mergedTracksRaw = SearchResultMerger.unionById(results.tracks, cachedTracks) { it.id }
-                val mergedTracks = rankTracks(mergedTracksRaw, query)
+                val mergedTracks = rankTracks(mergedTracksRaw, query, ranks)
                 val mergedPlaylists = SearchResultMerger.unionById(
                     results.playlists,
                     cachedPlaylists,
@@ -612,17 +634,21 @@ class SearchViewModel @Inject constructor(
                     songOffset = songSearchOffset,
                 )
                 if (_state.value.query.trim() == query) {
+                    val ranks = _state.value.ftsRanks
                     val artists = SearchResultMerger.rankByQuery(
                         SearchResultMerger.unionById(_state.value.artists, results.artists) { it.id },
                         query,
+                        bm25Of = { ranks[it.id] },
                     ) { it.name }
                     val albums = SearchResultMerger.rankByQuery(
                         SearchResultMerger.unionById(_state.value.albums, results.albums) { it.id },
                         query,
+                        bm25Of = { ranks[it.id] },
                     ) { it.name }
                     val tracks = rankTracks(
                         SearchResultMerger.unionById(_state.value.allTracks, results.tracks) { it.id },
                         query,
+                        ranks,
                     )
                     val filterEnabled = _state.value.filterDownloaded
                     val filtered = if (filterEnabled) {
@@ -667,13 +693,21 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    private fun rankTracks(tracks: List<Track>, query: String): List<Track> =
-        SearchResultMerger.rankByFields(
-            tracks,
-            query,
-            fieldsOf = { listOf(it.title, it.artist, it.album) },
-            popularityOf = { SearchResultMerger.trackPopularity(it.playCount, it.lastPlayedAt) },
-        )
+    private fun rankTracks(
+        tracks: List<Track>,
+        query: String,
+        ftsRanks: Map<String, Double> = emptyMap(),
+    ): List<Track> = SearchResultMerger.rankByFields(
+        tracks,
+        query,
+        fieldsOf = { listOf(it.title, it.artist, it.album) },
+        popularityOf = { SearchResultMerger.trackPopularity(it.playCount, it.lastPlayedAt) },
+        bm25Of = if (ftsRanks.isEmpty()) {
+            null
+        } else {
+            { ftsRanks[it.id] }
+        },
+    )
 
     private data class LyricSplit(
         val songTracks: List<Track>,
@@ -829,17 +863,17 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    /** Soft-cache Discover artist stub into Room + FTS (never invents tracks). */
+    /** Soft-cache Discover artist stub into Room + FTS, then navigate (market: tap opens). */
     fun onDiscoverArtistTap(hit: DiscoverArtistHit, onNavigate: (String) -> Unit) {
         if (hit.inLibrary && !hit.localArtistId.isNullOrBlank()) {
             onNavigate(hit.localArtistId)
             return
         }
         viewModelScope.launch {
+            val stubId = hit.localArtistId
+                ?: hit.mbid?.let { "mb:$it" }
+                ?: "ext:${hit.name.lowercase().hashCode()}"
             try {
-                val stubId = hit.localArtistId
-                    ?: hit.mbid?.let { "mb:$it" }
-                    ?: "ext:${hit.name.lowercase().hashCode()}"
                 metadataDao.upsertArtists(
                     listOf(
                         CachedArtistEntity(
@@ -852,6 +886,7 @@ class SearchViewModel @Inject constructor(
                 searchIndexRebuilder.scheduleRebuild(debounceMs = 3_000L)
             } catch (_: Exception) {
             }
+            onNavigate(stubId)
         }
     }
 

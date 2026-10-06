@@ -1,8 +1,8 @@
 # ADR 0083 — Lyrics SERP + app-side ranking (FTS4 kept)
 
 Date: 2026-10-06
-Status: Accepted
-Related: ADR 0080, docs/SEARCH_BEHAVIOR_REPORT.md
+Status: Partially superseded (engine → ADR 0084; lyrics SERP retained)
+Related: ADR 0080, ADR 0084, docs/SEARCH_BEHAVIOR_REPORT.md
 
 ## Context
 
@@ -25,4 +25,6 @@ first track. FTS5/BM25 blocked on Room API.
 ## Consequences
 
 - Users with cached lyrics get lyrics search without hunting Settings.
-- Ranking still not BM25; Room 3 migration remains future work.
+- **Engine superseded by ADR 0084** (FTS5 + bm25). Lyrics SERP, popularity
+  tie-break, and pickTopHit rules remain; ranking now exact → BM25 →
+  lexical → popularity.
