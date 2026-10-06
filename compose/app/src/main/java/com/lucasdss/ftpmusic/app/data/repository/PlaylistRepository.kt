@@ -184,4 +184,68 @@ class PlaylistRepository @Inject constructor(
             "addToPlaylist playlistId=$playlistId count=${trackIds.size}",
         )
     }
+
+    /**
+     * Local-first create + add, then await sync. Returns the server playlist id
+     * on success, or null when offline / sync failed (local playlist still kept).
+     */
+    suspend fun createPlaylistWithTracksSynced(name: String, trackIds: List<String>): String? {
+        val tempId = "new-${System.currentTimeMillis()}"
+        playlistDao.upsertAll(
+            listOf(
+                PlaylistEntity(
+                    id = tempId,
+                    name = name,
+                    trackCount = trackIds.size,
+                    coverArt = null,
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            ),
+        )
+        pendingChangeDao.insert(
+            PendingPlaylistChangeEntity(
+                playlistId = tempId,
+                changeType = "create",
+                payload = "name=$name",
+            ),
+        )
+        if (trackIds.isNotEmpty()) {
+            playlistDao.addTracksToPlaylist(tempId, trackIds)
+            pendingChangeDao.insert(
+                PendingPlaylistChangeEntity(
+                    playlistId = tempId,
+                    changeType = "add_tracks",
+                    payload = trackIds.joinToString(","),
+                ),
+            )
+        }
+        val synced = syncWorker.flushNowAndAwait()
+        val serverId = syncWorker.consumeIdRemap(tempId)
+            ?: playlistDao.getById(tempId)?.id?.takeUnless { it.startsWith("new-") }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playlist",
+            "createPlaylistWithTracksSynced tempId=$tempId serverId=$serverId synced=$synced",
+        )
+        return serverId
+    }
+
+    /** Mark playlist public/private on server and mirror [PlaylistEntity.isPublic]. */
+    suspend fun setPlaylistPublic(playlistId: String, isPublic: Boolean): Boolean {
+        return try {
+            val params = authParams()
+            val response = api.updatePlaylist(
+                params,
+                playlistId = playlistId,
+                publicFlag = if (isPublic) "true" else "false",
+            )
+            if (!auth.checkResponseStatus(response)) return false
+            playlistDao.getById(playlistId)?.let {
+                playlistDao.upsertAll(listOf(it.copy(isPublic = isPublic)))
+            }
+            true
+        } catch (e: Exception) {
+            Log.w("ftpmusic-playlist", "setPlaylistPublic failed: ${e.message}")
+            false
+        }
+    }
 }

@@ -400,4 +400,28 @@ class PlayerSurfacesUxTest {
         composeRule.onNodeWithTag("queue_select_remove").assertExists().performClick()
         assertEquals(setOf(1), removed)
     }
+
+    @Test
+    fun `queue sheet sleep and repeat strip wired`() {
+        var sleep = false
+        var repeat = false
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    repeatMode = 1,
+                ),
+                onSleepTimer = { sleep = true },
+                onRepeatToggle = { repeat = true },
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_sheet_sleep").assertExists().performClick()
+        assertTrue(sleep)
+        composeRule.onNodeWithTag("queue_sheet_repeat").assertExists().performClick()
+        assertTrue(repeat)
+    }
 }

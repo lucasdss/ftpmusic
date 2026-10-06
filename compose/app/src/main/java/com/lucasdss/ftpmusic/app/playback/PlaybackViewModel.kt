@@ -15,6 +15,7 @@ import com.lucasdss.ftpmusic.app.ui.player.CastButtonState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -434,66 +435,53 @@ class PlaybackViewModel @Inject constructor(
         _sleepTimerEndMs.value = 0L
     }
 
-    /** Share the current queue as a playlist on the Subsonic server.
-     *  Creates a playlist named "Queue - {date}" and opens the Android share sheet. */
+    /**
+     * Save queue as local-first playlist, publish public on Navidrome, share deep link.
+     * ADR-0076 — replaces prior server-only shareQueue exception (ADR-0015 row 18).
+     */
     fun shareQueue(context: android.content.Context) {
-        val player = PlayerHolder.exoPlayer ?: PlayerHolder.player ?: return
-        if (player.mediaItemCount == 0) return
-        val trackIds = (0 until player.mediaItemCount).mapNotNull { i ->
-            player.getMediaItemAt(i)?.mediaId?.takeIf { it.isNotEmpty() }
-        }
+        val trackIds = currentQueueTrackIds()
         if (trackIds.isEmpty()) return
-
-        val dateStr = java.text.SimpleDateFormat("MMM dd", java.util.Locale.US)
-            .format(java.util.Date())
-        val playlistName = "Queue - $dateStr"
+        val playlistName = defaultQueuePlaylistName()
 
         viewModelScope.launch {
             try {
-                val user = storage.get(SecureStorage.KEY_USERNAME) ?: ""
-                val pass = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
-                val params = authHelper.buildAuthParams(user, pass)
-                val response = api.createPlaylist(
-                    params,
-                    name = playlistName,
-                    songIds = trackIds.joinToString(","),
-                )
-                if (!authHelper.checkResponseStatus(response)) {
-                    val err = authHelper.getResponseError(response)
-                    android.util.Log.w("ftpmusic", "shareQueue failed: $err")
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                val serverId = playlistRepository.createPlaylistWithTracksSynced(playlistName, trackIds)
+                if (serverId == null) {
+                    withContext(Dispatchers.Main) {
                         android.widget.Toast.makeText(
                             context,
-                            "Failed to create playlist",
+                            "Saved locally — couldn't publish for sharing",
                             android.widget.Toast.LENGTH_SHORT,
                         ).show()
                     }
                     return@launch
                 }
-                val sr = response["subsonic-response"] as? Map<*, *>
-                val pl = sr?.get("playlist") as? Map<*, *>
-                val newId = pl?.get("id") as? String
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    if (newId != null) {
-                        val count = trackIds.size
-                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(
-                                android.content.Intent.EXTRA_TEXT,
-                                "Shared via ftpmusic: \"$playlistName\" ($count tracks)",
-                            )
-                        }
-                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Queue"))
+                val published = playlistRepository.setPlaylistPublic(serverId, true)
+                val base = DynamicBaseUrl.url.trimEnd('/')
+                val deepLink = "$base/app/#/playlist/$serverId/show"
+                val shareText = "\"$playlistName\" (${trackIds.size} tracks)\n$deepLink"
+                withContext(Dispatchers.Main) {
+                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, shareText)
                     }
+                    context.startActivity(
+                        android.content.Intent.createChooser(shareIntent, "Share Queue"),
+                    )
                     android.widget.Toast.makeText(
                         context,
-                        "Created \"$playlistName\" (${trackIds.size} tracks)",
+                        if (published) {
+                            "Shared \"$playlistName\" (public)"
+                        } else {
+                            "Shared \"$playlistName\" (public flag failed)"
+                        },
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic", "shareQueue failed: ${e.message}")
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         context,
                         "Failed to share queue",

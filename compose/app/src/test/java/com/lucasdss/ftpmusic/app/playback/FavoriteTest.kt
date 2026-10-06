@@ -516,34 +516,37 @@ class FavoriteTest {
         assertTrue(viewModel.state.value.sleepTimerEndMs > 0)
     }
 
-    // ── shareQueue (playlist share sheet) ───────────────────────────────────
+    // ── shareQueue (local-first save + public + share, ADR-0076) ────────────
 
     @Test
-    fun `shareQueue creates playlist and shares when queue non-empty`() = runTest {
-        val favoriteRepo = mockk<FavoriteRepository>(relaxed = true)
-        val trackDao = mockk<TrackDao>(relaxed = true)
-        val api = mockk<SubsonicApi>(relaxed = true)
-        coEvery { api.createPlaylist(any(), name = any(), songIds = any()) } returns mapOf<String, Any>(
-            "subsonic-response" to mapOf("status" to "ok", "playlist" to mapOf("id" to "pl-1")),
+    fun `shareQueue creates playlist publishes public and shares`() = runTest {
+        val playlistRepo =
+            mockk<com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository>(relaxed = true)
+        coEvery { playlistRepo.createPlaylistWithTracksSynced(any(), any()) } returns "pl-1"
+        coEvery { playlistRepo.setPlaylistPublic("pl-1", true) } returns true
+        val (viewModel, _) = vm(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            playlistRepository = playlistRepo,
         )
-        val (viewModel, _) = vm(favoriteRepo, trackDao, api = api)
 
         val player = mockk<androidx.media3.common.Player>(relaxed = true)
         every { player.mediaItemCount } returns 2
-        every { player.getMediaItemAt(0) } returns androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
-        every { player.getMediaItemAt(1) } returns androidx.media3.common.MediaItem.Builder().setMediaId("t2").build()
+        every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        every { player.getMediaItemAt(1) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t2").build()
         PlayerHolder.exoPlayer = player
-        // android.widget.Toast statics return null under isReturnDefaultValues — stub them
         mockkStatic(android.widget.Toast::class)
         try {
             every {
                 android.widget.Toast.makeText(any<android.content.Context>(), any<CharSequence>(), any<Int>())
-            } returns
-                mockk(relaxed = true)
+            } returns mockk(relaxed = true)
             viewModel.shareQueue(mockk(relaxed = true))
             testDispatcher.scheduler.advanceUntilIdle()
 
-            coVerify { api.createPlaylist(any(), name = any(), songIds = "t1,t2") }
+            coVerify { playlistRepo.createPlaylistWithTracksSynced(any(), listOf("t1", "t2")) }
+            coVerify { playlistRepo.setPlaylistPublic("pl-1", true) }
         } finally {
             PlayerHolder.exoPlayer = null
             unmockkStatic(android.widget.Toast::class)
@@ -552,14 +555,49 @@ class FavoriteTest {
 
     @Test
     fun `shareQueue no-ops on empty queue`() = runTest {
-        val (viewModel, _) = vm(mockk(relaxed = true), mockk(relaxed = true))
-        PlayerHolder.exoPlayer = mockk<androidx.media3.common.Player>(relaxed = true) // mediaItemCount -> 0
+        val playlistRepo =
+            mockk<com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository>(relaxed = true)
+        val (viewModel, _) = vm(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            playlistRepository = playlistRepo,
+        )
+        PlayerHolder.exoPlayer = mockk<androidx.media3.common.Player>(relaxed = true)
         try {
             viewModel.shareQueue(mockk(relaxed = true))
             testDispatcher.scheduler.advanceUntilIdle()
-            // no crash, no API call
+            coVerify(exactly = 0) { playlistRepo.createPlaylistWithTracksSynced(any(), any()) }
         } finally {
             PlayerHolder.exoPlayer = null
+        }
+    }
+
+    @Test
+    fun `shareQueue toasts when sync fails to publish`() = runTest {
+        val playlistRepo =
+            mockk<com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository>(relaxed = true)
+        coEvery { playlistRepo.createPlaylistWithTracksSynced(any(), any()) } returns null
+        val (viewModel, _) = vm(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            playlistRepository = playlistRepo,
+        )
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 1
+        every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        PlayerHolder.exoPlayer = player
+        mockkStatic(android.widget.Toast::class)
+        try {
+            every {
+                android.widget.Toast.makeText(any<android.content.Context>(), any<CharSequence>(), any<Int>())
+            } returns mockk(relaxed = true)
+            viewModel.shareQueue(mockk(relaxed = true))
+            testDispatcher.scheduler.advanceUntilIdle()
+            coVerify(exactly = 0) { playlistRepo.setPlaylistPublic(any(), any()) }
+        } finally {
+            PlayerHolder.exoPlayer = null
+            unmockkStatic(android.widget.Toast::class)
         }
     }
 

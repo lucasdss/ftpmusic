@@ -26,7 +26,9 @@ All playlist mutations (create, rename, delete, add tracks, remove tracks, reord
 These operations are exempted because they inherently require server data:
 - `loadServerPlaylists()` — fetch unimported playlists from server (import picker)
 - `importPlaylist()` — fetch full playlist data from server for local persistence
-- `shareQueue()` — create playlist on server with inline tracks, share externally
+
+~~`shareQueue()` server-only create~~ — **superseded by ADR-0076**: local-first
+save + `updatePlaylist(public=true)` + share deep link.
 
 ### 4. Background Refresh
 `PlaylistDetailViewModel.loadPlaylist()` uses a hybrid approach: reads from local DB first (optimistic UI), then fires `refreshFromServer()` in the background to silently update metadata and entries from the server.
@@ -60,4 +62,4 @@ These operations are exempted because they inherently require server data:
 | 15 | PlaylistRepository | `importPlaylist()` | `api.getPlaylist()` | ✅ Correct |
 | 16 | PlaylistRepository | `loadServerPlaylists()` | `api.getPlaylists()` (filtered) | ✅ Correct |
 | 17 | PlaylistRepository | `addToPlaylist()` | `playlistDao.addTracksToPlaylist()` | ✅ Correct |
-| 18 | PlaybackVM | `shareQueue()` | `api.createPlaylist()` | ✅ Correct (by design) |
+| 18 | PlaybackVM | `shareQueue()` | local-first + `public=true` (ADR-0076) | ✅ Updated |

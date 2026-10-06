@@ -295,6 +295,8 @@ fun PlayerBar(
                         onClearAutoplayQueue = onClearAutoplayQueue,
                         onContinuousPlayChange = onContinuousPlayChange,
                         onShuffleToggle = onShuffleToggle,
+                        onRepeatToggle = onRepeatToggle,
+                        onSleepTimer = onSleepTimer,
                         onMoveQueueItem = onMoveQueueItem,
                         onBeginQueueReorder = onBeginQueueReorder,
                         onCommitQueueReorder = onCommitQueueReorder,
@@ -1131,6 +1133,8 @@ private fun BoxScope.PlayerQueuePanel(
     onClearAutoplayQueue: () -> Unit,
     onContinuousPlayChange: (Boolean) -> Unit,
     onShuffleToggle: () -> Unit,
+    onRepeatToggle: () -> Unit,
+    onSleepTimer: () -> Unit,
     onMoveQueueItem: (Int, Int) -> Unit,
     onBeginQueueReorder: (entryId: Int, fromIndex: Int) -> Unit,
     onCommitQueueReorder: () -> Unit,
@@ -1351,6 +1355,66 @@ private fun BoxScope.PlayerQueuePanel(
                                 adp(40f),
                             ).height(adp(4f)).clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)),
                         )
+                    }
+
+                    // Sleep / repeat strip (ADR-0076) — mirrors NP header; hide in selection.
+                    if (!selectionMode) {
+                        val remainingSec by produceSleepCountdown(sleepTimerEndMs)
+                        val sleepActive = sleepTimerEndMs > 0L && remainingSec > 0L
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacingXL(), vertical = spacingXS()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                        ) {
+                            Row(
+                                Modifier
+                                    .heightIn(min = adp(48f))
+                                    .clip(RoundedCornerShape(cornerM()))
+                                    .clickable(onClick = onSleepTimer)
+                                    .padding(horizontal = spacingS())
+                                    .testTag("queue_sheet_sleep"),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Default.Timer,
+                                    stringResource(R.string.player_sleep_timer),
+                                    tint = if (sleepActive) BrandTeal else NavUnselected,
+                                    modifier = Modifier.size(adp(22f)),
+                                )
+                                if (sleepActive) {
+                                    Spacer(Modifier.width(spacingXS()))
+                                    Text(
+                                        formatPlayerBarTime(remainingSec * 1000),
+                                        color = BrandTeal,
+                                        fontSize = textLabelS(),
+                                        fontFamily = interFontFamily(),
+                                    )
+                                }
+                            }
+                            val repeatIcon = if (repeatMode ==
+                                androidx.media3.common.Player.REPEAT_MODE_ONE
+                            ) {
+                                Icons.Filled.RepeatOne
+                            } else {
+                                Icons.Default.Repeat
+                            }
+                            Box(
+                                Modifier
+                                    .size(adp(48f))
+                                    .clickable(onClick = onRepeatToggle)
+                                    .testTag("queue_sheet_repeat"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    repeatIcon,
+                                    stringResource(R.string.player_repeat),
+                                    tint = if (repeatMode > 0) BrandTeal else NavUnselected,
+                                    modifier = Modifier.size(adp(22f)),
+                                )
+                            }
+                        }
                     }
 
                     // Scrollable content below the fixed drag handle.

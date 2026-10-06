@@ -127,6 +127,8 @@ interface SubsonicApi {
         @Query("name") name: String = "",
         @Query("songIndexToRemove") removeIndices: String = "",
         @Query("songIdToAdd") addIds: String = "",
+        /** Subsonic/Navidrome: "true" / "false"; empty omits (leave unchanged). */
+        @Query("public") publicFlag: String = "",
     ): Map<String, Any>
 
     @GET("rest/getLyrics")

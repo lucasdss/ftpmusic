@@ -10,12 +10,14 @@ import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Background worker that flushes pending playlist changes to the Subsonic server.
@@ -42,9 +44,12 @@ class PlaylistSyncWorker(
     }
 
     private var flushJob: Job? = null
-    private val isFlushing = AtomicBoolean(false)
+    private val flushMutex = Mutex()
     private var consecutiveFailures = 0
     private var lastCleanupMs = 0L
+
+    /** temp playlist id → server id after a successful create flush (ADR-0076). */
+    private val idRemaps = ConcurrentHashMap<String, String>()
 
     fun start() {
         flushJob = scope.launch {
@@ -54,8 +59,7 @@ class PlaylistSyncWorker(
                     break
                 }
                 try {
-                    flushPending()
-                    // Periodic cleanup of old flushed changes
+                    flushMutex.withLock { flushPending() }
                     cleanupFlushedIfNeeded()
                 } catch (e: Exception) {
                     Log.w(TAG, "Flush cycle failed: ${e.message}", e)
@@ -70,26 +74,41 @@ class PlaylistSyncWorker(
         flushJob?.cancel()
     }
 
-    /** Schedule an immediate flush. No-ops if already in progress. */
+    /** Schedule an immediate flush on the worker scope. */
     fun flushNow() {
-        if (!isFlushing.compareAndSet(false, true)) return
         scope.launch {
             try {
-                flushPending()
-            } catch (
-                e: Exception,
-            ) {
+                flushMutex.withLock { flushPending() }
+            } catch (e: Exception) {
                 Log.w(TAG, "flushNow failed: ${e.message}")
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                     "ftpmusic-playlist",
                     "flushNow failed",
                     e,
                 )
-            } finally {
-                isFlushing.set(false)
             }
         }
     }
+
+    /**
+     * Flush pending changes and wait. Returns true when the queue is empty after
+     * the flush (sync succeeded or nothing to do). False when offline or pending remain.
+     */
+    suspend fun flushNowAndAwait(): Boolean {
+        return try {
+            flushMutex.withLock {
+                flushPending()
+                if (offlineModeManager.isOfflineEnabled()) return@withLock false
+                pendingDao.getPending().isEmpty()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "flushNowAndAwait failed: ${e.message}")
+            false
+        }
+    }
+
+    /** Consume a temp→server remap produced by the last create flush. */
+    fun consumeIdRemap(tempId: String): String? = idRemaps.remove(tempId)
 
     private suspend fun flushPending() {
         // Software offline mode: hold all pending changes locally; they are
@@ -109,11 +128,13 @@ class PlaylistSyncWorker(
         var anyNetworkFailure = false
 
         for (change in pending) {
+            // Resolve temp→server remaps from earlier creates in this same flush pass.
+            val playlistId = idRemaps[change.playlistId] ?: change.playlistId
             try {
                 when (change.changeType) {
                     "rename" -> {
                         val name = extractPayload(change.payload)
-                        api.updatePlaylist(params, playlistId = change.playlistId, name = name)
+                        api.updatePlaylist(params, playlistId = playlistId, name = name)
                     }
 
                     "create" -> {
@@ -143,32 +164,35 @@ class PlaylistSyncWorker(
                             )
                             // Remap all pending changes that reference the temp ID
                             pendingDao.remapPlaylistId(change.playlistId, serverId)
+                            idRemaps[change.playlistId] = serverId
+                        } else if (serverId != null) {
+                            idRemaps[change.playlistId] = serverId
                         }
                     }
 
                     "delete" -> {
-                        api.deletePlaylist(params, id = change.playlistId)
+                        api.deletePlaylist(params, id = playlistId)
                         // Remove from local DB after successful server deletion
-                        playlistDao.clearEntries(change.playlistId)
-                        playlistDao.delete(change.playlistId)
+                        playlistDao.clearEntries(playlistId)
+                        playlistDao.delete(playlistId)
                     }
 
                     "sync_tracks" -> {
                         // Full track sync: clear server then re-add
-                        val entries = playlistDao.getEntries(change.playlistId)
-                        val serverList = api.getPlaylist(params, id = change.playlistId)
+                        val entries = playlistDao.getEntries(playlistId)
+                        val serverList = api.getPlaylist(params, id = playlistId)
                         val serverCount = (serverList["songCount"] as? Number)?.toInt() ?: 0
                         val removeIndices = if (serverCount > 0) (0 until serverCount).joinToString(",") else ""
                         val addIds = entries.joinToString(",") { it.trackId }
                         api.updatePlaylist(
                             params,
-                            playlistId = change.playlistId,
+                            playlistId = playlistId,
                             removeIndices = removeIndices,
                             addIds = addIds,
                         )
 
                         // Update track count in local metadata
-                        val updatedMeta = playlistDao.getById(change.playlistId)?.copy(
+                        val updatedMeta = playlistDao.getById(playlistId)?.copy(
                             trackCount = entries.size,
                             updatedAt = System.currentTimeMillis(),
                         )
@@ -177,16 +201,16 @@ class PlaylistSyncWorker(
 
                     "add_tracks" -> {
                         val trackIds = change.payload
-                        api.updatePlaylist(params, playlistId = change.playlistId, addIds = trackIds)
+                        api.updatePlaylist(params, playlistId = playlistId, addIds = trackIds)
                     }
 
                     "remove_tracks" -> {
                         val indices = change.payload
-                        api.updatePlaylist(params, playlistId = change.playlistId, removeIndices = indices)
+                        api.updatePlaylist(params, playlistId = playlistId, removeIndices = indices)
                     }
                 }
                 pendingDao.markFlushed(change.id)
-                updateLastSyncedAt(change.playlistId)
+                updateLastSyncedAt(idRemaps[change.playlistId] ?: playlistId)
             } catch (e: SocketTimeoutException) {
                 Log.w(TAG, "Timeout flushing ${change.changeType} for ${change.playlistId} — will retry")
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
