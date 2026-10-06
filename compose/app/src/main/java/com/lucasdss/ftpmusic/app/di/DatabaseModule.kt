@@ -121,14 +121,12 @@ object DatabaseModule {
         dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
         offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
         searchIndexRebuilder: SearchIndexRebuilder,
-        musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
-        lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
+        metadataEnrichRunner: com.lucasdss.ftpmusic.app.data.db.MetadataEnrichRunner,
     ): MetadataSyncWorker = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager = offlineModeManager,
         dailyMixRepository = dailyMixRepository,
         searchIndexRebuilder = searchIndexRebuilder,
-        musicBrainzService = musicBrainzService,
-        lastFmService = lastFmService,
+        metadataEnrichRunner = metadataEnrichRunner,
     )
 }

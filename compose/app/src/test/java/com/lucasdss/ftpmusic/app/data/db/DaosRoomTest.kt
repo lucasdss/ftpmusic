@@ -743,6 +743,127 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `upsertAlbumsPreserveEnrich keeps notes and mbid across catalog refresh`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        meta.upsertAlbums(
+            listOf(
+                CachedAlbumEntity(
+                    id = "al-en",
+                    name = "Old",
+                    notes = "keep-notes",
+                    musicbrainzId = "mbid-al",
+                    publicRating = 4.0,
+                ),
+            ),
+        )
+        meta.upsertAlbumsPreserveEnrich(
+            listOf(
+                CachedAlbumEntity(id = "al-en", name = "New Name", songCount = 12, notes = null),
+            ),
+        )
+        val row = meta.getAlbumById("al-en")!!
+        assertEquals("New Name", row.name)
+        assertEquals(12, row.songCount)
+        assertEquals("keep-notes", row.notes)
+        assertEquals("mbid-al", row.musicbrainzId)
+        assertEquals(4.0, row.publicRating!!, 0.0)
+    }
+
+    @Test
+    fun `replaceAlbumsDiffPreserveEnrich deletes missing and keeps enrich`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        meta.upsertAlbums(
+            listOf(
+                CachedAlbumEntity(id = "keep", name = "K", notes = "n1", musicbrainzId = "mb1"),
+                CachedAlbumEntity(id = "gone", name = "G", notes = "n2"),
+            ),
+        )
+        meta.replaceAlbumsDiffPreserveEnrich(
+            listOf(CachedAlbumEntity(id = "keep", name = "K2", songCount = 3)),
+        )
+        assertNull(meta.getAlbumById("gone"))
+        val kept = meta.getAlbumById("keep")!!
+        assertEquals("K2", kept.name)
+        assertEquals("n1", kept.notes)
+        assertEquals("mb1", kept.musicbrainzId)
+    }
+
+    @Test
+    fun `upsertArtistsPreserveEnrich keeps biography aliases tags`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        meta.upsertArtists(
+            listOf(
+                CachedArtistEntity(
+                    id = "ar-1",
+                    name = "Artist",
+                    biography = "bio",
+                    searchAliases = "aka",
+                    searchTags = "rock",
+                    musicbrainzId = "mb-ar",
+                ),
+            ),
+        )
+        meta.upsertArtistsPreserveEnrich(
+            listOf(CachedArtistEntity(id = "ar-1", name = "Artist Renamed", albumCount = 5)),
+        )
+        val row = meta.getArtistById("ar-1")!!
+        assertEquals("Artist Renamed", row.name)
+        assertEquals(5, row.albumCount)
+        assertEquals("bio", row.biography)
+        assertEquals("aka", row.searchAliases)
+        assertEquals("rock", row.searchTags)
+        assertEquals("mb-ar", row.musicbrainzId)
+    }
+
+    @Test
+    fun `upsertTracksPreserveCache keeps album_id and cache columns on orphan merge`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(
+            TrackEntity(
+                id = "t-merge",
+                title = "Old",
+                albumId = "al-1",
+                album = "Album",
+                starredAt = 99L,
+                cachedFilePath = "/cache/t",
+                isDownloaded = true,
+            ),
+        )
+        tracks.upsertTracksPreserveCache(
+            listOf(
+                TrackEntity(
+                    id = "t-merge",
+                    title = "New Title",
+                    artist = "Solo",
+                    albumId = null,
+                    album = null,
+                ),
+            ),
+        )
+        val row = tracks.getTrack("t-merge")!!
+        assertEquals("New Title", row.title)
+        assertEquals("al-1", row.albumId)
+        assertEquals("Album", row.album)
+        assertEquals(99L, row.starredAt)
+        assertEquals("/cache/t", row.cachedFilePath)
+        assertTrue(row.isDownloaded)
+        assertEquals(1, tracks.trackCountAll())
+    }
+
+    @Test
+    fun `orphan track without album_id persists and counts once`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsertTracksPreserveCache(
+            listOf(
+                TrackEntity(id = "orphan", title = "Single", albumId = null, artist = "A"),
+                TrackEntity(id = "orphan", title = "Single", albumId = null, artist = "A"),
+            ),
+        )
+        assertEquals(1, tracks.trackCountAll())
+        assertNull(tracks.getTrack("orphan")!!.albumId)
+    }
+
+    @Test
     fun `starred paging page0 and page1 are disjoint and short page clears hasMore`() = runBlocking {
         val tracks = db.trackDao()
         val base = 1_700_000_000_000L

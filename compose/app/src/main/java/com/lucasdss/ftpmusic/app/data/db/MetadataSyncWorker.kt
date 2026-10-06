@@ -148,8 +148,7 @@ class MetadataSyncWorker(
     private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder? = null,
-    private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService? = null,
-    private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService? = null,
+    private val metadataEnrichRunner: MetadataEnrichRunner? = null,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
@@ -188,11 +187,20 @@ class MetadataSyncWorker(
         /** Cap pending album-track drain per non-force sync (Phase-7 densify). */
         private const val SEARCH_CORPUS_ALBUM_DRAIN_CAP = 400
 
-        private const val ENRICH_DELAY_MS = 250L
-        private const val ENRICH_ARTIST_LIMIT = 40
-        private const val ENRICH_ALBUM_LIMIT = 25
-        private const val ENRICH_ALIAS_LIMIT = 30
-        private const val ENRICH_TAG_LIMIT = 30
+        /** Genre offset pages per DELTA orphan densify (ADR-0085). */
+        private const val ORPHAN_GENRE_OFFSET_PAGES_DELTA = 3
+
+        /** Genre offset pages per FULL/force orphan densify. */
+        private const val ORPHAN_GENRE_OFFSET_PAGES_FULL = 20
+
+        /** getRandomSongs size per round (Subsonic max commonly 500). */
+        private const val ORPHAN_RANDOM_SONG_SIZE = 500
+
+        /** Random-song rounds per DELTA. */
+        private const val ORPHAN_RANDOM_ROUNDS_DELTA = 2
+
+        /** Random-song rounds per FULL/force. */
+        private const val ORPHAN_RANDOM_ROUNDS_FULL = 6
 
         /**
          * Choose periodic sync mode from watermark.
@@ -332,9 +340,13 @@ class MetadataSyncWorker(
                 _status.value = _status.value.copy(
                     genres = genreCount,
                     genresTotal = genreCount,
-                    phase = "genres",
+                    phase = "orphans",
                     elapsedMs = System.currentTimeMillis() - startMs,
                 )
+
+                // ADR-0085: densify album-less / deep-genre songs into `tracks`.
+                syncOrphanSongs(force = forceTrackResync, mode = resolvedMode)
+                DiagnosticLog.d(TAG, "phase=orphans")
 
                 // Sync stars and ratings from server (mirror Navidrome favorites)
                 syncStarredAndRatings()
@@ -362,8 +374,6 @@ class MetadataSyncWorker(
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                 }
-                val finalTrackCount = metadataDao.cachedTrackCount()
-                DiagnosticLog.d(TAG, "phase=tracks tracks=$finalTrackCount")
                 // Always merge cached album/genre songs into `tracks` so search
                 // finds singles + never-played catalog rows (ADR 0078 / phase-2).
                 try {
@@ -373,18 +383,27 @@ class MetadataSyncWorker(
                     if (e is CancellationException) throw e
                     Log.w(TAG, "populate tracks for search index: ${e.message}")
                 }
-                try {
-                    enrichSearchMetadata()
+                // Search corpus = densified `tracks` (ADR-0085), not only album-tracks.
+                val finalTrackCount = try {
+                    trackDao.trackCountAll()
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
-                    Log.w(TAG, "search enrichment: ${e.message}")
+                    metadataDao.cachedTrackCount()
                 }
-                // Phase-4: single FTS rebuild after populate + enrich (not twice)
+                DiagnosticLog.d(TAG, "phase=tracks tracks=$finalTrackCount")
+                // Phase-4: FTS rebuild after populate (enrich is async — ADR-0085)
                 try {
                     searchIndexRebuilder?.rebuildAll()
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     Log.w(TAG, "FTS rebuild: ${e.message}")
+                }
+                // Defer MB/Last.fm/getArtistInfo2 — do not block sync UI / watermarks.
+                try {
+                    metadataEnrichRunner?.enqueue()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "enrich enqueue: ${e.message}")
                 }
                 val current = _status.value
                 // ADR-0068: watermarks only on success — track-phase error must
@@ -520,8 +539,9 @@ class MetadataSyncWorker(
 
         if (mode == LibrarySyncMode.DELTA) {
             // Upsert only — do not wipe albums outside the newest window.
+            // Preserve enrich columns (notes/MBID) — ADR-0085.
             if (uniqueAlbums.isNotEmpty()) {
-                metadataDao.upsertAlbums(uniqueAlbums)
+                metadataDao.upsertAlbumsPreserveEnrich(uniqueAlbums)
                 try {
                     metadataDao.insertNewAlbumsToLedger()
                     metadataDao.refreshAlbumLedgerMetadata()
@@ -532,9 +552,9 @@ class MetadataSyncWorker(
             }
             Log.d(TAG, "DELTA upserted ${uniqueAlbums.size} newest albums")
         } else {
-            // Replace — an empty list with an empty cache is a legitimate no-op
-            // (fresh install / genuinely empty server).
-            metadataDao.replaceAlbums(uniqueAlbums)
+            // Diff-replace — delete missing ids, upsert-preserve enrich (ADR-0085).
+            // Empty list with empty cache is a legitimate no-op.
+            metadataDao.replaceAlbumsDiffPreserveEnrich(uniqueAlbums)
             // Repopulate the albums ledger (favorites table) — ON CONFLICT DO
             // UPDATE preserves starred_at/user_rating/is_disliked/disliked_at across wipes.
             try {
@@ -611,7 +631,8 @@ class MetadataSyncWorker(
         }
 
         if (allArtists.isNotEmpty()) {
-            metadataDao.replaceArtists(allArtists)
+            // Diff-replace preserves biography/aliases/tags/MBID (ADR-0085).
+            metadataDao.replaceArtistsDiffPreserveEnrich(allArtists)
             Log.d(TAG, "Cached ${allArtists.size} artists")
         }
         // Repopulate the artists ledger (favorites table) — ON CONFLICT DO
@@ -707,91 +728,154 @@ class MetadataSyncWorker(
     }
 
     /**
-     * Background getArtistInfo2 / getAlbumInfo2 + MB aliases + Last.fm tags.
-     * Never called from search keystroke path (ADR 0079 / Phase-3).
+     * Densify album-less / deep-genre songs into `tracks` without requiring
+     * `cached_albums` rows (ADR-0085 / plan 2B).
+     *
+     * 1. Genre offset continuation when server songCount > local cache.
+     * 2. getRandomSongs rounds to surface singles / undersampled tracks.
      */
-    internal suspend fun enrichSearchMetadata() {
+    @VisibleForTesting
+    internal suspend fun syncOrphanSongs(force: Boolean = false, mode: LibrarySyncMode = LibrarySyncMode.DELTA) {
         val username = SubsonicCredentials.username
         val password = SubsonicCredentials.password
         if (username.isEmpty()) return
-        if (offlineModeManager.isOfflineEnabled()) return
         val params = authHelper.buildAuthParams(username, password)
-        val artists = metadataDao.getArtistsNeedingEnrichment(ENRICH_ARTIST_LIMIT)
-        for (artist in artists) {
-            try {
-                delay(ENRICH_DELAY_MS)
-                val response = api.getArtistInfo2(artist.id, params)
-                val sr = response["subsonic-response"] as? Map<*, *> ?: continue
-                val info = sr["artistInfo2"] as? Map<*, *> ?: continue
-                val bio = (info["biography"] as? String)?.take(2000)
-                if (!bio.isNullOrBlank()) {
-                    metadataDao.setArtistBiography(artist.id, bio)
-                }
-                // Similar names stay in similar_artists_json — not search_aliases
-                val similar = (info["similarArtist"] as? List<*>)?.mapNotNull { s ->
-                    val m = s as? Map<*, *> ?: return@mapNotNull null
-                    m["name"] as? String
-                }
-                if (!similar.isNullOrEmpty() && artist.similarArtistsJson.isNullOrBlank()) {
-                    val json = similar.joinToString(",", prefix = "[", postfix = "]") { "\"$it\"" }
-                    metadataDao.setArtistSimilarArtists(artist.id, json)
-                }
+        val pageBudget = if (force || mode == LibrarySyncMode.FULL) {
+            ORPHAN_GENRE_OFFSET_PAGES_FULL
+        } else {
+            ORPHAN_GENRE_OFFSET_PAGES_DELTA
+        }
+        val randomRounds = if (force || mode == LibrarySyncMode.FULL) {
+            ORPHAN_RANDOM_ROUNDS_FULL
+        } else {
+            ORPHAN_RANDOM_ROUNDS_DELTA
+        }
+
+        var pagesUsed = 0
+        val genres = try {
+            genreMixDao.getTopGenres()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            emptyList()
+        }
+        for (genre in genres) {
+            if (pagesUsed >= pageBudget) break
+            val localCount = try {
+                genreMixDao.countSongsForGenre(genre.name)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                0
             }
-        }
-        // Real aliases from MusicBrainz
-        val mb = musicBrainzService
-        if (mb != null) {
-            for (artist in metadataDao.getArtistsNeedingAliases(ENRICH_ALIAS_LIMIT)) {
+            if (genre.songCount <= localCount) continue
+            var offset = localCount
+            while (pagesUsed < pageBudget && offset < genre.songCount) {
                 try {
-                    delay(ENRICH_DELAY_MS)
-                    val mbid = artist.musicbrainzId ?: mb.searchArtistMbid(artist.name) ?: continue
-                    if (artist.musicbrainzId.isNullOrBlank()) {
-                        metadataDao.setArtistPublicRating(
-                            artist.id,
-                            artist.publicRating,
-                            artist.publicRatingVotes,
-                            mbid,
-                        )
+                    delay(GENRE_FETCH_DELAY_MS)
+                    val songsResp = api.getSongsByGenre(
+                        params,
+                        genre.name,
+                        GENRE_SONG_FETCH_COUNT,
+                        offset,
+                    )
+                    val songsSr = songsResp["subsonic-response"] as? Map<*, *>
+                    val songsData = songsSr?.get("songsByGenre") as? Map<*, *>
+                    val songList = songsData?.get("song") as? List<*>
+                    pagesUsed++
+                    if (songList.isNullOrEmpty()) break
+                    val songs = parseGenreSongs(songList, genre.name)
+                    if (songs.isNotEmpty()) {
+                        genreMixDao.upsertSongs(songs)
+                        val trackRows = songs.map { it.toTrackEntity() }.distinctBy { it.id }
+                        trackDao.upsertTracksPreserveCache(trackRows)
                     }
-                    val aliases = mb.fetchArtistAliases(mbid)
-                    if (aliases.isNotEmpty()) {
-                        metadataDao.setArtistSearchAliases(artist.id, aliases.joinToString(" "))
-                    }
+                    if (songList.size < GENRE_SONG_FETCH_COUNT) break
+                    offset += songList.size
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
+                    break
                 }
             }
         }
-        // Last.fm top tags
-        val lfm = lastFmService
-        if (lfm != null && lfm.currentApiKey().isNotEmpty()) {
-            for (artist in metadataDao.getArtistsNeedingTags(ENRICH_TAG_LIMIT)) {
-                try {
-                    delay(ENRICH_DELAY_MS)
-                    val tags = lfm.fetchArtistTopTags(artist.name)
-                    if (tags.isNotEmpty()) {
-                        metadataDao.setArtistSearchTags(artist.id, tags.joinToString(" "))
-                    }
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                }
-            }
-        }
-        val albums = metadataDao.getAlbumsNeedingEnrichment(ENRICH_ALBUM_LIMIT)
-        for (album in albums) {
+
+        val randomBatch = mutableListOf<TrackEntity>()
+        repeat(randomRounds) { round ->
             try {
-                delay(ENRICH_DELAY_MS)
-                val response = api.getAlbumInfo2(album.id, params)
-                val sr = response["subsonic-response"] as? Map<*, *> ?: continue
-                val info = sr["albumInfo"] as? Map<*, *> ?: continue
-                val notes = (info["notes"] as? String)?.take(2000) ?: continue
-                if (notes.isNotBlank()) metadataDao.setAlbumNotes(album.id, notes)
+                delay(GENRE_FETCH_DELAY_MS)
+                val response = api.getRandomSongs(params, size = ORPHAN_RANDOM_SONG_SIZE)
+                val sr = response["subsonic-response"] as? Map<*, *> ?: return@repeat
+                if (sr["status"] as? String == "failed") return@repeat
+                val randomSongs = sr["randomSongs"] as? Map<*, *> ?: return@repeat
+                val songList = randomSongs["song"] as? List<*> ?: return@repeat
+                for (s in songList) {
+                    val m = s as? Map<*, *> ?: continue
+                    parseSongMapToTrack(m)?.let { randomBatch.add(it) }
+                }
+                Log.d(TAG, "Orphan densify random round=$round size=${songList.size}")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                Log.w(TAG, "getRandomSongs round failed: ${e.message}")
             }
         }
+        if (randomBatch.isNotEmpty()) {
+            trackDao.upsertTracksPreserveCache(randomBatch.distinctBy { it.id })
+        }
+        try {
+            _status.value = _status.value.copy(trackCount = trackDao.trackCountAll())
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+        }
+    }
+
+    private fun parseGenreSongs(songList: List<*>, genre: String): List<CachedGenreSongEntity> =
+        songList.mapNotNull { s ->
+            val sm = s as? Map<*, *> ?: return@mapNotNull null
+            CachedGenreSongEntity(
+                id = sm["id"] as? String ?: return@mapNotNull null,
+                genre = genre,
+                title = sm["title"] as? String ?: "",
+                artist = sm["artist"] as? String,
+                albumId = sm["albumId"] as? String,
+                artistId = sm["artistId"] as? String,
+                duration = (sm["duration"] as? Number)?.toInt(),
+                trackNumber = (sm["track"] as? Number)?.toInt(),
+                coverArt = sm["coverArt"] as? String,
+                suffix = sm["suffix"] as? String,
+                contentType = sm["contentType"] as? String,
+            )
+        }
+
+    private fun CachedGenreSongEntity.toTrackEntity(): TrackEntity = TrackEntity(
+        id = id,
+        title = title,
+        artist = artist,
+        album = null,
+        albumId = albumId,
+        artistId = artistId,
+        genre = genre,
+        durationSeconds = duration,
+        trackNumber = trackNumber,
+        coverArtUrl = coverArt,
+        suffix = suffix,
+        contentType = contentType,
+    )
+
+    private fun parseSongMapToTrack(m: Map<*, *>): TrackEntity? {
+        val id = m["id"] as? String ?: return null
+        return TrackEntity(
+            id = id,
+            title = m["title"] as? String ?: "",
+            artist = m["artist"] as? String,
+            album = m["album"] as? String,
+            albumId = m["albumId"] as? String,
+            artistId = m["artistId"] as? String,
+            genre = m["genre"] as? String,
+            durationSeconds = (m["duration"] as? Number)?.toInt(),
+            trackNumber = (m["track"] as? Number)?.toInt(),
+            coverArtUrl = m["coverArt"] as? String,
+            suffix = m["suffix"] as? String,
+            contentType = m["contentType"] as? String,
+            bitrate = (m["bitRate"] as? Number)?.toInt(),
+        )
     }
 
     /**
@@ -1109,13 +1193,27 @@ class MetadataSyncWorker(
                 val allTracks = fetched.flatten()
                 if (allTracks.isNotEmpty()) {
                     metadataDao.replaceAlbumTracksBatch(allTracks)
+                    // Honest song_count from fetched list (ADR-0085).
+                    for ((albumId, tracks) in allTracks.groupBy { it.albumId }) {
+                        try {
+                            metadataDao.setAlbumSongCount(albumId, tracks.size)
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                        }
+                    }
                 }
                 val ok = fetched.count { it.isNotEmpty() }
                 count.addAndGet(ok)
                 totalTracks.addAndGet(allTracks.size)
+                val corpusCount = try {
+                    trackDao.trackCountAll()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    totalTracks.get()
+                }
                 _status.value = _status.value.copy(
                     albumTracksProgress = count.get(),
-                    trackCount = totalTracks.get(),
+                    trackCount = corpusCount,
                 )
                 if (!aborted.get() && index < pendingAlbums.size) {
                     delay(trackLimiter.batchDelayMs)

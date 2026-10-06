@@ -22,8 +22,8 @@
 | 11 | `getSimilarSongs2` | Instant mix / continuous playback | ScrobbleService |
 | 12 | `savePlayQueue` | Persist queue to server | ScrobbleService → MediaService |
 | 13 | `getPlayQueue` | ❌ UNUSED — defined, never called | None |
-| 14 | `getAlbumInfo2` | ✅ Background enrich → `cached_albums.notes` + FTS | MetadataSyncWorker.enrichSearchMetadata |
-| 15 | `getArtistInfo2` | ✅ Background enrich → biography / aliases + FTS | MetadataSyncWorker.enrichSearchMetadata |
+| 14 | `getAlbumInfo2` | ✅ Deferred enrich → `cached_albums.notes` + FTS | MetadataEnrichRunner.enrichSearchMetadata |
+| 15 | `getArtistInfo2` | ✅ Deferred enrich → biography / aliases + FTS | MetadataEnrichRunner.enrichSearchMetadata |
 | 15 | `getGenres` | Home genre chips | LibraryViewModel (throttled sync) |
 | 16 | `getSongsByGenre` | Genre detail screen | GenreDetailViewModel |
 | 17 | `getPlaylists` | Library Playlists tab, playlist picker | LibraryViewModel, AlbumDetailViewModel |
@@ -167,5 +167,6 @@ Fields returned by Subsonic API but NOT mapped in Kotlin models:
 One endpoint defined but has ZERO callers:
 - `getPlayQueue` (line 97-98): Restore play queue from server
 
-`getAlbumInfo2` / `getArtistInfo2` are wired from `MetadataSyncWorker.enrichSearchMetadata`
+`getAlbumInfo2` / `getArtistInfo2` are wired from `MetadataEnrichRunner.enrichSearchMetadata`
+(WorkManager one-shot after sync — ADR 0085)
 into Room + FTS (search only; Detail UI may still ignore notes/bio).

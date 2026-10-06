@@ -3,6 +3,9 @@ package com.lucasdss.ftpmusic.app.data.db
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+/** SQLite host-parameter budget for IN (...) clauses — keep below ~999. */
+private const val SQLITE_IN_CHUNK = 500
+
 @Dao
 interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id = :trackId")
@@ -209,6 +212,47 @@ interface TrackDao {
 
     @Query("SELECT * FROM tracks WHERE id IN (:trackIds)")
     suspend fun getTracksByIds(trackIds: List<String>): List<TrackEntity>
+
+    /** Search-corpus size — densified catalog rows (ADR-0085). */
+    @Query("SELECT COUNT(*) FROM tracks")
+    suspend fun trackCountAll(): Int
+
+    /**
+     * Upsert tracks from orphan/random densify without wiping cache/star columns.
+     * Prefers existing album_id when already set (album-track sync wins).
+     */
+    @Transaction
+    suspend fun upsertTracksPreserveCache(incoming: List<TrackEntity>) {
+        if (incoming.isEmpty()) return
+        val merged = ArrayList<TrackEntity>(incoming.size)
+        for (chunk in incoming.chunked(SQLITE_IN_CHUNK)) {
+            val existing = getTracksByIds(chunk.map { it.id }).associateBy { it.id }
+            for (row in chunk) {
+                val old = existing[row.id]
+                merged.add(
+                    if (old == null) {
+                        row
+                    } else {
+                        old.copy(
+                            title = row.title.ifBlank { old.title },
+                            artist = row.artist ?: old.artist,
+                            album = row.album ?: old.album,
+                            albumId = old.albumId ?: row.albumId,
+                            artistId = old.artistId ?: row.artistId,
+                            genre = row.genre?.takeIf { it.isNotBlank() } ?: old.genre,
+                            durationSeconds = row.durationSeconds ?: old.durationSeconds,
+                            trackNumber = row.trackNumber ?: old.trackNumber,
+                            coverArtUrl = row.coverArtUrl ?: old.coverArtUrl,
+                            suffix = row.suffix ?: old.suffix,
+                            contentType = row.contentType ?: old.contentType,
+                            bitrate = row.bitrate ?: old.bitrate,
+                        )
+                    },
+                )
+            }
+        }
+        upsertAll(merged)
+    }
 
     @Query("SELECT * FROM tracks WHERE musicbrainz_id = :mbid LIMIT 1")
     suspend fun getTrackByMbid(mbid: String): TrackEntity?
@@ -659,6 +703,77 @@ interface CachedMetadataDao {
     @Query("DELETE FROM cached_albums")
     suspend fun clearAlbums()
 
+    @Query("DELETE FROM cached_albums WHERE id NOT IN (:ids)")
+    suspend fun deleteAlbumsNotIn(ids: List<String>)
+
+    /**
+     * Upsert albums while preserving enrichment columns (notes, MBID, public
+     * rating) when the incoming row leaves them null/blank. Sync path uses
+     * this so DELTA/FULL catalog refresh does not wipe ADR-0079 enrich data.
+     */
+    @Transaction
+    suspend fun upsertAlbumsPreserveEnrich(albums: List<CachedAlbumEntity>) {
+        if (albums.isEmpty()) return
+        val merged = ArrayList<CachedAlbumEntity>(albums.size)
+        for (chunk in albums.chunked(SQLITE_IN_CHUNK)) {
+            val existing = getAlbumsByIds(chunk.map { it.id }).associateBy { it.id }
+            for (incoming in chunk) {
+                val old = existing[incoming.id]
+                merged.add(
+                    if (old == null) {
+                        incoming
+                    } else {
+                        incoming.copy(
+                            notes = incoming.notes?.takeIf { it.isNotBlank() } ?: old.notes,
+                            musicbrainzId = incoming.musicbrainzId?.takeIf { it.isNotBlank() }
+                                ?: old.musicbrainzId,
+                            publicRating = incoming.publicRating ?: old.publicRating,
+                            publicRatingVotes = incoming.publicRatingVotes ?: old.publicRatingVotes,
+                        )
+                    },
+                )
+            }
+        }
+        upsertAlbums(merged)
+    }
+
+    /**
+     * FULL heal: delete albums absent from [albums], then upsert-preserve.
+     * Avoids clear+replace wiping enrich columns (ADR-0085).
+     */
+    @Transaction
+    suspend fun replaceAlbumsDiffPreserveEnrich(albums: List<CachedAlbumEntity>) {
+        if (albums.isEmpty()) {
+            clearAlbums()
+            return
+        }
+        deleteAlbumsNotInChunked(albums.map { it.id })
+        upsertAlbumsPreserveEnrich(albums)
+    }
+
+    @Query("SELECT id FROM cached_albums")
+    suspend fun getAllAlbumIds(): List<String>
+
+    @Query("DELETE FROM cached_albums WHERE id IN (:ids)")
+    suspend fun deleteAlbumsByIds(ids: List<String>)
+
+    @Transaction
+    suspend fun deleteAlbumsNotInChunked(keepIds: List<String>) {
+        if (keepIds.isEmpty()) {
+            clearAlbums()
+            return
+        }
+        if (keepIds.size <= SQLITE_IN_CHUNK) {
+            deleteAlbumsNotIn(keepIds)
+            return
+        }
+        val keep = keepIds.toHashSet()
+        val toDelete = getAllAlbumIds().filter { it !in keep }
+        for (chunk in toDelete.chunked(SQLITE_IN_CHUNK)) {
+            if (chunk.isNotEmpty()) deleteAlbumsByIds(chunk)
+        }
+    }
+
     /** Atomically clear and replace all albums — no empty window for concurrent queries. */
     @Transaction
     suspend fun replaceAlbums(albums: List<CachedAlbumEntity>) {
@@ -681,11 +796,89 @@ interface CachedMetadataDao {
     @Query("DELETE FROM cached_artists")
     suspend fun clearArtists()
 
+    @Query("DELETE FROM cached_artists WHERE id NOT IN (:ids)")
+    suspend fun deleteArtistsNotIn(ids: List<String>)
+
+    /**
+     * Upsert artists preserving biography / aliases / tags / MBID / similar JSON
+     * when incoming leaves them blank.
+     */
+    @Transaction
+    suspend fun upsertArtistsPreserveEnrich(artists: List<CachedArtistEntity>) {
+        if (artists.isEmpty()) return
+        val merged = ArrayList<CachedArtistEntity>(artists.size)
+        for (chunk in artists.chunked(SQLITE_IN_CHUNK)) {
+            val existing = getArtistsByIds(chunk.map { it.id }).associateBy { it.id }
+            for (incoming in chunk) {
+                val old = existing[incoming.id]
+                merged.add(
+                    if (old == null) {
+                        incoming
+                    } else {
+                        incoming.copy(
+                            biography = incoming.biography?.takeIf { it.isNotBlank() } ?: old.biography,
+                            searchAliases = incoming.searchAliases?.takeIf { it.isNotBlank() }
+                                ?: old.searchAliases,
+                            searchTags = incoming.searchTags?.takeIf { it.isNotBlank() }
+                                ?: old.searchTags,
+                            musicbrainzId = incoming.musicbrainzId?.takeIf { it.isNotBlank() }
+                                ?: old.musicbrainzId,
+                            similarArtistsJson = incoming.similarArtistsJson?.takeIf { it.isNotBlank() }
+                                ?: old.similarArtistsJson,
+                            publicRating = incoming.publicRating ?: old.publicRating,
+                            publicRatingVotes = incoming.publicRatingVotes ?: old.publicRatingVotes,
+                        )
+                    },
+                )
+            }
+        }
+        upsertArtists(merged)
+    }
+
+    /**
+     * FULL heal for artists: delete missing ids, upsert-preserve enrich.
+     */
+    @Transaction
+    suspend fun replaceArtistsDiffPreserveEnrich(artists: List<CachedArtistEntity>) {
+        if (artists.isEmpty()) {
+            clearArtists()
+            return
+        }
+        deleteArtistsNotInChunked(artists.map { it.id })
+        upsertArtistsPreserveEnrich(artists)
+    }
+
+    @Query("SELECT id FROM cached_artists")
+    suspend fun getAllArtistIds(): List<String>
+
+    @Query("DELETE FROM cached_artists WHERE id IN (:ids)")
+    suspend fun deleteArtistsByIds(ids: List<String>)
+
+    @Transaction
+    suspend fun deleteArtistsNotInChunked(keepIds: List<String>) {
+        if (keepIds.isEmpty()) {
+            clearArtists()
+            return
+        }
+        if (keepIds.size <= SQLITE_IN_CHUNK) {
+            deleteArtistsNotIn(keepIds)
+            return
+        }
+        val keep = keepIds.toHashSet()
+        val toDelete = getAllArtistIds().filter { it !in keep }
+        for (chunk in toDelete.chunked(SQLITE_IN_CHUNK)) {
+            if (chunk.isNotEmpty()) deleteArtistsByIds(chunk)
+        }
+    }
+
     @Transaction
     suspend fun replaceArtists(artists: List<CachedArtistEntity>) {
         clearArtists()
         upsertArtists(artists)
     }
+
+    @Query("UPDATE cached_albums SET song_count = :songCount WHERE id = :albumId")
+    suspend fun setAlbumSongCount(albumId: String, songCount: Int)
 
     @Query("SELECT COUNT(*) FROM cached_albums")
     suspend fun albumCount(): Int

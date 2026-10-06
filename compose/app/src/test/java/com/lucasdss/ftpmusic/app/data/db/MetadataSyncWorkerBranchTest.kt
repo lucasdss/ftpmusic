@@ -16,7 +16,9 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -45,7 +47,7 @@ class MetadataSyncWorkerBranchTest {
     private val offlineModeManager = mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true)
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository =
         mockk(relaxed = true)
-    private val scheduler = TestCoroutineScheduler()
+    private val lifecycleScheduler = TestCoroutineScheduler()
 
     @Before
     fun setUp() {
@@ -59,6 +61,11 @@ class MetadataSyncWorkerBranchTest {
         every { prefsEditor.apply() } just Runs
         every { prefs.getInt("metadata_version", 0) } returns 2
         every { offlineModeManager.isOfflineEnabled() } returns false
+        coEvery { api.getRandomSongs(any(), size = any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "randomSongs" to mapOf("song" to emptyList<Any>())),
+        )
+        coEvery { trackDao.trackCountAll() } returns 0
+        coEvery { genreMixDao.getTopGenres() } returns emptyList()
     }
 
     companion object {
@@ -71,10 +78,17 @@ class MetadataSyncWorkerBranchTest {
         }
     }
 
-    private fun makeWorker() = MetadataSyncWorker(
+    private fun TestScope.makeWorker() = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager, dailyMixRepository,
-        ioDispatcher = UnconfinedTestDispatcher(scheduler),
+        ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+    )
+
+    /** For start()/stop() tests outside runTest — own scheduler. */
+    private fun makeLifecycleWorker() = MetadataSyncWorker(
+        context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
+        offlineModeManager, dailyMixRepository,
+        ioDispatcher = UnconfinedTestDispatcher(lifecycleScheduler),
     )
 
     private fun okAlbumsResponse(albums: List<Map<String, Any?>>): Map<String, Any> = mapOf(
@@ -156,39 +170,40 @@ class MetadataSyncWorkerBranchTest {
 
     @Test
     fun `start skips sync when credentials are empty`() {
-        val w = makeWorker()
+        val w = makeLifecycleWorker()
         every { SubsonicCredentials.username } returns ""
         w.start(0)
-        scheduler.runCurrent()
+        lifecycleScheduler.runCurrent()
         coVerify(exactly = 0) { api.getAlbumList2(any(), any(), any(), any()) }
     }
 
     @Test
     fun `start syncs immediately when no metadata is cached`() {
-        val w = makeWorker()
+        val w = makeLifecycleWorker()
         coEvery { metadataDao.albumCount() } returns 0
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns okAlbumsResponse(emptyList())
         w.start(0)
-        scheduler.runCurrent()
+        lifecycleScheduler.runCurrent()
+        lifecycleScheduler.advanceUntilIdle()
         coVerify(atLeast = 1) { api.getAlbumList2(any(), any(), any(), any()) }
     }
 
     @Test
     fun `start skips sync when metadata already cached`() {
-        val w = makeWorker()
+        val w = makeLifecycleWorker()
         coEvery { metadataDao.albumCount() } returns 42
         w.start(0)
-        scheduler.runCurrent()
+        lifecycleScheduler.runCurrent()
         coVerify(exactly = 0) { api.getAlbumList2(any(), any(), any(), any()) }
     }
 
     @Test
     fun `stop cancels the running sync job`() {
-        val w = makeWorker()
+        val w = makeLifecycleWorker()
         coEvery { metadataDao.albumCount() } returns 0
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns okAlbumsResponse(emptyList())
         w.start(0)
-        scheduler.runCurrent()
+        lifecycleScheduler.runCurrent()
         w.stop()
         // No crash; sync job cancelled
     }
@@ -228,6 +243,7 @@ class MetadataSyncWorkerBranchTest {
         coEvery { metadataDao.getAllAlbums() } returns emptyList()
         coEvery { metadataDao.countUncachedAlbums() } returns 0
         assertTrue(w.syncNow(forceTrackResync = true))
+        advanceUntilIdle()
     }
 
     // ── syncAlbums change detection ─────────────────────────────────────────
@@ -285,7 +301,7 @@ class MetadataSyncWorkerBranchTest {
             setOf("al-song", "al-dur", "al-name", "al-artist", "al-year", "al-genre", "al-art"),
             changed,
         )
-        coVerify { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -313,7 +329,7 @@ class MetadataSyncWorkerBranchTest {
 
         w.syncAlbums()
 
-        coVerify { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -324,7 +340,7 @@ class MetadataSyncWorkerBranchTest {
 
         w.syncAlbums()
 
-        coVerify { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -335,7 +351,7 @@ class MetadataSyncWorkerBranchTest {
 
         w.syncAlbums()
 
-        coVerify { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -347,7 +363,7 @@ class MetadataSyncWorkerBranchTest {
 
         w.syncAlbums()
 
-        coVerify { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     // ── syncArtists / syncGenres / syncStarredAndRatings catches ────────────
@@ -495,8 +511,13 @@ class MetadataSyncWorkerBranchTest {
         coEvery { metadataDao.getAllAlbums() } returns emptyList()
         coEvery { metadataDao.countUncachedAlbums() } returns 0
         coEvery { metadataDao.updateArtistAlbumCounts() } throws RuntimeException("boom")
+        coEvery { trackDao.trackCountAll() } returns 1
+        coEvery { api.getRandomSongs(any(), size = any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "randomSongs" to mapOf("song" to emptyList<Any>())),
+        )
 
         w.syncNow()
+        advanceUntilIdle()
 
         assertEquals("complete", w.status.value.phase)
     }
@@ -507,6 +528,11 @@ class MetadataSyncWorkerBranchTest {
         coEvery { metadataDao.albumCount() } returns 1
         coEvery { metadataDao.artistCount() } returns 1
         coEvery { metadataDao.cachedTrackCount() } returns 1
+        coEvery { genreMixDao.getTopGenres() } returns emptyList()
+        coEvery { trackDao.trackCountAll() } returns 1
+        coEvery { api.getRandomSongs(any(), size = any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "randomSongs" to mapOf("song" to emptyList<Any>())),
+        )
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns okAlbumsResponse(emptyList())
         coEvery { api.getArtists(any()) } returns mapOf(
             "subsonic-response" to mapOf("status" to "ok", "artists" to mapOf("index" to emptyList<Any>())),
@@ -520,6 +546,7 @@ class MetadataSyncWorkerBranchTest {
         coEvery { dailyMixRepository.seedIfNeeded() } throws RuntimeException("boom")
 
         w.syncNow()
+        advanceUntilIdle()
 
         assertEquals("complete", w.status.value.phase)
     }

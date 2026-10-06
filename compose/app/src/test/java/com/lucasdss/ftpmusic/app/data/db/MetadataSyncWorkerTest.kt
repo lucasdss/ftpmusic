@@ -8,6 +8,7 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import io.mockk.*
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.*
@@ -42,6 +43,10 @@ class MetadataSyncWorkerTest {
         every { prefsEditor.putLong(any(), any()) } returns prefsEditor
         every { prefsEditor.putInt(any(), any()) } returns prefsEditor
         every { prefsEditor.apply() } just Runs
+        coEvery { api.getRandomSongs(any(), size = any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "randomSongs" to mapOf("song" to emptyList<Any>())),
+        )
+        coEvery { trackDao.trackCountAll() } returns 0
         worker =
             MetadataSyncWorker(
                 context,
@@ -79,10 +84,10 @@ class MetadataSyncWorkerTest {
 
         worker.syncAlbums()
 
-        coVerify { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
         coVerify(atLeast = 1) {
-            metadataDao.replaceAlbums(any())
-        } // was: metadataDao.upsertAlbums(match { it.size == 1 && it[0].id == "al-1" }) }
+            metadataDao.replaceAlbumsDiffPreserveEnrich(any())
+        } // was: metadataDao.upsertAlbumsPreserveEnrich(match { it.size == 1 && it[0].id == "al-1" }) }
     }
 
     @Test
@@ -103,8 +108,8 @@ class MetadataSyncWorkerTest {
 
         worker.syncAlbums(LibrarySyncMode.DELTA)
 
-        coVerify { metadataDao.upsertAlbums(match { it.size == 1 && it[0].id == "al-new" }) }
-        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.upsertAlbumsPreserveEnrich(match { it.size == 1 && it[0].id == "al-new" }) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
         coVerify(exactly = 0) {
             api.getAlbumList2(type = "alphabeticalByName", size = any(), offset = any(), auth = any())
         }
@@ -132,7 +137,7 @@ class MetadataSyncWorkerTest {
         worker.syncAlbums()
 
         // Previously verified upsertAlbums(match { it.size == 700 }).
-        coVerify(atLeast = 1) { metadataDao.replaceAlbums(any()) }
+        coVerify(atLeast = 1) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -148,8 +153,8 @@ class MetadataSyncWorkerTest {
         }
 
         coVerify(exactly = 0) { metadataDao.clearAlbums() }
-        coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
-        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.upsertAlbumsPreserveEnrich(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -161,7 +166,7 @@ class MetadataSyncWorkerTest {
 
         worker.syncAlbums()
 
-        coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.upsertAlbumsPreserveEnrich(any()) }
     }
 
     @Test
@@ -183,7 +188,7 @@ class MetadataSyncWorkerTest {
 
         w.syncAlbums()
 
-        coVerify(exactly = 1) { metadataDao.replaceAlbums(any()) }
+        coVerify(exactly = 1) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
         coVerify(exactly = 1) { metadataDao.syncAlbumLedger() }
         coVerify(exactly = 1) { metadataDao.pruneAlbumLedger() }
     }
@@ -225,9 +230,9 @@ class MetadataSyncWorkerTest {
 
         worker.syncArtists()
 
-        coVerify { metadataDao.replaceArtists(any()) }
+        coVerify { metadataDao.replaceArtistsDiffPreserveEnrich(any()) }
         // Previously verified upsertArtists(match { it.size == 2 }).
-        coVerify(atLeast = 1) { metadataDao.replaceArtists(any()) }
+        coVerify(atLeast = 1) { metadataDao.replaceArtistsDiffPreserveEnrich(any()) }
         // Album counts are NOT recomputed here — updateArtistAlbumCounts() must
         // run AFTER the tracks phase (cached_album_tracks populated) so
         // track-artist attribution is included. Otherwise artists whose albums
@@ -539,14 +544,15 @@ class MetadataSyncWorkerTest {
 
         worker.syncGenres()
 
+        // Mix genres + top-N warm (ADR 0078) — all four fit in warm window
         coVerify(exactly = 1) { api.getSongsByGenre(any(), "Jazz", any(), any()) }
         coVerify(exactly = 1) { api.getSongsByGenre(any(), "Blues", any(), any()) }
-        coVerify(exactly = 0) { api.getSongsByGenre(any(), "Rock", any(), any()) }
-        coVerify(exactly = 0) { api.getSongsByGenre(any(), "Metal", any(), any()) }
+        coVerify(exactly = 1) { api.getSongsByGenre(any(), "Rock", any(), any()) }
+        coVerify(exactly = 1) { api.getSongsByGenre(any(), "Metal", any(), any()) }
     }
 
     @Test
-    fun `syncGenres falls back to the current top 20 when no mixes exist`() = runTest {
+    fun `syncGenres warms top genres by song count when no mixes exist`() = runTest {
         // 22 genres; Genre22 has the most songs, Genre1 the fewest
         val genres = (1..22).map { i ->
             mapOf("value" to "Genre$i", "songCount" to i * 10, "albumCount" to 1)
@@ -559,21 +565,19 @@ class MetadataSyncWorkerTest {
         coEvery { genreMixDao.getTopGenres() } returns genres.map {
             CachedGenreEntity(name = it["value"] as String, songCount = it["songCount"] as Int)
         }
-        // Stale persisted DEFAULT from a previous sync (Genre1/Genre2 were top
-        // then, but are now the bottom two). Non-custom → song fetching must
-        // use the CURRENT top 20 (Genre22..Genre3), not the stale default.
         coEvery { dailyMixRepository.allMixGenreNames() } returns emptyList()
 
         worker.syncGenres()
 
+        // All 22 < SEARCH_INDEX_WARM_GENRE_COUNT(100) → every genre warmed
         coVerify(exactly = 1) { api.getSongsByGenre(any(), "Genre22", any(), any()) }
         coVerify(exactly = 1) { api.getSongsByGenre(any(), "Genre3", any(), any()) }
-        coVerify(exactly = 0) { api.getSongsByGenre(any(), "Genre1", any(), any()) }
-        coVerify(exactly = 0) { api.getSongsByGenre(any(), "Genre2", any(), any()) }
+        coVerify(exactly = 1) { api.getSongsByGenre(any(), "Genre1", any(), any()) }
+        coVerify(exactly = 1) { api.getSongsByGenre(any(), "Genre2", any(), any()) }
     }
 
     @Test
-    fun `syncGenres skips genre song fetch when only non-genre mixes exist`() = runTest {
+    fun `syncGenres still warms top genres when mix list is empty`() = runTest {
         coEvery { api.getGenres(any()) } returns mapOf(
             "subsonic-response" to mapOf(
                 "status" to "ok",
@@ -585,12 +589,15 @@ class MetadataSyncWorkerTest {
                 ),
             ),
         )
+        coEvery { api.getSongsByGenre(any(), any(), any(), any()) } returns emptyMap()
         coEvery { dailyMixRepository.hasMixes() } returns true
         coEvery { dailyMixRepository.allMixGenreNames() } returns emptyList()
 
         worker.syncGenres()
 
-        coVerify(exactly = 0) { api.getSongsByGenre(any(), any(), any(), any()) }
+        // Empty mix names → still warm by song_count (ADR 0078)
+        coVerify(exactly = 1) { api.getSongsByGenre(any(), "Rock", any(), any()) }
+        coVerify(exactly = 1) { api.getSongsByGenre(any(), "Jazz", any(), any()) }
     }
 
     @Test
@@ -654,7 +661,7 @@ class MetadataSyncWorkerTest {
             ),
         )
         coEvery { api.getGenres(any()) } returns genreResponse
-        coEvery { api.getSongsByGenre(any(), "Rock", 120, 0) } returns songsResponse
+        coEvery { api.getSongsByGenre(any(), "Rock", 200, 0) } returns songsResponse
         // Song-fetch list comes from the Daily Mix genre selection (DB-backed)
         coEvery { genreMixDao.getTopGenres() } returns listOf(CachedGenreEntity(name = "Rock", songCount = 5))
         coEvery { dailyMixRepository.allMixGenreNames() } returns emptyList()
@@ -674,7 +681,7 @@ class MetadataSyncWorkerTest {
                 "genres" to mapOf("genre" to listOf(mapOf("value" to "Rock", "songCount" to 5))),
             ),
         )
-        coEvery { api.getSongsByGenre(any(), "Rock", 120, 0) } returns mapOf(
+        coEvery { api.getSongsByGenre(any(), "Rock", 200, 0) } returns mapOf(
             "subsonic-response" to mapOf(
                 "status" to "ok",
                 "songsByGenre" to mapOf("song" to emptyList<Any>()),
@@ -698,7 +705,7 @@ class MetadataSyncWorkerTest {
                 "genres" to mapOf("genre" to listOf(mapOf("value" to "Rock", "songCount" to 5))),
             ),
         )
-        coEvery { api.getSongsByGenre(any(), "Rock", 120, 0) } returns mapOf(
+        coEvery { api.getSongsByGenre(any(), "Rock", 200, 0) } returns mapOf(
             "subsonic-response" to mapOf(
                 "status" to "ok",
                 "songsByGenre" to mapOf("song" to emptyList<Any>()),
@@ -713,14 +720,15 @@ class MetadataSyncWorkerTest {
         coVerify { genreMixDao.replaceSongs("Rock", emptyList()) }
     }
 
-    // ── syncNow orchestration tests (use UnconfinedTestDispatcher so
-    //    scope.launch{} runs synchronously — no advanceUntilIdle needed)
+    // ── syncNow orchestration tests (UnconfinedTestDispatcher + testScheduler
+    //    so orphan-phase delays advance with runTest)
 
-    private fun makeWorker() = MetadataSyncWorker(
+    private fun kotlinx.coroutines.test.TestScope.makeWorker(enrich: MetadataEnrichRunner? = null) = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
         dailyMixRepository,
-        ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(),
+        metadataEnrichRunner = enrich,
+        ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
     )
 
     @Test
@@ -745,7 +753,8 @@ class MetadataSyncWorkerTest {
             "subsonic-response" to mapOf("status" to "ok", "starred2" to mapOf<String, Any>()),
         )
 
-        w.syncNow() // Unconfined dispatcher → launches synchronously
+        w.syncNow()
+        advanceUntilIdle()
 
         assertEquals("complete", w.status.value.phase)
         coVerify(atLeast = 1) { api.getStarred2(any()) }
@@ -778,8 +787,10 @@ class MetadataSyncWorkerTest {
         )
         coEvery { metadataDao.getAllAlbums() } returns emptyList()
         coEvery { metadataDao.countUncachedAlbums() } returns 0
+        coEvery { trackDao.trackCountAll() } returns 1
 
         w.syncNow()
+        advanceUntilIdle()
 
         coVerify(atLeast = 1) { prefsEditor.putLong("last_metadata_sync_ms", any()) }
         coVerify(atLeast = 1) { prefsEditor.putLong("metadata_sync_duration_ms", any()) }
@@ -861,8 +872,8 @@ class MetadataSyncWorkerTest {
             // expected — ADR-0068 fail-closed
         }
 
-        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
-        coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
+        coVerify(exactly = 0) { metadataDao.upsertAlbumsPreserveEnrich(any()) }
     }
 
     @Test
@@ -887,8 +898,8 @@ class MetadataSyncWorkerTest {
             // expected — ADR-0068 fail-closed
         }
 
-        coVerify(exactly = 0) { metadataDao.upsertAlbums(any()) }
-        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.upsertAlbumsPreserveEnrich(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -925,7 +936,7 @@ class MetadataSyncWorkerTest {
         verify(exactly = 0) {
             prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
         }
-        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -949,7 +960,7 @@ class MetadataSyncWorkerTest {
         worker.syncAlbums(LibrarySyncMode.DELTA)
 
         coVerify {
-            metadataDao.upsertAlbums(
+            metadataDao.upsertAlbumsPreserveEnrich(
                 match { list ->
                     list.size == 2 &&
                         list.count { it.id == "al-1" } == 1 &&
@@ -965,7 +976,9 @@ class MetadataSyncWorkerTest {
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } throws RuntimeException("boom")
 
         w.syncNow(forceTrackResync = true)
+        advanceUntilIdle()
         w.syncNow(forceTrackResync = true) // Should not skip — guard must be reset after exception
+        advanceUntilIdle()
 
         coVerify(atLeast = 2) { api.getAlbumList2(any(), any(), any(), any()) }
     }
@@ -1105,11 +1118,12 @@ class MetadataSyncWorkerTest {
     // ── Genre population ordering ────────────────────────────────────────
 
     @Test
-    fun `populateAllTrackGenres skipped when no tracks were changed`() = runTest {
-        val w = makeWorker()
+    fun `populateAllTrackGenres always runs after sync for search densify`() = runTest {
+        val enrich = mockk<MetadataEnrichRunner>(relaxed = true)
+        val w = makeWorker(enrich = enrich)
         coEvery { metadataDao.albumCount() } returns 1
         coEvery { metadataDao.artistCount() } returns 1
-        coEvery { metadataDao.cachedTrackCount() } returns 1
+        coEvery { trackDao.trackCountAll() } returns 1
         coEvery { genreMixDao.getTopGenres() } returns emptyList()
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns mapOf(
             "subsonic-response" to mapOf("status" to "ok", "albumList2" to mapOf<String, Any>()),
@@ -1127,10 +1141,13 @@ class MetadataSyncWorkerTest {
         )
 
         w.syncNow()
+        advanceUntilIdle()
 
-        // No albums were synced, so populate must NOT run
-        coVerify(exactly = 0) { trackDao.populateAllTrackGenres() }
-        coVerify(exactly = 0) { trackDao.populateGenresFromCachedGenreSongs() }
+        // ADR 0078 / 0085: always densify into tracks + enqueue async enrich
+        coVerify(exactly = 1) { trackDao.populateAllTrackGenres() }
+        coVerify(exactly = 1) { trackDao.populateGenresFromCachedGenreSongs() }
+        verify(exactly = 1) { enrich.enqueue() }
+        assertEquals("complete", w.status.value.phase)
     }
 
     // ── Star sync mirrors tracks, albums, and artists (v43) ──────────────
@@ -1382,7 +1399,7 @@ class MetadataSyncWorkerTest {
         w.syncAlbums()
 
         // replaceAlbums must be called with empty list (clears stale cache)
-        coVerify { metadataDao.replaceAlbums(emptyList()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(emptyList()) }
         // Orphan cleanup runs too
         coVerify(atLeast = 1) { metadataDao.deleteOrphanedAlbumTracks() }
     }
@@ -1397,7 +1414,7 @@ class MetadataSyncWorkerTest {
 
         w.syncAlbums()
 
-        coVerify(exactly = 0) { metadataDao.replaceAlbums(any()) }
+        coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
         coVerify(exactly = 0) { metadataDao.deleteOrphanedAlbumTracks() }
     }
 
@@ -1428,14 +1445,14 @@ class MetadataSyncWorkerTest {
             duration = 300,
         )
         coEvery { metadataDao.getAllAlbums() } returns listOf(cachedAlbum)
-        coEvery { metadataDao.replaceAlbums(any()) } returns Unit
+        coEvery { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) } returns Unit
         coEvery { metadataDao.deleteOrphanedAlbumTracks() } returns 0
 
         w.syncAlbums()
 
         // Genre/name/artist/year/coverArt changes must trigger re-fetch
         // (verified by checking replaceAlbums was called — the album is in allAlbums)
-        coVerify { metadataDao.replaceAlbums(any()) }
+        coVerify { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
     }
 
     @Test
@@ -1514,5 +1531,103 @@ class MetadataSyncWorkerTest {
         val status = w.status.value
         // 18 failures out of 20 = 90% > 5% threshold
         assertEquals("phase must be error when >5% fail", "error", status.phase)
+    }
+
+    // ── ADR-0085 orphan densify + song_count honesty ─────────────────────
+
+    @Test
+    fun `syncOrphanSongs upserts null album_id tracks from getRandomSongs`() = runTest {
+        coEvery { genreMixDao.getTopGenres() } returns emptyList()
+        coEvery { api.getRandomSongs(any(), size = 500) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "randomSongs" to mapOf(
+                    "song" to listOf(
+                        mapOf(
+                            "id" to "orphan-1",
+                            "title" to "Single",
+                            "artist" to "Solo",
+                            "albumId" to null,
+                        ),
+                        mapOf(
+                            "id" to "orphan-1",
+                            "title" to "Single Dup",
+                            "artist" to "Solo",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        coEvery { trackDao.trackCountAll() } returns 1
+
+        worker.syncOrphanSongs(force = false, mode = LibrarySyncMode.DELTA)
+
+        coVerify {
+            trackDao.upsertTracksPreserveCache(
+                match { list ->
+                    list.size == 1 && list[0].id == "orphan-1" && list[0].albumId == null
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `syncOrphanSongs continues genre offset when server count exceeds local`() = runTest {
+        coEvery { genreMixDao.getTopGenres() } returns listOf(
+            CachedGenreEntity(name = "Rock", songCount = 400, albumCount = 10),
+        )
+        coEvery { genreMixDao.countSongsForGenre("Rock") } returns 200
+        coEvery { api.getSongsByGenre(any(), "Rock", 200, 200) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "songsByGenre" to mapOf(
+                    "song" to listOf(
+                        mapOf(
+                            "id" to "g-song-1",
+                            "title" to "Deep Cut",
+                            "artist" to "Band",
+                            "albumId" to null,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        coEvery { api.getRandomSongs(any(), size = any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "randomSongs" to mapOf("song" to emptyList<Any>())),
+        )
+        coEvery { trackDao.trackCountAll() } returns 1
+
+        worker.syncOrphanSongs(force = false, mode = LibrarySyncMode.DELTA)
+
+        coVerify { api.getSongsByGenre(any(), "Rock", 200, 200) }
+        coVerify { genreMixDao.upsertSongs(match { it.any { s -> s.id == "g-song-1" } }) }
+        coVerify {
+            trackDao.upsertTracksPreserveCache(match { it.any { t -> t.id == "g-song-1" && t.albumId == null } })
+        }
+    }
+
+    @Test
+    fun `syncAlbumTracks writes honest song_count from fetched list size`() = runTest {
+        coEvery { metadataDao.getAllAlbums() } returns listOf(
+            CachedAlbumEntity(id = "al-1", name = "A", songCount = 99),
+        )
+        coEvery { metadataDao.getAlbumTracks("al-1") } returns emptyList()
+        every { prefs.getInt("metadata_version", 0) } returns 2
+        coEvery { api.getAlbum(id = "al-1", auth = any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "album" to mapOf(
+                    "song" to listOf(
+                        mapOf("id" to "t1", "title" to "One"),
+                        mapOf("id" to "t2", "title" to "Two"),
+                    ),
+                ),
+            ),
+        )
+        coEvery { trackDao.trackCountAll() } returns 2
+
+        worker.syncAlbumTracks(force = true)
+
+        coVerify { metadataDao.setAlbumSongCount("al-1", 2) }
     }
 }
