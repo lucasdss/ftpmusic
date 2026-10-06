@@ -29,7 +29,7 @@ data class LocalSearchHit(
 
 /**
  * Local-first search: FTS when index populated, else LIKE fallback.
- * Phase-3: year/decade parse + soft edit-distance when FTS empty.
+ * Phase-4: hydrate-by-id (no getAllAlbums on hot path).
  */
 @Singleton
 class LocalSearchRepository @Inject constructor(
@@ -38,15 +38,15 @@ class LocalSearchRepository @Inject constructor(
     private val metadataDao: CachedMetadataDao,
     private val playlistDao: PlaylistDao,
     private val genreDao: GenreDao,
+    private val searchIndexRebuilder: SearchIndexRebuilder,
 ) {
     suspend fun search(query: String, limit: Int = 100, playableOnly: Boolean = false): LocalSearchHit {
         val parsed = SearchYearParser.parse(query)
-        // Keep blank text when query was year/decade-only (do not restore raw tokens)
         val textQuery = parsed.text.trim()
         val likeQuery = if (textQuery.isBlank() && parsed.year.isActive) "" else textQuery.ifBlank { query.trim() }
         val likeEscaped = SearchQueryNormalizer.escapeLike(likeQuery)
         val ftsCount = try {
-            ftsDao.count()
+            searchIndexRebuilder.ftsCount()
         } catch (_: Exception) {
             0
         }
@@ -60,12 +60,10 @@ class LocalSearchRepository @Inject constructor(
             if (rows.isNotEmpty()) {
                 return hydrateFts(rows, limit, playableOnly, parsed.year)
             }
-            // Soft typo when FTS miss and query long enough
             if (SearchQueryNormalizer.fold(textQuery).length >= 4) {
                 softTypo(textQuery, limit, playableOnly, parsed.year)?.let { return it }
             }
         }
-        // LIKE fallback (also year-only queries with empty text)
         return likeFallback(likeEscaped, textQuery, limit, playableOnly, parsed.year)
     }
 
@@ -91,13 +89,18 @@ class LocalSearchRepository @Inject constructor(
             tracks = tracks.filter { it.isDownloaded || it.cachedFilePath != null }
         }
         var albums = if (albumIds.isNotEmpty()) {
-            metadataDao.getAllAlbums().filter { it.id in albumIds.toSet() }
+            metadataDao.getAlbumsByIds(albumIds)
         } else {
             emptyList()
         }
         if (year.isActive) {
             albums = albums.filter { year.matches(it.year) }
-            val albumYears = metadataDao.getAllAlbums().associate { it.id to it.year }
+            val yearIds = (tracks.mapNotNull { it.albumId } + albums.map { it.id }).distinct()
+            val albumYears = if (yearIds.isEmpty()) {
+                emptyMap()
+            } else {
+                metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
+            }
             tracks = tracks.filter { year.matches(albumYears[it.albumId]) }
         }
         val artists = if (artistIds.isNotEmpty()) {
@@ -106,12 +109,12 @@ class LocalSearchRepository @Inject constructor(
             emptyList()
         }
         val playlists = if (playlistIds.isNotEmpty()) {
-            playlistDao.getAll().filter { it.id in playlistIds.toSet() }
+            playlistDao.getPlaylistsByIds(playlistIds)
         } else {
             emptyList()
         }
         val genres = if (genreIds.isNotEmpty()) {
-            genreDao.getAllByPopularity().filter { it.name in genreIds.toSet() }
+            genreDao.getGenresByNames(genreIds)
         } else {
             emptyList()
         }
@@ -141,18 +144,15 @@ class LocalSearchRepository @Inject constructor(
         } else {
             trackDao.searchAllTracks(like)
         }
-        var albums = if (textQuery.isBlank() && year.isActive) {
-            metadataDao.getAllAlbums()
-        } else if (playableOnly) {
-            metadataDao.searchPlayableAlbums(like)
-        } else {
-            metadataDao.searchAlbums(like)
+        var albums = when {
+            textQuery.isBlank() && year.isActive -> albumsForYear(year, limit)
+            playableOnly -> metadataDao.searchPlayableAlbums(like)
+            else -> metadataDao.searchAlbums(like)
         }
         if (year.isActive) {
             albums = albums.filter { year.matches(it.year) }.take(limit)
-            val allAlbumYears = metadataDao.getAllAlbums().associate { it.id to it.year }
             if (tracks.isEmpty() && textQuery.isBlank()) {
-                val matchingAlbumIds = allAlbumYears.filter { year.matches(it.value) }.keys.toList()
+                val matchingAlbumIds = albums.map { it.id }
                 tracks = if (matchingAlbumIds.isNotEmpty()) {
                     trackDao.getTracksByAlbumIds(matchingAlbumIds).let { list ->
                         if (playableOnly) {
@@ -164,8 +164,14 @@ class LocalSearchRepository @Inject constructor(
                 } else {
                     emptyList()
                 }
-            } else {
-                tracks = tracks.filter { year.matches(allAlbumYears[it.albumId]) }
+            } else if (tracks.isNotEmpty()) {
+                val yearIds = tracks.mapNotNull { it.albumId }.distinct()
+                val albumYears = if (yearIds.isEmpty()) {
+                    emptyMap()
+                } else {
+                    metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
+                }
+                tracks = tracks.filter { year.matches(albumYears[it.albumId]) }
             }
         }
         val artists = if (textQuery.isBlank()) {
@@ -184,6 +190,13 @@ class LocalSearchRepository @Inject constructor(
             usedFts = false,
             yearConstraint = year,
         )
+    }
+
+    private suspend fun albumsForYear(year: SearchYearConstraint, limit: Int): List<CachedAlbumEntity> {
+        year.exactYear?.let { return metadataDao.searchAlbumsByExactYear(it, limit) }
+        val min = year.minYear ?: return emptyList()
+        val max = year.maxYear ?: return emptyList()
+        return metadataDao.searchAlbumsByYearRange(min, max, limit)
     }
 
     private suspend fun softTypo(
@@ -209,7 +222,12 @@ class LocalSearchRepository @Inject constructor(
         if (matched.isEmpty()) return null
         var tracks = matched
         if (year.isActive) {
-            val albumYears = metadataDao.getAllAlbums().associate { it.id to it.year }
+            val yearIds = tracks.mapNotNull { it.albumId }.distinct()
+            val albumYears = if (yearIds.isEmpty()) {
+                emptyMap()
+            } else {
+                metadataDao.getAlbumYearRows(yearIds).associate { it.id to it.year }
+            }
             tracks = tracks.filter { year.matches(albumYears[it.albumId]) }
         }
         if (tracks.isEmpty()) return null

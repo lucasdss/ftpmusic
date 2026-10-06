@@ -374,17 +374,17 @@ class MetadataSyncWorker(
                     Log.w(TAG, "populate tracks for search index: ${e.message}")
                 }
                 try {
+                    enrichSearchMetadata()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "search enrichment: ${e.message}")
+                }
+                // Phase-4: single FTS rebuild after populate + enrich (not twice)
+                try {
                     searchIndexRebuilder?.rebuildAll()
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     Log.w(TAG, "FTS rebuild: ${e.message}")
-                }
-                try {
-                    enrichSearchMetadata()
-                    searchIndexRebuilder?.rebuildAll()
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    Log.w(TAG, "search enrichment: ${e.message}")
                 }
                 val current = _status.value
                 // ADR-0068: watermarks only on success — track-phase error must

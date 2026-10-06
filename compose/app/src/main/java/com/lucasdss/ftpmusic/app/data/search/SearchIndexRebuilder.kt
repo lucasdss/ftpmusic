@@ -43,9 +43,10 @@ class SearchIndexRebuilder @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private var debounceJob: Job? = null
+    @Volatile private var cachedFtsCount: Int? = null
 
     /** Debounced full rebuild — coalesces rapid upserts (search cache, lyrics toggle). */
-    fun scheduleRebuild(debounceMs: Long = 2_000L) {
+    fun scheduleRebuild(debounceMs: Long = 3_000L) {
         debounceJob?.cancel()
         debounceJob = scope.launch {
             delay(debounceMs)
@@ -127,13 +128,18 @@ class SearchIndexRebuilder @Inject constructor(
             }
             ftsDao.clearAll()
             rows.chunked(500).forEach { chunk -> ftsDao.insertAll(chunk) }
+            cachedFtsCount = rows.size
         }
     }
 
-    suspend fun ftsCount(): Int = try {
-        ftsDao.count()
-    } catch (_: Exception) {
-        0
+    /** Cached COUNT — invalidated on rebuild (Phase-4). */
+    suspend fun ftsCount(): Int {
+        cachedFtsCount?.let { return it }
+        return try {
+            ftsDao.count().also { cachedFtsCount = it }
+        } catch (_: Exception) {
+            0
+        }
     }
 
     private fun trackBody(t: TrackSearchIndexRow): String =

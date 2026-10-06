@@ -127,4 +127,23 @@ class SearchIndexRebuilderTest {
         assertEquals("t9", slot.captured[0].entityId)
         assertTrue(slot.captured[0].body.contains("hello world lyrics"))
     }
+
+    @Test
+    fun `ftsCount caches until rebuild`() = runTest {
+        every { storage.get(SecureStorage.KEY_SEARCH_LYRICS) } returns "false"
+        coEvery { trackDao.getAllTracksForSearchIndex() } returns emptyList()
+        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+        coEvery { metadataDao.getAllArtists() } returns emptyList()
+        coEvery { playlistDao.getAll() } returns emptyList()
+        coEvery { genreDao.getAllByPopularity() } returns emptyList()
+        coEvery { ftsDao.count() } returns 7
+
+        assertEquals(7, rebuilder.ftsCount())
+        assertEquals(7, rebuilder.ftsCount())
+        coVerify(exactly = 1) { ftsDao.count() }
+
+        rebuilder.rebuildAll()
+        assertEquals(0, rebuilder.ftsCount())
+        coVerify(exactly = 1) { ftsDao.count() }
+    }
 }
