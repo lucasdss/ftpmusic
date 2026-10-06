@@ -2,7 +2,7 @@ package com.lucasdss.ftpmusic.app.playback
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao
+import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
@@ -32,7 +32,7 @@ class PlaybackViewModel @Inject constructor(
     private val favoriteRepository: FavoriteRepository,
     private val storage: SecureStorage,
     private val trackDao: TrackDao,
-    private val playbackStateDao: PlaybackStateDao,
+    private val queueDao: QueueDao,
     private val api: SubsonicApi,
 ) : ViewModel() {
     private val authHelper = SubsonicAuthHelper()
@@ -89,14 +89,11 @@ class PlaybackViewModel @Inject constructor(
     private fun reactionMutex(trackId: String): Mutex = reactionMutexes.getOrPut(trackId) { Mutex() }
 
     init {
-        // Restore the sleep timer from the persisted DAO — NOT PlayerHolder,
+        // Restore sleep timer from queue_state (ADR-0074) — NOT PlayerHolder,
         // which is process-local and empty right after process death. The
-        // service re-arms from the same row on restart (MediaService.onCreate),
-        // so arming here too is race-free and idempotent; enforcement itself
-        // lives in the service so it survives recents-swipe. (get() is a Room
-        // suspend call — Room runs it on its own executor, no IO hop needed.)
+        // service re-arms from the same row on restart (MediaService.onCreate).
         viewModelScope.launch {
-            val persistedEndMs = playbackStateDao.get()?.sleepTimerEndMs ?: 0L
+            val persistedEndMs = queueDao.getState()?.sleepTimerEndMs ?: 0L
             if (persistedEndMs > System.currentTimeMillis()) {
                 _sleepTimerEndMs.value = persistedEndMs
                 syncExtraState()
@@ -212,7 +209,7 @@ class PlaybackViewModel @Inject constructor(
 
     fun startSleepTimer(minutes: Int) {
         // Enforcement lives in MediaService (survives recents-swipe + process
-        // death via persisted playback_state). This ViewModel only mirrors the
+        // death via persisted queue_state). This ViewModel only mirrors the
         // deadline into shared state and forwards the arm command.
         val endMs = System.currentTimeMillis() + (minutes * 60_000L)
         _sleepTimerEndMs.value = endMs

@@ -45,7 +45,7 @@ class PlaybackViewModelTest {
             favoriteRepo,
             mockk(relaxed = true),
             mockk(relaxed = true),
-            mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+            mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
             mockk<SubsonicApi>(relaxed = true),
         )
     }

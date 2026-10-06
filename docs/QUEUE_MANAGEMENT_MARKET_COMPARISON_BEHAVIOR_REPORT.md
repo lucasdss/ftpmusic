@@ -65,5 +65,5 @@ Gate: assembleDebug + targeted Compose green; ≥80% on touched UI contracts via
 ## Follow-ups (not this ship)
 
 1. ~~Kill `QueueAutoLoader` (PR #2)~~ — done; CP sole local end-extend.
-2. Merge `playback_state` → `queue_state` (PR #3) — schema debt, ADR-0007.
+2. ~~Merge `playback_state` → `queue_state` (PR #3)~~ — done (DB 57).
 3. P2: batch select, save-as-playlist, history band, sleep timer in sheet.

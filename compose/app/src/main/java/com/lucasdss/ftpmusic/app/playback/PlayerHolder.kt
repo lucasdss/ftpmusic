@@ -51,7 +51,7 @@ object PlayerHolder {
         }
     }
 
-    /** Sleep timer end timestamp (ms). Persisted across process death via playback_state.
+    /** Sleep timer end timestamp (ms). Persisted across process death via queue_state.
      *  Set by PlaybackViewModel.startSleepTimer(), read by MediaService for persistence. */
     @Volatile
     var sleepTimerEndMs: Long = 0L

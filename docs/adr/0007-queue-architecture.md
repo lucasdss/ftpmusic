@@ -65,7 +65,7 @@ The user's stated requirement was clear: "The database is the source of truth fo
 
 - Rapid Cast connect/disconnect cycles could trigger overlapping `postDelayed` handlers. Mitigated by `isCasting` guard in save methods.
 - `localQueueSize` in `QueueManager` is the canonical queue count. It can theoretically diverge from actual player state if external code modifies the player directly. All production mutations go through `QueueManager` methods, so divergence is unlikely in practice. No reconciliation mechanism exists.
-- **Known duplication**: `playback_state` table stores `trackId`, `title`, `artist`, `album`, `positionMs`, `isCasting`, `castDeviceName` — all also present in `queue_items` + `queue_state`. This duplication exists because `playback_state` provides fast path restore for QuickSettings/lock screen state on app restart, while `queue_items` + `queue_state` provide full queue restore. Planned: merge into single `queue_state` table (add `isPlaying`, `repeatMode`, `shuffleEnabled` to `QueueStateEntity`, drop `playback_state` table).
+- ~~**Known duplication** `playback_state`~~ — **merged** into `queue_state` (sleep/play/repeat/shuffle) in migration 56→57 (ADR-0074 PR #3). Track meta remains on `queue_items`.
 
 ## Alternatives Considered
 

@@ -344,6 +344,11 @@ data class QueueStateEntity(
     @ColumnInfo(name = "context_size") val contextSize: Int = -1,
     /** Next unused queueEntryId after restore. */
     @ColumnInfo(name = "next_entry_id") val nextEntryId: Int = 1,
+    /** Sleep timer deadline (ms epoch). Merged from playback_state (ADR-0074). */
+    @ColumnInfo(name = "sleep_timer_end_ms") val sleepTimerEndMs: Long = 0L,
+    @ColumnInfo(name = "is_playing") val isPlaying: Boolean = false,
+    @ColumnInfo(name = "repeat_mode") val repeatMode: Int = 0,
+    @ColumnInfo(name = "shuffle_enabled") val shuffleEnabled: Boolean = false,
     @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis(),
 )
 

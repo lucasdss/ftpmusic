@@ -26,7 +26,7 @@ about bands; Apple places **AutoPlay control in the queue**.
    clear-autoplay into prod sheet (end harness-only drift).
 4. **Sequenced debt:**
    - PR #2: Kill local `QueueAutoLoader`; Cast load Dual-only. **Done.**
-   - PR #3: Merge `playback_state` → `queue_state` (ADR-0007 open).
+   - PR #3: Merge `playback_state` → `queue_state` (ADR-0007). **Done** (DB 57).
 5. Complexity tax accepted because removing Dual breaks mid-album Play Next,
    Clear-manual-only, and process-death section restore.
 

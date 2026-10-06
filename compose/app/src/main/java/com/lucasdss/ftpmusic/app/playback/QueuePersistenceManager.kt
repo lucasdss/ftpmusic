@@ -70,13 +70,23 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
         }
         val derivedCtx = flags.count { !it }
         val derivedNext = maxOf(nextEntryId, ids.max() + 1, 1)
+        // Preserve sleep/play extras from existing row (ADR-0074 merge).
+        // Construct a real entity (do not copy a MockK stub) so nextEntryId sticks.
+        val prev = dao.getState()
         dao.replaceAllAndState(
             entities,
             QueueStateEntity(
                 currentIndex = currentIndex,
                 positionMs = positionMs,
+                isCasting = prev?.isCasting ?: false,
+                castDeviceName = prev?.castDeviceName,
                 contextSize = derivedCtx,
                 nextEntryId = derivedNext,
+                sleepTimerEndMs = prev?.sleepTimerEndMs ?: 0L,
+                isPlaying = prev?.isPlaying ?: false,
+                repeatMode = prev?.repeatMode ?: 0,
+                shuffleEnabled = prev?.shuffleEnabled ?: false,
+                updatedAt = System.currentTimeMillis(),
             ),
         )
     }
@@ -84,6 +94,18 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
     suspend fun savePositionOnly(currentIndex: Int, positionMs: Long) {
         dao.savePositionOnly(currentIndex, positionMs)
     }
+
+    /** Persist sleep timer + transport extras without touching queue items. */
+    suspend fun savePlaybackExtras(
+        sleepTimerEndMs: Long,
+        isPlaying: Boolean,
+        repeatMode: Int,
+        shuffleEnabled: Boolean,
+    ) {
+        dao.savePlaybackExtras(sleepTimerEndMs, isPlaying, repeatMode, shuffleEnabled)
+    }
+
+    suspend fun sleepTimerEndMs(): Long = dao.getState()?.sleepTimerEndMs ?: 0L
 
     suspend fun restore(): SavedQueueState? {
         val entities = dao.getAllOnce()

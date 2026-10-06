@@ -117,7 +117,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -136,7 +136,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -160,7 +160,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -181,7 +181,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -206,7 +206,7 @@ class SpeedSleepTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
 
@@ -220,10 +220,10 @@ class SpeedSleepTest {
     @Test
     fun `init re-arms a persisted sleep timer from the dao`() = runTest {
         val provider = FakePlaybackStateProvider()
-        val dao = mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true)
+        val dao = mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true)
         val futureEndMs = System.currentTimeMillis() + 30 * 60_000L
-        io.mockk.coEvery { dao.get() } returns
-            com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState(sleepTimerEndMs = futureEndMs)
+        io.mockk.coEvery { dao.getState() } returns
+            com.lucasdss.ftpmusic.app.data.db.QueueStateEntity(sleepTimerEndMs = futureEndMs)
 
         val viewModel =
             PlaybackViewModel(
@@ -247,11 +247,10 @@ class SpeedSleepTest {
     @Test
     fun `init does not arm an expired persisted timer`() = runTest {
         val provider = FakePlaybackStateProvider()
-        val dao = mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true)
-        io.mockk.coEvery { dao.get() } returns
-            com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState(
-                sleepTimerEndMs =
-                    System.currentTimeMillis() - 1000,
+        val dao = mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true)
+        io.mockk.coEvery { dao.getState() } returns
+            com.lucasdss.ftpmusic.app.data.db.QueueStateEntity(
+                sleepTimerEndMs = System.currentTimeMillis() - 1000,
             )
 
         val viewModel =

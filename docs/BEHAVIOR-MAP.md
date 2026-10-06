@@ -67,7 +67,8 @@
 | What | How | Frequency |
 |------|-----|-----------|
 | Position | positionPoller → CastPlayer.currentPosition → PositionUpdate → PlaybackState | Every 200ms |
-| Persist position | persistState() → Room playback_state | Every 5s |
+| Persist position | queue_state via QueuePersistenceManager | Every 5s |
+| Persist sleep/extras | savePlaybackExtras → queue_state | Tear-down / sleep arm |
 | Persist queue index | savePositionOnly() → SharedPreferences | Every 5s |
 | Persist full queue | saveQueueState() → Room queue_items | On track change, pause, destroy |
 | Persist playback state | persistState() → Room | On every state change |

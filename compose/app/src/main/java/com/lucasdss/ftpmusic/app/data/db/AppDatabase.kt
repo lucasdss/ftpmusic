@@ -5,8 +5,6 @@ import androidx.room.Index
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
-
 @Database(
     entities = [
         ServerEntity::class,
@@ -24,7 +22,6 @@ import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
         SessionStateEntity::class,
         QueueItemEntity::class,
         QueueStateEntity::class,
-        PersistedPlaybackState::class,
         LyricsCacheEntity::class,
         QueueJournalEntity::class,
         CachedGenreEntity::class,
@@ -38,7 +35,7 @@ import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
     ],
-    version = 56,
+    version = 57,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -51,7 +48,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun pendingPlaylistChangeDao(): PendingPlaylistChangeDao
     abstract fun cachedMetadataDao(): CachedMetadataDao
-    abstract fun playbackStateDao(): PlaybackStateDao
     abstract fun lyricsCacheDao(): LyricsCacheDao
     abstract fun queueJournalDao(): QueueJournalDao
     abstract fun genreMixDao(): GenreMixDao
@@ -987,5 +983,57 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_56 = ALL_MIGRATIONS_55 + MIGRATION_55_56
+
+        // Migration 56→57: merge playback_state into queue_state (ADR-0074 PR #3).
+        val MIGRATION_56_57 = object : Migration(56, 57) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE queue_state ADD COLUMN sleep_timer_end_ms INTEGER NOT NULL DEFAULT 0",
+                )
+                database.execSQL(
+                    "ALTER TABLE queue_state ADD COLUMN is_playing INTEGER NOT NULL DEFAULT 0",
+                )
+                database.execSQL(
+                    "ALTER TABLE queue_state ADD COLUMN repeat_mode INTEGER NOT NULL DEFAULT 0",
+                )
+                database.execSQL(
+                    "ALTER TABLE queue_state ADD COLUMN shuffle_enabled INTEGER NOT NULL DEFAULT 0",
+                )
+                // Ensure a queue_state row exists before copy (fresh installs may lack it).
+                database.execSQL(
+                    """
+                    INSERT OR IGNORE INTO queue_state (
+                        id, current_index, position_ms, is_casting, cast_device_name,
+                        context_size, next_entry_id, sleep_timer_end_ms, is_playing,
+                        repeat_mode, shuffle_enabled, updated_at
+                    ) VALUES (1, 0, 0, 0, NULL, -1, 1, 0, 0, 0, 0, 0)
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    """
+                    UPDATE queue_state SET
+                        sleep_timer_end_ms = COALESCE(
+                            (SELECT sleepTimerEndMs FROM playback_state WHERE id = 1),
+                            sleep_timer_end_ms
+                        ),
+                        is_playing = COALESCE(
+                            (SELECT isPlaying FROM playback_state WHERE id = 1),
+                            is_playing
+                        ),
+                        repeat_mode = COALESCE(
+                            (SELECT repeatMode FROM playback_state WHERE id = 1),
+                            repeat_mode
+                        ),
+                        shuffle_enabled = COALESCE(
+                            (SELECT shuffleEnabled FROM playback_state WHERE id = 1),
+                            shuffle_enabled
+                        )
+                    WHERE id = 1 AND EXISTS (SELECT 1 FROM playback_state WHERE id = 1)
+                    """.trimIndent(),
+                )
+                database.execSQL("DROP TABLE IF EXISTS playback_state")
+            }
+        }
+        val ALL_MIGRATIONS_57 = ALL_MIGRATIONS_56 + MIGRATION_56_57
     }
 }

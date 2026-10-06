@@ -157,11 +157,6 @@ class MediaServiceCastQueueTest {
             mockk<com.lucasdss.ftpmusic.app.data.db.QueueJournalDao>(relaxed = true),
         )
         injectField(service, "trackDao", mockk<com.lucasdss.ftpmusic.app.data.db.TrackDao>(relaxed = true))
-        injectField(
-            service,
-            "playbackStateDao",
-            mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
-        )
         injectField(service, "playbackProxy", mockk<PlaybackProxy>(relaxed = true))
 
         // Set up PlayerHolder

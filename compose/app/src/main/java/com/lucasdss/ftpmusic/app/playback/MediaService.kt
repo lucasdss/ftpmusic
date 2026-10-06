@@ -39,7 +39,6 @@ import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.MediaQueue
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
-import com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
@@ -228,8 +227,6 @@ class MediaService : MediaLibraryService() {
     @Inject lateinit var queueJournalDao: QueueJournalDao
 
     @Inject lateinit var trackDao: TrackDao
-
-    @Inject lateinit var playbackStateDao: PlaybackStateDao
 
     @Inject lateinit var secureStorage: com.lucasdss.ftpmusic.app.data.security.SecureStorage
 
@@ -1586,15 +1583,10 @@ class MediaService : MediaLibraryService() {
             // unless car-BT resume requested — ADR-0071).
             // Must wait for proxy to be ready — otherwise ExoPlayer gets Connection refused
             scope.launch {
-                // 1. Restore Now Playing state from persisted playback_state immediately
-                //    so notification, lock screen, and mini player show the last track
-                //    even before the queue finishes loading.
-                val persisted = playbackStateDao.get()
-                if (persisted != null) {
-                    // Re-arm the service-owned sleep timer from persisted state
-                    // (process death / service restart). armSleepTimer also clears
-                    // an already-expired deadline.
-                    armSleepTimer(persisted.sleepTimerEndMs)
+                // 1. Re-arm sleep timer from queue_state (ADR-0074) before queue restore.
+                val persistedSleep = persistenceManager.sleepTimerEndMs()
+                if (persistedSleep > 0L) {
+                    armSleepTimer(persistedSleep)
                     notificationProvider?.notifyChanged()
                 }
 
@@ -2021,37 +2013,31 @@ class MediaService : MediaLibraryService() {
      *  [onTaskRemoved], where the process may be killed immediately after. */
     private fun persistPlaybackState(waitBoundedMs: Long? = null) {
         try {
-            val player = PlayerHolder.player ?: return
-            val meta = player.currentMediaItem?.mediaMetadata
-            val extras = meta?.extras
-            val snapshot = PersistedPlaybackState(
-                trackId = player.currentMediaItem?.mediaId,
-                title = meta?.title?.toString(),
-                artist = meta?.artist?.toString(),
-                album = meta?.albumTitle?.toString(),
-                albumId = extras?.getString("albumId"),
-                artistId = extras?.getString("artistId"),
-                coverArtId = extractCoverArtId(meta),
-                durationMs = player.duration,
-                positionMs = player.currentPosition,
-                isPlaying = player.isPlaying,
-                isCasting = PlayerHolder.isCasting,
-                castDeviceName = PlayerHolder.castDeviceName,
-                repeatMode = player.repeatMode,
-                shuffleEnabled = player.shuffleModeEnabled,
-                sleepTimerEndMs = PlayerHolder.sleepTimerEndMs,
-                updatedAt = System.currentTimeMillis(),
-            )
+            val player = PlayerHolder.player
+            val sleep = PlayerHolder.sleepTimerEndMs
+            val isPlaying = player?.isPlaying ?: false
+            val repeatMode = player?.repeatMode ?: 0
+            val shuffle = player?.shuffleModeEnabled ?: false
             if (waitBoundedMs != null) {
                 runBlocking {
                     withTimeoutOrNull(waitBoundedMs) {
-                        playbackStateDao.put(snapshot)
+                        persistenceManager.savePlaybackExtras(
+                            sleepTimerEndMs = sleep,
+                            isPlaying = isPlaying,
+                            repeatMode = repeatMode,
+                            shuffleEnabled = shuffle,
+                        )
                     }
                 }
             } else {
                 persistenceScope.launch {
                     try {
-                        playbackStateDao.put(snapshot)
+                        persistenceManager.savePlaybackExtras(
+                            sleepTimerEndMs = sleep,
+                            isPlaying = isPlaying,
+                            repeatMode = repeatMode,
+                            shuffleEnabled = shuffle,
+                        )
                     } catch (_: Exception) {}
                 }
             }

@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 
 /**
  * E2: service-owned sleep timer. Enforcement lives in MediaService (survives
- * recents-swipe + process death via persisted playback_state); the ViewModel
+ * recents-swipe + process death via persisted queue_state); the ViewModel
  * only mirrors the deadline and forwards the arm command.
  */
 @RunWith(RobolectricTestRunner::class)

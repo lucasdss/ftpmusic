@@ -481,4 +481,29 @@ class QueuePersistenceManagerTest {
         assertNull(restored.tracks[1].coverArt)
         assertEquals(6, restored.nextEntryId)
     }
+
+    @Test
+    fun `savePlaybackExtras delegates without touching items`() = runTest {
+        coEvery { dao.savePlaybackExtras(any(), any(), any(), any()) } just Runs
+        manager.savePlaybackExtras(
+            sleepTimerEndMs = 123L,
+            isPlaying = true,
+            repeatMode = 2,
+            shuffleEnabled = true,
+        )
+        coVerify {
+            dao.savePlaybackExtras(
+                sleepTimerEndMs = 123L,
+                isPlaying = true,
+                repeatMode = 2,
+                shuffleEnabled = true,
+            )
+        }
+    }
+
+    @Test
+    fun `sleepTimerEndMs reads from queue_state`() = runTest {
+        coEvery { dao.getState() } returns QueueStateEntity(sleepTimerEndMs = 999L)
+        assertEquals(999L, manager.sleepTimerEndMs())
+    }
 }

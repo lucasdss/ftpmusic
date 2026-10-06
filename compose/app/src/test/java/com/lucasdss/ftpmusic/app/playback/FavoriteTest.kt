@@ -57,7 +57,7 @@ class FavoriteTest {
     private fun vm(
         favoriteRepo: FavoriteRepository,
         trackDao: TrackDao,
-        playbackStateDao: com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao = mockk(relaxed = true),
+        queueDao: com.lucasdss.ftpmusic.app.data.db.QueueDao = mockk(relaxed = true),
         api: SubsonicApi = mockk(relaxed = true),
     ): Pair<PlaybackViewModel, FakePlaybackStateProvider> {
         val provider = FakePlaybackStateProvider()
@@ -67,7 +67,7 @@ class FavoriteTest {
             favoriteRepo,
             mockk(relaxed = true),
             trackDao,
-            playbackStateDao,
+            queueDao,
             api,
         )
         return viewModel to provider
@@ -498,13 +498,14 @@ class FavoriteTest {
 
     @Test
     fun `init restores a future sleep timer from the dao and arms provider`() = runTest {
-        val playbackStateDao = mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true)
+        val queueDao = mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true)
         val futureEnd = System.currentTimeMillis() + 60_000
-        coEvery { playbackStateDao.get() } returns PersistedPlaybackState(sleepTimerEndMs = futureEnd)
+        coEvery { queueDao.getState() } returns
+            com.lucasdss.ftpmusic.app.data.db.QueueStateEntity(sleepTimerEndMs = futureEnd)
         val (viewModel, provider) = vm(
             mockk(relaxed = true),
             mockk(relaxed = true),
-            playbackStateDao = playbackStateDao,
+            queueDao = queueDao,
         )
         testDispatcher.scheduler.advanceUntilIdle()
 

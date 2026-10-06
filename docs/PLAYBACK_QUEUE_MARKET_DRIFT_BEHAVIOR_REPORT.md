@@ -58,7 +58,7 @@ Gate: PlaybackManager ≥80% line+branch. MediaService whole-file below bar hist
 ## P1 / P2 backlog (no code this cycle)
 
 - ~~Kill local `QueueAutoLoader`~~ — **done** (ADR-0074 PR #2)
-- Merge `playback_state` into `queue_state` (ADR 0007 open) — **follow-up PR #3**
+- ~~Merge `playback_state` into `queue_state`~~ — **done** (ADR-0074 PR #3, DB 57)
 - Prune Overwrite PUSH / settings triad if unused in prod
 - Delete legacy `QueueScreen` (prod = PlayerBar sheet; ADR-0070 ports reorder/remove into sheet first)
 - CP similarity API / Cast Continuous Play

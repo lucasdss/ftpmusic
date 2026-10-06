@@ -1,7 +1,6 @@
 package com.lucasdss.ftpmusic.app.data.db
 
 import androidx.room.*
-import com.lucasdss.ftpmusic.app.playback.PersistedPlaybackState
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -444,6 +443,26 @@ interface QueueDao {
         saveState(current.copy(currentIndex = index, positionMs = positionMs))
     }
 
+    /** Sleep / play / repeat / shuffle extras without clobbering index/position. */
+    @Transaction
+    suspend fun savePlaybackExtras(
+        sleepTimerEndMs: Long,
+        isPlaying: Boolean,
+        repeatMode: Int,
+        shuffleEnabled: Boolean,
+    ) {
+        val current = getState() ?: QueueStateEntity()
+        saveState(
+            current.copy(
+                sleepTimerEndMs = sleepTimerEndMs,
+                isPlaying = isPlaying,
+                repeatMode = repeatMode,
+                shuffleEnabled = shuffleEnabled,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     @Transaction
     suspend fun atomicReplace(items: List<QueueItemEntity>) {
         clear()
@@ -463,17 +482,6 @@ interface QueueDao {
 
     @Query("SELECT COUNT(*) FROM queue_items")
     suspend fun count(): Int
-}
-
-// ── Playback State DAO ─────────────────────────────────────────────────────────
-
-@Dao
-interface PlaybackStateDao {
-    @Query("SELECT * FROM playback_state WHERE id = 1")
-    suspend fun get(): PersistedPlaybackState?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun put(state: PersistedPlaybackState)
 }
 
 // ── Lyrics Cache DAO ──────────────────────────────────────────────────────────────

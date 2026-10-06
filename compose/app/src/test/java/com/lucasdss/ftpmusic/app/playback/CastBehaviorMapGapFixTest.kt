@@ -46,7 +46,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         // Simulate: Cast session was already active when listener added
@@ -82,7 +82,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(
@@ -128,7 +128,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(PlaybackState(title = "T", isPlaying = true, duration = 240000))
@@ -151,7 +151,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         for (i in 1..5) {
@@ -182,7 +182,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(PlaybackState(title = "T", isPlaying = true, duration = 240000))
@@ -216,7 +216,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", sleepTimerEndMs = 1719000000000L))
@@ -235,7 +235,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         // Production: onDeviceVolumeChanged(volume=40, muted=false) sends
@@ -266,7 +266,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", playbackSpeed = 1.25f))
@@ -296,7 +296,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(
@@ -329,7 +329,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         // Cast session playing
@@ -376,7 +376,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         // Cast session playing, then paused
@@ -435,7 +435,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         // Cast session playing with position
@@ -495,7 +495,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         // Start: local playback
@@ -590,7 +590,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(
@@ -631,7 +631,7 @@ class CastBehaviorMapGapFixTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
-                mockk<com.lucasdss.ftpmusic.app.data.db.PlaybackStateDao>(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
                 mockk<SubsonicApi>(relaxed = true),
             )
         provider.emit(PlaybackState(isCasting = true, castDeviceName = "TV", volume = 0.3f, muted = true))

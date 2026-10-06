@@ -522,11 +522,23 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 56 to 57 merges playback_state into queue_state`() {
+        run(AppDatabase.MIGRATION_56_57)
+        verify { db.execSQL(match { it.contains("sleep_timer_end_ms") }) }
+        verify { db.execSQL(match { it.contains("is_playing") }) }
+        verify { db.execSQL(match { it.contains("repeat_mode") }) }
+        verify { db.execSQL(match { it.contains("shuffle_enabled") }) }
+        verify { db.execSQL(match { it.contains("DROP TABLE IF EXISTS playback_state") }) }
+        verify { db.execSQL(match { it.contains("FROM playback_state") }) }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
         assertEquals(54, AppDatabase.ALL_MIGRATIONS_54.last().endVersion)
         assertEquals(55, AppDatabase.ALL_MIGRATIONS_55.last().endVersion)
         assertEquals(56, AppDatabase.ALL_MIGRATIONS_56.last().endVersion)
+        assertEquals(57, AppDatabase.ALL_MIGRATIONS_57.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -552,9 +564,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_50, AppDatabase.ALL_MIGRATIONS_51,
             AppDatabase.ALL_MIGRATIONS_52, AppDatabase.ALL_MIGRATIONS_53,
             AppDatabase.ALL_MIGRATIONS_54, AppDatabase.ALL_MIGRATIONS_55,
-            AppDatabase.ALL_MIGRATIONS_56,
+            AppDatabase.ALL_MIGRATIONS_56, AppDatabase.ALL_MIGRATIONS_57,
         )
-        assertEquals(47, all.size)
+        assertEquals(48, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }
