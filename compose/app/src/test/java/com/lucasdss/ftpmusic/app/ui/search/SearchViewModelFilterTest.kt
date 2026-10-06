@@ -51,6 +51,7 @@ class SearchViewModelFilterTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
     }
 

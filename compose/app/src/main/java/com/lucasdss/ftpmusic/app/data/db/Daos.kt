@@ -535,6 +535,9 @@ interface LyricsCacheDao {
 
     @Query("SELECT * FROM lyrics_cache")
     suspend fun getAll(): List<LyricsCacheEntity>
+
+    @Query("SELECT * FROM lyrics_cache WHERE trackId IN (:ids)")
+    suspend fun getByTrackIds(ids: List<String>): List<LyricsCacheEntity>
 }
 
 // ── Playlist DAO ────────────────────────────────────────────────────────────────

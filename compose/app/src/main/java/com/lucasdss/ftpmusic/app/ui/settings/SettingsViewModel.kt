@@ -133,8 +133,8 @@ class SettingsViewModel @Inject constructor(
         playbackManager.setContinuousPlayEnabled(resolvedContinuousPlay)
         val savedSyncInterval = storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS)?.toIntOrNull()
         val savedPreferItunesArt = storage.get(SecureStorage.KEY_PREFER_ITUNES_ART)?.toBooleanStrictOrNull() ?: false
-        val savedSearchLyrics =
-            storage.get(SecureStorage.KEY_SEARCH_LYRICS)?.toBooleanStrictOrNull() ?: false
+        val rawSearchLyrics = storage.get(SecureStorage.KEY_SEARCH_LYRICS)
+        val savedSearchLyrics = rawSearchLyrics?.toBooleanStrictOrNull() ?: false
         val savedShowPlaylists = storage.get(SecureStorage.KEY_HOME_SHOW_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
         val savedShowFavArtists = storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ARTISTS)?.toBooleanStrictOrNull() ?: true
         val savedShowFavAlbums = storage.get(SecureStorage.KEY_HOME_SHOW_FAV_ALBUMS)?.toBooleanStrictOrNull() ?: true
@@ -186,9 +186,25 @@ class SettingsViewModel @Inject constructor(
         // adapter). Settings UI calls refreshBtResumeState() from LaunchedEffect;
         // skip here so unit tests with a mock Context stay green.
         viewModelScope.launch {
+            maybeEnableSearchLyricsDefault()
+        }
+        viewModelScope.launch {
             metadataSyncWorker.status.collect { s ->
                 _state.value = _state.value.copy(isResyncing = s.isRunning)
             }
+        }
+    }
+
+    /** Phase-6: unset preference + cached lyrics → default-on + rebuild. */
+    private suspend fun maybeEnableSearchLyricsDefault() {
+        val enabled = com.lucasdss.ftpmusic.app.data.search.SearchLyricsDefaults.maybeEnable(
+            storage,
+            lyricsCacheDao,
+        ) {
+            searchIndexRebuilder.scheduleRebuild(debounceMs = 500L)
+        }
+        if (enabled) {
+            _state.value = _state.value.copy(searchLyricsEnabled = true)
         }
     }
 

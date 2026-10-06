@@ -543,7 +543,7 @@ fun SettingsScreen(
                 SectionDivider()
                 SectionToggleRow(
                     label = "Search lyrics",
-                    subtitle = "Include cached lyrics text in local search (rebuilds after next sync)",
+                    subtitle = "Include cached lyrics in local search (rebuilds within ~500ms)",
                     checked = state.searchLyricsEnabled,
                     onToggle = { viewModel.setSearchLyricsEnabled(it) },
                 )

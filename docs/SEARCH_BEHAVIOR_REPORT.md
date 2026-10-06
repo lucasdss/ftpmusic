@@ -1,36 +1,42 @@
 # SEARCH_BEHAVIOR_REPORT
 
-Caveman style. FTP Music search — Phase-5 tags + Discover.
+Caveman style. FTP Music search — Phase-6 lyrics SERP + app-side rank (FTS4).
 
 ## Surfaces
 
 | Surface | Trigger | Corpus |
 |---------|---------|--------|
-| Global Search tab | Typeahead 300ms (≥2 chars) + IME Search | FTS ∪ search3 ∪ Discover |
-| Decade / Mood / Tag chips | Idle → immediate search | Year / tag tokens / Last.fm tags |
-| Filter chips | Horizontal scroll ≥48dp | Type filter |
-| Discover section | After local paint, online | MusicBrainz + Last.fm |
-| Library / pickers | Debounce | LIKE escaped |
+| Global Search tab | Typeahead 300ms (≥2 chars) + IME Search | FTS ∪ search3 ∪ Discover ∪ lyrics |
+| Decade / Mood / Tag chips | Idle → immediate search | Year / tag tokens |
+| From lyrics section | Lyric-only FTS hits | Lyrics cache snippets |
+| Discover | After local paint, online | MusicBrainz + Last.fm |
+| Settings Search lyrics | Toggle / default-on if cache nonempty | FTS lyrics rows |
 
 ## Data flow
 
 ```
-onQueryChanged → keep prior hits + isLoading
-  → debounce → search()
-  → LocalSearch (FTS hydrate-by-id)
-  → paint topHit + sections + matchedTags
-  → search3 union
-  → launchDiscover (MB artists/recordings + Last.fm artist.search or tag.getTopArtists)
-  → scheduleRebuild(3s) on cache / soft-stub
+maybeEnableSearchLyrics (unset + lyrics count>0 → KEY=true + rebuild 500ms)
+onQueryChanged → keep prior + isLoading
+  → LocalSearch FTS hydrate-by-id
+  → split lyric-only vs title tracks
+  → rank (lexical + play_count/recency tie-break)
+  → pickTopHit (exact artist/album > first track)
+  → search3 ∪ Discover
 ```
 
-## Phase-5 shipped
+## FTS5 / BM25 (deferred)
 
-- Mood chips (curated token map) + Tag chips from Room `search_tags`
-- Matched tag strip on results; Last.fm empty tip
-- Discover lane: MusicBrainz + Last.fm; in-library badge; soft-cache artist stub on tap
-- Offline / local-only: Discover hidden; Room tags still work
+FTS5 = newer SQLite FTS with `bm25()` relevance. Room 2.6 only `@Fts4`.
+Device SQLite often lacks FTS5 → need Room 3 + BundledSQLiteDriver.
+Phase-6 keeps FTS4; app-side ranking instead (ADR 0080 / 0083).
+
+## Phase-6 shipped
+
+- From lyrics section + TypeBadge + snippet
+- Default-on when lyrics cache nonempty and preference unset
+- Composite rank + smarter Top result subtitle
+- Settings subtitle: rebuild ~500ms
 
 ## Local-first
 
-Local paint always first. Live Discover secondary. Discogs/Spotify Web API still OOS.
+No keystroke lyrics fetch. Discogs/Spotify OOS. Discover secondary.

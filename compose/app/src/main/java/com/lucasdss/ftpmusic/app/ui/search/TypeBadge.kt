@@ -21,6 +21,7 @@ private val TYPE_COLORS = mapOf(
     "song" to Color(0xFF5B8DEE),
     "playlist" to Color(0xFFF0A040),
     "genre" to Color(0xFF26A69A),
+    "lyrics" to Color(0xFFE57373),
 )
 
 @Composable

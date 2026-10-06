@@ -62,6 +62,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
     }
 
@@ -105,6 +106,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
@@ -295,6 +297,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -334,6 +337,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         assertTrue(viewModel.isLocalOnly())
         viewModel.onQueryChanged("air")
@@ -385,6 +389,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.onQueryChanged("mid")
         viewModel.search()
@@ -418,6 +423,7 @@ class SearchViewModelTest {
                 broken,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         advanceUntilIdle()
         assertFalse(viewModel.isLocalOnly())
@@ -441,6 +447,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         advanceUntilIdle()
         NetworkAvailabilityHolder.resetForTests(false)
@@ -469,6 +476,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.setFilterDownloaded(true)
         viewModel.setFilterDownloaded(false)
@@ -496,6 +504,7 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -555,6 +564,7 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.onQueryChanged("test")
         viewModel.setFilterDownloaded(true)
@@ -586,6 +596,7 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.onQueryChanged("more")
         viewModel.loadMoreSearchResults()
@@ -626,6 +637,7 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         // Seed state via search failure path with empty results
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
@@ -654,6 +666,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.onQueryChanged("ab")
         viewModel.search()
@@ -698,6 +711,7 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
             )
         viewModel.onQueryChanged("rare")
         viewModel.search()

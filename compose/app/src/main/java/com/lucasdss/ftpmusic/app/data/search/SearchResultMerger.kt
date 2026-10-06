@@ -2,7 +2,8 @@ package com.lucasdss.ftpmusic.app.data.search
 
 /**
  * Union server + local search hits by id, then rank by query relevance.
- * Fixes SearchViewModel `ifEmpty` clobber when search3 returns a partial page.
+ * Phase-6: composite lexical + popularity tie-break (FTS4 kept; no BM25).
+ * Lower primary score = better.
  */
 object SearchResultMerger {
 
@@ -41,12 +42,14 @@ object SearchResultMerger {
 
     /**
      * Rank by best match across multiple text fields (title / artist / album).
-     * Lower composite score wins.
+     * Lower composite score wins. Optional [popularityOf] is a descending tie-break
+     * (higher play count / recency wins when lexical tier ties).
      */
     fun <T> rankByFields(
         items: List<T>,
         query: String,
         fieldsOf: (T) -> List<String?>,
+        popularityOf: ((T) -> Long)? = null,
     ): List<T> {
         val q = SearchQueryNormalizer.fold(query)
         if (q.isEmpty() || items.size <= 1) return items
@@ -56,12 +59,28 @@ object SearchResultMerger {
                     .mapNotNull { it?.takeIf { s -> s.isNotBlank() } }
                     .minOfOrNull { rankScore(SearchQueryNormalizer.fold(it), q) }
                     ?: 3
+            }.thenByDescending { item ->
+                popularityOf?.invoke(item) ?: 0L
             }.thenBy {
                 fieldsOf(it).firstOrNull { f -> !f.isNullOrBlank() }
                     ?.let { SearchQueryNormalizer.fold(it) }
                     .orEmpty()
             },
         )
+    }
+
+    /** Combine play_count + recency into a single descending popularity key. */
+    fun trackPopularity(playCount: Int, lastPlayedAt: Long?): Long {
+        val plays = playCount.coerceAtLeast(0).toLong()
+        val recency = (lastPlayedAt ?: 0L) / 1_000_000L // coarse ms→bucket
+        return plays * 1_000_000L + recency
+    }
+
+    /** True when folded name equals folded query (exact entity). */
+    fun isExactName(name: String?, query: String): Boolean {
+        val q = SearchQueryNormalizer.fold(query)
+        if (q.isEmpty()) return false
+        return SearchQueryNormalizer.fold(name.orEmpty()) == q
     }
 
     /** Lower score = better. 0 exact, 1 prefix, 2 contains, 3 other. */

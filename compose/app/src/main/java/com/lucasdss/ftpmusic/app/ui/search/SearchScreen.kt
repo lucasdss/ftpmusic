@@ -731,15 +731,20 @@ fun SearchScreen(
                                         .heightIn(min = 48.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        t.title,
-                                        color = Color.White,
-                                        fontSize = textHeadingS(),
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
-                                    )
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            t.title,
+                                            color = Color.White,
+                                            fontSize = textHeadingS(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        val sub = listOfNotNull(t.artist, t.album).joinToString(" · ")
+                                        if (sub.isNotBlank()) {
+                                            Text(sub, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
+                                        }
+                                    }
                                     TypeBadge("song")
                                 }
                                 HorizontalDivider(
@@ -757,15 +762,17 @@ fun SearchScreen(
                                         .heightIn(min = 48.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        a.name,
-                                        color = Color.White,
-                                        fontSize = textHeadingS(),
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
-                                    )
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            a.name,
+                                            color = Color.White,
+                                            fontSize = textHeadingS(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text("Artist", color = Color(0xFF888888), fontSize = textLabelM())
+                                    }
                                     TypeBadge("artist")
                                 }
                                 HorizontalDivider(
@@ -783,15 +790,19 @@ fun SearchScreen(
                                         .heightIn(min = 48.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        a.name,
-                                        color = Color.White,
-                                        fontSize = textHeadingS(),
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
-                                    )
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            a.name,
+                                            color = Color.White,
+                                            fontSize = textHeadingS(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        a.artist?.let {
+                                            Text(it, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
+                                        }
+                                    }
                                     TypeBadge("album")
                                 }
                                 HorizontalDivider(
@@ -1122,6 +1133,45 @@ fun SearchScreen(
                     }
                 }
 
+                // ── FROM LYRICS (Phase-6) ──
+                if (showSongs && state.lyricsMatches.isNotEmpty()) {
+                    item { SectionHeader("From lyrics") }
+                    items(state.lyricsMatches, key = { "lyric-${it.track.id}" }) { hit ->
+                        val t = hit.track
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onTrackClick(t) }
+                                .padding(horizontal = spacingL(), vertical = spacingM())
+                                .heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    t.title,
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    hit.snippet ?: listOfNotNull(t.artist, t.album).joinToString(" · "),
+                                    color = Color(0xFF888888),
+                                    fontSize = textLabelM(),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            TypeBadge("lyrics")
+                        }
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.04f),
+                            modifier = Modifier.padding(horizontal = spacingL()),
+                        )
+                    }
+                }
+
                 // ── SONGS section ──
                 if (showSongs && state.tracks.isNotEmpty()) {
                     item { SectionHeader("Songs") }
@@ -1371,6 +1421,7 @@ fun SearchScreen(
                                 viewModel.isLocalOnly() -> "Offline — try Downloaded only or sync when online"
                                 state.ftsEmpty -> "Library still indexing — pull to sync or try again shortly"
                                 state.usedSoftTypo -> "Showing close matches — check spelling"
+                                !state.searchLyricsEnabled -> "Enable Search lyrics in Settings to match song words"
                                 else -> "Try another spelling, an artist name, or a decade like 90s"
                             }
                             Text(
