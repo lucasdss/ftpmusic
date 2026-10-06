@@ -106,6 +106,7 @@ class SettingsViewModel @Inject constructor(
     private val metadataSyncWorker: MetadataSyncWorker,
     private val serverConfigStore: com.lucasdss.ftpmusic.app.di.ServerConfigStore,
     private val serverProbe: com.lucasdss.ftpmusic.app.data.network.ServerProbe,
+    private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -227,6 +228,7 @@ class SettingsViewModel @Inject constructor(
     fun setSearchLyricsEnabled(enabled: Boolean) {
         _state.value = _state.value.copy(searchLyricsEnabled = enabled)
         storage.put(SecureStorage.KEY_SEARCH_LYRICS, enabled.toString())
+        searchIndexRebuilder.scheduleRebuild(debounceMs = 500L)
     }
 
     fun setAutoDownloadPlaylists(enabled: Boolean) {

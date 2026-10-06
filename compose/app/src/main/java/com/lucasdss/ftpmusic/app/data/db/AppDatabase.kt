@@ -36,7 +36,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ListenEventEntity::class,
         SearchFtsEntity::class,
     ],
-    version = 59,
+    version = 60,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1075,5 +1075,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_59 = ALL_MIGRATIONS_58 + MIGRATION_58_59
+
+        // Migration 59→60: artist search_tags for Last.fm / multi-tag FTS (Phase-3).
+        val MIGRATION_59_60 = object : Migration(59, 60) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE cached_artists ADD COLUMN search_tags TEXT")
+            }
+        }
+        val ALL_MIGRATIONS_60 = ALL_MIGRATIONS_59 + MIGRATION_59_60
     }
 }

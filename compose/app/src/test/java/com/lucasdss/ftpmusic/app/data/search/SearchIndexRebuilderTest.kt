@@ -12,7 +12,7 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.data.db.SearchFtsDao
 import com.lucasdss.ftpmusic.app.data.db.SearchFtsTypes
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
-import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.db.TrackSearchIndexRow
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -42,10 +42,13 @@ class SearchIndexRebuilderTest {
     fun `rebuildAll inserts track album artist playlist genre rows`() = runTest {
         every { storage.get(SecureStorage.KEY_SEARCH_LYRICS) } returns "false"
         coEvery { trackDao.getAllTracksForSearchIndex() } returns listOf(
-            TrackEntity(id = "t1", title = "Title", artist = "Art", album = "Alb", genre = "Rock"),
+            TrackSearchIndexRow(
+                id = "t1", title = "Title", artist = "Art", album = "Alb",
+                genre = "Rock", path = null, year = 1994, musicbrainzId = null,
+            ),
         )
         coEvery { metadataDao.getAllAlbums() } returns listOf(
-            CachedAlbumEntity(id = "al1", name = "Alb", artist = "Art", notes = "notes"),
+            CachedAlbumEntity(id = "al1", name = "Alb", artist = "Art", notes = "notes", year = 1994),
         )
         coEvery { metadataDao.getAllArtists() } returns listOf(
             CachedArtistEntity(
@@ -53,7 +56,9 @@ class SearchIndexRebuilderTest {
                 name = "Art",
                 biography = "bio",
                 searchAliases = "alias",
+                searchTags = "rock indie",
                 similarArtistsJson = """["x"]""",
+                musicbrainzId = "mbid-1",
             ),
         )
         coEvery { playlistDao.getAll() } returns listOf(
@@ -80,7 +85,10 @@ class SearchIndexRebuilderTest {
             types,
         )
         assertTrue(slot.captured.any { it.entityType == SearchFtsTypes.ARTIST && it.body.contains("bio") })
+        assertTrue(slot.captured.any { it.entityType == SearchFtsTypes.ARTIST && it.body.contains("rock") })
+        assertTrue(slot.captured.any { it.entityType == SearchFtsTypes.ARTIST && it.body.contains("mbid-1") })
         assertTrue(slot.captured.any { it.entityType == SearchFtsTypes.ALBUM && it.body.contains("notes") })
+        assertTrue(slot.captured.any { it.entityType == SearchFtsTypes.TRACK && it.body.contains("1994") })
     }
 
     @Test

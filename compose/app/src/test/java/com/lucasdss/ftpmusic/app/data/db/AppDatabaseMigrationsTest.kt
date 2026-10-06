@@ -550,6 +550,12 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 59 to 60 adds search_tags`() {
+        run(AppDatabase.MIGRATION_59_60)
+        verify { db.execSQL(match { it.contains("search_tags") }) }
+    }
+
+    @Test
     fun `all migrations arrays are ordered and complete`() {
         assertEquals(8, AppDatabase.ALL_MIGRATIONS.size)
         assertEquals(54, AppDatabase.ALL_MIGRATIONS_54.last().endVersion)
@@ -558,6 +564,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(57, AppDatabase.ALL_MIGRATIONS_57.last().endVersion)
         assertEquals(58, AppDatabase.ALL_MIGRATIONS_58.last().endVersion)
         assertEquals(59, AppDatabase.ALL_MIGRATIONS_59.last().endVersion)
+        assertEquals(60, AppDatabase.ALL_MIGRATIONS_60.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -585,8 +592,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_54, AppDatabase.ALL_MIGRATIONS_55,
             AppDatabase.ALL_MIGRATIONS_56, AppDatabase.ALL_MIGRATIONS_57,
             AppDatabase.ALL_MIGRATIONS_58, AppDatabase.ALL_MIGRATIONS_59,
+            AppDatabase.ALL_MIGRATIONS_60,
         )
-        assertEquals(50, all.size)
+        assertEquals(51, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

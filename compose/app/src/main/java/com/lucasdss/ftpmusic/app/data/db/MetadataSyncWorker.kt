@@ -148,6 +148,8 @@ class MetadataSyncWorker(
     private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder? = null,
+    private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService? = null,
+    private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService? = null,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
@@ -181,11 +183,16 @@ class MetadataSyncWorker(
         private const val GENRE_SONG_FETCH_COUNT = 200
 
         /** Top genres by song_count always warmed for local search (beyond mix picks). */
-        private const val SEARCH_INDEX_WARM_GENRE_COUNT = 40
+        private const val SEARCH_INDEX_WARM_GENRE_COUNT = 60
+
+        /** Cap pending album-track drain per non-force sync (Phase-3 corpus). */
+        private const val SEARCH_CORPUS_ALBUM_DRAIN_CAP = 200
 
         private const val ENRICH_DELAY_MS = 250L
         private const val ENRICH_ARTIST_LIMIT = 25
         private const val ENRICH_ALBUM_LIMIT = 15
+        private const val ENRICH_ALIAS_LIMIT = 15
+        private const val ENRICH_TAG_LIMIT = 15
 
         /**
          * Choose periodic sync mode from watermark.
@@ -700,14 +707,14 @@ class MetadataSyncWorker(
     }
 
     /**
-     * Background getArtistInfo2 / getAlbumInfo2 → Room biography/notes/aliases.
-     * Never called from search keystroke path (ADR 0079).
+     * Background getArtistInfo2 / getAlbumInfo2 + MB aliases + Last.fm tags.
+     * Never called from search keystroke path (ADR 0079 / Phase-3).
      */
     internal suspend fun enrichSearchMetadata() {
         val username = SubsonicCredentials.username
         val password = SubsonicCredentials.password
         if (username.isEmpty()) return
-        if (offlineModeManager.isOffline?.value == true) return
+        if (offlineModeManager.isOfflineEnabled()) return
         val params = authHelper.buildAuthParams(username, password)
         val artists = metadataDao.getArtistsNeedingEnrichment(ENRICH_ARTIST_LIMIT)
         for (artist in artists) {
@@ -717,15 +724,54 @@ class MetadataSyncWorker(
                 val sr = response["subsonic-response"] as? Map<*, *> ?: continue
                 val info = sr["artistInfo2"] as? Map<*, *> ?: continue
                 val bio = (info["biography"] as? String)?.take(2000)
+                if (!bio.isNullOrBlank()) {
+                    metadataDao.setArtistBiography(artist.id, bio)
+                }
+                // Similar names stay in similar_artists_json — not search_aliases
                 val similar = (info["similarArtist"] as? List<*>)?.mapNotNull { s ->
                     val m = s as? Map<*, *> ?: return@mapNotNull null
                     m["name"] as? String
-                }?.joinToString(" ")
-                if (!bio.isNullOrBlank() || !similar.isNullOrBlank()) {
-                    metadataDao.setArtistEnrichment(artist.id, bio, similar)
+                }
+                if (!similar.isNullOrEmpty() && artist.similarArtistsJson.isNullOrBlank()) {
+                    val json = similar.joinToString(",", prefix = "[", postfix = "]") { "\"$it\"" }
+                    metadataDao.setArtistSimilarArtists(artist.id, json)
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+            }
+        }
+        // Real aliases from MusicBrainz
+        val mb = musicBrainzService
+        if (mb != null) {
+            for (artist in metadataDao.getArtistsNeedingAliases(ENRICH_ALIAS_LIMIT)) {
+                try {
+                    delay(ENRICH_DELAY_MS)
+                    val mbid = artist.musicbrainzId ?: mb.searchArtistMbid(artist.name) ?: continue
+                    if (artist.musicbrainzId.isNullOrBlank()) {
+                        metadataDao.setArtistPublicRating(artist.id, artist.publicRating, artist.publicRatingVotes, mbid)
+                    }
+                    val aliases = mb.fetchArtistAliases(mbid)
+                    if (aliases.isNotEmpty()) {
+                        metadataDao.setArtistSearchAliases(artist.id, aliases.joinToString(" "))
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                }
+            }
+        }
+        // Last.fm top tags
+        val lfm = lastFmService
+        if (lfm != null && lfm.currentApiKey().isNotEmpty()) {
+            for (artist in metadataDao.getArtistsNeedingTags(ENRICH_TAG_LIMIT)) {
+                try {
+                    delay(ENRICH_DELAY_MS)
+                    val tags = lfm.fetchArtistTopTags(artist.name)
+                    if (tags.isNotEmpty()) {
+                        metadataDao.setArtistSearchTags(artist.id, tags.joinToString(" "))
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                }
             }
         }
         val albums = metadataDao.getAlbumsNeedingEnrichment(ENRICH_ALBUM_LIMIT)
@@ -948,10 +994,16 @@ class MetadataSyncWorker(
             val forceResync = force || storedVersion < METADATA_VERSION
 
             // Pre-filter: only albums that actually need syncing
-            val pendingAlbums = albums.filter { album ->
+            val pendingAlbumsAll = albums.filter { album ->
                 if (forceResync) return@filter true
                 val existing = metadataDao.getAlbumTracks(album.id)
                 !(existing.isNotEmpty() && album.id !in changedAlbumIds)
+            }
+            // Phase-3: cap non-force drain so delta syncs make steady corpus progress
+            val pendingAlbums = if (forceResync) {
+                pendingAlbumsAll
+            } else {
+                pendingAlbumsAll.take(SEARCH_CORPUS_ALBUM_DRAIN_CAP)
             }
             val pendingTotal = pendingAlbums.size
             _status.value = _status.value.copy(

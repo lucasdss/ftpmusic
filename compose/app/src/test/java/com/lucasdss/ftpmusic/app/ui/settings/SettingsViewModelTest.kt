@@ -101,6 +101,7 @@ class SettingsViewModelTest {
         metadataSyncWorker,
         serverConfigStore,
         serverProbe,
+        mockk(relaxed = true), // searchIndexRebuilder
     )
 
     @Test

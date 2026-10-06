@@ -210,9 +210,17 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id IN (:trackIds)")
     suspend fun getTracksByIds(trackIds: List<String>): List<TrackEntity>
 
-    /** Full scan for FTS rebuild only — not for UI. */
-    @Query("SELECT * FROM tracks")
-    suspend fun getAllTracksForSearchIndex(): List<TrackEntity>
+    /** Full scan for FTS rebuild only — not for UI. Joins album year for decade search. */
+    @Query(
+        """
+        SELECT t.id AS id, t.title AS title, t.artist AS artist, t.album AS album,
+               t.genre AS genre, t.path AS path, a.year AS year,
+               t.musicbrainz_id AS musicbrainzId
+        FROM tracks t
+        LEFT JOIN cached_albums a ON t.album_id = a.id
+        """,
+    )
+    suspend fun getAllTracksForSearchIndex(): List<TrackSearchIndexRow>
 
     /** Reactive watch over many tracks with ONE query — re-run on any `tracks`
      *  invalidation instead of one flow per track (album detail used to register
@@ -769,15 +777,38 @@ interface CachedMetadataDao {
     )
     suspend fun setArtistEnrichment(artistId: String, biography: String?, aliases: String?)
 
+    @Query("UPDATE cached_artists SET biography = :biography WHERE id = :artistId")
+    suspend fun setArtistBiography(artistId: String, biography: String?)
+
+    @Query("UPDATE cached_artists SET search_aliases = :aliases WHERE id = :artistId")
+    suspend fun setArtistSearchAliases(artistId: String, aliases: String?)
+
+    @Query("UPDATE cached_artists SET search_tags = :tags WHERE id = :artistId")
+    suspend fun setArtistSearchTags(artistId: String, tags: String?)
+
     @Query("UPDATE cached_albums SET notes = :notes WHERE id = :albumId")
     suspend fun setAlbumNotes(albumId: String, notes: String?)
 
-    /** Artists missing enrichment — background getArtistInfo2 fill. */
+    /** Artists missing biography — background getArtistInfo2 fill. */
     @Query(
         "SELECT * FROM cached_artists WHERE biography IS NULL OR biography = '' " +
             "ORDER BY album_count DESC LIMIT :limit",
     )
     suspend fun getArtistsNeedingEnrichment(limit: Int): List<CachedArtistEntity>
+
+    /** Artists missing real aliases — MusicBrainz fill. */
+    @Query(
+        "SELECT * FROM cached_artists WHERE search_aliases IS NULL OR search_aliases = '' " +
+            "ORDER BY album_count DESC LIMIT :limit",
+    )
+    suspend fun getArtistsNeedingAliases(limit: Int): List<CachedArtistEntity>
+
+    /** Artists missing tags — Last.fm top-tags fill. */
+    @Query(
+        "SELECT * FROM cached_artists WHERE search_tags IS NULL OR search_tags = '' " +
+            "ORDER BY album_count DESC LIMIT :limit",
+    )
+    suspend fun getArtistsNeedingTags(limit: Int): List<CachedArtistEntity>
 
     @Query(
         "SELECT * FROM cached_albums WHERE notes IS NULL OR notes = '' " +
@@ -788,6 +819,9 @@ interface CachedMetadataDao {
     @Query(
         "SELECT * FROM cached_artists WHERE name LIKE '%' || :query || '%' ESCAPE '\\' " +
             "OR similar_artists_json LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR search_aliases LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR search_tags LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR biography LIKE '%' || :query || '%' ESCAPE '\\' " +
             "ORDER BY name ASC LIMIT 100",
     )
     suspend fun searchArtists(query: String): List<CachedArtistEntity>
