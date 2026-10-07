@@ -1,7 +1,10 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
 import android.app.Application
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import io.mockk.every
@@ -155,7 +158,7 @@ class HomeScreenComposeTest {
     }
 
     @Test
-    fun `see all invokes onPlaylistsClick`() {
+    fun `see all chevron invokes onPlaylistsClick`() {
         val vm = mockViewModel(
             LibraryState(
                 playlists = listOf(PlaylistView(id = "pl-1", name = "Road Trip", trackCount = 3, isSynced = true)),
@@ -164,7 +167,7 @@ class HomeScreenComposeTest {
         )
         var clicked = false
         composeRule.setContent { HomeScreen(viewModel = vm, onPlaylistsClick = { clicked = true }) }
-        composeRule.onNodeWithText("See all").performClick()
+        composeRule.onNodeWithContentDescription("See all playlists").performClick()
         assertTrue(clicked)
     }
 
@@ -195,6 +198,119 @@ class HomeScreenComposeTest {
         composeRule.onNodeWithText("Gym Mix").performClick()
         assertEquals("pl-2", openedPlaylist)
         assertFalse(seeAllClicked)
+    }
+
+    @Test
+    fun `favorite artists see all invokes onFavoritesClick`() {
+        val vm = mockViewModel(
+            LibraryState(
+                starredArtists = listOf(
+                    com.lucasdss.ftpmusic.app.data.db.ArtistEntity(id = "ar-1", name = "Neon Circuit"),
+                ),
+                showFavArtistsSection = true,
+            ),
+        )
+        var clicked = false
+        composeRule.setContent { HomeScreen(viewModel = vm, onFavoritesClick = { clicked = true }) }
+        composeRule.onNodeWithContentDescription("See all favorite artists").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun `favorite albums see all invokes onFavoritesClick`() {
+        val vm = mockViewModel(
+            LibraryState(
+                starredAlbums = listOf(
+                    com.lucasdss.ftpmusic.app.data.db.AlbumEntity(
+                        id = "al-1",
+                        name = "Static Bloom",
+                        artist = "Neon Circuit",
+                    ),
+                ),
+                showFavAlbumsSection = true,
+            ),
+        )
+        var clicked = false
+        composeRule.setContent { HomeScreen(viewModel = vm, onFavoritesClick = { clicked = true }) }
+        composeRule.onNodeWithContentDescription("See all favorite albums").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun `favorite radio see all invokes onFavoritesClick`() {
+        val vm = mockViewModel(
+            LibraryState(
+                bookmarkedRadio = listOf(
+                    com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity(
+                        stationId = "st-1",
+                        name = "Retro Wave",
+                        streamUrl = "https://s",
+                    ),
+                ),
+                showFavRadioSection = true,
+            ),
+        )
+        var clicked = false
+        composeRule.setContent { HomeScreen(viewModel = vm, onFavoritesClick = { clicked = true }) }
+        composeRule.onNodeWithContentDescription("See all favorite radio").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun `recently added see all invokes onRecentlyAddedClick`() {
+        val vm = mockViewModel(
+            LibraryState(
+                randomAlbums = listOf(
+                    com.lucasdss.ftpmusic.app.data.model.Album(
+                        id = "al-r1",
+                        name = "Fresh Cuts",
+                        artist = "DJ Local",
+                    ),
+                ),
+            ),
+        )
+        var clicked = false
+        composeRule.setContent { HomeScreen(viewModel = vm, onRecentlyAddedClick = { clicked = true }) }
+        composeRule.onNodeWithText("Recently Added").assertExists()
+        composeRule.onNodeWithContentDescription("See all recently added").performClick()
+        assertTrue(clicked)
+    }
+
+    @Test
+    fun `tuned in has no see-all trailing action`() {
+        val vm = mockViewModel(LibraryState(genres = listOf("Metal", "Blues")))
+        composeRule.setContent { HomeScreen(viewModel = vm) }
+        composeRule.onNodeWithText("Tuned In").assertExists()
+        composeRule.onAllNodesWithContentDescription("See all", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `daily mixes refresh action is present when mixes exist`() {
+        val vm = mockViewModel(
+            LibraryState(
+                mixCards = listOf(MixCard(id = 1L, name = "Rock Mix", coverArts = emptyList(), songCount = 42)),
+            ),
+        )
+        composeRule.setContent { HomeScreen(viewModel = vm) }
+        composeRule.onNodeWithContentDescription("Refresh mixes").assertExists()
+    }
+
+    @Test
+    fun `recently added has no dead refresh trailing`() {
+        val vm = mockViewModel(
+            LibraryState(
+                randomAlbums = listOf(
+                    com.lucasdss.ftpmusic.app.data.model.Album(
+                        id = "al-r1",
+                        name = "Fresh Cuts",
+                        artist = "DJ Local",
+                    ),
+                ),
+            ),
+        )
+        composeRule.setContent { HomeScreen(viewModel = vm) }
+        composeRule.onNodeWithContentDescription("Refresh mixes").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("See all recently added").assertExists()
     }
 
     @Test

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -76,6 +77,8 @@ fun HomeScreen(
     onPlaylistClick: (String) -> Unit = {},
     onArtistClick: (String) -> Unit = {},
     onRadioStationClick: (com.lucasdss.ftpmusic.app.ui.library.RadioStation) -> Unit = {},
+    onFavoritesClick: () -> Unit = {},
+    onRecentlyAddedClick: () -> Unit = {},
     // Active track for EQ animation in Recently Played and Recently Added
     currentTrackId: String? = null,
     currentAlbumId: String? = null,
@@ -175,39 +178,22 @@ fun HomeScreen(
                 // ── Daily Mixes ──
                 if (state.mixCards.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = spacingL(), vertical = spacingXS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FittingText(
-                                text = "Daily Mixes",
-                                color = Color.White,
-                                fontSize = textHeadingM(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                fillMaxWidth = false,
-                            )
-                            IconButton(
+                        HomeSectionHeader(
+                            title = "Daily Mixes",
+                            leadingIcon = Icons.Default.AutoAwesome,
+                            trailing = HomeSectionTrailing.Refresh(
                                 onClick = { viewModel.refreshAllMixes() },
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.Refresh,
-                                    "Refresh mixes",
-                                    tint = BrandTeal,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
+                                contentDescription = "Refresh mixes",
+                            ),
+                        )
                     }
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier.semantics { testTag = "daily_mix_row" },
+                            modifier = Modifier
+                                .padding(bottom = spacingM())
+                                .semantics { testTag = "daily_mix_row" },
                         ) {
                             items(state.mixCards, key = { it.id }) { mix ->
                                 GenreMixCard(
@@ -242,33 +228,22 @@ fun HomeScreen(
                 // ── Playlists (synced only) ──
                 if (state.showPlaylistsOnHome && syncedPlaylists.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FittingText(
-                                text = "Playlists",
-                                color = Color.White,
-                                fontSize = textHeadingM(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                fillMaxWidth = false,
-                            )
-                            Text(
-                                "See all",
-                                color = BrandTeal,
-                                fontSize = textLabelM(),
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { onPlaylistsClick() },
-                            )
-                        }
+                        HomeSectionHeader(
+                            title = "Playlists",
+                            leadingIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                            trailing = HomeSectionTrailing.SeeAll(
+                                onClick = onPlaylistsClick,
+                                contentDescription = "See all playlists",
+                            ),
+                        )
                     }
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier.semantics { testTag = "home_playlists_row" },
+                            modifier = Modifier
+                                .padding(bottom = spacingM())
+                                .semantics { testTag = "home_playlists_row" },
                         ) {
                             items(syncedPlaylists, key = { it.id }) { pl ->
                                 HomePlaylistCard(
@@ -284,32 +259,22 @@ fun HomeScreen(
                 // ── Favorite Artists ──
                 if (state.showFavArtistsSection && state.starredArtists.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FittingText(
-                                text = "Favorite Artists",
-                                color = Color.White,
-                                fontSize = textHeadingM(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                fillMaxWidth = false,
-                            )
-                            Icon(
-                                Icons.Default.ThumbUp,
-                                null,
-                                tint = BrandTeal,
-                                modifier = Modifier.size(14.dp),
-                            )
-                        }
+                        HomeSectionHeader(
+                            title = "Favorite Artists",
+                            leadingIcon = Icons.Default.ThumbUp,
+                            trailing = HomeSectionTrailing.SeeAll(
+                                onClick = onFavoritesClick,
+                                contentDescription = "See all favorite artists",
+                            ),
+                        )
                     }
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier.semantics { testTag = "home_fav_artists_row" },
+                            modifier = Modifier
+                                .padding(bottom = spacingM())
+                                .semantics { testTag = "home_fav_artists_row" },
                         ) {
                             items(state.starredArtists, key = { it.id }) { artist ->
                                 Column(
@@ -340,32 +305,22 @@ fun HomeScreen(
                 // ── Favorite Albums ──
                 if (state.showFavAlbumsSection && state.starredAlbums.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FittingText(
-                                text = "Favorite Albums",
-                                color = Color.White,
-                                fontSize = textHeadingM(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                fillMaxWidth = false,
-                            )
-                            Icon(
-                                Icons.Default.ThumbUp,
-                                null,
-                                tint = BrandTeal,
-                                modifier = Modifier.size(14.dp),
-                            )
-                        }
+                        HomeSectionHeader(
+                            title = "Favorite Albums",
+                            leadingIcon = Icons.Default.ThumbUp,
+                            trailing = HomeSectionTrailing.SeeAll(
+                                onClick = onFavoritesClick,
+                                contentDescription = "See all favorite albums",
+                            ),
+                        )
                     }
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier.semantics { testTag = "home_fav_albums_row" },
+                            modifier = Modifier
+                                .padding(bottom = spacingM())
+                                .semantics { testTag = "home_fav_albums_row" },
                         ) {
                             items(state.starredAlbums, key = { it.id }) { album ->
                                 Column(
@@ -424,32 +379,22 @@ fun HomeScreen(
                 // ── Favorite Radio ──
                 if (state.showFavRadioSection && state.bookmarkedRadio.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FittingText(
-                                text = "Favorite Radio",
-                                color = Color.White,
-                                fontSize = textHeadingM(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                fillMaxWidth = false,
-                            )
-                            Icon(
-                                Icons.Default.Bookmark,
-                                null,
-                                tint = BrandTeal,
-                                modifier = Modifier.size(14.dp),
-                            )
-                        }
+                        HomeSectionHeader(
+                            title = "Favorite Radio",
+                            leadingIcon = Icons.Default.Bookmark,
+                            trailing = HomeSectionTrailing.SeeAll(
+                                onClick = onFavoritesClick,
+                                contentDescription = "See all favorite radio",
+                            ),
+                        )
                     }
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier.semantics { testTag = "home_fav_radio_row" },
+                            modifier = Modifier
+                                .padding(bottom = spacingM())
+                                .semantics { testTag = "home_fav_radio_row" },
                         ) {
                             items(state.bookmarkedRadio, key = { it.stationId }) { station ->
                                 HomeRadioPill(
@@ -473,32 +418,19 @@ fun HomeScreen(
                 // ── Tuned In genres ──
                 if (state.genres.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = spacingL(), vertical = spacingXS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FittingText(
-                                text = "Tuned In",
-                                color = Color.White,
-                                fontSize = textHeadingM(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                fillMaxWidth = false,
-                            )
-                            Icon(
-                                Icons.Default.ChevronRight,
-                                null,
-                                tint = NavUnselected,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                        HomeSectionHeader(
+                            title = "Tuned In",
+                            leadingIcon = Icons.Default.Tune,
+                        )
                     }
                     item {
                         FlowRow(
-                            modifier = Modifier.padding(horizontal = spacingL(), vertical = 6.dp),
+                            modifier = Modifier.padding(
+                                start = spacingL(),
+                                end = spacingL(),
+                                top = spacingXS(),
+                                bottom = spacingM(),
+                            ),
                             horizontalArrangement = Arrangement.spacedBy(spacingS()),
                             verticalArrangement = Arrangement.spacedBy(spacingS()),
                         ) {
@@ -517,11 +449,11 @@ fun HomeScreen(
                                         .clip(RoundedCornerShape(50))
                                         .background(color.copy(alpha = 0.13f))
                                         .clickable { onGenreClick(genre) }
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        .padding(horizontal = spacingS(), vertical = spacingXS()),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(Icons.Filled.PlayArrow, null, tint = color, modifier = Modifier.size(adp(10f)))
-                                    Spacer(Modifier.width(4.dp))
+                                    Spacer(Modifier.width(spacingXS()))
                                     FittingText(
                                         text = genre,
                                         color = color,
@@ -539,40 +471,20 @@ fun HomeScreen(
                 // ── Recently Added albums ──
                 if (state.randomAlbums.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = spacingL(), vertical = spacingXS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FittingText(
-                                text = "Recently Added",
-                                color = Color.White,
-                                fontSize = textHeadingM(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                fillMaxWidth = false,
-                            )
-                            Icon(
-                                Icons.Default.Refresh,
-                                null,
-                                tint = NavUnselected,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Icon(
-                                Icons.Default.ChevronRight,
-                                null,
-                                tint = NavUnselected,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                        HomeSectionHeader(
+                            title = "Recently Added",
+                            leadingIcon = Icons.Default.NewReleases,
+                            trailing = HomeSectionTrailing.SeeAll(
+                                onClick = onRecentlyAddedClick,
+                                contentDescription = "See all recently added",
+                            ),
+                        )
                     }
-                    item { Spacer(Modifier.height(4.dp)) }
                     item {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
+                            modifier = Modifier.padding(bottom = spacingM()),
                         ) {
                             items(state.randomAlbums.take(10), key = { it.id }) { album ->
                                 val isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying
@@ -589,7 +501,7 @@ fun HomeScreen(
                     }
                 }
 
-                item { Spacer(Modifier.height(8.dp)) }
+                item { Spacer(Modifier.height(spacingL())) }
             }
         }
     }
@@ -641,15 +553,75 @@ fun HomeScreen(
     }
 }
 
+/** Trailing Home section action — only when wired to a real destination/effect. */
+private sealed class HomeSectionTrailing {
+    abstract val onClick: () -> Unit
+    abstract val contentDescription: String
+    abstract val icon: ImageVector
+
+    data class Refresh(override val onClick: () -> Unit, override val contentDescription: String = "Refresh mixes") :
+        HomeSectionTrailing() {
+        override val icon: ImageVector = Icons.Default.Refresh
+    }
+
+    data class SeeAll(override val onClick: () -> Unit, override val contentDescription: String) :
+        HomeSectionTrailing() {
+        override val icon: ImageVector = Icons.Default.ChevronRight
+    }
+}
+
+/**
+ * Standard Home shelf header: leading category glyph tight to title;
+ * optional trailing IconButton (Refresh / See-all chevron). ADR 0089.
+ */
 @Composable
-private fun SectionHeaderHome(title: String) {
-    Text(
-        title,
-        color = Color.White,
-        fontSize = textHeadingM(),
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
-    )
+private fun HomeSectionHeader(
+    title: String,
+    leadingIcon: ImageVector,
+    trailing: HomeSectionTrailing? = null,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(
+                start = spacingL(),
+                end = spacingL(),
+                top = spacing2XL(),
+                bottom = spacingXS(),
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            leadingIcon,
+            contentDescription = null,
+            tint = BrandTeal,
+            modifier = Modifier.size(adp(16f)),
+        )
+        Spacer(Modifier.width(spacingXS()))
+        FittingText(
+            text = title,
+            color = Color.White,
+            fontSize = textHeadingM(),
+            minFontSize = textMicro(),
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
+            fillMaxWidth = false,
+        )
+        if (trailing != null) {
+            IconButton(
+                onClick = trailing.onClick,
+                modifier = Modifier.size(adp(40f)),
+            ) {
+                Icon(
+                    trailing.icon,
+                    contentDescription = trailing.contentDescription,
+                    tint = BrandTeal,
+                    modifier = Modifier.size(adp(18f)),
+                )
+            }
+        }
+    }
 }
 
 @Composable

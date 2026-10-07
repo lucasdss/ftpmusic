@@ -530,6 +530,16 @@ fun FtpmusicNavHost() {
                         onRadioStationClick = { station ->
                             playbackViewModel.playStream(station.streamUrl, station.name)
                         },
+                        onFavoritesClick = {
+                            TabNavigationPolicy.resolveActiveTabForDestination("favorites")
+                                ?.let { activeBottomTab = it }
+                            navController.navigate("favorites") { launchSingleTop = true }
+                        },
+                        onRecentlyAddedClick = {
+                            TabNavigationPolicy.resolveActiveTabForDestination("library?tab=albums")
+                                ?.let { activeBottomTab = it }
+                            navController.navigate("library?tab=albums") { launchSingleTop = true }
+                        },
                         currentTrackId = playbackState.currentTrackId,
                         currentAlbumId = playbackState.albumId,
                         isPlaying = playbackState.isPlaying,
