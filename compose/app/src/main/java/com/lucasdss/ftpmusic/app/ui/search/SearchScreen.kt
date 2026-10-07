@@ -116,11 +116,11 @@ fun SearchScreen(
         } catch (_: Exception) {}
     }
 
-    // Auto-search when navigated with an initial query from Home
+    // Auto-search when navigated with an initial query from Home (commit recent).
     LaunchedEffect(initialQuery) {
         if (initialQuery.isNotBlank()) {
             viewModel.onQueryChanged(initialQuery)
-            viewModel.search()
+            viewModel.search(commitRecent = true)
         }
     }
 
@@ -208,7 +208,7 @@ fun SearchScreen(
                             },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = {
-                                viewModel.search()
+                                viewModel.search(commitRecent = true)
                                 focusManager.clearFocus()
                             }),
                         )

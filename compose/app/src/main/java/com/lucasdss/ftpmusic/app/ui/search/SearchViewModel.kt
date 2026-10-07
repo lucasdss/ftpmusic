@@ -349,7 +349,8 @@ class SearchViewModel @Inject constructor(
             typeaheadJob = viewModelScope.launch {
                 delay(TYPEAHEAD_DEBOUNCE_MS)
                 if (_state.value.query.trim() == trimmed) {
-                    search()
+                    // Live results only — do not pollute recent history (ADR 0098).
+                    search(commitRecent = false)
                 }
             }
         } else {
@@ -364,7 +365,7 @@ class SearchViewModel @Inject constructor(
         discoverJob?.cancel()
         lastTagChipQuery = null
         _state.value = _state.value.copy(query = decade, isLoading = true)
-        search()
+        search(commitRecent = true)
     }
 
     /** Tag chip: immediate local search; optional Last.fm Discover boost. */
@@ -374,7 +375,7 @@ class SearchViewModel @Inject constructor(
         discoverJob?.cancel()
         lastTagChipQuery = tag
         _state.value = _state.value.copy(query = tag, isLoading = true)
-        search()
+        search(commitRecent = true)
     }
 
     fun onMoodChip(moodLabel: String) {
@@ -384,7 +385,12 @@ class SearchViewModel @Inject constructor(
         onTagChip(q)
     }
 
-    fun search() {
+    /**
+     * Run search. [commitRecent] true = YT Music commit (IME / chip / recent /
+     * deep-link) and writes history; false = typeahead / retry / offline flip
+     * — live results only (ADR 0098).
+     */
+    fun search(commitRecent: Boolean = false) {
         val query = _state.value.query.trim()
         if (query.length < MIN_QUERY_LEN) return
         typeaheadJob?.cancel()
@@ -451,6 +457,7 @@ class SearchViewModel @Inject constructor(
                         ftsRanks = ranks,
                         searchError = null,
                     )
+                    if (commitRecent) saveRecentSearch(query)
                     return@launch
                 }
 
@@ -579,7 +586,7 @@ class SearchViewModel @Inject constructor(
                     topHit = pickTopHit(query, filteredTracks, mergedArtists, mergedAlbums),
                     searchError = null,
                 )
-                saveRecentSearch(query)
+                if (commitRecent) saveRecentSearch(query)
                 // Cache server results to local DB for offline reuse
                 cacheServerResults(results)
             } catch (e: CancellationException) {
@@ -609,7 +616,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    fun retrySearch() = search()
+    fun retrySearch() = search(commitRecent = false)
 
     fun clearAllRecent() {
         _state.value = _state.value.copy(recentSearches = emptyList())
@@ -652,7 +659,7 @@ class SearchViewModel @Inject constructor(
     fun onRecentTap(query: String) {
         typeaheadJob?.cancel()
         _state.value = _state.value.copy(query = query)
-        search()
+        search(commitRecent = true)
     }
 
     fun loadMoreSearchResults() {

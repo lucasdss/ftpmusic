@@ -20,6 +20,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -200,15 +201,15 @@ class SearchViewModelTest {
             SearchResults()
         every { storage.put(any(), any()) } returns Unit
 
-        // Perform searches to populate recents
+        // Perform searches to populate recents (explicit commit)
         viewModel.onQueryChanged("rock")
-        viewModel.search()
+        viewModel.search(commitRecent = true)
         advanceUntilIdle()
         viewModel.onQueryChanged("pop")
-        viewModel.search()
+        viewModel.search(commitRecent = true)
         advanceUntilIdle()
         viewModel.onQueryChanged("jazz")
-        viewModel.search()
+        viewModel.search(commitRecent = true)
         advanceUntilIdle()
 
         val before = viewModel.state.first { it.recentSearches.size == 3 }
@@ -226,11 +227,11 @@ class SearchViewModelTest {
         coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
             SearchResults()
 
-        // Perform 12 different searches — each calls saveRecentSearch which caps at 10
+        // Perform 12 committed searches — each saveRecentSearch caps at 10
         every { storage.put(any(), any()) } returns Unit
         for (i in 1..12) {
             viewModel.onQueryChanged("query$i")
-            viewModel.search()
+            viewModel.search(commitRecent = true)
             advanceUntilIdle()
         }
 
@@ -249,20 +250,103 @@ class SearchViewModelTest {
 
         // pre-populate with some queries
         viewModel.onQueryChanged("rock")
-        viewModel.search()
+        viewModel.search(commitRecent = true)
         advanceUntilIdle()
         viewModel.onQueryChanged("pop")
-        viewModel.search()
+        viewModel.search(commitRecent = true)
         advanceUntilIdle()
 
         // Search for "rock" again — should move to front, no duplicate
         viewModel.onQueryChanged("rock")
-        viewModel.search()
+        viewModel.search(commitRecent = true)
         advanceUntilIdle()
 
         val state = viewModel.state.first { it.hasSearched && it.recentSearches.size == 2 }
         assertEquals("rock", state.recentSearches[0])
         assertEquals("pop", state.recentSearches[1])
+    }
+
+    @Test
+    fun `typeahead does not write recent history until commit`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { repository.search(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns
+            SearchResults()
+        every { storage.put(any(), any()) } returns Unit
+
+        viewModel.onQueryChanged("ro")
+        advanceTimeBy(300)
+        advanceUntilIdle()
+        viewModel.onQueryChanged("roc")
+        advanceTimeBy(300)
+        advanceUntilIdle()
+        viewModel.onQueryChanged("rock")
+        advanceTimeBy(300)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.hasSearched)
+        assertTrue(
+            "typeahead must not pollute recents",
+            viewModel.state.value.recentSearches.isEmpty(),
+        )
+
+        viewModel.search(commitRecent = true)
+        advanceUntilIdle()
+
+        assertEquals(listOf("rock"), viewModel.state.value.recentSearches)
+    }
+
+    @Test
+    fun `local-only commit persists recent search`() = runTest(testDispatcher) {
+        val offlineFlow = MutableStateFlow(true)
+        val offlineManager = mockk<OfflineModeManager>()
+        every { offlineManager.isOffline } returns offlineFlow
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.put(any(), any()) } returns Unit
+
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        val metadataDao = mockk<com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao>(relaxed = true)
+        val localSearch = mockk<LocalSearchRepository>()
+        coEvery { localSearch.search("rock", any(), playableOnly = true) } returns LocalSearchHit(
+            tracks = listOf(
+                TrackEntity(
+                    id = "t1",
+                    title = "Rock Song",
+                    artist = "Artist",
+                    coverArtUrl = "",
+                    durationSeconds = 100,
+                    isDownloaded = true,
+                ),
+            ),
+        )
+
+        viewModel =
+            SearchViewModel(
+                repository,
+                storage,
+                genreDao,
+                trackDao,
+                metadataDao,
+                mockk(relaxed = true), // playlistDao
+                localSearch,
+                mockk(relaxed = true), // searchIndexRebuilder
+                mockk(relaxed = true), // metadataSyncWorker
+                api,
+                offlineManager,
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // lyricsCache
+            )
+        // Force NetworkAvailability so LocalOnlyPolicy treats offline as local-only.
+        NetworkAvailabilityHolder.resetForTests(false)
+        viewModel.onQueryChanged("rock")
+        viewModel.search(commitRecent = true)
+        advanceUntilIdle()
+
+        assertEquals(listOf("rock"), viewModel.state.value.recentSearches)
+        coVerify(exactly = 0) { repository.search(any(), any(), any(), any()) }
+        NetworkAvailabilityHolder.resetForTests(true)
     }
 
     @Test
