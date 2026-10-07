@@ -149,8 +149,22 @@ class MediaServiceFgsReassertTest {
 
     @Test
     fun `only explicit playback start requires foreground promotion`() {
-        assertTrue(shouldPromotePlaybackOnCreate(true))
-        assertFalse(shouldPromotePlaybackOnCreate(false))
+        assertTrue(shouldPromotePlaybackOnCreate(foregroundRequested = true))
+        assertTrue(shouldPromotePlaybackOnCreate(foregroundRequested = false, btAutoplayRequested = true))
+        assertTrue(
+            shouldPromotePlaybackOnCreate(
+                foregroundRequested = false,
+                btAutoplayRequested = false,
+                backgroundWarmStart = false,
+            ),
+        )
+        assertFalse(
+            shouldPromotePlaybackOnCreate(
+                foregroundRequested = false,
+                btAutoplayRequested = false,
+                backgroundWarmStart = true,
+            ),
+        )
         assertTrue(shouldReassertPlayback(MediaServiceStartRequest.ACTION_PLAYBACK))
         assertTrue(shouldReassertPlayback(MediaServiceStartRequest.ACTION_BT_AUTOPLAY))
         assertTrue(shouldReassertPlayback(MediaServiceStartRequest.ACTION_CAR_BT_AUTOPLAY))

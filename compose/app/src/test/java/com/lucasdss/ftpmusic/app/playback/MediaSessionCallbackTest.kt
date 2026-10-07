@@ -65,6 +65,7 @@ class MediaSessionCallbackTest {
         localSearch = null,
         persistenceManager = persistenceManager,
         scope = CoroutineScope(Dispatchers.Unconfined),
+        mainDispatcher = Dispatchers.Unconfined,
     )
 
     @Test
@@ -787,6 +788,7 @@ class MediaSessionCallbackTest {
             shuffleEnabled = true,
         )
         val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 0
         val session = mockk<androidx.media3.session.MediaSession>(relaxed = true)
         every { session.player } returns player
 
@@ -815,6 +817,7 @@ class MediaSessionCallbackTest {
             shuffleEnabled = true,
         )
         val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 0
         val session = mockk<androidx.media3.session.MediaSession>(relaxed = true)
         every { session.player } returns player
 
@@ -824,6 +827,44 @@ class MediaSessionCallbackTest {
         assertEquals(1, result.mediaItems.size)
         verify(exactly = 0) { player.repeatMode = any() }
         verify(exactly = 0) { player.shuffleModeEnabled = any() }
+    }
+
+    @Test
+    fun `onPlaybackResumption uses seated player and skips Room`() {
+        val persistence = mockk<QueuePersistenceManager>(relaxed = true)
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 1
+        every { player.currentMediaItemIndex } returns 0
+        every { player.currentPosition } returns 100L
+        every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("seated").build()
+        val session = mockk<androidx.media3.session.MediaSession>(relaxed = true)
+        every { session.player } returns player
+
+        val callback = createCallback(mockk(relaxed = true), persistenceManager = persistence)
+        val result = callback.onPlaybackResumption(session, mockk(relaxed = true), true).get()
+
+        assertEquals("seated", result.mediaItems[0].mediaId)
+        coVerify(exactly = 0) { persistence.restore() }
+    }
+
+    @Test
+    fun `destroy does not kill subsequent resumption`() {
+        val persistence = mockk<QueuePersistenceManager>()
+        coEvery { persistence.restore() } returns SavedQueueState(
+            tracks = listOf(com.lucasdss.ftpmusic.app.data.model.Track(id = "t1", title = "Song")),
+            urls = listOf("https://example.com/t1"),
+            currentIndex = 0,
+            positionMs = 0L,
+        )
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 0
+        val session = mockk<androidx.media3.session.MediaSession>(relaxed = true)
+        every { session.player } returns player
+        val callback = createCallback(mockk(relaxed = true), persistenceManager = persistence)
+        callback.destroy()
+        val result = callback.onPlaybackResumption(session, mockk(relaxed = true), false).get()
+        assertEquals(1, result.mediaItems.size)
     }
 
     @Test

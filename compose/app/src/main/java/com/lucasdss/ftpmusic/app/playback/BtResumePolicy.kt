@@ -28,6 +28,9 @@ enum class BtResumeMode {
 object BtResumePolicy {
     const val DEBOUNCE_MS = 5_000L
 
+    /** Debounce key when ANY mode cannot read the device MAC (ADR-0088). */
+    const val ANY_UNKNOWN_MAC_KEY = "*"
+
     fun shouldResume(
         enabled: Boolean,
         mode: BtResumeMode,
@@ -40,7 +43,13 @@ object BtResumePolicy {
     ): Boolean {
         if (!enabled) return false
         if (casting) return false
-        val mac = normalizeMac(deviceMac) ?: return false
+        val normalized = normalizeMac(deviceMac)
+        val mac = when {
+            normalized != null -> normalized
+            // ADR-0088: ANY still arms when CONNECT perm denies address read.
+            mode == BtResumeMode.ANY -> ANY_UNKNOWN_MAC_KEY
+            else -> return false
+        }
         when (mode) {
             BtResumeMode.ANY -> Unit
 

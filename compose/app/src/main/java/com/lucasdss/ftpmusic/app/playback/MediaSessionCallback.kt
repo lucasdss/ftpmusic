@@ -15,11 +15,12 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import java.net.URLEncoder
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.withContext
 
 /**
  * Implements the Android SDK-recommended pattern for MediaLibrarySession:
@@ -46,6 +47,7 @@ class MediaSessionCallback(
     private val localSearch: com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository? = null,
     private val persistenceManager: QueuePersistenceManager? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MediaLibraryService.MediaLibrarySession.Callback {
 
     override fun onAddMediaItems(
@@ -67,15 +69,27 @@ class MediaSessionCallback(
     }
 
     /**
-     * ADR-0087: rebuild last queue from Room for BT / System UI resumption.
+     * ADR-0087/0088: rebuild last queue from Room for BT / System UI resumption.
      * Never returns an empty playlist when a saved queue exists (Media3 FGS hazard).
      * When no queue: fail like the Media3 default (UnsupportedOperationException).
+     * If the player is already seated (BT eager restore), return that playlist.
      */
     override fun onPlaybackResumption(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo,
         isForPlayback: Boolean,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
+        val alreadySeated = withContext(mainDispatcher) {
+            PlaybackResumptionMapper.fromPlayer(mediaSession.player)
+        }
+        if (alreadySeated != null) {
+            android.util.Log.i(
+                "ftpmusic",
+                "[MediaSessionCallback] onPlaybackResumption using seated player " +
+                    "items=${alreadySeated.mediaItems.size}",
+            )
+            return@future alreadySeated
+        }
         val persistence = persistenceManager
             ?: throw UnsupportedOperationException("Queue persistence unavailable")
         val saved = persistence.restore()
@@ -86,11 +100,13 @@ class MediaSessionCallback(
         ) ?: throw UnsupportedOperationException("Empty saved queue")
         if (isForPlayback) {
             try {
-                PlaybackResumptionMapper.applyTransportExtras(
-                    mediaSession.player,
-                    saved.repeatMode,
-                    saved.shuffleEnabled,
-                )
+                withContext(mainDispatcher) {
+                    PlaybackResumptionMapper.applyTransportExtras(
+                        mediaSession.player,
+                        saved.repeatMode,
+                        saved.shuffleEnabled,
+                    )
+                }
             } catch (e: Exception) {
                 android.util.Log.w(
                     "ftpmusic",
@@ -254,8 +270,12 @@ class MediaSessionCallback(
         return expandToAlbum(songId, auth) ?: emptyList()
     }
 
-    /** Cancel all pending coroutines. Call from onDestroy. */
+    /**
+     * ADR-0088: MediaSessionCallback is a DI singleton — do **not** cancel its
+     * CoroutineScope on MediaService destroy or onPlaybackResumption dies until
+     * process death. Pending expand work is best-effort after teardown.
+     */
     fun destroy() {
-        scope.cancel()
+        // no-op (intentionally)
     }
 }

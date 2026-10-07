@@ -12,7 +12,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -961,8 +960,12 @@ class PlaybackManager @Inject constructor(
         PlayerHolder.player?.pause()
     }
 
+    /**
+     * ADR-0088: PlaybackManager is a DI singleton — do not cancel its scope on
+     * MediaService destroy (persistence / queue ops must survive service recycle).
+     */
     fun destroy() {
-        scope.cancel()
+        // no-op (intentionally)
     }
 
     /** Roll back the last optimistic queue mutation if a background operation failed. */

@@ -39,6 +39,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Pre-warm playback without claiming foreground-service status. Media
         // playback promotes the service only after a user playback request.
+        // ADR-0088: mark warm-start so MediaService skips early FGS (MediaButton
+        // / BT paths leave this false and promote for the 5s FGS deadline).
+        MediaServiceStartRequest.backgroundWarmStart = true
         val playbackInit = Intent(this, MediaService::class.java)
         playbackInit.action = MediaServiceStartRequest.ACTION_INITIALIZE
         startService(playbackInit)
@@ -98,6 +101,7 @@ class MainActivity : ComponentActivity() {
                 "ftpmusic",
                 "[MainActivity] onResume: no wired player — re-initializing playback service",
             )
+            MediaServiceStartRequest.backgroundWarmStart = true
             val reinit = Intent(this, MediaService::class.java)
             reinit.action = MediaServiceStartRequest.ACTION_INITIALIZE
             try {
