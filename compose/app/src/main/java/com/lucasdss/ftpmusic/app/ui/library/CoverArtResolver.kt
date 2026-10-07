@@ -243,9 +243,8 @@ fun rememberPreferredCoverArt(
 }
 
 /**
- * Navidrome cover art cached to disk by [CoverArtFallbackService]. Validates
- * the file (not just `exists && length > 0`) and evicts a truncated/corrupt
- * entry so it can be re-fetched instead of rendering blank forever.
+ * Navidrome cover art on disk — composition-cheap [CoverArtFiles.existsNonEmpty]
+ * only (ADR 0096). Magic/eviction happens via Coil onError paths, not here.
  */
 private fun checkNavidromeDiskCache(fallbackService: CoverArtFallbackService, coverArtId: String?): String? {
     if (coverArtId == null) return null

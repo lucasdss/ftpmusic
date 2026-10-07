@@ -164,20 +164,22 @@ fun GenreDetailScreen(
                                         }
                                     }
                                     Spacer(Modifier.height(6.dp))
-                                    FittingText(
+                                    Text(
                                         text = album.name,
                                         color = Color.White,
                                         fontSize = textBodyM(),
-                                        minFontSize = textMicro(),
                                         fontWeight = FontWeight.SemiBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                     album.artist?.let {
-                                        FittingText(
+                                        Text(
                                             text = it,
                                             color = Color(0xFF888888),
                                             fontSize = textLabelM(),
-                                            minFontSize = textMicro(),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                     }

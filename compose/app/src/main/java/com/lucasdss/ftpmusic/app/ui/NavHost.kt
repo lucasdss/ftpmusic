@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -18,11 +19,16 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +57,7 @@ import com.lucasdss.ftpmusic.app.ui.album.AlbumDetailScreen
 import com.lucasdss.ftpmusic.app.ui.artist.ArtistDetailScreen
 import com.lucasdss.ftpmusic.app.ui.components.AppHeader
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.rememberAppHeaderScrollState
 import com.lucasdss.ftpmusic.app.ui.favorites.FavoritesScreen
 import com.lucasdss.ftpmusic.app.ui.genre.GenreDetailScreen
 import com.lucasdss.ftpmusic.app.ui.library.HomeScreen
@@ -416,20 +423,65 @@ fun FtpmusicNavHost() {
             // AppHeader on primary tabs only — detail routes use their own back chrome
             // (avoids stacked logo + TopAppBar). See ADR-0054.
             val showHeader = showAppHeaderForRoute(route)
+            // YT Music enterAlways collapse — continuous offset, content reclaim (ADR 0097).
+            val headerScroll = rememberAppHeaderScrollState()
+            val density = LocalDensity.current
+            LaunchedEffect(route) {
+                // Instant reset on tab/detail change — no mid-collapse flash.
+                headerScroll.resetExpanded()
+            }
 
             if (showHeader) {
-                AppHeader(
-                    settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
-                    onSettingsClick = {
-                        navController.navigateToSettings()
-                    },
-                )
+                val headerModifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                    .onSizeChanged { size ->
+                        headerScroll.updateHeaderHeight(size.height.toFloat())
+                    }
+                    .graphicsLayer {
+                        translationY = -headerScroll.offsetPx
+                    }
+                if (headerScroll.headerHeightPx <= 0f) {
+                    // First layout: measure natural height before collapsing.
+                    AppHeader(
+                        modifier = headerModifier,
+                        settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
+                        interactive = true,
+                        onSettingsClick = { navController.navigateToSettings() },
+                    )
+                } else {
+                    val visibleDp = with(density) {
+                        headerScroll.visibleHeightPx.toDp().coerceAtLeast(0.dp)
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(visibleDp)
+                            .clipToBounds(),
+                    ) {
+                        AppHeader(
+                            modifier = headerModifier,
+                            settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
+                            interactive = headerScroll.isExpanded,
+                            onSettingsClick = { navController.navigateToSettings() },
+                        )
+                    }
+                }
             }
 
             NavHost(
                 navController = navController,
                 startDestination = "splash",
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .then(
+                        if (showHeader) {
+                            Modifier.nestedScroll(headerScroll.nestedScrollConnection)
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
                 composable("splash") {
                     val context = LocalContext.current

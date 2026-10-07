@@ -1230,11 +1230,11 @@ fun SearchScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (albumCoverUrl != null) {
-                                    AsyncImage(
-                                        model = albumCoverUrl,
+                                    CoverArtImage(
+                                        url = albumCoverUrl,
                                         contentDescription = album.name,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
+                                        decodeSize = iconLarge(),
                                     )
                                 } else {
                                     Icon(
@@ -1247,12 +1247,13 @@ fun SearchScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                FittingText(
+                                Text(
                                     text = album.name,
                                     color = Color.White,
                                     fontSize = textHeadingS(),
-                                    minFontSize = textMicro(),
                                     fontWeight = FontWeight.Medium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 val subtitle = buildString {
@@ -1263,11 +1264,12 @@ fun SearchScreen(
                                     }
                                 }
                                 if (subtitle.isNotEmpty()) {
-                                    FittingText(
+                                    Text(
                                         text = subtitle,
                                         color = Color(0xFF888888),
                                         fontSize = textLabelM(),
-                                        minFontSize = textMicro(),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
@@ -1429,11 +1431,11 @@ fun SearchScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (plCoverUrl != null) {
-                                    AsyncImage(
-                                        model = plCoverUrl,
+                                    CoverArtImage(
+                                        url = plCoverUrl,
                                         contentDescription = pl.name,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
+                                        decodeSize = iconLarge(),
                                     )
                                 } else {
                                     Icon(
@@ -1446,19 +1448,21 @@ fun SearchScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                FittingText(
+                                Text(
                                     text = pl.name,
                                     color = Color.White,
                                     fontSize = textHeadingS(),
-                                    minFontSize = textMicro(),
                                     fontWeight = FontWeight.Medium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                FittingText(
+                                Text(
                                     text = "${pl.songCount} tracks",
                                     color = Color(0xFF888888),
                                     fontSize = textLabelM(),
-                                    minFontSize = textMicro(),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }

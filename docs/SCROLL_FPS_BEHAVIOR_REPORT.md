@@ -1,42 +1,46 @@
 # SCROLL_FPS — Behavior Report
 
-Status: Act / Evaluate  
-Date: 2026-10-07  
-Related: ADR-0096, ADR-0036, ADR-0037, ADR-0027
+Status: Delivered (pass 2)  
+Date: 2026-10-08  
+Related: ADR-0096, ADR-0097, ADR-0036, ADR-0037, ADR-0027
 
 ## Symptom
 
-Continuous low FPS on **every** scrollable surface (music off). Occasional brief hitch near list end. Uneven song-title font sizes from FittingText shrink.
+Continuous low FPS on lists (music off). Uneven song title sizes. Header always
+visible on primary tabs.
 
-## Root causes (ranked)
+## Pass 1 (d574855)
 
-1. **Coil** — global `crossfade(true)` + many unsized `AsyncImage` in Lazy cells → decode/anim cost during fling.
-2. **Main-thread disk probes** — `CoverArtFiles.looksLikeImage` (InputStream magic) inside composition `remember`.
-3. **FittingText** on song titles — BoxWithConstraints + binary-search measure; per-row different font size (UX break).
-4. **Global art version** on Search/Genre — any cache write recomposes whole Lazy tree.
-5. **Near-end loadMore** — Main `StateFlow` append → brief hitch (secondary).
+- Coil `crossfade(false)`; composition `existsNonEmpty`
+- `SongListRow` on Album/Playlist/Mix/Artist/Favorites/Search/Downloads/Home songs
+- Search/Genre: no global `cacheVersionState`
 
-## Song list UX (required)
+## Pass 2 (this)
 
-All song-listing pages use shared `SongListRow`:
+### Residual FPS closed
 
-- Title: fixed `textHeadingS`, max **2 lines**, then ellipsis (no shrink).
-- Meta row below title: cache/download · like · dislike · time.
-- Options (⋮) stay on the **right**.
+- Queue / history: fixed-size titles + `CoverArtImage`
+- AddSongs: `SongListRow` + sized cover
+- Search albums/playlists: `CoverArtImage` + fixed Text
+- Favorites albums: sized cover + fixed Text
+- Genre album grid labels: fixed Text
 
-Surfaces: Album, Playlist, Mix, Artist tracks, Favorites tracks, Search track hits, Downloads, Home track rows.
+### AppHeader YT Music (ADR 0097)
+
+- Primary tabs only: scroll down collapses header (layout height reclaim);
+  scroll up reveals (enterAlways); fling end snaps; tab reset expands.
+- Bottom chrome fixed. Smoothness: sync offset, no per-frame coroutine,
+  isolated `mutableFloatStateOf`.
 
 ## Edge cases
 
-- Long title → wrap line 2 → ellipsis.
-- Missing duration / cache status `none` → omit from meta.
-- Like/dislike optional (Favorites single-action rows).
-- Overlapping loadMore → single-flight / loading flag.
-- Corrupt cover file → Coil onError / eviction (not composition magic read).
+- Long titles → 2 lines → ellipsis (uniform size)
+- Header fully collapsed → list scrolls freely
+- Horizontal Search chips → header ignore
+- Detail route → header hidden by ADR-0054; offset reset
 
 ## Verification
 
 - `./gradlew :app:assembleDebug`
-- Targeted unit/compose tests (SongListRow, cover resolver, loadMore)
-- JaCoCo ≥80% on changed units
-- Manual fling: uniform title size; smoother FPS; hitch reduced at list end
+- `AppHeaderScrollStateTest`, `SongListRowComposeTest`, CoverArt* tests
+- Manual: fling Home/Library/Search — header tracks finger, no gap/jump

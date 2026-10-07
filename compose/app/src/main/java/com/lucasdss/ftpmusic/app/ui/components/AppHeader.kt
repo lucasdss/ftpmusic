@@ -50,6 +50,8 @@ import com.lucasdss.ftpmusic.app.ui.player.CastButton
 fun AppHeader(
     modifier: Modifier = Modifier,
     settingsSelected: Boolean = false,
+    /** False while collapsed — blocks ghost taps on clipped remnant (ADR 0097). */
+    interactive: Boolean = true,
     onSettingsClick: (() -> Unit)? = null,
 ) {
     val isReachable by ReachabilityStateHolder.isReachable.collectAsState()
@@ -143,7 +145,7 @@ fun AppHeader(
                     .clip(CircleShape)
                     .testTag("app_header_settings")
                     .semantics { contentDescription = "Settings" }
-                    .clickable(onClick = onSettingsClick),
+                    .clickable(enabled = interactive, onClick = onSettingsClick),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

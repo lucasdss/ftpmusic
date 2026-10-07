@@ -27,14 +27,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
-import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
+import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import kotlinx.coroutines.delay
 
@@ -201,87 +202,70 @@ fun AddSongsPickerContent(
             }
         } else {
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = adp(400f))) {
-                itemsIndexed(rows, key = { _, t -> t.id }) { _, track ->
+                itemsIndexed(rows, key = { _, t -> t.id }, contentType = { _, _ -> "song" }) { _, track ->
                     val isAdded = track.id in existingTrackIds
                     val isSelected = track.id in selection
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable(enabled = !isAdded) { toggle(track.id) }
-                            .padding(horizontal = spacingL(), vertical = adp(10f)),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier.size(adp(40f)).clip(RoundedCornerShape(cornerS())).background(Color(0xFF1E1E1E)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            val coverUrl = rememberCoverArtUrl(track.coverArtUrl, 80)
-                            if (coverUrl != null) {
-                                AsyncImage(
-                                    model = coverUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
-                                )
-                            } else {
-                                Icon(
-                                    Icons.Default.MusicNote,
-                                    null,
-                                    tint = NavUnselected,
-                                    modifier = Modifier.size(adp(18f)),
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(spacingM()))
-                        Column(Modifier.weight(1f)) {
-                            FittingText(
-                                text = track.title,
-                                color = if (isAdded) Color(0xFF666666) else Color.White,
-                                fontSize = textBodyM(),
-                                minFontSize = textMicro(),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                track.artist?.let {
-                                    FittingText(
-                                        text = it,
-                                        color = Color(0xFF888888),
-                                        fontSize = textLabelM(),
-                                        minFontSize = textMicro(),
-                                        modifier = Modifier.weight(1f),
-                                        fillMaxWidth = false,
-                                    )
-                                }
-                                track.durationSeconds?.let { raw ->
-                                    // Some ingestion paths store milliseconds in
-                                    // duration_seconds; normalize before formatting.
-                                    val d = if (raw > 100_000) raw / 1000 else raw
-                                    Text(
-                                        " · ${d / 60}:${(d % 60).toString().padStart(2, '0')}",
-                                        color = Color(0xFF666666),
-                                        fontSize = textLabelM(),
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.width(spacingS()))
-                        when {
-                            isAdded -> Text("Added", color = NavUnselected, fontSize = textLabelM())
-
-                            isSelected -> Icon(
-                                Icons.Filled.CheckCircle,
-                                null,
-                                tint = BrandTeal,
-                                modifier = Modifier.size(iconSmall()),
-                            )
-
-                            else -> Icon(
-                                Icons.Outlined.AddCircleOutline,
-                                null,
-                                tint = Color(0xFF666666),
-                                modifier = Modifier.size(iconSmall()),
-                            )
-                        }
+                    val coverUrl = rememberCoverArtUrl(track.coverArtUrl, 80)
+                    val durationLabel = track.durationSeconds?.let { raw ->
+                        val d = if (raw > 100_000) raw / 1000 else raw
+                        formatSongDuration(d)
                     }
+                    SongListRow(
+                        title = track.title,
+                        subtitle = track.artist,
+                        isActive = false,
+                        downloadStatus = "none",
+                        durationLabel = durationLabel,
+                        onClick = if (!isAdded) {
+                            { toggle(track.id) }
+                        } else {
+                            null
+                        },
+                        modifier = Modifier.padding(horizontal = spacingL(), vertical = adp(10f)),
+                        leadingContent = {
+                            Box(
+                                Modifier.size(
+                                    adp(40f),
+                                ).clip(RoundedCornerShape(cornerS())).background(Color(0xFF1E1E1E)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (coverUrl != null) {
+                                    CoverArtImage(
+                                        url = coverUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        decodeSize = adp(40f),
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.MusicNote,
+                                        null,
+                                        tint = NavUnselected,
+                                        modifier = Modifier.size(adp(18f)),
+                                    )
+                                }
+                            }
+                        },
+                        trailingContent = {
+                            when {
+                                isAdded -> Text("Added", color = NavUnselected, fontSize = textLabelM())
+
+                                isSelected -> Icon(
+                                    Icons.Filled.CheckCircle,
+                                    null,
+                                    tint = BrandTeal,
+                                    modifier = Modifier.size(iconSmall()),
+                                )
+
+                                else -> Icon(
+                                    Icons.Outlined.AddCircleOutline,
+                                    null,
+                                    tint = Color(0xFF666666),
+                                    modifier = Modifier.size(iconSmall()),
+                                )
+                            }
+                        },
+                    )
                     HorizontalDivider(color = Color(0xFF2A2A3E), modifier = Modifier.padding(horizontal = spacingL()))
                 }
             }

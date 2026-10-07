@@ -78,6 +78,7 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.SurfaceElevated
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
@@ -2724,11 +2725,11 @@ private fun QueueTrackRow(
         Spacer(Modifier.width(spacingXS()))
         Box(Modifier.size(adp(40f)).clip(RoundedCornerShape(cornerS())), contentAlignment = Alignment.Center) {
             if (track.coverArtUrl != null) {
-                AsyncImage(
-                    model = track.coverArtUrl,
+                CoverArtImage(
+                    url = track.coverArtUrl,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
+                    decodeSize = adp(40f),
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(Surface), contentAlignment = Alignment.Center) {
@@ -2769,20 +2770,22 @@ private fun QueueTrackRow(
         }
         Spacer(Modifier.width(spacingM()))
         Column(Modifier.weight(1f)) {
-            FittingText(
+            Text(
                 text = track.title,
                 color = if (dimmed) NavUnselected else Foreground,
                 fontSize = textHeadingS(),
-                minFontSize = textMicro(),
                 fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {
-                FittingText(
+                Text(
                     text = it,
                     color = NavUnselected,
                     fontSize = textLabelM(),
-                    minFontSize = textMicro(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -2836,11 +2839,11 @@ private fun QueueHistoryRow(track: com.lucasdss.ftpmusic.app.playback.QueueHisto
             contentAlignment = Alignment.Center,
         ) {
             if (coverUrl != null) {
-                AsyncImage(
-                    model = coverUrl,
+                CoverArtImage(
+                    url = coverUrl,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
+                    decodeSize = adp(40f),
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(Surface), contentAlignment = Alignment.Center) {
@@ -2850,20 +2853,22 @@ private fun QueueHistoryRow(track: com.lucasdss.ftpmusic.app.playback.QueueHisto
         }
         Spacer(Modifier.width(spacingM()))
         Column(Modifier.weight(1f)) {
-            FittingText(
+            Text(
                 text = track.title,
                 color = Foreground,
                 fontSize = textHeadingS(),
-                minFontSize = textMicro(),
                 fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
             track.artist?.let {
-                FittingText(
+                Text(
                     text = it,
                     color = NavUnselected,
                     fontSize = textLabelM(),
-                    minFontSize = textMicro(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -1006,11 +1007,11 @@ private fun AlbumFavoriteRow(
         ) {
             val url = rememberCoverArtUrl(album.coverArtUrl, 200)
             if (url != null) {
-                AsyncImage(
-                    model = url,
+                CoverArtImage(
+                    url = url,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
+                    decodeSize = 48.dp,
                 )
             } else {
                 Icon(
@@ -1039,18 +1040,20 @@ private fun AlbumFavoriteRow(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            FittingText(
+            Text(
                 text = album.name,
                 color = if (isActive) BrandTeal else Color.White,
                 fontSize = textBodyM(),
-                minFontSize = textMicro(),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
-            FittingText(
+            Text(
                 text = listOfNotNull(album.artist, album.year?.toString()).joinToString(" · "),
                 color = Color(0xFF888888),
                 fontSize = textLabelM(),
-                minFontSize = textMicro(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
