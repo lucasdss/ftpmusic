@@ -682,6 +682,12 @@ fun SettingsScreen(
                         }
                     },
                 )
+                Text(
+                    stringResource(R.string.bt_resume_doze_note),
+                    color = Color(0xFF888888),
+                    fontSize = textLabelS(),
+                    modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                )
                 if (state.btResumeEnabled) {
                     SectionDivider()
                     OverwriteBehaviorOption(

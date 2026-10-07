@@ -90,4 +90,27 @@ class BtConnectionReceiverTest {
         )
         verify(exactly = 0) { starter.invoke(any()) }
     }
+
+    @Test
+    fun `dispatch returns true on notification fallback result`() {
+        val storage = mockk<SecureStorage>()
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "any"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
+        val starter = mockk<(Context) -> BtAutoplayStarter.StartResult>()
+        every { starter.invoke(any()) } returns BtAutoplayStarter.StartResult.NotificationFallback
+        assertTrue(
+            BtConnectionReceiver.dispatchBtConnect(
+                context = mockk(relaxed = true),
+                storage = storage,
+                deviceMac = "AA:BB:CC:DD:EE:FF",
+                casting = false,
+                starter = starter,
+                sdkInt = 36,
+            ),
+        )
+        verify(exactly = 1) { starter.invoke(any()) }
+    }
 }

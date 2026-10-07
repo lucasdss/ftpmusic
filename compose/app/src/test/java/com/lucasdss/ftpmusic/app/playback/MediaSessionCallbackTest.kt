@@ -56,11 +56,14 @@ class MediaSessionCallbackTest {
         trackDao: TrackDao,
         metadataDao: CachedMetadataDao = mockk(relaxed = true),
         api: SubsonicApi = mockk(relaxed = true),
+        persistenceManager: QueuePersistenceManager? = null,
     ): MediaSessionCallback = MediaSessionCallback(
         trackDao,
         metadataDao,
         SubsonicAuthHelper(),
         api,
+        localSearch = null,
+        persistenceManager = persistenceManager,
         scope = CoroutineScope(Dispatchers.Unconfined),
     )
 
@@ -762,5 +765,91 @@ class MediaSessionCallbackTest {
         val callback = createCallback(mockk(relaxed = true), mockk(relaxed = true), api)
         val items = callback.searchAndNavidromeExpand("test")
         assertTrue(items.isEmpty())
+    }
+
+    @Test
+    fun `onPlaybackResumption returns playlist from Room and applies transport when for playback`() {
+        val persistence = mockk<QueuePersistenceManager>()
+        coEvery { persistence.restore() } returns SavedQueueState(
+            tracks = listOf(
+                com.lucasdss.ftpmusic.app.data.model.Track(
+                    id = "t1",
+                    title = "Song",
+                    artist = "Artist",
+                    album = "Album",
+                    duration = 180,
+                ),
+            ),
+            urls = listOf("https://example.com/stream/t1"),
+            currentIndex = 0,
+            positionMs = 5_000L,
+            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE,
+            shuffleEnabled = true,
+        )
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        val session = mockk<androidx.media3.session.MediaSession>(relaxed = true)
+        every { session.player } returns player
+
+        val callback = createCallback(mockk(relaxed = true), persistenceManager = persistence)
+        val result = callback.onPlaybackResumption(session, mockk(relaxed = true), true).get()
+
+        assertEquals(1, result.mediaItems.size)
+        assertEquals("t1", result.mediaItems[0].mediaId)
+        assertEquals("Song", result.mediaItems[0].mediaMetadata.title.toString())
+        assertEquals(5_000L, result.startPositionMs)
+        verify { player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE }
+        verify { player.shuffleModeEnabled = true }
+    }
+
+    @Test
+    fun `onPlaybackResumption isForPlayback false skips transport extras`() {
+        val persistence = mockk<QueuePersistenceManager>()
+        coEvery { persistence.restore() } returns SavedQueueState(
+            tracks = listOf(
+                com.lucasdss.ftpmusic.app.data.model.Track(id = "t1", title = "Song"),
+            ),
+            urls = listOf("https://example.com/t1"),
+            currentIndex = 0,
+            positionMs = 0L,
+            repeatMode = 2,
+            shuffleEnabled = true,
+        )
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        val session = mockk<androidx.media3.session.MediaSession>(relaxed = true)
+        every { session.player } returns player
+
+        val callback = createCallback(mockk(relaxed = true), persistenceManager = persistence)
+        val result = callback.onPlaybackResumption(session, mockk(relaxed = true), false).get()
+
+        assertEquals(1, result.mediaItems.size)
+        verify(exactly = 0) { player.repeatMode = any() }
+        verify(exactly = 0) { player.shuffleModeEnabled = any() }
+    }
+
+    @Test
+    fun `onPlaybackResumption fails when no saved queue`() {
+        val persistence = mockk<QueuePersistenceManager>()
+        coEvery { persistence.restore() } returns null
+        val callback = createCallback(mockk(relaxed = true), persistenceManager = persistence)
+        try {
+            callback.onPlaybackResumption(mockk(relaxed = true), mockk(relaxed = true), true).get()
+            org.junit.Assert.fail("expected exception")
+        } catch (e: Exception) {
+            assertTrue(
+                e.message?.contains("No saved queue") == true ||
+                    e.cause is UnsupportedOperationException,
+            )
+        }
+    }
+
+    @Test
+    fun `onPlaybackResumption fails when persistence missing`() {
+        val callback = createCallback(mockk(relaxed = true), persistenceManager = null)
+        try {
+            callback.onPlaybackResumption(mockk(relaxed = true), mockk(relaxed = true), true).get()
+            org.junit.Assert.fail("expected exception")
+        } catch (e: Exception) {
+            assertTrue(e.cause is UnsupportedOperationException || e is java.util.concurrent.ExecutionException)
+        }
     }
 }

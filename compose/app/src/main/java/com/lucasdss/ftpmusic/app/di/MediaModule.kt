@@ -37,7 +37,15 @@ object MediaModule {
         authHelper: SubsonicAuthHelper,
         api: SubsonicApi,
         localSearch: LocalSearchRepository,
-    ): MediaSessionCallback = MediaSessionCallback(trackDao, metadataDao, authHelper, api, localSearch)
+        persistenceManager: com.lucasdss.ftpmusic.app.playback.QueuePersistenceManager,
+    ): MediaSessionCallback = MediaSessionCallback(
+        trackDao,
+        metadataDao,
+        authHelper,
+        api,
+        localSearch,
+        persistenceManager,
+    )
 
     @Provides
     @Singleton

@@ -12,7 +12,7 @@ import javax.inject.Inject
 
 /**
  * Wakes playback when an A2DP audio device connects (any or allowlisted).
- * See ADR-0072.
+ * See ADR-0072 / ADR-0087 (goAsync for post-Doze process survival).
  */
 @AndroidEntryPoint
 class BtConnectionReceiver : BroadcastReceiver() {
@@ -20,12 +20,18 @@ class BtConnectionReceiver : BroadcastReceiver() {
     @Inject lateinit var storage: SecureStorage
 
     override fun onReceive(context: Context, intent: Intent?) {
-        handleConnectBroadcast(
-            context = context.applicationContext,
-            intent = intent,
-            storage = storage,
-            casting = PlayerHolder.isCasting,
-        )
+        // ADR-0087: keep process alive across FGS start after long Doze.
+        val pending = goAsync()
+        try {
+            handleConnectBroadcast(
+                context = context.applicationContext,
+                intent = intent,
+                storage = storage,
+                casting = PlayerHolder.isCasting,
+            )
+        } finally {
+            pending.finish()
+        }
     }
 
     companion object {
@@ -67,6 +73,7 @@ class BtConnectionReceiver : BroadcastReceiver() {
             starter: (Context) -> BtAutoplayStarter.StartResult = {
                 BtAutoplayStarter.startAutoplay(it)
             },
+            sdkInt: Int = Build.VERSION.SDK_INT,
         ): Boolean {
             val enabled = BtResumeStorage.isEnabled(storage)
             val mode = BtResumeStorage.mode(storage)
@@ -83,12 +90,19 @@ class BtConnectionReceiver : BroadcastReceiver() {
             if (!allow) {
                 android.util.Log.d(
                     "ftpmusic-bt",
-                    "skip connect mac=$deviceMac enabled=$enabled mode=$mode",
+                    "skip connect mac=$deviceMac enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
                 )
                 return false
             }
-            android.util.Log.i("ftpmusic-bt", "BT resume for $deviceMac mode=$mode")
-            starter(context)
+            android.util.Log.i(
+                "ftpmusic-bt",
+                "BT resume for $deviceMac mode=$mode enabled=$enabled sdk=$sdkInt",
+            )
+            val result = starter(context)
+            android.util.Log.i(
+                "ftpmusic-bt",
+                "BT resume result=$result mac=$deviceMac mode=$mode sdk=$sdkInt",
+            )
             return true
         }
 

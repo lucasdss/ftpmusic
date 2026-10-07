@@ -559,6 +559,9 @@ class MediaService : MediaLibraryService() {
     private var playerErrorCount = 0
     private var hasLoadedContinuation = false
 
+    /** ADR-0087: ensure Room→player restore runs once, as early as possible. */
+    private val queueRestoreStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+
     @Volatile private var continuousPlayInFlight = false
 
     /** Serializes fast-forward seeks so overlapping seeks can't interleave with a transition. */
@@ -1369,6 +1372,10 @@ class MediaService : MediaLibraryService() {
             PlayerHolder.exoPlayer = exoPlayer
             (diPlaceholderPlayer as? ExoPlayer)?.release()
 
+            // ADR-0087: seat last queue ASAP so BT/AVRCP does not observe an empty
+            // session (deep-sleep reconnect symptom 2A). Runs once; late call is no-op.
+            launchQueueRestoreIfNeeded()
+
             // Process-death auto-reconnect seeding (Edge-04): the Cast SDK's
             // ReconnectionService can re-establish a session before/without
             // onSessionResumed reaching us. If a session already exists at startup,
@@ -1579,89 +1586,8 @@ class MediaService : MediaLibraryService() {
             )
             notificationProvider?.notifyChanged()
 
-            // Auto-restore saved queue on service start (without auto-playing,
-            // unless car-BT resume requested — ADR-0071).
-            // Must wait for proxy to be ready — otherwise ExoPlayer gets Connection refused
-            scope.launch {
-                // 1. Re-arm sleep timer from queue_state (ADR-0074) before queue restore.
-                val persistedSleep = persistenceManager.sleepTimerEndMs()
-                if (persistedSleep > 0L) {
-                    armSleepTimer(persistedSleep)
-                    notificationProvider?.notifyChanged()
-                }
-
-                val btResume = MediaServiceStartRequest.btAutoplayRequested
-
-                // Only restore if queue is empty — don't overwrite user's current selection
-                val shouldRestore = withContext(Dispatchers.Main) {
-                    val p = PlayerHolder.player
-                    (p == null || p.mediaItemCount == 0) && !PlayerHolder.isCasting
-                }
-                if (!shouldRestore) {
-                    android.util.Log.w("ftpmusic", "[MediaService] Queue already has items — skipping restore")
-                    if (btResume) {
-                        withContext(Dispatchers.Main) { handleBtAutoplayIfNeeded() }
-                    }
-                    return@launch
-                }
-                val saved = persistenceManager.restore()
-                if (saved == null) {
-                    if (btResume) {
-                        MediaServiceStartRequest.btAutoplayRequested = false
-                    }
-                    return@launch
-                }
-                withContext(Dispatchers.Main) {
-                    // Double-check: user might have played something while we loaded from DB
-                    val p = PlayerHolder.player
-                    if (p != null && p.mediaItemCount > 0) {
-                        android.util.Log.w("ftpmusic", "[MediaService] Queue populated during restore load — skipping")
-                        if (MediaServiceStartRequest.btAutoplayRequested) {
-                            handleBtAutoplayIfNeeded()
-                        }
-                        return@withContext
-                    }
-                    // E5: a lock screen / notification tap during the DB load sets
-                    // playWhenReady on the (still empty) player. Capture it BEFORE
-                    // playAlbum (which itself sets playWhenReady=true) so the
-                    // restore-then-pause below never swallows the user's intent.
-                    val userInitiatedPlayback = p?.playWhenReady == true
-                    val resumeForBt = MediaServiceStartRequest.btAutoplayRequested
-                    val restored = playbackManager.restoreQueue(
-                        saved.tracks,
-                        saved.urls,
-                        saved.currentIndex,
-                        saved.contextSize,
-                        saved.isPriorityFlags,
-                        saved.entryIds,
-                        saved.nextEntryId,
-                        saved.positionMs,
-                        saved.isAutoplayFlags,
-                    )
-                    if (restored && saved.isAutoplayFlags?.any { it } == true) {
-                        // Prevent Continuous Play from double-appending after death.
-                        hasLoadedContinuation = true
-                    }
-                    // Index + position already applied atomically inside restoreQueue/playAll.
-                    if (resumeForBt || userInitiatedPlayback) {
-                        MediaServiceStartRequest.btAutoplayRequested = false
-                        if (resumeForBt) {
-                            p?.play()
-                            android.util.Log.i(
-                                "ftpmusic",
-                                "[MediaService] BT autoplay — leaving / forcing play after restore",
-                            )
-                        } else {
-                            android.util.Log.w(
-                                "ftpmusic",
-                                "[MediaService] User requested playback during restore — leaving playing",
-                            )
-                        }
-                    } else {
-                        p?.pause()
-                    }
-                }
-            }
+            // Fallback if early seat path was skipped (e.g. player not ready yet).
+            launchQueueRestoreIfNeeded()
         } catch (e: Exception) {
             android.util.Log.e("ftpmusic", "[MediaService] onCreate FAILED: ${e.message}", e)
             // Never survive half-wired: a running service with PlayerHolder.player
@@ -1821,6 +1747,109 @@ class MediaService : MediaLibraryService() {
             }
         }
         return playbackServiceStartMode(intent?.action)
+    }
+
+    /**
+     * ADR-0087: restore Room queue onto the player once per service create.
+     * Seats items before external BT/AVRCP controllers observe an empty session.
+     * Auto-plays only when [MediaServiceStartRequest.btAutoplayRequested] or the
+     * user already set playWhenReady during the load window.
+     */
+    private fun launchQueueRestoreIfNeeded() {
+        if (!queueRestoreStarted.compareAndSet(false, true)) return
+        scope.launch {
+            // Re-arm sleep timer from queue_state (ADR-0074) before queue restore.
+            val persistedSleep = persistenceManager.sleepTimerEndMs()
+            if (persistedSleep > 0L) {
+                armSleepTimer(persistedSleep)
+                notificationProvider?.notifyChanged()
+            }
+
+            val btResume = MediaServiceStartRequest.btAutoplayRequested
+
+            val shouldRestore = withContext(Dispatchers.Main) {
+                val p = PlayerHolder.player
+                !PlaybackResumptionMapper.shouldSkipQueueRestore(
+                    mediaItemCount = p?.mediaItemCount ?: 0,
+                    isCasting = PlayerHolder.isCasting,
+                )
+            }
+            if (!shouldRestore) {
+                android.util.Log.w("ftpmusic", "[MediaService] Queue already has items — skipping restore")
+                if (btResume) {
+                    withContext(Dispatchers.Main) { handleBtAutoplayIfNeeded() }
+                }
+                return@launch
+            }
+            val saved = persistenceManager.restore()
+            if (saved == null) {
+                if (btResume) {
+                    MediaServiceStartRequest.btAutoplayRequested = false
+                }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                val p = PlayerHolder.player
+                if (p != null &&
+                    PlaybackResumptionMapper.shouldSkipQueueRestore(p.mediaItemCount, PlayerHolder.isCasting)
+                ) {
+                    android.util.Log.w("ftpmusic", "[MediaService] Queue populated during restore load — skipping")
+                    if (MediaServiceStartRequest.btAutoplayRequested) {
+                        handleBtAutoplayIfNeeded()
+                    }
+                    return@withContext
+                }
+                // E5: lock screen / notification tap during DB load sets playWhenReady
+                // on the (still empty) player — capture before restoreQueue.
+                val userInitiatedPlayback = p?.playWhenReady == true
+                val resumeForBt = MediaServiceStartRequest.btAutoplayRequested
+                val restored = playbackManager.restoreQueue(
+                    saved.tracks,
+                    saved.urls,
+                    saved.currentIndex,
+                    saved.contextSize,
+                    saved.isPriorityFlags,
+                    saved.entryIds,
+                    saved.nextEntryId,
+                    saved.positionMs,
+                    saved.isAutoplayFlags,
+                )
+                if (restored && saved.isAutoplayFlags?.any { it } == true) {
+                    hasLoadedContinuation = true
+                }
+                if (restored && p != null) {
+                    try {
+                        PlaybackResumptionMapper.applyTransportExtras(
+                            p,
+                            saved.repeatMode,
+                            saved.shuffleEnabled,
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.w(
+                            "ftpmusic",
+                            "[MediaService] applyTransportExtras failed: ${e.message}",
+                        )
+                    }
+                }
+                if (resumeForBt || userInitiatedPlayback) {
+                    MediaServiceStartRequest.btAutoplayRequested = false
+                    if (resumeForBt) {
+                        p?.play()
+                        android.util.Log.i(
+                            "ftpmusic",
+                            "[MediaService] BT autoplay — leaving / forcing play after restore",
+                        )
+                    } else {
+                        android.util.Log.w(
+                            "ftpmusic",
+                            "[MediaService] User requested playback during restore — leaving playing",
+                        )
+                    }
+                } else {
+                    p?.pause()
+                }
+            }
+        }
     }
 
     /**

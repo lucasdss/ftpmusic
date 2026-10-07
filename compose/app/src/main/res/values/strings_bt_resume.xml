@@ -8,6 +8,7 @@
     <string name="bt_resume_section_label">Bluetooth</string>
     <string name="bt_resume_toggle">Resume on Bluetooth</string>
     <string name="bt_resume_subtitle">When a Bluetooth audio device connects, restore the last queue and play</string>
+    <string name="bt_resume_doze_note">After long sleep, unrestricted battery and notification permission improve auto-resume. Play on the headset still works via system media resumption.</string>
     <string name="bt_resume_mode_any">Any audio device</string>
     <string name="bt_resume_mode_any_subtitle">Headphones, speakers, car — any A2DP sink</string>
     <string name="bt_resume_mode_selected">Selected devices</string>

@@ -39,14 +39,21 @@ object BtAutoplayStarter {
         }
         return try {
             startForegroundService(context, intent)
+            android.util.Log.i(
+                "ftpmusic-bt",
+                "startForegroundService OK action=${intent.action} sdk=$sdkInt",
+            )
             StartResult.Started
         } catch (e: Exception) {
             MediaServiceStartRequest.foregroundRequested = false
             val fgsBlocked = sdkInt >= Build.VERSION_CODES.S &&
                 e.javaClass.name.endsWith("ForegroundServiceStartNotAllowedException")
-            if (!fgsBlocked) {
-                android.util.Log.w("ftpmusic-bt", "startForegroundService failed: ${e.message}")
-            }
+            android.util.Log.w(
+                "ftpmusic-bt",
+                "startForegroundService failed fgsBlocked=$fgsBlocked sdk=$sdkInt: ${e.message}",
+            )
+            // ADR-0087: car never sees this; phone tap / MediaButton resumption remains
+            // the recovery path when Doze blocks background FGS.
             postFallback(context)
             StartResult.NotificationFallback
         }

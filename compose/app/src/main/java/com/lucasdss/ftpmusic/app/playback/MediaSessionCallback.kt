@@ -4,7 +4,6 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.google.common.util.concurrent.Futures
@@ -28,6 +27,9 @@ import kotlinx.coroutines.guava.future
  * (from Bluetooth, Android Auto, notification, Wear OS) to the full
  * parent album context.
  *
+ * Also implements [onPlaybackResumption] (ADR-0087) so MediaButtonReceiver /
+ * System UI can rebuild the last queue after process death.
+ *
  * The requested track is placed first in the returned list so playback
  * starts at the correct position. The remaining album tracks follow in
  * their original order.
@@ -42,6 +44,7 @@ class MediaSessionCallback(
     private val authHelper: SubsonicAuthHelper,
     private val api: SubsonicApi,
     private val localSearch: com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository? = null,
+    private val persistenceManager: QueuePersistenceManager? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : MediaLibraryService.MediaLibrarySession.Callback {
 
@@ -60,6 +63,63 @@ class MediaSessionCallback(
                 android.util.Log.w("ftpmusic", "[MediaSessionCallback] expand failed for $mediaId", e)
                 mediaItems
             }
+        }
+    }
+
+    /**
+     * ADR-0087: rebuild last queue from Room for BT / System UI resumption.
+     * Never returns an empty playlist when a saved queue exists (Media3 FGS hazard).
+     * When no queue: fail like the Media3 default (UnsupportedOperationException).
+     */
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
+        val persistence = persistenceManager
+            ?: throw UnsupportedOperationException("Queue persistence unavailable")
+        val saved = persistence.restore()
+            ?: throw UnsupportedOperationException("No saved queue for resumption")
+        val playlist = PlaybackResumptionMapper.toMediaItemsWithStartPosition(
+            saved,
+            artworkUriFor = { track -> artworkUriForTrack(track.coverArt) },
+        ) ?: throw UnsupportedOperationException("Empty saved queue")
+        if (isForPlayback) {
+            try {
+                PlaybackResumptionMapper.applyTransportExtras(
+                    mediaSession.player,
+                    saved.repeatMode,
+                    saved.shuffleEnabled,
+                )
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "ftpmusic",
+                    "[MediaSessionCallback] applyTransportExtras failed: ${e.message}",
+                )
+            }
+        }
+        android.util.Log.i(
+            "ftpmusic",
+            "[MediaSessionCallback] onPlaybackResumption items=${playlist.mediaItems.size} " +
+                "index=${playlist.startIndex} isForPlayback=$isForPlayback",
+        )
+        playlist
+    }
+
+    private fun artworkUriForTrack(coverArtId: String?): Uri? {
+        if (coverArtId.isNullOrBlank() || coverArtId == "getCoverArt") return null
+        val username = SubsonicCredentials.username
+        val password = SubsonicCredentials.password
+        val baseUrl = DynamicBaseUrl.url.trimEnd('/')
+        if (username.isEmpty() || password.isEmpty() || !DynamicBaseUrl.isConfigured()) return null
+        return try {
+            val authParams = authHelper.buildAuthParams(username, password)
+            val authQs = authParams.entries.joinToString("&") {
+                "${URLEncoder.encode(it.key, "UTF-8")}=${URLEncoder.encode(it.value, "UTF-8")}"
+            }
+            Uri.parse("$baseUrl/rest/getCoverArt?id=$coverArtId&$authQs")
+        } catch (_: Exception) {
+            null
         }
     }
 

@@ -24,6 +24,10 @@ data class SavedQueueState(
     val nextEntryId: Int = 1,
     /** Per-row Continuous Play Autoplay flags aligned with [tracks]. */
     val isAutoplayFlags: List<Boolean>? = null,
+    /** ExoPlayer [Player.repeatMode] from queue_state (ADR-0087). */
+    val repeatMode: Int = 0,
+    /** ExoPlayer shuffle from queue_state (ADR-0087). */
+    val shuffleEnabled: Boolean = false,
 )
 
 @Singleton
@@ -139,6 +143,8 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
             entryIds = ids,
             nextEntryId = derivedNext,
             isAutoplayFlags = autoplay,
+            repeatMode = state.repeatMode,
+            shuffleEnabled = state.shuffleEnabled,
         )
     }
 
