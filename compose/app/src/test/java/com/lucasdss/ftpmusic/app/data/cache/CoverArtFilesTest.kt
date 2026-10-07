@@ -88,4 +88,15 @@ class CoverArtFilesTest {
         assertFalse(CoverArtFiles.deleteIfNotImage(valid))
         assertTrue(valid.exists())
     }
+
+    @Test
+    fun `existsNonEmpty is composition-cheap and ignores magic`() {
+        val valid = file(jpeg)
+        val text = file("not an image".toByteArray())
+        val missing = File(tempFolder.root, "gone.jpg")
+
+        assertTrue(CoverArtFiles.existsNonEmpty(valid))
+        assertTrue(CoverArtFiles.existsNonEmpty(text))
+        assertFalse(CoverArtFiles.existsNonEmpty(missing))
+    }
 }

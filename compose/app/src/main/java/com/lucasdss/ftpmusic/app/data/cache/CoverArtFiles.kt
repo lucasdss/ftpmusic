@@ -42,12 +42,20 @@ object CoverArtFiles {
     }
 
     /**
-     * Cheap check safe for UI composition: exists, non-empty, and starts with
-     * a known image magic. Does NOT decode — use [isUsableImage] off the main
-     * thread when a full header decode is affordable.
+     * Composition-safe probe: exists and non-empty. No stream open / magic
+     * read — preferred on the UI thread during Lazy fling (ADR 0096). Corrupt
+     * payloads are rejected later via Coil onError + [deleteIfNotImage] /
+     * [deleteIfUnusable].
+     */
+    fun existsNonEmpty(file: File): Boolean = file.exists() && file.length() > 0L
+
+    /**
+     * Exists, non-empty, and starts with a known image magic. Opens the file
+     * for a short header read — avoid calling from composition `remember`
+     * during scroll; prefer [existsNonEmpty] on the UI path.
      */
     fun looksLikeImage(file: File): Boolean {
-        if (!file.exists() || file.length() == 0L) return false
+        if (!existsNonEmpty(file)) return false
         return hasImageMagic(file)
     }
 

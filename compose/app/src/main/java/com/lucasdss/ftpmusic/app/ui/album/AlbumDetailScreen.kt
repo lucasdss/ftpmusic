@@ -43,13 +43,13 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DetailActionRow
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
-import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
-import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
@@ -293,26 +293,33 @@ fun AlbumDetailScreen(
             }
 
             // ═══ Track list ═══
-            itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->
+            itemsIndexed(
+                state.tracks,
+                key = { _, track -> track.id },
+                contentType = { _, _ -> "song" },
+            ) { index, track ->
                 val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
                 val isCached = viewModel.isCached(track.id)
                 val isDownloaded = viewModel.isDownloaded(track.id)
                 val isQueued = viewModel.isQueued(track.id)
                 val ds = downloadStatus(isDownloaded, isQueued, isCached)
+                val isLiked = viewModel.isTrackLiked(track.id)
+                val isDisliked = viewModel.isTrackDisliked(track.id)
 
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingM()),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Track number + info — tap to play, long-press for menu
-                    Row(
-                        Modifier.weight(1f).combinedClickable(
-                            onClick = { viewModel.playTrack(index) },
-                            onLongClick = { showTrackSheet = index },
-                        ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        // Track number / EQ
+                SongListRow(
+                    title = track.title,
+                    isActive = isActive,
+                    downloadStatus = ds,
+                    durationLabel = track.formattedDuration.takeIf { it.isNotBlank() },
+                    isLiked = isLiked,
+                    isDisliked = isDisliked,
+                    onLike = { viewModel.toggleTrackLike(track.id) },
+                    onDislike = { viewModel.toggleTrackDislike(track.id) },
+                    onMore = { showTrackSheet = index },
+                    onClick = { viewModel.playTrack(index) },
+                    onLongClick = { showTrackSheet = index },
+                    modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingM()),
+                    leadingContent = {
                         Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
                             if (isActive) {
                                 AnimatedEqBars()
@@ -325,64 +332,8 @@ fun AlbumDetailScreen(
                                 )
                             }
                         }
-                        Spacer(Modifier.width(12.dp))
-                        // Info
-                        Column(Modifier.weight(1f)) {
-                            FittingText(
-                                text = track.title,
-                                color = if (isActive) BrandTeal else Color.White,
-                                fontSize = textHeadingS(),
-                                minFontSize = textMicro(),
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    } // end playable area
-                    Spacer(Modifier.width(8.dp))
-                    // Right-side icons — independent tap targets
-                    DownloadDot(ds)
-                    Spacer(Modifier.width(6.dp))
-                    // ThumbsUp (like == star)
-                    val isLiked = viewModel.isTrackLiked(track.id)
-                    ReactionGlyphButton(
-                        icon = Icons.Filled.ThumbUp,
-                        contentDescription = if (isLiked) "Unlike" else "Like",
-                        tint = if (isLiked) BrandTeal else Color(0xFF444444),
-                        onClick = { viewModel.toggleTrackLike(track.id) },
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    // ThumbsDown (dislike — local)
-                    val isDisliked = viewModel.isTrackDisliked(track.id)
-                    ReactionGlyphButton(
-                        icon = Icons.Filled.ThumbDown,
-                        contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
-                        tint = if (isDisliked) Color(0xFFE84040) else Color(0xFF444444),
-                        onClick = { viewModel.toggleTrackDislike(track.id) },
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    // Duration
-                    Text(
-                        track.formattedDuration,
-                        color = Color(0xFF888888),
-                        fontSize = textLabelM(),
-                        fontFamily = interFontFamily(),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    // ⋮ — ≥48dp interactive floor
-                    Box(
-                        Modifier
-                            .minimumInteractiveComponentSize()
-                            .clickable { showTrackSheet = index },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "Track menu",
-                            tint = Color(0xFF444444),
-                            modifier = Modifier.size(knobSize()),
-                        )
-                    }
-                }
+                    },
+                )
                 HorizontalDivider(
                     color = Color.White.copy(alpha = 0.05f),
                     modifier = Modifier.padding(horizontal = spacingXL()),
@@ -567,11 +518,11 @@ private fun TrackActionSheet(
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 val coverUrl = rememberCoverArtUrl(track.coverArt, 120)
                 if (coverUrl != null) {
-                    AsyncImage(
-                        model = coverUrl,
+                    CoverArtImage(
+                        url = coverUrl,
                         contentDescription = null,
                         modifier = Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS())),
-                        contentScale = ContentScale.Crop,
+                        decodeSize = iconLarge(),
                     )
                 } else {
                     Box(

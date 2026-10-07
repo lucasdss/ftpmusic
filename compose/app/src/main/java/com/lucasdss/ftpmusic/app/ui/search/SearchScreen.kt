@@ -55,8 +55,10 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
@@ -86,7 +88,6 @@ fun SearchScreen(
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
-    val fallbackVersion by remember { derivedStateOf { coverArtFallback.cacheVersionState.intValue } }
     var artistArtVersion by remember { mutableIntStateOf(0) }
     val artistArtCache = remember { mutableStateMapOf<String, String?>() }
     var isFocused by remember { mutableStateOf(false) }
@@ -1087,7 +1088,7 @@ fun SearchScreen(
                                                     painter = rememberAsyncImagePainter(
                                                         ImageRequest.Builder(
                                                             context,
-                                                        ).data(artUrl).crossfade(true).build(),
+                                                        ).data(artUrl).size(160).crossfade(false).build(),
                                                     ),
                                                     contentDescription = null,
                                                     modifier = Modifier.fillMaxSize(),
@@ -1156,7 +1157,9 @@ fun SearchScreen(
                                     if (artUrl != null) {
                                         androidx.compose.foundation.Image(
                                             painter = rememberAsyncImagePainter(
-                                                ImageRequest.Builder(context).data(artUrl).crossfade(true).build(),
+                                                ImageRequest.Builder(
+                                                    context,
+                                                ).data(artUrl).size(96).crossfade(false).build(),
                                             ),
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
@@ -1355,81 +1358,50 @@ fun SearchScreen(
                 // ── SONGS section ──
                 if (showSongs && state.tracks.isNotEmpty()) {
                     item { SectionHeader("Songs") }
-                    items(state.tracks, key = { it.id }) { t ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .clickable { onTrackClick(t) }
-                                .padding(horizontal = spacingL(), vertical = spacingS()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            val trackCoverUrl = rememberCoverArtUrl(t.coverArt, 120)
-                            if (trackCoverUrl != null) {
-                                AsyncImage(
-                                    model = trackCoverUrl,
-                                    contentDescription = t.title,
-                                    modifier = Modifier.size(iconLarge()).clip(RoundedCornerShape(6.dp)),
-                                    contentScale = ContentScale.Crop,
-                                )
-                            } else {
-                                Box(
-                                    Modifier.size(
-                                        iconLarge(),
-                                    ).clip(RoundedCornerShape(6.dp)).background(Color(0xFF1E1E1E)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Default.MusicNote,
-                                        null,
-                                        tint = NavUnselected,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
+                    items(state.tracks, key = { it.id }, contentType = { "song" }) { t ->
+                        val trackCoverUrl = rememberCoverArtUrl(t.coverArt, 120)
+                        val subtitle = buildString {
+                            t.artist?.let { append(it) }
+                            val albumLabel = t.album?.takeIf { it.isNotBlank() }
+                                ?: if (t.albumId == null) "Singles" else null
+                            if (albumLabel != null) {
+                                if (isNotEmpty()) append(" · ")
+                                append(albumLabel)
                             }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                FittingText(
-                                    text = t.title,
-                                    color = Color.White,
-                                    fontSize = textHeadingS(),
-                                    minFontSize = textMicro(),
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                val subtitle = buildString {
-                                    t.artist?.let { append(it) }
-                                    val albumLabel = t.album?.takeIf { it.isNotBlank() }
-                                        ?: if (t.albumId == null) "Singles" else null
-                                    if (albumLabel != null) {
-                                        if (isNotEmpty()) append(" · ")
-                                        append(albumLabel)
+                        }.ifBlank { null }
+                        SongListRow(
+                            title = t.title,
+                            subtitle = subtitle,
+                            downloadStatus = if (t.id in state.localTrackIds) "downloaded" else "none",
+                            durationLabel = t.formattedDuration.takeIf { it.isNotEmpty() },
+                            onClick = { onTrackClick(t) },
+                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                            leadingContent = {
+                                if (trackCoverUrl != null) {
+                                    CoverArtImage(
+                                        url = trackCoverUrl,
+                                        contentDescription = t.title,
+                                        modifier = Modifier.size(iconLarge()).clip(RoundedCornerShape(6.dp)),
+                                        decodeSize = iconLarge(),
+                                    )
+                                } else {
+                                    Box(
+                                        Modifier.size(iconLarge())
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFF1E1E1E)),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MusicNote,
+                                            null,
+                                            tint = NavUnselected,
+                                            modifier = Modifier.size(18.dp),
+                                        )
                                     }
                                 }
-                                if (subtitle.isNotEmpty()) {
-                                    FittingText(
-                                        text = subtitle,
-                                        color = Color(0xFF888888),
-                                        fontSize = textLabelM(),
-                                        minFontSize = textMicro(),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                            }
-                            if (t.id in state.localTrackIds) {
-                                DownloadDot("downloaded")
-                                Spacer(Modifier.width(6.dp))
-                            }
-                            if (t.formattedDuration.isNotEmpty()) {
-                                Text(
-                                    t.formattedDuration,
-                                    color = Color(0xFF888888),
-                                    fontSize = textBodyM(),
-                                )
-                            }
-                            Spacer(Modifier.width(6.dp))
-                            TypeBadge("song")
-                        }
+                            },
+                            trailingContent = { TypeBadge("song") },
+                        )
                         HorizontalDivider(
                             color = Color.White.copy(alpha = 0.04f),
                             modifier = Modifier.padding(horizontal = spacingL()),

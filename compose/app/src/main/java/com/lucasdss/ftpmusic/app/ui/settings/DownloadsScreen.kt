@@ -45,7 +45,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
@@ -57,8 +56,11 @@ import com.lucasdss.ftpmusic.app.ui.Background
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.SurfaceElevated
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
+import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import com.lucasdss.ftpmusic.app.ui.textBodyM
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
@@ -358,60 +360,45 @@ fun DownloadsScreen(onBack: () -> Unit, viewModel: DownloadsViewModel = hiltView
 @Composable
 private fun DownloadRow(track: TrackEntity, stale: Boolean, onPlay: () -> Unit, onRemove: () -> Unit) {
     val coverUrl = rememberCoverArtUrl(track.coverArtUrl)
-    Row(
-        Modifier
+    val subtitle = buildString {
+        append(listOfNotNull(track.artist, track.album).joinToString(" · "))
+        if (stale) {
+            if (isNotEmpty()) append(" · ")
+            append("File missing — play may re-cache")
+        }
+    }.ifBlank { null }
+    SongListRow(
+        title = track.title,
+        subtitle = subtitle,
+        downloadStatus = "downloaded",
+        durationLabel = track.durationSeconds?.let { formatSongDuration(it) },
+        onClick = onPlay,
+        modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceElevated)
-            .clickable(onClick = onPlay)
             .padding(horizontal = 12.dp, vertical = 10.dp)
             .testTag("download_row_${track.id}"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AsyncImage(
-            model = coverUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.White.copy(alpha = 0.08f)),
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                track.title,
-                color = Color.White,
-                fontSize = textBodyM(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        leadingContent = {
+            CoverArtImage(
+                url = coverUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.White.copy(alpha = 0.08f)),
+                decodeSize = 48.dp,
             )
-            Text(
-                listOfNotNull(track.artist, track.album).joinToString(" · "),
-                color = NavUnselected,
-                fontSize = textLabelM(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (stale) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = Color(0xFFFFB020),
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("File missing — play may re-cache", color = Color(0xFFFFB020), fontSize = textLabelM())
-                }
+        },
+        trailingContent = {
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("download_remove_${track.id}"),
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "Remove download", tint = NavUnselected)
             }
-        }
-        IconButton(
-            onClick = onRemove,
-            modifier = Modifier
-                .size(48.dp)
-                .testTag("download_remove_${track.id}"),
-        ) {
-            Icon(Icons.Default.Delete, contentDescription = "Remove download", tint = NavUnselected)
-        }
-    }
+        },
+    )
 }

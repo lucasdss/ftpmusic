@@ -16,9 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.ui.*
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 
 @Composable
 fun AlbumGridSection(albums: List<Album>, onAlbumClick: (String) -> Unit) {
@@ -38,11 +38,11 @@ fun AlbumGridSection(albums: List<Album>, onAlbumClick: (String) -> Unit) {
                     if (album.coverArt != null) {
                         val coverUrl = rememberCoverArtUrl(album.coverArt)
                         if (coverUrl != null) {
-                            AsyncImage(
-                                model = coverUrl,
+                            CoverArtImage(
+                                url = coverUrl,
                                 contentDescription = album.name,
                                 modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                                contentScale = ContentScale.Crop,
+                                decodeSize = 160.dp,
                             )
                         } else {
                             Box(Modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {

@@ -48,6 +48,9 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
+import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
+import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -403,74 +406,41 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    itemsIndexed(state.tracks, key = { _, t -> t.id }) { index, track ->
+                    itemsIndexed(
+                        state.tracks,
+                        key = { _, t -> t.id },
+                        contentType = { _, _ -> "song" },
+                    ) { index, track ->
                         val isCached = viewModel.isCached(track.id)
                         val isDownloaded = viewModel.isDownloaded(track.id)
                         val isQueued = viewModel.isQueued(track.id)
-                        val showCheck = isDownloaded || isQueued || isCached
+                        val ds = downloadStatus(isDownloaded, isQueued, isCached)
                         val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
 
                         Box(Modifier.background(Color.Black.copy(alpha = 0.15f))) {
-                            ListItem(
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                headlineContent = {
-                                    FittingText(
-                                        text = "${index + 1}. ${track.title}",
-                                        color = if (isActive) BrandTeal else Color.White,
-                                        fontSize = textHeadingS(),
-                                        minFontSize = textMicro(),
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                },
-                                leadingContent = if (isActive) {
-                                    { AnimatedEqBars() }
-                                } else {
-                                    null
-                                },
-                                supportingContent = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        track.artist?.let {
+                            SongListRow(
+                                title = track.title,
+                                subtitle = track.artist,
+                                isActive = isActive,
+                                downloadStatus = ds,
+                                durationLabel = track.duration?.let { formatSongDuration(it) },
+                                onMore = { menuTrackIndex = index },
+                                onClick = { viewModel.playTrack(index) },
+                                onLongClick = { menuTrackIndex = index },
+                                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                                leadingContent = {
+                                    Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
+                                        if (isActive) {
+                                            AnimatedEqBars()
+                                        } else {
                                             Text(
-                                                it,
-                                                color = Color(0xFF888888),
-                                                fontSize = textLabelM(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f, fill = false),
-                                            )
-                                        }
-                                        track.duration?.let { d ->
-                                            Text(
-                                                " · ${d / 60}:${(d % 60).toString().padStart(2, '0')}",
+                                                "${index + 1}",
                                                 color = Color(0xFF666666),
                                                 fontSize = textLabelM(),
                                             )
                                         }
                                     }
                                 },
-                                trailingContent = {
-                                    if (showCheck) {
-                                        Icon(
-                                            imageVector = when {
-                                                isDownloaded -> Icons.Default.CheckCircle
-                                                isQueued -> Icons.Default.HourglassEmpty
-                                                else -> Icons.Default.Check
-                                            },
-                                            contentDescription = null,
-                                            tint = when {
-                                                isDownloaded -> BrandPurple
-                                                else -> Color(0xFF888888)
-                                            },
-                                            modifier = Modifier.size(iconSmall()),
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.combinedClickable(
-                                    onClick = { viewModel.playTrack(index) },
-                                    onLongClick = { menuTrackIndex = index },
-                                ),
                             )
                         }
 

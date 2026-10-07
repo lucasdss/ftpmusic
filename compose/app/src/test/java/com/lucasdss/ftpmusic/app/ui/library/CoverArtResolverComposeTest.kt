@@ -104,7 +104,10 @@ class CoverArtResolverComposeTest {
     }
 
     @Test
-    fun `rememberPreferredCoverArt evicts a corrupt cache file and falls back to remote`() {
+    fun `rememberPreferredCoverArt prefers non-empty disk file without magic probe`() {
+        // ADR 0096: composition path uses existsNonEmpty only — no InputStream
+        // magic read / eviction during Lazy fling. Corrupt payloads are rejected
+        // later by Coil onError + CoverArtImage / ArtistAvatar eviction.
         ServerConfigState.value = ServerConfig("https://music.example", "user", "pass")
         val context = ApplicationProvider.getApplicationContext<Application>()
         val service = CoverArtFallbackService.getInstance(context)
@@ -125,8 +128,8 @@ class CoverArtResolverComposeTest {
         }
         composeRule.waitForIdle()
 
-        assertTrue(result!!.startsWith("https://music.example/rest/getCoverArt?"))
-        assertTrue("corrupt cache file must be evicted", !cachedFile.exists())
+        assertEquals("file://${cachedFile.absolutePath}", result)
+        assertTrue("composition must not delete on magic miss", cachedFile.exists())
     }
 
     @Test

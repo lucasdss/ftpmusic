@@ -400,7 +400,7 @@ fun LibraryContent(
                             }
                         } else {
                             LazyColumn {
-                                items(filteredPlaylists) { pl ->
+                                items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
                                     Box {
                                         Row(
                                             Modifier.fillMaxWidth()
@@ -422,11 +422,11 @@ fun LibraryContent(
                                                     if (url !=
                                                         null
                                                     ) {
-                                                        AsyncImage(
-                                                            model = url,
+                                                        CoverArtImage(
+                                                            url = url,
                                                             contentDescription = null,
                                                             modifier = Modifier.fillMaxSize(),
-                                                            contentScale = ContentScale.Crop,
+                                                            decodeSize = 52.dp,
                                                         )
                                                     } else {
                                                         Icon(
@@ -595,7 +595,7 @@ fun LibraryContent(
                                         modifier = Modifier.padding(horizontal = spacingL()),
                                     )
                                 }
-                                items(filteredRadio) { station ->
+                                items(filteredRadio, key = { it.id }, contentType = { "radio" }) { station ->
                                     Row(
                                         Modifier.fillMaxWidth().clickable {
                                             onRadioStationClick(station)

@@ -104,6 +104,9 @@ class FtpmusicApp : Application() {
         // Size follows Settings cover-art quota (default 300MB).
         try {
             val coverQuotaBytes = coverArtQuotaBytes()
+            // crossfade(false): Lazy list fling must not pay appear-anim cost
+            // on every recycled cell (ADR 0096 / SCROLL_FPS). CoverArtImage
+            // already forces sized decode + no crossfade; defaults match.
             coil.ImageLoader.Builder(this)
                 .diskCache {
                     coil.disk.DiskCache.Builder()
@@ -111,7 +114,8 @@ class FtpmusicApp : Application() {
                         .maxSizeBytes(coverQuotaBytes)
                         .build()
                 }
-                .crossfade(true)
+                .crossfade(false)
+                .allowHardware(true)
                 .apply {
                     if (BuildConfig.IMAGE_DIAGNOSTICS) {
                         logger(coil.util.DebugLogger())

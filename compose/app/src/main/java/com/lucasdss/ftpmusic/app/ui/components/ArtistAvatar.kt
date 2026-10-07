@@ -20,8 +20,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFiles
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
@@ -67,13 +69,13 @@ fun ArtistAvatar(artistName: String, coverArtId: String?, size: Dp, modifier: Mo
             "${artistCacheKey.hashCode()}.jpg",
         )
     }
+    // Composition path: cheap exists/length only (ADR 0096). Magic/evict on Coil error.
     val cachedFileUrl = remember(artistName, fallbackVersion, localFailed) {
         if (localFailed) {
             null
-        } else if (CoverArtFiles.looksLikeImage(cachedFile)) {
+        } else if (CoverArtFiles.existsNonEmpty(cachedFile)) {
             cachedFile.absolutePath
         } else {
-            CoverArtFiles.deleteIfNotImage(cachedFile)
             null
         }
     }
@@ -85,13 +87,26 @@ fun ArtistAvatar(artistName: String, coverArtId: String?, size: Dp, modifier: Mo
     val effectiveUrl = cachedFileUrl
         ?: (if (!navidromeFailed) navidromeUrl else null)
 
+    val density = LocalDensity.current
+    val sizePx = remember(size, density) {
+        with(density) { size.roundToPx().coerceAtLeast(1) }
+    }
+
     Box(
         modifier.size(size).clip(CircleShape).background(Color(0xFF1E1E1E)),
         contentAlignment = Alignment.Center,
     ) {
         if (effectiveUrl != null) {
+            val request = remember(effectiveUrl, sizePx) {
+                ImageRequest.Builder(context)
+                    .data(effectiveUrl)
+                    .size(sizePx)
+                    .memoryCacheKey("$effectiveUrl@$sizePx")
+                    .crossfade(false)
+                    .build()
+            }
             AsyncImage(
-                model = effectiveUrl,
+                model = request,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

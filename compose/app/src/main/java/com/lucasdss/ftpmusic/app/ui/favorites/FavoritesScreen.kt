@@ -54,11 +54,15 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.SurfaceChip
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.RadioBookmarkIcon
 import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
+import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
+import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -892,70 +896,50 @@ private fun TrackFavoriteRow(
     onRowClick: () -> Unit,
     onAction: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onRowClick)
+    val trackCoverUrl = rememberCoverArtUrl(track.coverArtUrl, 200)
+    val ds = downloadStatus(track.isDownloaded, false, track.cachedFilePath != null)
+    // Meta: cache + duration; single like/dislike action stays on the right (Favorites UX).
+    SongListRow(
+        title = track.title,
+        subtitle = track.artist,
+        isActive = isActive,
+        downloadStatus = ds,
+        durationLabel = track.durationSeconds?.let { formatSongDuration(it) },
+        onClick = onRowClick,
+        modifier = Modifier
             .padding(horizontal = spacingL(), vertical = 10.dp)
             .testTag("fav_track_${track.id}"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val trackCoverUrl = rememberCoverArtUrl(track.coverArtUrl, 200)
-        Box(
-            Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF1E1E1E)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (trackCoverUrl != null) {
-                AsyncImage(
-                    model = trackCoverUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Icon(
-                    Icons.Default.MusicNote,
-                    null,
-                    tint = NavUnselected,
-                    modifier = Modifier.size(iconSmall()),
-                )
+        leadingContent = {
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF1E1E1E)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (trackCoverUrl != null) {
+                    CoverArtImage(
+                        url = trackCoverUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        decodeSize = 48.dp,
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        null,
+                        tint = NavUnselected,
+                        modifier = Modifier.size(iconSmall()),
+                    )
+                }
             }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            FittingText(
-                text = track.title,
-                color = if (isActive) BrandTeal else Color.White,
-                fontSize = textHeadingS(),
-                minFontSize = textMicro(),
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.fillMaxWidth(),
+        },
+        trailingContent = {
+            ReactionGlyphButton(
+                icon = actionIcon,
+                contentDescription = actionCd,
+                tint = actionTint,
+                onClick = onAction,
             )
-            track.artist?.let {
-                FittingText(
-                    text = it,
-                    color = Color(0xFF888888),
-                    fontSize = textLabelM(),
-                    minFontSize = textMicro(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-        val ds = com.lucasdss.ftpmusic.app.ui.components.downloadStatus(
-            track.isDownloaded,
-            false,
-            track.cachedFilePath != null,
-        )
-        if (ds != "none") {
-            com.lucasdss.ftpmusic.app.ui.components.DownloadDot(ds)
-            Spacer(Modifier.width(6.dp))
-        }
-        Spacer(Modifier.width(8.dp))
-        ReactionGlyphButton(
-            icon = actionIcon,
-            contentDescription = actionCd,
-            tint = actionTint,
-            onClick = onAction,
-        )
-    }
+        },
+    )
     HorizontalDivider(
         color = Color.White.copy(alpha = 0.05f),
         modifier = Modifier.padding(horizontal = spacingL()),

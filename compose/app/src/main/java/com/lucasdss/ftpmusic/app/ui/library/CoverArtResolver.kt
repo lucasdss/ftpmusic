@@ -183,22 +183,23 @@ fun rememberPreferredCoverArt(
             null
         } else {
             val cacheDir = service.cacheDir
+            // Cheap exists/length only — no magic-byte InputStream on the
+            // composition path (SCROLL_FPS / ADR 0096). Coil onError +
+            // CoverArtImage fallbacks handle corrupt payloads.
             if (album != null && artist != null) {
                 val cacheKey = "$artist|$album".lowercase()
                 val localFile = File(cacheDir, "${cacheKey.hashCode()}.jpg")
-                if (CoverArtFiles.looksLikeImage(localFile)) {
+                if (CoverArtFiles.existsNonEmpty(localFile)) {
                     "file://${localFile.absolutePath}"
                 } else {
-                    CoverArtFiles.deleteIfNotImage(localFile)
                     checkNavidromeDiskCache(service, coverArtId)
                 }
             } else if (artist != null) {
                 val cacheKey = "artist|$artist".lowercase()
                 val localFile = File(cacheDir, "${cacheKey.hashCode()}.jpg")
-                if (CoverArtFiles.looksLikeImage(localFile)) {
+                if (CoverArtFiles.existsNonEmpty(localFile)) {
                     "file://${localFile.absolutePath}"
                 } else {
-                    CoverArtFiles.deleteIfNotImage(localFile)
                     checkNavidromeDiskCache(service, coverArtId)
                 }
             } else {
@@ -249,9 +250,8 @@ fun rememberPreferredCoverArt(
 private fun checkNavidromeDiskCache(fallbackService: CoverArtFallbackService, coverArtId: String?): String? {
     if (coverArtId == null) return null
     val navFile = File(fallbackService.cacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
-    if (CoverArtFiles.looksLikeImage(navFile)) {
+    if (CoverArtFiles.existsNonEmpty(navFile)) {
         return "file://${navFile.absolutePath}"
     }
-    CoverArtFiles.deleteIfNotImage(navFile)
     return null
 }

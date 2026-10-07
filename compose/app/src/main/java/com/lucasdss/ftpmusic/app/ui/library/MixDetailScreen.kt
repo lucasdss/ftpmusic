@@ -56,7 +56,8 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
-import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
+import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -291,17 +292,12 @@ fun MixDetailScreen(
                         HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                     }
 
-                    // Track list — Album-style rows
-                    itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->
-                        val t = Track(
-                            id = track.id,
-                            title = track.title,
-                            artist = track.artist,
-                            albumId = track.albumId,
-                            duration = track.duration,
-                            trackNumber = track.trackNumber,
-                            coverArt = track.coverArt,
-                        )
+                    // Track list — SongListRow (fixed title size, meta below)
+                    itemsIndexed(
+                        state.tracks,
+                        key = { _, track -> track.id },
+                        contentType = { _, _ -> "song" },
+                    ) { index, track ->
                         val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
                         val isDownloaded = viewModel.isDownloaded(track.id)
                         val ds = com.lucasdss.ftpmusic.app.ui.components.downloadStatus(
@@ -309,89 +305,37 @@ fun MixDetailScreen(
                             isQueued = false,
                             isCached = isDownloaded,
                         )
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // Track number / EQ
-                            Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
-                                if (isActive) {
-                                    AnimatedEqBarsMix()
-                                } else {
-                                    Text(
-                                        "${track.trackNumber ?: index + 1}",
-                                        color = Color(0xFF666666),
-                                        fontSize = textBodyM(),
-                                        fontWeight = FontWeight.Medium,
-                                    )
+                        val isLiked = track.id in state.likedTrackIds
+                        val isDisliked = track.id in state.dislikedTrackIds
+                        SongListRow(
+                            title = track.title,
+                            subtitle = track.artist,
+                            isActive = isActive,
+                            downloadStatus = ds,
+                            durationLabel = track.duration?.let { formatSongDuration(it) },
+                            isLiked = isLiked,
+                            isDisliked = isDisliked,
+                            onLike = { viewModel.toggleTrackLike(track.id) },
+                            onDislike = { viewModel.toggleTrackDislike(track.id) },
+                            onMore = { showTrackSheet = track },
+                            onClick = { viewModel.playTrack(index) },
+                            onLongClick = { showTrackSheet = track },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            leadingContent = {
+                                Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
+                                    if (isActive) {
+                                        AnimatedEqBarsMix()
+                                    } else {
+                                        Text(
+                                            "${track.trackNumber ?: index + 1}",
+                                            color = Color(0xFF666666),
+                                            fontSize = textBodyM(),
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
                                 }
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            // Info (tap to play, long-press for menu)
-                            Column(
-                                Modifier.weight(1f).combinedClickable(
-                                    onClick = { viewModel.playTrack(index) },
-                                    onLongClick = { showTrackSheet = track },
-                                ),
-                            ) {
-                                FittingText(
-                                    text = track.title,
-                                    color = if (isActive) BrandTeal else Color.White,
-                                    fontSize = textHeadingS(),
-                                    minFontSize = textMicro(),
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                track.artist?.let {
-                                    FittingText(
-                                        text = it,
-                                        color = Color(0xFF888888),
-                                        fontSize = textLabelM(),
-                                        minFontSize = textMicro(),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            // Download badge
-                            com.lucasdss.ftpmusic.app.ui.components.DownloadDot(ds)
-                            Spacer(Modifier.width(6.dp))
-                            // ThumbsUp (like == star) — read from collected state
-                            val isLiked = track.id in state.likedTrackIds
-                            ReactionGlyphButton(
-                                icon = Icons.Filled.ThumbUp,
-                                contentDescription = if (isLiked) "Unlike" else "Like",
-                                tint = if (isLiked) BrandTeal else Color(0xFF444444),
-                                onClick = { viewModel.toggleTrackLike(track.id) },
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            // ThumbsDown (dislike — local)
-                            val isDisliked = track.id in state.dislikedTrackIds
-                            ReactionGlyphButton(
-                                icon = Icons.Filled.ThumbDown,
-                                contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
-                                tint = if (isDisliked) Color(0xFFE84040) else Color(0xFF444444),
-                                onClick = { viewModel.toggleTrackDislike(track.id) },
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            // Duration
-                            track.duration?.let { d ->
-                                Text(
-                                    "${d / 60}:${(d % 60).toString().padStart(2, '0')}",
-                                    color = Color(0xFF888888),
-                                    fontSize = textLabelL(),
-                                )
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            // ⋮ menu
-                            Icon(
-                                Icons.Default.MoreVert,
-                                null,
-                                tint = Color(0xFF444444),
-                                modifier = Modifier.size(18.dp).clickable { showTrackSheet = track },
-                            )
-                        }
+                            },
+                        )
                         HorizontalDivider(
                             color = Color.White.copy(alpha = 0.04f),
                             modifier = Modifier.padding(horizontal = 16.dp),

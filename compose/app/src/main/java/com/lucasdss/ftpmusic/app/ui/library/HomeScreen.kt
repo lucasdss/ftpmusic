@@ -61,9 +61,10 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
-import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
+import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
@@ -914,97 +915,41 @@ private fun TrackRow(
     isActive: Boolean = false,
     onTrackClick: ((TrackEntity) -> Unit)? = null,
 ) {
-    val eqAnimation = rememberInfiniteTransition(label = "eq")
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = 10.dp).then(
-            if (onTrackClick !=
-                null
+    val ds = downloadStatus(track.isDownloaded, false, track.cachedFilePath != null)
+    SongListRow(
+        title = track.title,
+        subtitle = track.artist,
+        isActive = isActive,
+        downloadStatus = ds,
+        durationLabel = track.durationSeconds?.let { formatSongDuration(it) },
+        onClick = onTrackClick?.let { handler -> { handler(track) } },
+        modifier = Modifier.padding(horizontal = spacingL(), vertical = 10.dp),
+        leadingContent = {
+            Box(
+                Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS())),
+                contentAlignment = Alignment.Center,
             ) {
-                Modifier.clickable { onTrackClick(track) }
-            } else {
-                Modifier
-            },
-        ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Album cover art
-        Box(
-            Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS())),
-            contentAlignment = Alignment.Center,
-        ) {
-            val resolvedUrl = rememberPreferredCoverArt(
-                coverArtId = albumCoverArtId,
-                artist = track.artist,
-                album = null,
-                size = 120,
-            )
-            if (resolvedUrl != null) {
-                CoverArtImage(
-                    url = resolvedUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                val resolvedUrl = rememberPreferredCoverArt(
+                    coverArtId = albumCoverArtId,
+                    artist = track.artist,
+                    album = null,
+                    size = 120,
                 )
-            } else {
-                Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(iconSmall()))
+                if (resolvedUrl != null) {
+                    CoverArtImage(
+                        url = resolvedUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        decodeSize = iconLarge(),
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.MusicNote, null, tint = NavUnselected, modifier = Modifier.size(iconSmall()))
+                    }
                 }
             }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            FittingText(
-                text = track.title,
-                color = if (isActive) BrandTeal else Color.White,
-                fontSize = textHeadingS(),
-                minFontSize = textMicro(),
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            track.artist?.let {
-                FittingText(
-                    text = it,
-                    color = Color(0xFF888888),
-                    fontSize = textLabelM(),
-                    minFontSize = textMicro(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-        // EQ bars for active track
-        if (isActive) {
-            Row(Modifier.width(16.dp).height(16.dp).padding(end = spacingS()), verticalAlignment = Alignment.Bottom) {
-                val delays = listOf(0, 150, 300)
-                val heights = listOf(0.4f, 0.7f, 1.0f)
-                for (i in 0..2) {
-                    val anim by eqAnimation.animateFloat(
-                        initialValue = heights[i] * 0.4f,
-                        targetValue = heights[i],
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(400 + delays[i], easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse,
-                        ),
-                        label = "eq$i",
-                    )
-                    Box(
-                        Modifier.width(
-                            3.dp,
-                        ).fillMaxHeight(anim).clip(RoundedCornerShape(1.dp)).background(BrandTeal),
-                    )
-                    if (i < 2) Spacer(Modifier.width(2.dp))
-                }
-            }
-        }
-        val ds = downloadStatus(track.isDownloaded, false, track.cachedFilePath != null)
-        if (ds != "none") {
-            DownloadDot(ds)
-            Spacer(Modifier.width(6.dp))
-        }
-        track.durationSeconds?.let { secs ->
-            val mins = secs / 60
-            val sec = secs % 60
-            Text("$mins:${sec.toString().padStart(2, '0')}", color = Color(0xFF888888), fontSize = textBodyM())
-        }
-    }
+        },
+    )
 }
 
 private data class Quadruple(val first: ImageVector, val second: String, val third: String)

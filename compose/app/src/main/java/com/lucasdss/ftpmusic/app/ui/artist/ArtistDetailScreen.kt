@@ -52,13 +52,15 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DetailActionRow
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
-import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
+import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
+import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -532,7 +534,6 @@ private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TrackRow(
     track: Track,
@@ -544,78 +545,28 @@ private fun TrackRow(
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = spacingM()),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            "${index + 1}",
-            color = Color(0xFF666666),
-            fontSize = textBodyM(),
-            modifier = Modifier.width(28.dp),
-        )
-        Column(Modifier.weight(1f)) {
-            FittingText(
-                text = track.title,
-                color = Color.White,
-                fontSize = textHeadingS(),
-                minFontSize = textMicro(),
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            track.artist?.let {
-                FittingText(
-                    text = it,
-                    color = Color(0xFF888888),
-                    fontSize = textLabelM(),
-                    minFontSize = textMicro(),
-                    maxLines = 1,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        // ThumbsUp (like == star)
-        ReactionGlyphButton(
-            icon = Icons.Filled.ThumbUp,
-            contentDescription = if (isLiked) "Unlike" else "Like",
-            tint = if (isLiked) BrandTeal else Color(0xFF444444),
-            onClick = onToggleLike,
-        )
-        Spacer(Modifier.width(6.dp))
-        // ThumbsDown (dislike — local)
-        ReactionGlyphButton(
-            icon = Icons.Filled.ThumbDown,
-            contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
-            tint = if (isDisliked) Color(0xFFE84040) else Color(0xFF444444),
-            onClick = onToggleDislike,
-        )
-        Spacer(Modifier.width(6.dp))
-        track.duration?.let { d ->
+    SongListRow(
+        title = track.title,
+        subtitle = track.artist,
+        downloadStatus = "none",
+        durationLabel = track.duration?.let { formatSongDuration(it) },
+        isLiked = isLiked,
+        isDisliked = isDisliked,
+        onLike = onToggleLike,
+        onDislike = onToggleDislike,
+        onMore = onLongClick,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        modifier = Modifier.padding(vertical = spacingM()),
+        leadingContent = {
             Text(
-                formatDuration(d),
+                "${index + 1}",
                 color = Color(0xFF666666),
-                fontSize = textLabelM(),
+                fontSize = textBodyM(),
+                modifier = Modifier.width(28.dp),
             )
-        }
-        Spacer(Modifier.width(4.dp))
-        // ⋮ menu — ≥48dp interactive floor
-        Box(
-            Modifier
-                .minimumInteractiveComponentSize()
-                .clickable { onLongClick() },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Default.MoreVert,
-                contentDescription = "Track menu",
-                tint = Color(0xFF444444),
-                modifier = Modifier.size(knobSize()),
-            )
-        }
-    }
+        },
+    )
 }
 
 // ─── Artist Action Sheet ───
@@ -821,7 +772,7 @@ private fun AlbumsTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
         horizontalArrangement = Arrangement.spacedBy(gridGapH()),
         verticalArrangement = Arrangement.spacedBy(gridGapV()),
     ) {
-        items(albums) { album ->
+        items(albums, key = { it.id }, contentType = { "album" }) { album ->
             Column(Modifier.clickable { onAlbumClick(album.id) }) {
                 // Cover art
                 Box(
@@ -830,11 +781,11 @@ private fun AlbumsTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
                 ) {
                     val coverUrl = rememberCoverArtUrl(album.coverArt, 300)
                     if (coverUrl != null) {
-                        AsyncImage(
-                            model = coverUrl,
+                        CoverArtImage(
+                            url = coverUrl,
                             contentDescription = album.name,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
+                            decodeSize = 160.dp,
                         )
                     } else {
                         Box(

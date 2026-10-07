@@ -28,12 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
-import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.Background
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
+import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
+import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
@@ -49,14 +49,6 @@ fun GenreDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(genre) { viewModel.loadGenre(genre) }
-
-    val context = LocalContext.current
-    val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
-    val fallbackVersion by remember { derivedStateOf { coverArtFallback.cacheVersionState.intValue } }
-    fun artistArtUrl(name: String): String? {
-        val file = java.io.File(coverArtFallback.cacheDir, "artist|${name.lowercase()}".hashCode().toString() + ".jpg")
-        return if (file.exists() && file.length() > 0) file.absolutePath else null
-    }
 
     Scaffold(
         topBar = {
@@ -143,7 +135,7 @@ fun GenreDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
-                            items(state.albums) { album ->
+                            items(state.albums, key = { it.id }, contentType = { "album" }) { album ->
                                 Column(Modifier.clickable { onAlbumClick(album.id) }) {
                                     Box(
                                         Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(cornerM())),
@@ -151,11 +143,11 @@ fun GenreDetailScreen(
                                     ) {
                                         val url = rememberCoverArtUrl(album.coverArt, 300)
                                         if (url != null) {
-                                            AsyncImage(
-                                                model = url,
+                                            CoverArtImage(
+                                                url = url,
                                                 contentDescription = album.name,
                                                 modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop,
+                                                decodeSize = 160.dp,
                                             )
                                         } else {
                                             Box(
@@ -221,51 +213,28 @@ fun GenreDetailScreen(
                             }
                         }
                         LazyColumn(state = listState) {
-                            items(state.artists) { artist ->
-                                LaunchedEffect(artist.name) { coverArtFallback.fetchArtistArt(artist.name).collect {} }
-                                val artUrl = remember(artist.name, fallbackVersion) { artistArtUrl(artist.name) }
+                            items(state.artists, key = { it.id }, contentType = { "artist" }) { artist ->
                                 Row(
                                     Modifier.fillMaxWidth().clickable {
                                         onArtistClick(artist.id)
                                     }.padding(horizontal = spacingL(), vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Box(
-                                        Modifier.size(iconLarge()).clip(RoundedCornerShape(cornerS())),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        if (artUrl != null) {
-                                            AsyncImage(
-                                                model = artUrl,
-                                                contentDescription = null,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop,
-                                            )
-                                        } else {
-                                            Box(
-                                                Modifier.fillMaxSize().background(Color(0xFF1E1E1E)),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Person,
-                                                    null,
-                                                    tint = NavUnselected,
-                                                    modifier = Modifier.size(iconSmall()),
-                                                )
-                                            }
-                                        }
-                                    }
+                                    ArtistAvatar(
+                                        artistName = artist.name,
+                                        coverArtId = null,
+                                        size = iconLarge(),
+                                    )
                                     Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        FittingText(
-                                            text = artist.name,
-                                            color = Color.White,
-                                            fontSize = textHeadingS(),
-                                            minFontSize = textMicro(),
-                                            fontWeight = FontWeight.Medium,
-                                            modifier = Modifier.fillMaxWidth(),
-                                        )
-                                    }
+                                    Text(
+                                        artist.name,
+                                        color = Color.White,
+                                        fontSize = textHeadingS(),
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
                                     Icon(
                                         Icons.Default.ChevronRight,
                                         null,
