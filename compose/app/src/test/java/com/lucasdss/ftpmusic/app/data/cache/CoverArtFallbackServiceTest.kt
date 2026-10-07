@@ -46,15 +46,24 @@ class CoverArtFallbackServiceTest {
     }
 
     /** Bytes that pass the image magic-byte check on the plain JVM. */
-    private fun writeFakeImage(file: File) {
+    private fun writeFakeImage(file: File, soft: Boolean = false, fresh: Boolean = true) {
         file.parentFile?.mkdirs()
-        file.writeBytes(
-            byteArrayOf(
-                0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
-                0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
-                0x00, 0x01,
-            ),
+        val bytes = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01,
         )
+        file.writeBytes(bytes)
+        if (fresh) {
+            CoverArtCacheMeta.write(
+                file,
+                CoverArtCacheMeta(
+                    contentSha256 = CoverArtCacheMeta.sha256Hex(bytes),
+                    fetchedAtMs = System.currentTimeMillis(),
+                    softPlaceholder = soft,
+                ),
+            )
+        }
     }
 
     // ── Artist art: cache key matching SearchScreen ──────────────────────────

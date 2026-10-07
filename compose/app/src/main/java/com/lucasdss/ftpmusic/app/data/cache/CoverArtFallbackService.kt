@@ -115,6 +115,10 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
     private val versionLock = Any()
     private val diskLock = Any()
 
+    /** contentSha256 → set of navidrome coverArtIds sharing that body. */
+    private val shaToCoverArtIds =
+        java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
+
     /** Snapshot read of one cache key's version (0 if never written). */
     fun observeVersion(cacheKey: String): Int = keyVersionStates.getOrPut(cacheKey) { mutableIntStateOf(0) }.intValue
 
@@ -133,12 +137,31 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
         }
     }
 
+    private fun navidromeFile(coverArtId: String): File = File(cacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
+
     /**
-     * Validate + atomically publish image bytes to [file]. Rejects non-image
-     * content types and undecodable payloads (e.g. Navidrome's HTTP 200 JSON
-     * error bodies) so they are never written into the cache.
+     * True when a usable image exists and its sidecar says it is still within
+     * soft (24h) / real (7d) TTL. Legacy files without meta are stale.
      */
-    private fun writeImageAtomically(file: File, bytes: ByteArray, contentType: String?): Boolean {
+    fun isFreshOnDisk(imageFile: File): Boolean =
+        CoverArtFiles.isUsableImage(imageFile) && CoverArtCacheMeta.isFresh(imageFile)
+
+    /**
+     * Validate + atomically publish image bytes to [file], write sidecar meta,
+     * and classify soft placeholders. Rejects non-image content types and
+     * undecodable payloads.
+     *
+     * @param coverArtId when non-null, registers SHA for shared-hash soft detection.
+     */
+    internal fun writeImageAtomically(
+        file: File,
+        bytes: ByteArray,
+        contentType: String?,
+        etag: String? = null,
+        lastModified: String? = null,
+        coverArtId: String? = null,
+        forceSoft: Boolean = false,
+    ): Boolean {
         if (contentType != null && !contentType.startsWith("image/", ignoreCase = true)) return false
         if (bytes.isEmpty()) return false
         val tmp = File(file.parentFile, "${file.name}.tmp")
@@ -150,12 +173,26 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
                 return false
             }
             if (file.exists()) file.delete()
-            if (tmp.renameTo(file)) {
-                true
-            } else {
+            if (!tmp.renameTo(file)) {
                 tmp.delete()
-                false
+                return false
             }
+            val sha = CoverArtCacheMeta.sha256Hex(bytes)
+            var soft = forceSoft || CoverArtPlaceholders.isKnownPlaceholder(sha)
+            if (coverArtId != null) {
+                soft = registerShaAndDetectSoft(sha, coverArtId) || soft
+            }
+            CoverArtCacheMeta.write(
+                file,
+                CoverArtCacheMeta(
+                    contentSha256 = sha,
+                    etag = etag,
+                    lastModified = lastModified,
+                    fetchedAtMs = System.currentTimeMillis(),
+                    softPlaceholder = soft,
+                ),
+            )
+            true
         } catch (_: Exception) {
             tmp.delete()
             false
@@ -163,35 +200,125 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
     }
 
     /**
+     * Publish decoded network bytes into the navidrome disk slot (BitmapLoader /
+     * external callers). Classifies soft placeholders and bumps version.
+     */
+    fun publishNavidromeBytes(
+        coverArtId: String,
+        bytes: ByteArray,
+        contentType: String? = "image/jpeg",
+        etag: String? = null,
+        lastModified: String? = null,
+    ): Boolean {
+        val cachedFile = navidromeFile(coverArtId)
+        CoverArtFiles.deleteIfUnusable(cachedFile)
+        val ok = writeImageAtomically(
+            file = cachedFile,
+            bytes = bytes,
+            contentType = contentType,
+            etag = etag,
+            lastModified = lastModified,
+            coverArtId = coverArtId,
+        )
+        if (ok) {
+            onFileCached("navidrome|$coverArtId")
+            evictIfNeeded()
+        }
+        return ok
+    }
+
+    private fun registerShaAndDetectSoft(sha: String, coverArtId: String): Boolean {
+        val ids = shaToCoverArtIds.getOrPut(sha) {
+            java.util.concurrent.ConcurrentHashMap.newKeySet()
+        }
+        ids.add(coverArtId)
+        if (ids.size < CoverArtCacheMeta.SHARED_HASH_SOFT_THRESHOLD) return false
+        // Mark all known files with this SHA as soft.
+        for (id in ids) {
+            val f = navidromeFile(id)
+            val existing = CoverArtCacheMeta.read(f) ?: continue
+            if (!existing.softPlaceholder) {
+                CoverArtCacheMeta.write(f, existing.copy(softPlaceholder = true))
+                onFileCached("navidrome|$id")
+            }
+        }
+        return true
+    }
+
+    /** Delete navidrome disk entry + meta and bump Compose version. */
+    fun invalidateNavidromeArt(coverArtId: String) {
+        if (coverArtId.isBlank()) return
+        val file = navidromeFile(coverArtId)
+        synchronized(diskLock) {
+            val meta = CoverArtCacheMeta.read(file)
+            if (meta != null) {
+                shaToCoverArtIds[meta.contentSha256]?.remove(coverArtId)
+            }
+            CoverArtCacheMeta.delete(file)
+            file.delete()
+        }
+        onFileCached("navidrome|$coverArtId")
+        diag("invalidateNavidromeArt id=$coverArtId")
+    }
+
+    fun invalidateNavidromeArts(ids: Collection<String>) {
+        ids.forEach { invalidateNavidromeArt(it) }
+    }
+
+    /**
      * Cache Navidrome cover art to local disk for offline availability.
-     * Called in background — the cover art will be available from disk on next render.
+     * Skips network when a fresh (TTL) real/soft entry exists; otherwise
+     * conditional-GETs to upgrade placeholders without hammering the server.
      */
     fun cacheNavidromeArt(coverArtId: String, imageUrl: String) {
-        val cachedFile = File(cacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
-        if (CoverArtFiles.isUsableImage(cachedFile)) return
+        val cachedFile = navidromeFile(coverArtId)
+        if (isFreshOnDisk(cachedFile)) return
         CoverArtFiles.deleteIfUnusable(cachedFile)
 
         scope.launch {
-            try {
-                val request = Request.Builder().url(imageUrl).build()
-                val response = client.newCall(request).execute()
-                val body = response.body
-                if (body == null) {
-                    diag("cacheNavidromeArt EMPTY BODY id=$coverArtId code=${response.code}")
-                    return@launch
-                }
-                val bytes = body.bytes()
-                val ok = writeImageAtomically(cachedFile, bytes, response.header("Content-Type"))
-                if (ok) {
-                    onFileCached("navidrome|$coverArtId")
-                    evictIfNeeded()
-                    diag("cacheNavidromeArt OK id=$coverArtId size=${cachedFile.length()}")
-                } else {
-                    diag("cacheNavidromeArt REJECTED id=$coverArtId contentType=${response.header("Content-Type")}")
-                }
-            } catch (e: Exception) {
-                diag("cacheNavidromeArt FAILED id=$coverArtId: ${e.javaClass.simpleName}")
+            revalidateNavidromeArt(coverArtId, imageUrl, cachedFile)
+        }
+    }
+
+    private fun revalidateNavidromeArt(coverArtId: String, imageUrl: String, cachedFile: File) {
+        try {
+            val existingMeta = CoverArtCacheMeta.read(cachedFile)
+            val requestBuilder = Request.Builder().url(imageUrl)
+            existingMeta?.etag?.let { requestBuilder.header("If-None-Match", it) }
+            existingMeta?.lastModified?.let { requestBuilder.header("If-Modified-Since", it) }
+            val response = client.newCall(requestBuilder.build()).execute()
+            if (response.code == 304) {
+                CoverArtCacheMeta.touchFetchedAt(cachedFile)
+                diag("cacheNavidromeArt NOT_MODIFIED id=$coverArtId")
+                return
             }
+            val body = response.body
+            if (body == null) {
+                diag("cacheNavidromeArt EMPTY BODY id=$coverArtId code=${response.code}")
+                return
+            }
+            if (!response.isSuccessful) {
+                diag("cacheNavidromeArt HTTP ${response.code} id=$coverArtId")
+                return
+            }
+            val bytes = body.bytes()
+            val ok = writeImageAtomically(
+                file = cachedFile,
+                bytes = bytes,
+                contentType = response.header("Content-Type"),
+                etag = response.header("ETag"),
+                lastModified = response.header("Last-Modified"),
+                coverArtId = coverArtId,
+            )
+            if (ok) {
+                onFileCached("navidrome|$coverArtId")
+                evictIfNeeded()
+                diag("cacheNavidromeArt OK id=$coverArtId size=${cachedFile.length()}")
+            } else {
+                diag("cacheNavidromeArt REJECTED id=$coverArtId contentType=${response.header("Content-Type")}")
+            }
+        } catch (e: Exception) {
+            diag("cacheNavidromeArt FAILED id=$coverArtId: ${e.javaClass.simpleName}")
         }
     }
 
@@ -216,21 +343,36 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
     fun fetchArt(artist: String, album: String): Flow<String?> = flow {
         val cacheKey = "$artist|$album".lowercase()
 
-        // Check in-memory cache first
-        urlCache[cacheKey]?.let {
-            emit(it)
-            return@flow
+        // Check in-memory cache first (remote URLs OK; file:// only if still fresh)
+        urlCache[cacheKey]?.let { cached ->
+            if (cached.startsWith("file://")) {
+                val local = File(cached.removePrefix("file://"))
+                if (isFreshOnDisk(local)) {
+                    emit(cached)
+                    return@flow
+                }
+                urlCache.remove(cacheKey)
+            } else {
+                emit(cached)
+                return@flow
+            }
         }
 
-        // Check disk cache (validated — evict truncated/undecodable files)
+        // Check disk cache (validated — evict truncated/undecodable files).
+        // Fresh entries short-circuit; stale/soft-expired fall through to refresh.
         val cachedFile = File(cacheDir, "${cacheKey.hashCode()}.jpg")
-        if (CoverArtFiles.isUsableImage(cachedFile)) {
+        if (isFreshOnDisk(cachedFile)) {
             val url = "file://${cachedFile.absolutePath}"
             urlCache[cacheKey] = url
             emit(url)
             return@flow
         }
-        CoverArtFiles.deleteIfUnusable(cachedFile)
+        if (CoverArtFiles.isUsableImage(cachedFile)) {
+            // Stale but usable — emit for instant UI, then refresh below.
+            emit("file://${cachedFile.absolutePath}")
+        } else {
+            CoverArtFiles.deleteIfUnusable(cachedFile)
+        }
 
         var bestUrl: String? = null
         var bestSize = 0
@@ -275,7 +417,7 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
             }
         }
 
-        // Cache best URL to disk for future use
+        // Cache best URL to disk for future use (skip if we only had a stale file://)
         if (bestUrl != null && !bestUrl.startsWith("file://")) {
             if (downloadToFile(bestUrl, cachedFile)) {
                 onFileCached(cacheKey)
@@ -367,13 +509,20 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
      * Downloads an image from [url] and atomically publishes it to [file].
      * @return true when a valid image was written.
      */
-    private fun downloadToFile(url: String, file: File): Boolean = try {
+    private fun downloadToFile(url: String, file: File, coverArtId: String? = null): Boolean = try {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 10_000
         conn.readTimeout = 15_000
         conn.instanceFollowRedirects = true
         val bytes = conn.inputStream.use { it.readBytes() }
-        val ok = writeImageAtomically(file, bytes, conn.contentType)
+        val ok = writeImageAtomically(
+            file = file,
+            bytes = bytes,
+            contentType = conn.contentType,
+            etag = conn.getHeaderField("ETag"),
+            lastModified = conn.getHeaderField("Last-Modified"),
+            coverArtId = coverArtId,
+        )
         if (ok) evictIfNeeded()
         ok
     } catch (_: Exception) {
@@ -399,12 +548,16 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
         val cacheKey = "artist|$artist".lowercase()
         val cachedFile = File(cacheDir, "${cacheKey.hashCode()}.jpg")
 
-        // Check disk cache (validated)
-        if (CoverArtFiles.isUsableImage(cachedFile)) {
+        // Fresh disk hit short-circuits; stale usable file still refreshes.
+        if (isFreshOnDisk(cachedFile)) {
             emit("file://${cachedFile.absolutePath}")
             return@flow
         }
-        CoverArtFiles.deleteIfUnusable(cachedFile)
+        if (CoverArtFiles.isUsableImage(cachedFile)) {
+            emit("file://${cachedFile.absolutePath}")
+        } else {
+            CoverArtFiles.deleteIfUnusable(cachedFile)
+        }
 
         val created = scope.async {
             resolveArtistArtToFile(cacheKey, artist, cachedFile, coverArtId)
@@ -432,7 +585,7 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
         cachedFile: File,
         coverArtId: String?,
     ): String? {
-        if (CoverArtFiles.isUsableImage(cachedFile)) {
+        if (isFreshOnDisk(cachedFile)) {
             return "file://${cachedFile.absolutePath}"
         }
         CoverArtFiles.deleteIfUnusable(cachedFile)
@@ -441,8 +594,17 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
         // artists with real art get their own image.
         if (!coverArtId.isNullOrBlank()) {
             val navidromeUrl = buildNavidromeCoverArtUrl(coverArtId)
-            if (navidromeUrl != null && downloadToFile(navidromeUrl, cachedFile)) {
+            if (navidromeUrl != null &&
+                downloadToFile(navidromeUrl, cachedFile, coverArtId = coverArtId)
+            ) {
                 onFileCached(cacheKey)
+                // Also mirror into the navidrome| slot for shared invalidation.
+                if (CoverArtFiles.isUsableImage(cachedFile)) {
+                    cachedFile.copyTo(navidromeFile(coverArtId), overwrite = true)
+                    CoverArtCacheMeta.read(cachedFile)?.let {
+                        CoverArtCacheMeta.write(navidromeFile(coverArtId), it)
+                    }
+                }
                 return "file://${cachedFile.absolutePath}"
             }
         }
@@ -501,9 +663,10 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
         }
     }
 
-    /** Clears all cached cover art files and the in-memory URL cache. */
+    /** Clears all cached cover art files, sidecars, SHA index, and URL cache. */
     fun clearCache() {
         synchronized(urlCache) { urlCache.clear() }
+        shaToCoverArtIds.clear()
         synchronized(diskLock) {
             cacheDir.listFiles()?.forEach { it.delete() }
         }
@@ -531,17 +694,22 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
 
             val targetSize = (maxCacheBytes * 0.8).toLong()
             var currentSize = totalSize
-            files.sortedBy { it.lastModified() }.forEach { file ->
-                if (currentSize <= targetSize) return
-                val fileSize = file.length()
-                if (file.delete()) {
-                    currentSize -= fileSize
+            // Evict image files (skip .meta / .tmp); delete companion meta with image.
+            files.filter { it.isFile && !it.name.endsWith(".meta") && !it.name.endsWith(".tmp") }
+                .sortedBy { it.lastModified() }
+                .forEach { file ->
+                    if (currentSize <= targetSize) return
+                    val metaLen = CoverArtCacheMeta.metaFileFor(file).length()
+                    val fileSize = file.length() + metaLen
+                    CoverArtCacheMeta.delete(file)
+                    if (file.delete()) {
+                        currentSize -= fileSize
+                    }
                 }
-            }
         }
     }
 
-    /** Get current cache size in bytes for settings display. */
+    /** Get current cache size in bytes for settings display (images + sidecars). */
     fun getCacheSizeBytes(): Long = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
 
     /**
@@ -566,9 +734,16 @@ class CoverArtFallbackService @Inject constructor(@ApplicationContext private va
         val now = System.currentTimeMillis()
         synchronized(diskLock) {
             cacheDir.listFiles()?.forEach { file ->
-                if (file.name.startsWith("navidrome|") && file.name !in activeHashes) {
+                if (!file.name.startsWith("navidrome|")) return@forEach
+                val imageName = file.name.removeSuffix(".meta")
+                if (imageName !in activeHashes && !imageName.endsWith(".tmp")) {
                     if (now - file.lastModified() < 5 * 60_000L) return@forEach
-                    file.delete()
+                    if (file.name.endsWith(".meta")) {
+                        file.delete()
+                    } else {
+                        CoverArtCacheMeta.delete(file)
+                        file.delete()
+                    }
                 }
             }
         }

@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import io.mockk.verify
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
@@ -53,6 +54,7 @@ class CoverArtFallbackServiceBranchTest {
     fun tearDown() {
         unmockkObject(SubsonicCredentials)
         unmockkObject(DynamicBaseUrl)
+        CoverArtPlaceholders.clearKnownForTests()
         com.lucasdss.ftpmusic.app.di.ServerConfigState.value = com.lucasdss.ftpmusic.app.di.ServerConfig()
     }
 
@@ -108,9 +110,19 @@ class CoverArtFallbackServiceBranchTest {
     }
 
     /** Write bytes that pass the image magic-byte check on the plain JVM. */
-    private fun writeFakeImage(file: File) {
+    private fun writeFakeImage(file: File, freshMeta: Boolean = true, soft: Boolean = false) {
         file.parentFile?.mkdirs()
         file.writeBytes(JPEG_MAGIC)
+        if (freshMeta) {
+            CoverArtCacheMeta.write(
+                file,
+                CoverArtCacheMeta(
+                    contentSha256 = CoverArtCacheMeta.sha256Hex(JPEG_MAGIC),
+                    fetchedAtMs = System.currentTimeMillis(),
+                    softPlaceholder = soft,
+                ),
+            )
+        }
     }
 
     private companion object {
@@ -128,6 +140,74 @@ class CoverArtFallbackServiceBranchTest {
         urlCacheOf(service)["artist|album"] = "http://cached/art.jpg"
         val url = service.fetchArt("Artist", "Album").first()
         assertEquals("http://cached/art.jpg", url)
+    }
+
+    @Test
+    fun `fetchArt drops stale file url from memory cache`() = runTest {
+        injectMockClient()
+        val cacheKey = "artist|album".lowercase()
+        val cachedFile = File(cacheDir, "${cacheKey.hashCode()}.jpg")
+        writeFakeImage(cachedFile, freshMeta = false)
+        urlCacheOf(service)[cacheKey] = "file://${cachedFile.absolutePath}"
+
+        val url = service.fetchArt("Artist", "Album").firstOrNull()
+
+        // Stale file:// entry must be dropped before refresh.
+        assertFalse(urlCacheOf(service).containsKey(cacheKey))
+        assertTrue(url == null || url.startsWith("file://"))
+    }
+
+    @Test
+    fun `publishNavidromeBytes rejects non image content type`() {
+        assertFalse(
+            service.publishNavidromeBytes(
+                "bad-ct",
+                JPEG_MAGIC,
+                contentType = "application/json",
+            ),
+        )
+        assertFalse(File(cacheDir, "navidrome|${"bad-ct".hashCode()}.jpg").exists())
+    }
+
+    @Test
+    fun `writeImageAtomically rejects empty bytes and honors forceSoft`() {
+        val empty = File(cacheDir, "empty.jpg")
+        assertFalse(service.writeImageAtomically(empty, ByteArray(0), "image/jpeg"))
+
+        val softFile = File(cacheDir, "forced-soft.jpg")
+        assertTrue(
+            service.writeImageAtomically(
+                softFile,
+                JPEG_MAGIC,
+                "image/jpeg",
+                forceSoft = true,
+            ),
+        )
+        assertTrue(CoverArtCacheMeta.read(softFile)!!.softPlaceholder)
+    }
+
+    @Test
+    fun `cleanOrphanedNavidromeArt removes companion meta`() {
+        val orphan = File(cacheDir, "navidrome|${"orphan-meta".hashCode()}.jpg")
+        writeFakeImage(orphan)
+        orphan.setLastModified(System.currentTimeMillis() - 10 * 60_000L)
+        assertTrue(CoverArtCacheMeta.metaFileFor(orphan).exists())
+
+        service.cleanOrphanedNavidromeArt(setOf("ca-keep"))
+
+        assertFalse(orphan.exists())
+        assertFalse(CoverArtCacheMeta.metaFileFor(orphan).exists())
+    }
+
+    @Test
+    fun `cleanOrphanedNavidromeArt deletes lone meta files`() {
+        val meta = File(cacheDir, "navidrome|${"lone-meta".hashCode()}.jpg.meta")
+        meta.writeText("{}")
+        meta.setLastModified(System.currentTimeMillis() - 10 * 60_000L)
+
+        service.cleanOrphanedNavidromeArt(setOf("ca-keep"))
+
+        assertFalse(meta.exists())
     }
 
     @Test
@@ -230,12 +310,182 @@ class CoverArtFallbackServiceBranchTest {
     fun `cacheNavidromeArt skips when the file already exists`() {
         val cachedFile = File(cacheDir, "navidrome|${"ca-1".hashCode()}.jpg")
         writeFakeImage(cachedFile)
+        // Fresh real meta → TTL skip (ADR-0090). Legacy files without meta revalidate.
+        CoverArtCacheMeta.write(
+            cachedFile,
+            CoverArtCacheMeta(
+                contentSha256 = CoverArtCacheMeta.sha256Hex(cachedFile.readBytes()),
+                fetchedAtMs = System.currentTimeMillis(),
+                softPlaceholder = false,
+            ),
+        )
         val client = injectMockClient()
 
         service.cacheNavidromeArt("ca-1", "http://image")
 
-        // No network call made for an existing file
-        io.mockk.verify(exactly = 0) { client.newCall(any()) }
+        // No network call made for a fresh cached file
+        verify(exactly = 0) { client.newCall(any()) }
+    }
+
+    @Test
+    fun `cacheNavidromeArt revalidates legacy file without meta`() {
+        val cachedFile = File(cacheDir, "navidrome|${"ca-legacy".hashCode()}.jpg")
+        writeFakeImage(cachedFile, freshMeta = false)
+        val client = injectMockClient()
+
+        service.cacheNavidromeArt("ca-legacy", "http://image")
+        Thread.sleep(300)
+
+        // Legacy (no sidecar) is stale → network attempted
+        verify(atLeast = 1) { client.newCall(any()) }
+    }
+
+    @Test
+    fun `invalidateNavidromeArt deletes file meta and bumps version`() {
+        val id = "inv-1"
+        val cachedFile = File(cacheDir, "navidrome|${id.hashCode()}.jpg")
+        writeFakeImage(cachedFile)
+        CoverArtCacheMeta.write(
+            cachedFile,
+            CoverArtCacheMeta(
+                contentSha256 = CoverArtCacheMeta.sha256Hex(cachedFile.readBytes()),
+                fetchedAtMs = System.currentTimeMillis(),
+                softPlaceholder = false,
+            ),
+        )
+        val before = service.observeVersion("navidrome|$id")
+
+        service.invalidateNavidromeArt(id)
+
+        assertFalse(cachedFile.exists())
+        assertFalse(CoverArtCacheMeta.metaFileFor(cachedFile).exists())
+        assertEquals(before + 1, service.observeVersion("navidrome|$id"))
+    }
+
+    @Test
+    fun `shared hash marks soft after three navidrome ids`() {
+        val bytes = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01, 0x55,
+        )
+        assertTrue(service.publishNavidromeBytes("sha-a", bytes))
+        assertTrue(service.publishNavidromeBytes("sha-b", bytes))
+        assertTrue(service.publishNavidromeBytes("sha-c", bytes))
+
+        val metaA = CoverArtCacheMeta.read(File(cacheDir, "navidrome|${"sha-a".hashCode()}.jpg"))
+        assertNotNull(metaA)
+        assertTrue(metaA!!.softPlaceholder)
+    }
+
+    @Test
+    fun `known placeholder sha forces soft`() {
+        val bytes = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01, 0x77,
+        )
+        CoverArtPlaceholders.addKnownPlaceholderSha(CoverArtCacheMeta.sha256Hex(bytes))
+        assertTrue(service.publishNavidromeBytes("ph-1", bytes))
+        val meta = CoverArtCacheMeta.read(File(cacheDir, "navidrome|${"ph-1".hashCode()}.jpg"))
+        assertNotNull(meta)
+        assertTrue(meta!!.softPlaceholder)
+        CoverArtPlaceholders.clearKnownForTests()
+    }
+
+    @Test
+    fun `cacheNavidromeArt skips fresh soft placeholder within TTL`() {
+        val id = "soft-fresh"
+        val cachedFile = File(cacheDir, "navidrome|${id.hashCode()}.jpg")
+        writeFakeImage(cachedFile, freshMeta = true, soft = true)
+        val client = injectMockClient()
+
+        service.cacheNavidromeArt(id, "http://image")
+
+        verify(exactly = 0) { client.newCall(any()) }
+    }
+
+    @Test
+    fun `cacheNavidromeArt handles 304 by touching fetchedAt`() {
+        val id = "ca-304"
+        val cachedFile = File(cacheDir, "navidrome|${id.hashCode()}.jpg")
+        writeFakeImage(cachedFile, freshMeta = false)
+        CoverArtCacheMeta.write(
+            cachedFile,
+            CoverArtCacheMeta(
+                contentSha256 = CoverArtCacheMeta.sha256Hex(JPEG_MAGIC),
+                etag = "\"v1\"",
+                lastModified = "Wed, 01 Jan 2020 00:00:00 GMT",
+                fetchedAtMs = 100L,
+                softPlaceholder = false,
+            ),
+        )
+        val client = mockk<OkHttpClient>()
+        val call = mockk<okhttp3.Call>(relaxed = true)
+        val response = mockk<okhttp3.Response>(relaxed = true)
+        every { client.newCall(any()) } returns call
+        every { call.execute() } returns response
+        every { response.code } returns 304
+        every { response.body } returns null
+        val field = CoverArtFallbackService::class.java.getDeclaredField("client")
+        field.isAccessible = true
+        field.set(service, client)
+
+        service.cacheNavidromeArt(id, "http://image/art.jpg")
+        Thread.sleep(300)
+
+        val meta = CoverArtCacheMeta.read(cachedFile)
+        assertNotNull(meta)
+        assertTrue(meta!!.fetchedAtMs > 100L)
+        assertTrue(cachedFile.exists())
+    }
+
+    @Test
+    fun `cacheNavidromeArt ignores unsuccessful http`() {
+        val client = mockk<OkHttpClient>()
+        val call = mockk<okhttp3.Call>(relaxed = true)
+        val response = mockk<okhttp3.Response>(relaxed = true)
+        val body = mockk<okhttp3.ResponseBody>(relaxed = true)
+        every { client.newCall(any()) } returns call
+        every { call.execute() } returns response
+        every { response.code } returns 500
+        every { response.isSuccessful } returns false
+        every { response.body } returns body
+        every { body.bytes() } returns JPEG_MAGIC
+        val field = CoverArtFallbackService::class.java.getDeclaredField("client")
+        field.isAccessible = true
+        field.set(service, client)
+
+        service.cacheNavidromeArt("ca-500", "http://image/art.jpg")
+        Thread.sleep(300)
+
+        assertFalse(File(cacheDir, "navidrome|${"ca-500".hashCode()}.jpg").exists())
+    }
+
+    @Test
+    fun `invalidateNavidromeArts batch deletes multiple ids`() {
+        writeFakeImage(File(cacheDir, "navidrome|${"b1".hashCode()}.jpg"))
+        writeFakeImage(File(cacheDir, "navidrome|${"b2".hashCode()}.jpg"))
+
+        service.invalidateNavidromeArts(listOf("b1", "b2", ""))
+
+        assertFalse(File(cacheDir, "navidrome|${"b1".hashCode()}.jpg").exists())
+        assertFalse(File(cacheDir, "navidrome|${"b2".hashCode()}.jpg").exists())
+    }
+
+    @Test
+    fun `isFreshOnDisk false for soft past TTL`() {
+        val file = File(cacheDir, "navidrome|${"old-soft".hashCode()}.jpg")
+        writeFakeImage(file, freshMeta = false)
+        CoverArtCacheMeta.write(
+            file,
+            CoverArtCacheMeta(
+                contentSha256 = CoverArtCacheMeta.sha256Hex(JPEG_MAGIC),
+                fetchedAtMs = System.currentTimeMillis() - CoverArtCacheMeta.SOFT_TTL_MS - 1_000,
+                softPlaceholder = true,
+            ),
+        )
+        assertFalse(service.isFreshOnDisk(file))
     }
 
     // ── singleton access ────────────────────────────────────────────────────
@@ -337,7 +587,11 @@ class CoverArtFallbackServiceBranchTest {
         every { client.newCall(any()) } returns call
         every { call.execute() } returns response
         every { body.bytes() } returns JPEG_MAGIC
+        every { response.code } returns 200
+        every { response.isSuccessful } returns true
         every { response.header("Content-Type") } returns "image/jpeg"
+        every { response.header("ETag") } returns null
+        every { response.header("Last-Modified") } returns null
         every { response.body } returns body
         val field = CoverArtFallbackService::class.java.getDeclaredField("client")
         field.isAccessible = true
@@ -359,6 +613,8 @@ class CoverArtFallbackServiceBranchTest {
         val body = mockk<okhttp3.ResponseBody>(relaxed = true)
         every { client.newCall(any()) } returns call
         every { call.execute() } returns response
+        every { response.code } returns 200
+        every { response.isSuccessful } returns true
         every { response.body } returns body
         every { response.header("Content-Type") } returns "application/json"
         every { body.bytes() } returns """{"subsonic-response":{"status":"failed"}}""".toByteArray()
@@ -462,6 +718,8 @@ class CoverArtFallbackServiceBranchTest {
         val body = mockk<okhttp3.ResponseBody>(relaxed = true)
         every { client.newCall(any()) } returns call
         every { call.execute() } returns response
+        every { response.code } returns 200
+        every { response.isSuccessful } returns true
         every { response.body } returns body
         every { response.header("Content-Type") } returns null
         every { body.bytes() } returns "not-an-image".toByteArray()
@@ -525,10 +783,13 @@ class CoverArtFallbackServiceBranchTest {
                 json = """{"results":[{"artworkUrl100":"http://127.0.0.1:$port/art_100x100bb.jpg"}]}""",
             )
 
-            val urls = service.fetchArt("Artist", "Album").toList()
+            val urls = service.fetchArt("Artist", "Album").toList().filterNotNull()
 
             assertTrue("expected at least one emitted url", urls.isNotEmpty())
-            assertTrue(urls.first()!!.contains("600x600bb"))
+            assertTrue(
+                "expected an iTunes 600x600 url among emissions",
+                urls.any { it.contains("600x600bb") },
+            )
             val cachedFile = File(cacheDir, "${"artist|album".hashCode()}.jpg")
             assertTrue("downloaded art must be cached", cachedFile.exists())
         } finally {

@@ -121,7 +121,20 @@ class CoverArtBitmapLoaderTest {
         val coverArtId = "disk-art-1"
         val serviceCacheDir = CoverArtFallbackService.getInstance(mockContext).cacheDir
         val file = File(serviceCacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
-        file.writeBytes(ByteArray(16))
+        val jpeg = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01,
+        )
+        file.writeBytes(jpeg)
+        com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.write(
+            file,
+            com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta(
+                contentSha256 = com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.sha256Hex(jpeg),
+                fetchedAtMs = System.currentTimeMillis(),
+                softPlaceholder = false,
+            ),
+        )
 
         val cached = mockk<Bitmap>()
         every { BitmapFactory.decodeFile(file.absolutePath, any()) } answers {
@@ -175,9 +188,63 @@ class CoverArtBitmapLoaderTest {
     }
 
     @Test
+    fun `loadFromNetwork with null coverArtId does not write disk`() {
+        val bytes = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01,
+        )
+        val mockClient = mockk<okhttp3.OkHttpClient>()
+        val mockCall = mockk<okhttp3.Call>()
+        val response = okhttp3.Response.Builder()
+            .request(okhttp3.Request.Builder().url("http://127.0.0.1:1/art").build())
+            .protocol(okhttp3.Protocol.HTTP_1_1)
+            .code(200).message("OK")
+            .body(okhttp3.ResponseBody.create("image/jpeg".toMediaType(), bytes))
+            .build()
+        every { mockClient.newCall(any()) } returns mockCall
+        every { mockCall.execute() } returns response
+        loader.httpClient = mockClient
+
+        val bitmap = mockk<Bitmap>()
+        every { BitmapFactory.decodeByteArray(any(), any(), any(), any()) } answers {
+            val opts = arg<BitmapFactory.Options>(3)
+            if (opts.inJustDecodeBounds) {
+                opts.outWidth = 40
+                opts.outHeight = 40
+                null
+            } else {
+                bitmap
+            }
+        }
+
+        val cacheDir = CoverArtFallbackService.getInstance(mockContext).cacheDir
+        val before = cacheDir.listFiles()?.map { it.name }?.toSet().orEmpty()
+        val uri = mockUri(idParam = null, lastSegment = "x", text = "https://example.com/art")
+        assertSame(bitmap, loader.loadFromNetwork(uri, coverArtId = null))
+        val after = cacheDir.listFiles()?.map { it.name }?.toSet().orEmpty()
+        assertEquals("null coverArtId must not create new cache files", before, after)
+    }
+
+    @Test
+    fun `loadFromDisk rejects non image magic`() {
+        val coverArtId = "txt-art"
+        val serviceCacheDir = CoverArtFallbackService.getInstance(mockContext).cacheDir
+        val file = File(serviceCacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
+        file.writeText("not-image")
+        assertNull(loader.loadFromDisk(coverArtId))
+        assertFalse(file.exists())
+    }
+
+    @Test
     fun `loadFromNetwork fetches and caches artwork on success`() {
         val coverArtId = "net-art"
-        val bytes = ByteArray(32) { it.toByte() }
+        // Valid JPEG magic so publishNavidromeBytes / writeImageAtomically accepts it.
+        val bytes = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01,
+        ) + ByteArray(20) { it.toByte() }
         val mockClient = mockk<okhttp3.OkHttpClient>()
         val mockCall = mockk<okhttp3.Call>()
         val response = okhttp3.Response.Builder()
@@ -216,6 +283,94 @@ class CoverArtBitmapLoaderTest {
         )
         assertTrue("Artwork must be cached to disk", cached.exists())
         assertArrayEquals(bytes, cached.readBytes())
+    }
+
+    @Test
+    fun `loadBitmap falls back to stale disk when network fails`() {
+        val coverArtId = "stale-disk"
+        val serviceCacheDir = CoverArtFallbackService.getInstance(mockContext).cacheDir
+        val file = File(serviceCacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
+        val jpeg = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01,
+        )
+        file.writeBytes(jpeg)
+        // No meta → stale → network first, then disk fallback
+        val cached = mockk<Bitmap>()
+        every { BitmapFactory.decodeFile(file.absolutePath, any()) } answers {
+            val opts = arg<BitmapFactory.Options>(1)
+            if (opts.inJustDecodeBounds) {
+                opts.outWidth = 48
+                opts.outHeight = 48
+                null
+            } else {
+                cached
+            }
+        }
+
+        val uri = mockUri(
+            idParam = coverArtId,
+            lastSegment = "getCoverArt",
+            text = "http://127.0.0.1:1/rest/getCoverArt?id=$coverArtId",
+        )
+        assertSame(cached, loader.loadBitmap(uri).get())
+    }
+
+    @Test
+    fun `loadFromNetwork on 304 touches meta and reloads disk`() {
+        val coverArtId = "ca-304-loader"
+        val serviceCacheDir = CoverArtFallbackService.getInstance(mockContext).cacheDir
+        val file = File(serviceCacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
+        val jpeg = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01,
+        )
+        file.writeBytes(jpeg)
+        com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.write(
+            file,
+            com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta(
+                contentSha256 = com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.sha256Hex(jpeg),
+                etag = "\"e\"",
+                fetchedAtMs = 50L,
+                softPlaceholder = false,
+            ),
+        )
+
+        val mockClient = mockk<okhttp3.OkHttpClient>()
+        val mockCall = mockk<okhttp3.Call>()
+        val response = okhttp3.Response.Builder()
+            .request(okhttp3.Request.Builder().url("http://127.0.0.1:1/art").build())
+            .protocol(okhttp3.Protocol.HTTP_1_1)
+            .code(304).message("Not Modified")
+            .body(okhttp3.ResponseBody.create("image/jpeg".toMediaType(), ByteArray(0)))
+            .build()
+        every { mockClient.newCall(any()) } returns mockCall
+        every { mockCall.execute() } returns response
+        loader.httpClient = mockClient
+
+        val cached = mockk<Bitmap>()
+        every { BitmapFactory.decodeFile(file.absolutePath, any()) } answers {
+            val opts = arg<BitmapFactory.Options>(1)
+            if (opts.inJustDecodeBounds) {
+                opts.outWidth = 32
+                opts.outHeight = 32
+                null
+            } else {
+                cached
+            }
+        }
+
+        val uri = mockUri(
+            idParam = coverArtId,
+            lastSegment = "getCoverArt",
+            text = "https://music.example.com/rest/getCoverArt?id=$coverArtId",
+        )
+        assertSame(cached, loader.loadFromNetwork(uri, coverArtId))
+        val meta = com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.read(file)
+        assertNotNull(meta)
+        assertTrue(meta!!.fetchedAtMs > 50L)
     }
 
     @Test
@@ -259,6 +414,24 @@ class CoverArtBitmapLoaderTest {
     }
 
     @Test
+    fun `decodeBitmap future fails when bytes undecodable`() {
+        every { BitmapFactory.decodeByteArray(any(), any(), any(), any()) } answers {
+            val opts = arg<BitmapFactory.Options>(3)
+            if (opts.inJustDecodeBounds) {
+                opts.outWidth = -1
+                opts.outHeight = -1
+            }
+            null
+        }
+        try {
+            loader.decodeBitmap(ByteArray(4)).get()
+            fail("must fail for undecodable bytes")
+        } catch (e: java.util.concurrent.ExecutionException) {
+            assertTrue(e.cause is IllegalStateException)
+        }
+    }
+
+    @Test
     fun `decodeSampled from bytes downsamples`() {
         val bitmap = mockk<Bitmap>()
         val sampledSlot = slot<BitmapFactory.Options>()
@@ -282,7 +455,20 @@ class CoverArtBitmapLoaderTest {
         val coverArtId = "future-art"
         val serviceCacheDir = CoverArtFallbackService.getInstance(mockContext).cacheDir
         val file = File(serviceCacheDir, "navidrome|${coverArtId.hashCode()}.jpg")
-        file.writeBytes(ByteArray(16))
+        val jpeg = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 'J'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(),
+            0x00, 0x01,
+        )
+        file.writeBytes(jpeg)
+        com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.write(
+            file,
+            com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta(
+                contentSha256 = com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.sha256Hex(jpeg),
+                fetchedAtMs = System.currentTimeMillis(),
+                softPlaceholder = false,
+            ),
+        )
 
         val cached = mockk<Bitmap>()
         every { BitmapFactory.decodeFile(file.absolutePath, any()) } answers {

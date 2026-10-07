@@ -321,6 +321,7 @@ fun SettingsScreen(
             // Clear cache buttons with confirmation
             var showClearCacheConfirm by remember { mutableStateOf(false) }
             var showClearDownloadsConfirm by remember { mutableStateOf(false) }
+            var showClearCoverArtConfirm by remember { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacingS())) {
                 SectionCard(Modifier.weight(1f).clickable { showClearCacheConfirm = true }) {
                     Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -341,6 +342,35 @@ fun SettingsScreen(
                         Spacer(Modifier.height(4.dp))
                         Text("Clear downloads", color = Color.White, fontSize = textLabelL())
                         Text(formatBytes(state.downloadBytes), color = Color(0xFF888888), fontSize = textLabelS())
+                    }
+                }
+            }
+            Spacer(Modifier.height(spacingS()))
+            SectionCard(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { showClearCoverArtConfirm = true },
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacingL(), vertical = spacingM()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.Image,
+                        null,
+                        tint = BrandTeal,
+                        modifier = Modifier.size(iconSmall()),
+                    )
+                    Spacer(Modifier.width(spacingM()))
+                    Column(Modifier.weight(1f)) {
+                        Text("Clear cover art", color = Color.White, fontSize = textLabelL())
+                        Text(
+                            "Album & artist art cache · ${formatBytes(state.coverArtCacheBytes)}",
+                            color = Color(0xFF888888),
+                            fontSize = textLabelS(),
+                        )
                     }
                 }
             }
@@ -372,6 +402,24 @@ fun SettingsScreen(
                         showClearDownloadsConfirm = false
                     },
                     onDismiss = { showClearDownloadsConfirm = false },
+                )
+            }
+            if (showClearCoverArtConfirm) {
+                ConfirmationSheet(
+                    title = "Clear Cover Art",
+                    message = buildString {
+                        append("This will remove ")
+                        append(formatBytes(state.coverArtCacheBytes))
+                        append(" of cached album and artist art. ")
+                        append("Audio cache and downloads are not affected. ")
+                        append("Art will re-download as you browse.")
+                    },
+                    confirmLabel = "Clear ${formatBytes(state.coverArtCacheBytes)}",
+                    onConfirm = {
+                        viewModel.clearCoverArtCache()
+                        showClearCoverArtConfirm = false
+                    },
+                    onDismiss = { showClearCoverArtConfirm = false },
                 )
             }
 

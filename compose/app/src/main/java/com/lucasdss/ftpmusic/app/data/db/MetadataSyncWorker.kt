@@ -512,14 +512,29 @@ class MetadataSyncWorker(
             changedAlbumIds.clear()
             try {
                 val cached = metadataDao.getAllAlbums().associateBy { it.id }
+                val coverArtsToInvalidate = linkedSetOf<String>()
                 for (album in uniqueAlbums) {
                     val old = cached[album.id] ?: continue // new album — uncached path handles it
-                    if (old.songCount != album.songCount || old.duration != album.duration ||
+                    val metaChanged = old.songCount != album.songCount || old.duration != album.duration ||
                         old.name != album.name || old.artist != album.artist ||
                         old.year != album.year || old.genre != album.genre ||
                         old.coverArt != album.coverArt
-                    ) {
+                    if (metaChanged) {
                         changedAlbumIds.add(album.id)
+                        // Cover id changed → drop old slot; any meta churn → revalidate current id
+                        // (same-id byte upgrades when other fields moved). ADR-0090.
+                        if (old.coverArt != null && old.coverArt != album.coverArt) {
+                            coverArtsToInvalidate.add(old.coverArt)
+                        }
+                        album.coverArt?.let { coverArtsToInvalidate.add(it) }
+                    }
+                }
+                if (coverArtsToInvalidate.isNotEmpty()) {
+                    try {
+                        coverArtFallback.invalidateNavidromeArts(coverArtsToInvalidate)
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.w(TAG, "Cover art invalidate failed: ${e.message}")
                     }
                 }
                 if (changedAlbumIds.isNotEmpty()) {
@@ -631,6 +646,24 @@ class MetadataSyncWorker(
         }
 
         if (allArtists.isNotEmpty()) {
+            // Invalidate cover disk when artist coverArt id changes (ADR-0090).
+            try {
+                val cached = metadataDao.getAllArtists().associateBy { it.id }
+                val coverArtsToInvalidate = linkedSetOf<String>()
+                for (artist in allArtists) {
+                    val old = cached[artist.id] ?: continue
+                    if (old.coverArt != artist.coverArt) {
+                        old.coverArt?.let { coverArtsToInvalidate.add(it) }
+                        artist.coverArt?.let { coverArtsToInvalidate.add(it) }
+                    }
+                }
+                if (coverArtsToInvalidate.isNotEmpty()) {
+                    coverArtFallback.invalidateNavidromeArts(coverArtsToInvalidate)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w(TAG, "Artist cover art invalidate failed: ${e.message}")
+            }
             // Diff-replace preserves biography/aliases/tags/MBID (ADR-0085).
             metadataDao.replaceArtistsDiffPreserveEnrich(allArtists)
             Log.d(TAG, "Cached ${allArtists.size} artists")

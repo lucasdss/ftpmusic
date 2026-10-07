@@ -7,6 +7,7 @@ import android.net.Uri
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
+import com.lucasdss.ftpmusic.app.data.cache.CoverArtFiles
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -87,7 +88,15 @@ class CoverArtBitmapLoader @Inject constructor(@ApplicationContext private val c
     private fun loadFromDiskOrNetwork(uri: Uri): Bitmap? {
         val coverArtId = coverArtIdFromUri(uri)
         if (coverArtId != null) {
-            loadFromDisk(coverArtId)?.let { return it }
+            val fallback = CoverArtFallbackService.getInstance(context)
+            val f = cachedFile(coverArtId)
+            if (fallback.isFreshOnDisk(f)) {
+                loadFromDisk(coverArtId)?.let { return it }
+            } else {
+                // Stale/soft/legacy: prefer network revalidate; fall back to disk offline.
+                loadFromNetwork(uri, coverArtId)?.let { return it }
+                loadFromDisk(coverArtId)?.let { return it }
+            }
         }
         return loadFromNetwork(uri, coverArtId)
     }
@@ -95,13 +104,17 @@ class CoverArtBitmapLoader @Inject constructor(@ApplicationContext private val c
     /** Serve from the local cover-art disk cache (CoverArtFallbackService dir). */
     internal fun loadFromDisk(coverArtId: String): Bitmap? {
         val f = cachedFile(coverArtId)
-        if (!f.exists() || f.length() == 0L) return null
+        if (!CoverArtFiles.looksLikeImage(f)) {
+            CoverArtFiles.deleteIfNotImage(f)
+            return null
+        }
         val bitmap = decodeSampled(f.absolutePath)
         if (bitmap == null) {
-            // Truncated/corrupt entry — evict so the next load can re-fetch.
             try {
+                com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.delete(f)
                 f.delete()
             } catch (_: Exception) {}
+            return null
         }
         return bitmap
     }
@@ -109,33 +122,33 @@ class CoverArtBitmapLoader @Inject constructor(@ApplicationContext private val c
     /** Fetch the remote artwork (auth params embedded in the URI) and cache it. */
     internal fun loadFromNetwork(uri: Uri, coverArtId: String?): Bitmap? {
         return try {
-            val request = Request.Builder().url(uri.toString()).build()
-            httpClient.newCall(request).execute().use { response ->
+            val existingMeta = coverArtId?.let {
+                com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.read(cachedFile(it))
+            }
+            val requestBuilder = Request.Builder().url(uri.toString())
+            existingMeta?.etag?.let { requestBuilder.header("If-None-Match", it) }
+            existingMeta?.lastModified?.let { requestBuilder.header("If-Modified-Since", it) }
+            httpClient.newCall(requestBuilder.build()).execute().use { response ->
+                if (response.code == 304 && coverArtId != null) {
+                    com.lucasdss.ftpmusic.app.data.cache.CoverArtCacheMeta.touchFetchedAt(cachedFile(coverArtId))
+                    return loadFromDisk(coverArtId)
+                }
                 if (!response.isSuccessful) return null
                 val bytes = response.body?.bytes() ?: return null
                 val bitmap = decodeSampled(bytes) ?: return null
                 if (coverArtId != null) {
-                    writeAtomically(cachedFile(coverArtId), bytes)
+                    CoverArtFallbackService.getInstance(context).publishNavidromeBytes(
+                        coverArtId = coverArtId,
+                        bytes = bytes,
+                        contentType = response.header("Content-Type") ?: "image/jpeg",
+                        etag = response.header("ETag"),
+                        lastModified = response.header("Last-Modified"),
+                    )
                 }
                 bitmap
             }
         } catch (_: Exception) {
             null
-        }
-    }
-
-    /** Temp-file + rename so a killed process never leaves a partial image. */
-    private fun writeAtomically(file: File, bytes: ByteArray) {
-        val tmp = File(file.parentFile, "${file.name}.tmp")
-        try {
-            file.parentFile?.mkdirs()
-            tmp.outputStream().use { it.write(bytes) }
-            if (file.exists()) file.delete()
-            if (!tmp.renameTo(file)) tmp.delete()
-        } catch (_: Exception) {
-            try {
-                tmp.delete()
-            } catch (_: Exception) {}
         }
     }
 

@@ -457,8 +457,23 @@ class SettingsViewModel @Inject constructor(
         storage.put(SecureStorage.KEY_COVER_ART_QUOTA_MB, mb.toString())
     }
 
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
     fun clearCoverArtCache() {
         coverArtFallback.clearCache()
+        // Also wipe Coil memory + disk so sticky placeholders cannot linger
+        // after covers/ is cleared (ADR-0090).
+        try {
+            val loader = coil.Coil.imageLoader(context)
+            loader.memoryCache?.clear()
+            loader.diskCache?.clear()
+        } catch (_: Exception) {
+            // Coil may be unset in unit tests — covers/ wipe still succeeded.
+        }
+        // Best-effort delete of the Coil dir in case ImageLoader was never installed.
+        try {
+            context.cacheDir.resolve("coil_cover_cache").deleteRecursively()
+        } catch (_: Exception) {
+        }
         refresh()
     }
 
