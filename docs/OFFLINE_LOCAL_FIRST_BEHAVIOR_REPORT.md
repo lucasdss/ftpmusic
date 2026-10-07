@@ -40,10 +40,15 @@ Partial/missing → upstream gate throws → `findNextCachedIndex` / stop.
 
 ## Gaps (known)
 
-- Room `cached_file_path` may outlive partial/evicted span → miss → skip.
-- No dedicated Downloads screen.
 - Cast needs network (out of scope).
 - Unreachable alone does **not** force playable-only search (only local-only = offline|!osNetwork).
+
+## Downloads screen (Phase B)
+
+- Settings → Manage downloads → list pinned `is_downloaded` tracks.
+- Play / remove one / clear all via `CacheService`.
+- Stale path heal: `healStaleCachePath` clears Room path when SimpleCache span missing;
+  row shows warning; `is_downloaded` kept until user removes.
 
 ## Validation
 

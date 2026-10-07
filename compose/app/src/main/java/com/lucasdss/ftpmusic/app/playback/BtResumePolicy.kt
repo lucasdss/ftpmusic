@@ -46,8 +46,10 @@ object BtResumePolicy {
         val normalized = normalizeMac(deviceMac)
         val mac = when {
             normalized != null -> normalized
+
             // ADR-0088: ANY still arms when CONNECT perm denies address read.
             mode == BtResumeMode.ANY -> ANY_UNKNOWN_MAC_KEY
+
             else -> return false
         }
         when (mode) {

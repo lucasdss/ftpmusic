@@ -140,6 +140,7 @@ fun PlayerBar(
     onPlayHistoryTrack: (String) -> Unit = {},
     onRemoveFromQueueBatch: (Set<Int>) -> Unit = {},
     onQueueSheetOpened: () -> Unit = {},
+    onDismissPlaybackError: () -> Unit = {},
     defaultQueuePlaylistName: String = "Queue",
     modifier: Modifier = Modifier,
 ) {
@@ -272,6 +273,7 @@ fun PlayerBar(
                             onToggleDislike = onToggleDislike,
                             onRate = onRate,
                             onShowLyrics = { showLyrics = true },
+                            onDismissPlaybackError = onDismissPlaybackError,
                         )
                     }
 
@@ -731,9 +733,48 @@ private fun ColumnScope.PlayerMainBody(
     onToggleDislike: () -> Unit,
     onRate: (Int) -> Unit,
     onShowLyrics: () -> Unit,
+    onDismissPlaybackError: () -> Unit = {},
 ) {
     with(state) {
         Column(Modifier.weight(1f).padding(bottom = spacing3XL())) {
+            if (!playbackError.isNullOrBlank()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacingXL(), vertical = spacingS())
+                        .clip(RoundedCornerShape(cornerM()))
+                        .background(Color(0xFFFFC800).copy(alpha = 0.12f))
+                        .border(1.dp, Color(0xFFFFC800).copy(alpha = 0.35f), RoundedCornerShape(cornerM()))
+                        .padding(horizontal = spacingM(), vertical = spacingS())
+                        .testTag("np_playback_error_banner"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFFFC800),
+                        modifier = Modifier.size(adp(16f)),
+                    )
+                    Spacer(Modifier.width(spacingS()))
+                    Text(
+                        playbackError,
+                        color = Color(0xFFE8C766),
+                        fontSize = textLabelM(),
+                        maxLines = 2,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = NavUnselected,
+                        modifier = Modifier
+                            .size(adp(48f))
+                            .clickable { onDismissPlaybackError() }
+                            .padding(adp(14f))
+                            .testTag("np_playback_error_dismiss"),
+                    )
+                }
+            }
             // Swipeable album art — left = next, right = prev.
             // Flexible area: art shrinks to fit the screen (never scrolls).
             BoxWithConstraints(
@@ -1963,12 +2004,12 @@ private fun BoxScope.PlayerQueuePanel(
                         }
 
                         // Apple: Autoplay band + in-queue toggle always visible (ADR-0074).
-                        // While casting: CP does not load (ContinuousPlayGate) — disable switch (honesty).
+                        // ADR-0093: Cast CP append enabled — switch stays interactive while casting.
                         item(key = "hdr-autoplay") {
                             var continuousPlayOn by remember(continuousPlayEnabled) {
                                 mutableStateOf(continuousPlayEnabled)
                             }
-                            val autoplayAccent = if (isCasting) NavUnselected else BrandTeal
+                            val autoplayAccent = BrandTeal
                             Spacer(Modifier.height(spacingS()))
                             Column(
                                 Modifier.fillMaxWidth().padding(horizontal = spacingXL())
@@ -2027,7 +2068,7 @@ private fun BoxScope.PlayerQueuePanel(
                                             continuousPlayOn = it
                                             onContinuousPlayChange(it)
                                         },
-                                        enabled = !isCasting,
+                                        enabled = true,
                                         colors = SwitchDefaults.colors(
                                             checkedThumbColor = Foreground,
                                             checkedTrackColor = BrandTeal,
@@ -2041,16 +2082,6 @@ private fun BoxScope.PlayerQueuePanel(
                                         modifier = Modifier
                                             .defaultMinSize(minHeight = adp(48f))
                                             .testTag("queue_continuous_play_switch"),
-                                    )
-                                }
-                                if (isCasting) {
-                                    Text(
-                                        stringResource(R.string.player_autoplay_unavailable_cast),
-                                        color = NavUnselected,
-                                        fontSize = textLabelS(),
-                                        modifier = Modifier
-                                            .padding(start = spacingM(), end = spacingM(), bottom = spacingS())
-                                            .testTag("queue_autoplay_cast_unavailable"),
                                     )
                                 }
                             }
@@ -2277,6 +2308,8 @@ data class PlayerBarState(
     /** Recently played for history band (ADR-0075); empty = hide section. */
     val queueHistory: List<com.lucasdss.ftpmusic.app.playback.QueueHistoryTrack> = emptyList(),
     val waveformBars: List<Float> = emptyList(),
+    /** NP playback error strip (ADR-0094). */
+    val playbackError: String? = null,
 )
 
 /** A single synced lyric line with timestamp (milliseconds from song start). */

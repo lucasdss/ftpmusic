@@ -373,6 +373,39 @@ class CacheService @Inject constructor(
         waveformRepo.deleteByTrackIds(cached.filter { it.isDownloaded }.map { it.id })
     }
 
+    /** User-initiated single download removal (Downloads screen). */
+    suspend fun removeDownload(trackId: String) {
+        val existing = trackDao.getTrack(trackId) ?: return
+        if (!existing.isDownloaded) return
+        try {
+            audioCache.removeResource(trackId)
+        } catch (_: Exception) {}
+        evictor.unpin(trackId)
+        trackDao.update(
+            existing.copy(
+                cachedFilePath = null,
+                cacheSizeBytes = null,
+                isDownloaded = false,
+                isAutoCached = false,
+            ),
+        )
+        waveformRepo.deleteByTrackIds(listOf(trackId))
+    }
+
+    /**
+     * If Room still has [cached_file_path] but SimpleCache has no span, clear the
+     * stale path. Keeps [isDownloaded] so the UI can show re-download affordance.
+     * Returns true when a heal was applied.
+     */
+    suspend fun healStaleCachePath(trackId: String): Boolean {
+        val existing = trackDao.getTrack(trackId) ?: return false
+        if (existing.cachedFilePath.isNullOrBlank()) return false
+        if (isStoredInCache(trackId)) return false
+        trackDao.clearStaleCachePath(trackId)
+        android.util.Log.i("ftpmusic-cache", "[healStale] cleared path for $trackId")
+        return true
+    }
+
     /** Remove a track's cached content through SimpleCache (keeps the span index
      *  consistent — never delete span files directly) and clear Room metadata.
      *

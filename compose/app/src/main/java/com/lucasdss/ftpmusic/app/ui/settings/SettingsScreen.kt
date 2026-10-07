@@ -50,6 +50,7 @@ fun SettingsScreen(
     onProfile: () -> Unit = {},
     onServerSettingsSaved: () -> Unit = {},
     onCustomMixes: () -> Unit = {},
+    onDownloads: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -246,6 +247,36 @@ fun SettingsScreen(
                 SectionRow("Downloads", formatBytes(state.downloadBytes))
                 SectionDivider()
                 SectionRow("Total", formatBytes(state.autoCacheBytes + state.downloadBytes))
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            SectionCard(
+                Modifier
+                    .clickable { onDownloads() }
+                    .testTag("settings_downloads_manage"),
+            ) {
+                Row(
+                    Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.DownloadDone, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Manage downloads",
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "Browse, play, or remove pinned offline tracks",
+                            color = Color(0xFF888888),
+                            fontSize = textLabelM(),
+                        )
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = NavUnselected, modifier = Modifier.size(iconSmall()))
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -508,14 +539,7 @@ fun SettingsScreen(
                         viewModel.setOverwriteBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.CLEAN)
                     },
                 )
-                OverwriteBehaviorOption(
-                    label = "Push",
-                    subtitle = "Play new content first, keep current queue after",
-                    selected = state.overwriteBehavior == com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH,
-                    onClick = {
-                        viewModel.setOverwriteBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH)
-                    },
-                )
+                // PUSH pruned from Settings triad (ADR-0094) — stored "push" maps to ASK.
             }
 
             Spacer(Modifier.height(24.dp))

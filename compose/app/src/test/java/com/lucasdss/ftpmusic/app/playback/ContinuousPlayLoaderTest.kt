@@ -31,14 +31,15 @@ class ContinuousPlayLoaderTest {
     }
 
     @Test
-    fun `localOnly keeps downloaded or cached only`() {
+    fun `localOnly keeps rows with cache path only`() {
         val db = mapOf(
-            "d" to entity("d", downloaded = true),
+            "d" to entity("d", downloaded = true, cachedPath = "/pin/d"),
+            "healed" to entity("healed", downloaded = true), // stale heal — skip
             "c" to entity("c", cachedPath = "/cache/c"),
             "n" to entity("n"),
         )
         val result = ContinuousPlayLoader.resolve(
-            selectedIds = listOf("d", "c", "n"),
+            selectedIds = listOf("d", "healed", "c", "n"),
             localOnly = true,
             loadTrack = { db[it] },
             buildStreamUrl = { "http://x/$it" },
@@ -70,9 +71,15 @@ class ContinuousPlayLoaderTest {
     }
 
     @Test
-    fun `isPlayableOffline`() {
-        assertTrue(ContinuousPlayLoader.isPlayableOffline(entity("a", downloaded = true)))
+    fun `isPlayableOffline requires cache path`() {
+        // ADR-0095: is_downloaded alone (healed stale) is NOT offline-playable
+        assertFalse(ContinuousPlayLoader.isPlayableOffline(entity("a", downloaded = true)))
         assertTrue(ContinuousPlayLoader.isPlayableOffline(entity("b", cachedPath = "/x")))
+        assertTrue(
+            ContinuousPlayLoader.isPlayableOffline(
+                entity("d", downloaded = true, cachedPath = "/pin"),
+            ),
+        )
         assertFalse(ContinuousPlayLoader.isPlayableOffline(entity("c")))
     }
 }

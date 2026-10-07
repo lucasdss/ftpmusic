@@ -21,8 +21,7 @@ object PlaybackResumptionMapper {
     const val ANDROID_17_API = 37
 
     /** True when MediaService should skip Room restore overwrite. */
-    fun shouldSkipQueueRestore(mediaItemCount: Int, isCasting: Boolean): Boolean =
-        isCasting || mediaItemCount > 0
+    fun shouldSkipQueueRestore(mediaItemCount: Int, isCasting: Boolean): Boolean = isCasting || mediaItemCount > 0
 
     /**
      * API ≤36: background A2DP `play()` is OK.
@@ -108,18 +107,12 @@ object PlaybackResumptionMapper {
         )
     }
 
-    fun applyTransportExtras(
-        player: Player,
-        repeatMode: Int,
-        shuffleEnabled: Boolean,
-    ) {
+    fun applyTransportExtras(player: Player, repeatMode: Int, shuffleEnabled: Boolean) {
         player.repeatMode = repeatMode
         player.shuffleModeEnabled = shuffleEnabled
     }
 
     /** Pure gate: binder may wait only while restore in flight and player empty. */
-    fun shouldWaitForRestoreOnGetSession(
-        playerEmpty: Boolean,
-        restoreInFlight: Boolean,
-    ): Boolean = playerEmpty && restoreInFlight
+    fun shouldWaitForRestoreOnGetSession(playerEmpty: Boolean, restoreInFlight: Boolean): Boolean =
+        playerEmpty && restoreInFlight
 }

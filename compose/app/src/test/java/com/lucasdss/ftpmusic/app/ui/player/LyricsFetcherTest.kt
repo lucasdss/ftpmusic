@@ -23,6 +23,120 @@ class LyricsFetcherTest {
     }
 
     @Test
+    fun `resolveNetworkLyrics prefers songId when non-empty`() = runBlocking {
+        var usedArtistTitle = false
+        val byId = response(
+            mapOf(
+                "line" to listOf(
+                    mapOf("start" to 1000, "value" to "ById"),
+                ),
+            ),
+        )
+        val result = LyricsFetcher.resolveNetworkLyrics(
+            trackId = "song-1",
+            artist = "A",
+            title = "T",
+            getLyrics = { _, _ ->
+                usedArtistTitle = true
+                response(mapOf("value" to "Fallback"))
+            },
+            getLyricsBySongId = { byId },
+        )
+        assertFalse(usedArtistTitle)
+        assertTrue(LyricsFetcher.parseResponse(result).isSynced)
+    }
+
+    @Test
+    fun `resolveNetworkLyrics falls back when songId empty`() = runBlocking {
+        val result = LyricsFetcher.resolveNetworkLyrics(
+            trackId = "song-1",
+            artist = "A",
+            title = "T",
+            getLyrics = { _, _ -> response(mapOf("value" to "Fallback text")) },
+            getLyricsBySongId = { response(null) },
+        )
+        assertEquals("Fallback text", LyricsFetcher.parseResponse(result).text)
+    }
+
+    @Test
+    fun `parseResponse OpenSubsonic lyricsList synced`() {
+        val response = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "lyricsList" to mapOf(
+                    "structuredLyrics" to listOf(
+                        mapOf(
+                            "lang" to "en",
+                            "synced" to true,
+                            "line" to listOf(
+                                mapOf("start" to 0, "value" to "Hello"),
+                                mapOf("start" to 2000, "value" to "World"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val display = LyricsFetcher.parseResponse(response)
+        assertTrue(display.isSynced)
+        assertEquals(2, display.lines.size)
+        assertEquals(2000L, display.lines[1].timeMs)
+    }
+
+    @Test
+    fun `parseResponse lyricsList prefers synced over plain`() {
+        val response = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "lyricsList" to mapOf(
+                    "structuredLyrics" to listOf(
+                        mapOf(
+                            "synced" to false,
+                            "line" to listOf(mapOf("start" to 0, "value" to "Plain only")),
+                        ),
+                        mapOf(
+                            "synced" to true,
+                            "line" to listOf(
+                                mapOf("start" to 500, "value" to "Timed"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val display = LyricsFetcher.parseResponse(response)
+        assertTrue(display.isSynced)
+        assertEquals("Timed", display.lines.single().text)
+    }
+
+    @Test
+    fun `resolveNetworkLyrics uses lyricsList songId shape`() = runBlocking {
+        var usedArtistTitle = false
+        val byId = mapOf(
+            "subsonic-response" to mapOf(
+                "lyricsList" to mapOf(
+                    "structuredLyrics" to mapOf(
+                        "synced" to true,
+                        "line" to listOf(mapOf("start" to 100, "value" to "SongId")),
+                    ),
+                ),
+            ),
+        )
+        val result = LyricsFetcher.resolveNetworkLyrics(
+            trackId = "s1",
+            artist = "A",
+            title = "T",
+            getLyrics = { _, _ ->
+                usedArtistTitle = true
+                response(mapOf("value" to "Fallback"))
+            },
+            getLyricsBySongId = { byId },
+        )
+        assertFalse(usedArtistTitle)
+        assertEquals("SongId", LyricsFetcher.parseResponse(result).lines.single().text)
+    }
+
+    @Test
     fun `isCacheStale false under 24h`() {
         val now = 1_000_000L
         assertFalse(LyricsFetcher.isCacheStale(now - 1_000L, now))

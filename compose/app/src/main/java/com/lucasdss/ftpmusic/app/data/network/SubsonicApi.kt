@@ -138,6 +138,10 @@ interface SubsonicApi {
         @Query("title") title: String? = null,
     ): Map<String, Any>
 
+    /** OpenSubsonic structured lyrics by song id (preferred over artist+title). */
+    @GET("rest/getLyricsBySongId")
+    suspend fun getLyricsBySongId(@QueryMap params: Map<String, String>, @Query("id") id: String): Map<String, Any>
+
     @GET("rest/getArtistInfo2")
     suspend fun getArtistInfo2(
         @Query("id") id: String,

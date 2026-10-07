@@ -26,7 +26,8 @@ internal data class LyricsResolveResult(
 
 /**
  * On-demand lyrics fetch + Room cache. Testable without NavHost / Compose.
- * Network still keyed by artist+title (no getLyricsBySongId this pass).
+ * Prefers OpenSubsonic [getLyricsBySongId] when [trackId] + callback provided;
+ * falls back to artist+title getLyrics.
  */
 internal object LyricsFetcher {
 
@@ -100,8 +101,9 @@ internal object LyricsFetcher {
     }
 
     /**
-     * Fetch from Subsonic getLyrics, parse, cache, return display.
-     * @param getLyrics injectible network call for unit tests.
+     * Fetch lyrics, parse, cache, return display.
+     * @param getLyricsBySongId optional OpenSubsonic song-id fetch (tried first).
+     * @param getLyrics artist+title fallback.
      * @param markFetched optional prefs side-effect (last_lyrics_fetch_ms).
      */
     suspend fun fetchAndCache(
@@ -110,21 +112,85 @@ internal object LyricsFetcher {
         trackId: String?,
         dao: LyricsCacheDao,
         getLyrics: suspend (artist: String, title: String) -> Map<String, Any>,
+        getLyricsBySongId: (suspend (songId: String) -> Map<String, Any>)? = null,
         markFetched: (() -> Unit)? = null,
         nowMs: Long = System.currentTimeMillis(),
     ): LyricsDisplay {
-        val response = getLyrics(artist, title)
+        val response = resolveNetworkLyrics(trackId, artist, title, getLyrics, getLyricsBySongId)
         val display = parseResponse(response)
         putCache(trackId, artist, title, response, display, dao, nowMs)
         markFetched?.invoke()
         return display
     }
 
-    /** Pure parse of a Subsonic getLyrics response map. */
+    /**
+     * Prefer song-id lyrics when available and non-empty; else artist+title.
+     * Exposed for unit tests.
+     */
+    suspend fun resolveNetworkLyrics(
+        trackId: String?,
+        artist: String,
+        title: String,
+        getLyrics: suspend (artist: String, title: String) -> Map<String, Any>,
+        getLyricsBySongId: (suspend (songId: String) -> Map<String, Any>)?,
+    ): Map<String, Any> {
+        if (!trackId.isNullOrBlank() && getLyricsBySongId != null) {
+            try {
+                val byId = getLyricsBySongId(trackId)
+                if (parseResponse(byId).let { it.isSynced || !it.text.isNullOrBlank() }) {
+                    return byId
+                }
+            } catch (_: Exception) {
+                // fall through to artist+title
+            }
+        }
+        return getLyrics(artist, title)
+    }
+
+    /**
+     * Pure parse of Subsonic/OpenSubsonic lyrics responses.
+     * Supports classic `lyrics` and OpenSubsonic `lyricsList.structuredLyrics[]`
+     * (ADR-0095).
+     */
     fun parseResponse(response: Map<String, Any>): LyricsDisplay {
-        val sr = response["subsonic-response"] as? Map<*, *>
-        val lyricsData = sr?.get("lyrics") as? Map<*, *>
-        return parseLyricsData(lyricsData)
+        val sr = response["subsonic-response"] as? Map<*, *> ?: return LyricsDisplay()
+        // Classic Subsonic getLyrics
+        val classic = sr["lyrics"] as? Map<*, *>
+        if (classic != null) {
+            val display = parseLyricsData(classic)
+            if (display.isSynced || !display.text.isNullOrBlank()) return display
+        }
+        // OpenSubsonic getLyricsBySongId
+        val fromList = parseLyricsList(sr["lyricsList"] as? Map<*, *>)
+        if (fromList.isSynced || !fromList.text.isNullOrBlank()) return fromList
+        return if (classic != null) parseLyricsData(classic) else fromList
+    }
+
+    /**
+     * OpenSubsonic lyricsList → prefer first synced structuredLyrics, else first plain.
+     */
+    fun parseLyricsList(lyricsList: Map<*, *>?): LyricsDisplay {
+        if (lyricsList == null) return LyricsDisplay()
+        val raw = lyricsList["structuredLyrics"]
+        val entries: List<Map<*, *>> = when (raw) {
+            is List<*> -> raw.mapNotNull { it as? Map<*, *> }
+            is Map<*, *> -> listOf(raw)
+            else -> emptyList()
+        }
+        if (entries.isEmpty()) return LyricsDisplay()
+        val synced = entries.firstOrNull { entry ->
+            entry["synced"] == true || entry["synced"] == "true"
+        }
+        val preferred = synced ?: entries.first()
+        val display = parseLyricsData(preferred)
+        if (display.isSynced || !display.text.isNullOrBlank()) return display
+        // Try remaining entries
+        for (entry in entries) {
+            if (entry === preferred) continue
+            val alt = parseLyricsData(entry)
+            if (alt.isSynced || !alt.text.isNullOrBlank()) return alt
+        }
+        return display
     }
 
     fun parseLyricsData(lyricsData: Map<*, *>?): LyricsDisplay {

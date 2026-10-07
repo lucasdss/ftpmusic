@@ -595,12 +595,20 @@ class SettingsViewModelTest {
 
     @Test
     fun `setOverwriteBehavior persists key`() {
-        viewModel.setOverwriteBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH)
+        viewModel.setOverwriteBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.CLEAN)
         assertEquals(
-            com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH,
+            com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.CLEAN,
             viewModel.state.value.overwriteBehavior,
         )
-        verify { storage.put(SecureStorage.KEY_QUEUE_OVERWRITE_BEHAVIOR, "push") }
+        verify { storage.put(SecureStorage.KEY_QUEUE_OVERWRITE_BEHAVIOR, "clean") }
+    }
+
+    @Test
+    fun `stored push overwrite maps to ASK`() {
+        assertEquals(
+            com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.ASK,
+            com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.fromKey("push"),
+        )
     }
 
     @Test

@@ -4,14 +4,33 @@ package com.lucasdss.ftpmusic.app.playback
  * Pure gate for Continuous Play continuation loading.
  * Extracted from [MediaService] so unit tests cover branch conditions without
  * the Android service lifecycle (ADR-0052).
+ *
+ * ADR-0093: Cast is allowed — [PlaybackManager.appendToContext] already mutates
+ * Dual + Cast via `emitCastAddsOrCommit`.
+ * ADR-0095: While casting, timeline SoT is Dual (CastPlayer may be empty/windowed).
  */
 object ContinuousPlayGate {
 
     /**
+     * Pick index/count for the gate. Casting → Dual; local → active player.
+     */
+    fun resolveTimeline(
+        isCasting: Boolean,
+        playerIndex: Int,
+        playerCount: Int,
+        dualIndex: Int,
+        dualCount: Int,
+    ): Pair<Int, Int> = if (isCasting) {
+        dualIndex to dualCount
+    } else {
+        playerIndex to playerCount
+    }
+
+    /**
      * Whether to load a journal-based continuation burst onto **context**.
      *
-     * Requires: local (not Cast), player on last timeline item, flag not yet
-     * spent for this last-item stint, and Continuous Play enabled.
+     * Requires: timeline on last item, flag not yet spent for this last-item
+     * stint, and Continuous Play enabled. Works local and Cast (Dual SoT).
      */
     fun shouldLoadContinuation(
         isCasting: Boolean,
@@ -20,7 +39,9 @@ object ContinuousPlayGate {
         hasLoadedContinuation: Boolean,
         continuousPlayEnabled: Boolean,
     ): Boolean {
-        if (isCasting) return false
+        // isCasting retained for call-site / resolveTimeline pairing
+        @Suppress("UNUSED_PARAMETER")
+        val casting = isCasting
         if (!continuousPlayEnabled) return false
         if (hasLoadedContinuation) return false
         if (mediaItemCount <= 0) return false

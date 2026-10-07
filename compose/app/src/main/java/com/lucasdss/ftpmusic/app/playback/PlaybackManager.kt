@@ -144,6 +144,12 @@ class PlaybackManager @Inject constructor(
     /** Merged DualQueue size (context + priority) — authoritative phone queue length. */
     val dualQueueSize: Int get() = dualQueue.size
 
+    /** Canonical Dual index of the active track (Cast-safe). ADR-0095. */
+    fun currentQueueIndex(): Int = currentCanonicalIndex()
+
+    /** Media ids currently in Dual — for CP de-dupe while CastPlayer timeline is stale. */
+    fun currentQueueMediaIds(): Set<String> = dualQueue.getMerged().mapNotNull { it.mediaId }.toSet()
+
     // ── Overwrite protection ─────────────────────────────────────────────────
     data class PendingPlayback(
         val tracks: List<Track>,
@@ -869,7 +875,7 @@ class PlaybackManager @Inject constructor(
     private var reorderMoved = false
 
     /**
-     * Start of a QueueScreen drag. Captures the Exo/Dual index of the row
+     * Start of a queue-sheet drag. Captures the Exo/Dual index of the row
      * before mid-drag Dual moves. Call from `draggableHandle(onDragStarted)`.
      */
     fun beginQueueReorder(entryId: Int, fromIndex: Int) {
@@ -886,7 +892,7 @@ class PlaybackManager @Inject constructor(
     }
 
     /**
-     * End of a QueueScreen drag. One `moveMediaItem` (local) or exo-mirror
+     * End of a queue-sheet drag. One `moveMediaItem` (local) or exo-mirror
      * sync (Cast), one persist, one Cast Move. Call from `onDragStopped`.
      */
     fun commitQueueReorder() {

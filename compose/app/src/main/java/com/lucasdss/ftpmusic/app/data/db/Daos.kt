@@ -23,6 +23,12 @@ interface TrackDao {
     )
     suspend fun getRecentlyPlayed(limit: Int = 20): List<TrackEntity>
 
+    @Query(
+        "SELECT * FROM tracks WHERE last_played_at IS NOT NULL " +
+            "ORDER BY last_played_at DESC LIMIT :limit OFFSET :offset",
+    )
+    suspend fun getRecentlyPlayedPaged(limit: Int, offset: Int): List<TrackEntity>
+
     @Query("SELECT * FROM tracks WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT :limit OFFSET :offset")
     suspend fun getStarred(limit: Int = 50, offset: Int = 0): List<TrackEntity>
 
@@ -380,6 +386,19 @@ interface TrackDao {
 
     @Query("SELECT COUNT(*) FROM tracks WHERE is_downloaded = 1")
     suspend fun getDownloadedCount(): Int
+
+    /** Explicit downloads (never-evicted) — Downloads screen + Auto Offline node. */
+    @Query(
+        "SELECT * FROM tracks WHERE is_downloaded = 1 ORDER BY title ASC LIMIT :limit OFFSET :offset",
+    )
+    suspend fun getDownloadedPaged(limit: Int, offset: Int): List<TrackEntity>
+
+    /** Clear stale cache path when file missing on disk (keep is_downloaded for re-fetch). */
+    @Query(
+        "UPDATE tracks SET cached_file_path = NULL, cache_size_bytes = NULL, " +
+            "is_auto_cached = 0 WHERE id = :trackId",
+    )
+    suspend fun clearStaleCachePath(trackId: String)
 }
 
 @Dao
@@ -903,6 +922,9 @@ interface CachedMetadataDao {
     @Query("SELECT * FROM cached_albums ORDER BY name ASC")
     suspend fun getAllAlbums(): List<CachedAlbumEntity>
 
+    @Query("SELECT * FROM cached_albums ORDER BY name ASC LIMIT :limit OFFSET :offset")
+    suspend fun getAlbumsPaged(limit: Int, offset: Int): List<CachedAlbumEntity>
+
     @Query("SELECT cover_art FROM cached_albums WHERE id = :albumId")
     suspend fun getAlbumCoverArt(albumId: String): String?
 
@@ -934,6 +956,9 @@ interface CachedMetadataDao {
 
     @Query("SELECT * FROM cached_artists ORDER BY name ASC")
     suspend fun getAllArtists(): List<CachedArtistEntity>
+
+    @Query("SELECT * FROM cached_artists ORDER BY name ASC LIMIT :limit OFFSET :offset")
+    suspend fun getArtistsPaged(limit: Int, offset: Int): List<CachedArtistEntity>
 
     @Query("SELECT * FROM cached_artists WHERE id = :artistId LIMIT 1")
     suspend fun getArtistById(artistId: String): CachedArtistEntity?

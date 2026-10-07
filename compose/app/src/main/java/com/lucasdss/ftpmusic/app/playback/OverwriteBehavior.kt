@@ -13,10 +13,17 @@ package com.lucasdss.ftpmusic.app.playback
 enum class OverwriteBehavior(val key: String, val label: String) {
     ASK("ask", "Ask"),
     CLEAN("clean", "Clean"),
+
+    /** @deprecated Removed from Settings UI (ADR-0094); maps to ASK via [fromKey]. */
+    @Deprecated("Pruned from Settings — use ASK", ReplaceWith("ASK"))
     PUSH("push", "Push"),
     ;
 
     companion object {
-        fun fromKey(key: String?): OverwriteBehavior = entries.firstOrNull { it.key == key } ?: ASK
+        fun fromKey(key: String?): OverwriteBehavior {
+            // PUSH pruned from Settings triad — treat stored "push" as ASK.
+            if (key == "push") return ASK
+            return entries.firstOrNull { it.key == key } ?: ASK
+        }
     }
 }

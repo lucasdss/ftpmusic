@@ -21,6 +21,45 @@ object PlayerHolder {
     @Volatile
     var castDeviceName: String? = null
 
+    /**
+     * Last player error for Now Playing banner (ADR-0094/0095).
+     * Sticky across auto-skip until dismiss, expiry, or successful READY after sticky window.
+     */
+    @Volatile
+    var lastPlaybackError: String? = null
+
+    /** Wall-clock ms until which [lastPlaybackError] must not auto-clear (ADR-0095). */
+    @Volatile
+    var playbackErrorStickyUntilMs: Long = 0L
+
+    /** True while MediaService is mid auto-skip recovery (suppress clear-on-transition). */
+    @Volatile
+    var playbackErrorAutoSkipInFlight: Boolean = false
+
+    fun setPlaybackError(message: String?, stickyMs: Long = PLAYBACK_ERROR_STICKY_MS) {
+        lastPlaybackError = message
+        playbackErrorStickyUntilMs =
+            if (message.isNullOrBlank()) 0L else System.currentTimeMillis() + stickyMs
+    }
+
+    fun dismissPlaybackError() {
+        lastPlaybackError = null
+        playbackErrorStickyUntilMs = 0L
+        playbackErrorAutoSkipInFlight = false
+    }
+
+    /** Clear only when sticky window elapsed and not mid auto-skip. */
+    fun clearPlaybackErrorIfSettled(nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (lastPlaybackError == null) return false
+        if (playbackErrorAutoSkipInFlight) return false
+        if (nowMs < playbackErrorStickyUntilMs) return false
+        lastPlaybackError = null
+        playbackErrorStickyUntilMs = 0L
+        return true
+    }
+
+    const val PLAYBACK_ERROR_STICKY_MS = 8_000L
+
     @Volatile
     var castVolume: Float = 0f
 

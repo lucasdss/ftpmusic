@@ -202,6 +202,12 @@ class PlaybackViewModel @Inject constructor(
 
     fun isAutoplayFlags(): List<Boolean> = playbackManager.isAutoplayFlags()
 
+    /** ADR-0095: clear sticky NP playback error banner. */
+    fun dismissPlaybackError() {
+        PlayerHolder.dismissPlaybackError()
+        _state.value = _state.value.copy(playbackError = null)
+    }
+
     fun setContinuousPlayEnabled(enabled: Boolean) {
         playbackManager.setContinuousPlayEnabled(enabled)
         storage.put(SecureStorage.KEY_CONTINUOUS_PLAY_ENABLED, enabled.toString())

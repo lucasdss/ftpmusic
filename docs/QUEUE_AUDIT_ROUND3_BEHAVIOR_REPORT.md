@@ -21,6 +21,10 @@ CP `StateFlow`, Cast Autoplay switch disabled + caption. `ContinuousPlayGate` un
 
 ## Still open (product)
 
-Cast CP enable (Step 2), guest `createShare`, Dual/Cast flatten, history live refresh,
-Overwrite prune, Go-to-album, YT dismiss-session.
+guest `createShare`, Dual/Cast flatten (labels on receiver), history live refresh,
+Go-to-album, YT dismiss-session.
+
+## Closed this critical path
+
+Cast CP Step 2 (ADR-0093). Overwrite PUSH prune (ADR-0094). QueueScreen delete (ADR-0094).
 

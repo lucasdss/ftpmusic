@@ -672,8 +672,14 @@ fun FtpmusicNavHost() {
                         },
                         onRebuildMixes = { navController.navigate("rebuildmix") },
                         onCustomMixes = { navController.navigate("customMixes") },
+                        onDownloads = { navController.navigate("downloads") },
                         onProfile = { navController.navigate("profile") },
                         onServerSettingsSaved = { /* saved, nothing to do */ },
+                    )
+                }
+                composable("downloads") {
+                    com.lucasdss.ftpmusic.app.ui.settings.DownloadsScreen(
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("profile") {
@@ -925,6 +931,7 @@ fun FtpmusicNavHost() {
                             queueSize = playbackState.queueSize,
                             isOffline = playbackState.isOffline,
                             isQueueSynced = playbackState.isQueueSynced,
+                            playbackError = playbackState.playbackError,
                             nextTracks = remember(
                                 queueRevision,
                                 playbackState.queueSize,
@@ -978,6 +985,7 @@ fun FtpmusicNavHost() {
                         onPlayHistoryTrack = onPlayHistoryTrack,
                         onRemoveFromQueueBatch = onRemoveFromQueueBatch,
                         onQueueSheetOpened = onQueueSheetOpened,
+                        onDismissPlaybackError = { playbackViewModel.dismissPlaybackError() },
                         defaultQueuePlaylistName = playbackViewModel.defaultQueuePlaylistName(),
                         modifier = Modifier,
                     )
@@ -1218,6 +1226,7 @@ private suspend fun fetchLyricsForTrack(
         trackId = trackId,
         dao = dao,
         getLyrics = { a, t -> api.getLyrics(authParams, a, t) },
+        getLyricsBySongId = { id -> api.getLyricsBySongId(authParams, id) },
         markFetched = {
             context.getSharedPreferences(
                 MetadataSyncWorker.PREFS_NAME,

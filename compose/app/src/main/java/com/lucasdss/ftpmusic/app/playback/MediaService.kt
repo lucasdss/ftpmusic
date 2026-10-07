@@ -758,6 +758,10 @@ class MediaService : MediaLibraryService() {
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY) {
+                // ADR-0095: do not wipe sticky error during auto-skip settle
+                PlayerHolder.clearPlaybackErrorIfSettled()
+            }
             if (playbackState == Player.STATE_ENDED) {
                 val trackId = lastTrackId ?: return
                 if (hasPassed60Percent) {
@@ -793,6 +797,12 @@ class MediaService : MediaLibraryService() {
             val previousTrackId = lastTrackId
             lastTrackId = mediaItem?.mediaId
             playerErrorCount = 0 // Reset error counter on new track
+            // ADR-0095: keep sticky banner across error auto-skip transition
+            if (!PlayerHolder.playbackErrorAutoSkipInFlight) {
+                PlayerHolder.clearPlaybackErrorIfSettled()
+            } else {
+                PlayerHolder.playbackErrorAutoSkipInFlight = false
+            }
             if (previousTrackId != null && (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || hasPassed60Percent)) {
                 scrobbleTrackIfNeeded(previousTrackId, previousMeta)
             }
@@ -1074,6 +1084,7 @@ class MediaService : MediaLibraryService() {
                 "player error: ${error.message}",
                 error,
             )
+            PlayerHolder.setPlaybackError(error.message?.take(160) ?: "Playback failed")
             val ep = exoPlayer
             // Edge 40: recovery must not require STATE_IDLE — an error arriving
             // while the player is mid-transition (buffering) previously skipped
@@ -1084,6 +1095,7 @@ class MediaService : MediaLibraryService() {
             val currentId = ep.currentMediaItem?.mediaId
             when (decideErrorSkipAction(playerErrorCount, currentId, ep.currentMediaItemIndex, ep.mediaItemCount)) {
                 ErrorSkipAction.SKIP_NEXT -> {
+                    PlayerHolder.playbackErrorAutoSkipInFlight = true
                     val serverUnreachable = !com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
                     // Outside-LAN fail-fast is not corrupt cache — don't wipe spans.
                     // When reachable, remove possibly corrupt cached content so the
@@ -2078,10 +2090,19 @@ class MediaService : MediaLibraryService() {
             hasLoadedContinuation = false
         }
         if (forceRetry) hasLoadedContinuation = false
+        // ADR-0095: while casting, CastPlayer timeline is not Dual SoT — gate on Dual.
+        val casting = PlayerHolder.isCasting
+        val (gateIndex, gateCount) = ContinuousPlayGate.resolveTimeline(
+            isCasting = casting,
+            playerIndex = player.currentMediaItemIndex,
+            playerCount = player.mediaItemCount,
+            dualIndex = playbackManager.currentQueueIndex(),
+            dualCount = playbackManager.dualQueueSize,
+        )
         if (!ContinuousPlayGate.shouldLoadContinuation(
-                isCasting = PlayerHolder.isCasting,
-                currentIndex = player.currentMediaItemIndex,
-                mediaItemCount = player.mediaItemCount,
+                isCasting = casting,
+                currentIndex = gateIndex,
+                mediaItemCount = gateCount,
                 hasLoadedContinuation = hasLoadedContinuation,
                 continuousPlayEnabled = playbackManager.continuousPlayEnabled,
             )
@@ -2090,18 +2111,16 @@ class MediaService : MediaLibraryService() {
         }
         if (continuousPlayInFlight) return
         continuousPlayInFlight = true
-        val snapshotCount = player.mediaItemCount
-        val currentTrackIds = (0 until snapshotCount).mapNotNull {
-            player.getMediaItemAt(it)?.mediaId
-        }.toSet()
+        val currentTrackIds = if (casting) {
+            playbackManager.currentQueueMediaIds()
+        } else {
+            val snapshotCount = player.mediaItemCount
+            (0 until snapshotCount).mapNotNull {
+                player.getMediaItemAt(it)?.mediaId
+            }.toSet()
+        }
         scope.launch(Dispatchers.IO) {
             try {
-                val entries = queueJournalDao.getAllRecent()
-                if (entries.isEmpty()) {
-                    android.util.Log.d("ftpmusic-playback", "Continuous play: empty journal")
-                    return@launch
-                }
-                val selected = JournalTrackSelector.select(entries, currentTrackIds)
                 val localOnly = com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy.isLocalOnly(
                     offlineModeManager.isOffline.value,
                 )
@@ -2109,6 +2128,37 @@ class MediaService : MediaLibraryService() {
                 val base = DynamicBaseUrl.url
                 val user = SubsonicCredentials.username
                 val pass = SubsonicCredentials.password
+
+                // ADR-0094: prefer getSimilarSongs2 (may not be in Room yet), then journal.
+                if (!localOnly && mediaId.isNotBlank()) {
+                    try {
+                        val similar = scrobbleService.fetchSimilarSongs(mediaId, count = 20)
+                            .filter { it.id !in currentTrackIds }
+                        if (similar.isNotEmpty()) {
+                            val urls = similar.map { auth.buildStreamUrl(base, it.id, user, pass) }
+                            withContext(Dispatchers.Main) {
+                                playbackManager.appendToContext(similar, urls, asAutoplay = true)
+                                hasLoadedContinuation = true
+                                android.util.Log.d(
+                                    "ftpmusic-playback",
+                                    "Continuous play: similar-songs API primary appended=${similar.size}",
+                                )
+                            }
+                            return@launch
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w(
+                            "ftpmusic-playback",
+                            "Continuous play: similar songs failed: ${e.message}",
+                        )
+                    }
+                }
+                val entries = queueJournalDao.getAllRecent()
+                if (entries.isEmpty()) {
+                    android.util.Log.d("ftpmusic-playback", "Continuous play: empty journal")
+                    return@launch
+                }
+                val selected = JournalTrackSelector.select(entries, currentTrackIds)
                 val entityById = selected.associateWith { id -> trackDao.getTrack(id) }
                 val candidates = ContinuousPlayLoader.resolve(
                     selectedIds = selected,

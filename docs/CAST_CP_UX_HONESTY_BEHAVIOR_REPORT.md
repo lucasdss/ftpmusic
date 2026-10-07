@@ -24,4 +24,5 @@ CP off on Cast; fix UI. Apple-like Cast CP enable = later step.
 
 ## Follow-up
 
-Enable Cast CP append (Dual + Cast mutation); ADR superseding Cast CP bullet.
+**Done (ADR-0093 / CAST_CP_STEP2):** Cast CP append enabled; switch interactive
+while casting. See `docs/CAST_CP_STEP2_BEHAVIOR_REPORT.md`.

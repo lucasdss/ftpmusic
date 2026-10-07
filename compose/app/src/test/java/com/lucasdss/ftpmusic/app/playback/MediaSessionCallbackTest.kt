@@ -57,6 +57,8 @@ class MediaSessionCallbackTest {
         metadataDao: CachedMetadataDao = mockk(relaxed = true),
         api: SubsonicApi = mockk(relaxed = true),
         persistenceManager: QueuePersistenceManager? = null,
+        playlistDao: com.lucasdss.ftpmusic.app.data.db.PlaylistDao? =
+            mockk(relaxed = true),
     ): MediaSessionCallback = MediaSessionCallback(
         trackDao,
         metadataDao,
@@ -64,6 +66,7 @@ class MediaSessionCallbackTest {
         api,
         localSearch = null,
         persistenceManager = persistenceManager,
+        playlistDao = playlistDao,
         scope = CoroutineScope(Dispatchers.Unconfined),
         mainDispatcher = Dispatchers.Unconfined,
     )
@@ -892,5 +895,64 @@ class MediaSessionCallbackTest {
         } catch (e: Exception) {
             assertTrue(e.cause is UnsupportedOperationException || e is java.util.concurrent.ExecutionException)
         }
+    }
+
+    @Test
+    fun `onGetLibraryRoot returns auto root`() {
+        val callback = createCallback(mockk(relaxed = true))
+        val result = callback.onGetLibraryRoot(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            null,
+        ).get()
+        assertEquals(AutoBrowseIds.ROOT, result.value?.mediaId)
+    }
+
+    @Test
+    fun `onGetChildren root returns five nodes`() {
+        val callback = createCallback(mockk(relaxed = true))
+        val result = callback.onGetChildren(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            AutoBrowseIds.ROOT,
+            0,
+            50,
+            null,
+        ).get()
+        assertEquals(5, result.value?.size)
+    }
+
+    @Test
+    fun `onAddMediaItems expands auto album browse id`() {
+        val metadataDao = mockk<CachedMetadataDao>(relaxed = true)
+        coEvery { metadataDao.getAlbumTracks("al1") } returns listOf(
+            CachedAlbumTrackEntity(
+                id = "t1",
+                albumId = "al1",
+                title = "One",
+                trackNumber = 1,
+            ),
+            CachedAlbumTrackEntity(
+                id = "t2",
+                albumId = "al1",
+                title = "Two",
+                trackNumber = 2,
+            ),
+        )
+        val callback = createCallback(mockk(relaxed = true), metadataDao)
+        val item = MediaItem.Builder().setMediaId(AutoBrowseIds.album("al1")).build()
+        val result = callback.onAddMediaItems(mockk(relaxed = true), mockk(relaxed = true), listOf(item)).get()
+        assertEquals(listOf("t1", "t2"), result.map { it.mediaId })
+    }
+
+    @Test
+    fun `onGetLibraryRoot unsupported without playlistDao`() {
+        val callback = createCallback(mockk(relaxed = true), playlistDao = null)
+        val result = callback.onGetLibraryRoot(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            null,
+        ).get()
+        assertTrue(result.resultCode != 0)
     }
 }

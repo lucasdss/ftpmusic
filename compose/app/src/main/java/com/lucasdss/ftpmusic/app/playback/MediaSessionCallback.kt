@@ -4,11 +4,15 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionError
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
+import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
@@ -31,6 +35,9 @@ import kotlinx.coroutines.withContext
  * Also implements [onPlaybackResumption] (ADR-0087) so MediaButtonReceiver /
  * System UI can rebuild the last queue after process death.
  *
+ * Android Auto browse tree: [onGetLibraryRoot] / [onGetChildren] / [onGetItem]
+ * via [AutoBrowseCatalog] (ADR-0091). Local-first Room only.
+ *
  * The requested track is placed first in the returned list so playback
  * starts at the correct position. The remaining album tracks follow in
  * their original order.
@@ -46,19 +53,98 @@ class MediaSessionCallback(
     private val api: SubsonicApi,
     private val localSearch: com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository? = null,
     private val persistenceManager: QueuePersistenceManager? = null,
+    private val playlistDao: PlaylistDao? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MediaLibraryService.MediaLibrarySession.Callback {
+
+    private val browseCatalog: AutoBrowseCatalog? by lazy {
+        val playlists = playlistDao ?: return@lazy null
+        AutoBrowseCatalog(
+            trackDao = trackDao,
+            metadataDao = metadataDao,
+            playlistDao = playlists,
+            artworkUriFor = { artworkUriForTrack(it) },
+            streamUriFor = { trackId ->
+                val username = SubsonicCredentials.username
+                val password = SubsonicCredentials.password
+                val baseUrl = DynamicBaseUrl.url.trimEnd('/')
+                if (username.isEmpty() || password.isEmpty() || !DynamicBaseUrl.isConfigured()) {
+                    null
+                } else {
+                    Uri.parse(authHelper.buildStreamUrl(baseUrl, trackId, username, password))
+                }
+            },
+        )
+    }
+
+    override fun onGetLibraryRoot(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<MediaItem>> {
+        val catalog = browseCatalog
+            ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
+        return Futures.immediateFuture(LibraryResult.ofItem(catalog.rootItem(), params))
+    }
+
+    override fun onGetChildren(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        parentId: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        val catalog = browseCatalog
+            ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
+        return scope.future {
+            try {
+                val kids = catalog.children(parentId, page, pageSize)
+                LibraryResult.ofItemList(ImmutableList.copyOf(kids), params)
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaSessionCallback] onGetChildren failed: ${e.message}")
+                LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    override fun onGetItem(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        mediaId: String,
+    ): ListenableFuture<LibraryResult<MediaItem>> {
+        val catalog = browseCatalog
+            ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
+        return scope.future {
+            try {
+                val item = catalog.item(mediaId)
+                if (item != null) {
+                    LibraryResult.ofItem(item, null)
+                } else {
+                    LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaSessionCallback] onGetItem failed: ${e.message}")
+                LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+            }
+        }
+    }
 
     override fun onAddMediaItems(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo,
         mediaItems: List<MediaItem>,
     ): ListenableFuture<List<MediaItem>> {
+        if (mediaItems.isEmpty()) return Futures.immediateFuture(mediaItems)
         if (mediaItems.size != 1) return Futures.immediateFuture(mediaItems)
         val mediaId = mediaItems.first().mediaId ?: return Futures.immediateFuture(mediaItems)
         return scope.future {
             try {
+                if (AutoBrowseIds.isBrowseNode(mediaId)) {
+                    val expanded = browseCatalog?.expandForPlayback(mediaId).orEmpty()
+                    if (expanded.isNotEmpty()) return@future expanded
+                }
                 val expanded = expandToAlbum(mediaId)
                 if (expanded != null && expanded.size > 1) expanded else mediaItems
             } catch (e: Exception) {

@@ -316,7 +316,8 @@ class PlayerSurfacesUxTest {
     }
 
     @Test
-    fun `queue sheet Autoplay switch disabled while casting`() {
+    fun `queue sheet Autoplay switch enabled while casting`() {
+        // ADR-0093: Cast CP Step 2 — switch interactive; flatten notice still shown
         var continuous: Boolean? = null
         composeRule.setContent {
             PlayerBar(
@@ -345,12 +346,12 @@ class PlayerSurfacesUxTest {
         }
         composeRule.onNodeWithTag("queue_peek_strip").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("queue_autoplay_cast_unavailable").assertExists()
+        composeRule.onNodeWithTag("queue_autoplay_cast_unavailable").assertDoesNotExist()
         composeRule.onNodeWithTag("queue_cast_flatten_notice").assertExists()
         composeRule.onNodeWithTag("queue_clear_autoplay").assertExists()
         composeRule.onNodeWithTag("queue_continuous_play_switch").assertIsOn()
         composeRule.onNodeWithTag("queue_continuous_play_switch").performClick()
-        assertEquals(null, continuous)
+        assertEquals(false, continuous)
     }
 
     @Test

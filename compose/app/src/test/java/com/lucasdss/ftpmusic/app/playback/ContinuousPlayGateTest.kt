@@ -48,8 +48,9 @@ class ContinuousPlayGateTest {
     }
 
     @Test
-    fun `skips when casting`() {
-        assertFalse(
+    fun `loads when casting if enabled on last item`() {
+        // ADR-0093: Cast CP append via Dual + emitCastAddsOrCommit
+        assertTrue(
             ContinuousPlayGate.shouldLoadContinuation(
                 isCasting = true,
                 currentIndex = 0,
@@ -58,6 +59,41 @@ class ContinuousPlayGateTest {
                 continuousPlayEnabled = true,
             ),
         )
+    }
+
+    @Test
+    fun `resolveTimeline uses Dual while casting`() {
+        val (idx, count) = ContinuousPlayGate.resolveTimeline(
+            isCasting = true,
+            playerIndex = 0,
+            playerCount = 0, // CastPlayer empty/windowed
+            dualIndex = 4,
+            dualCount = 5,
+        )
+        assertEquals(4, idx)
+        assertEquals(5, count)
+        assertTrue(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = true,
+                currentIndex = idx,
+                mediaItemCount = count,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `resolveTimeline uses player when not casting`() {
+        val (idx, count) = ContinuousPlayGate.resolveTimeline(
+            isCasting = false,
+            playerIndex = 2,
+            playerCount = 3,
+            dualIndex = 99,
+            dualCount = 99,
+        )
+        assertEquals(2, idx)
+        assertEquals(3, count)
     }
 
     @Test

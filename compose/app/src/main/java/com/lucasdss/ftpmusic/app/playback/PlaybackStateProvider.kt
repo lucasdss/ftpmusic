@@ -112,6 +112,8 @@ data class PlaybackState(
     val downloadedTrackIds: Set<String> = emptySet(),
     val contextSource: String? = null,
     val priorityQueueSize: Int = 0,
+    /** Transient playback failure message for NP error strip (ADR-0094). */
+    val playbackError: String? = null,
 ) {
     /** MiniPlayer should be visible when a track is loaded. */
     val isVisible: Boolean get() = title != null
@@ -246,6 +248,7 @@ data class PlaybackState(
                 isQueueSynced = !PlayerHolder.queueSaveFailed,
                 downloadedTrackIds = prevState.downloadedTrackIds,
                 contextSource = prevState.contextSource,
+                playbackError = PlayerHolder.lastPlaybackError,
             )
         }
     }

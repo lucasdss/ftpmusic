@@ -47,5 +47,10 @@ object ContinuousPlayLoader {
         return out
     }
 
-    fun isPlayableOffline(entity: TrackEntity): Boolean = entity.isDownloaded || !entity.cachedFilePath.isNullOrBlank()
+    /**
+     * Offline-playable requires a non-blank cache path (ADR-0095).
+     * Healed pins keep `is_downloaded=1` with null path — those are NOT playable
+     * until bytes exist again (Downloads UI warns; user re-caches on play online).
+     */
+    fun isPlayableOffline(entity: TrackEntity): Boolean = !entity.cachedFilePath.isNullOrBlank()
 }

@@ -42,7 +42,7 @@
     <string name="player_saving">Saving…</string>
     <string name="player_casting_to">Casting to %1$s</string>
     <string name="player_casting">Casting…</string>
-    <string name="player_cast_flatten_notice">Queue → Next from order flattened into a Cast receiver timeline.</string>
+    <string name="player_cast_flatten_notice">Cast plays one timeline — Next in Queue and Next from merge in phone order.</string>
     <string name="player_sleep_timer">Sleep timer</string>
     <string name="player_sleep_timer_remaining">Sleep timer — %1$s</string>
     <string name="player_lyrics">Lyrics</string>
