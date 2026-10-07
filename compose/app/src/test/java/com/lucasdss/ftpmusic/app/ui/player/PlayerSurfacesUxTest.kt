@@ -535,4 +535,117 @@ class PlayerSurfacesUxTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("queue_cast_flatten_notice").assertExists()
     }
+
+    // Ports from deleted QueueScreenComposeTest (sheet is SoT after QueueScreen removal).
+
+    @Test
+    fun `queue sheet renders items from nextTracks`() {
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 2,
+                    priorityQueueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued Song",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Queued Song").assertIsDisplayed()
+    }
+
+    @Test
+    fun `queue sheet play item invokes onPlayQueueItem`() {
+        var played: Int? = null
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 2,
+                    priorityQueueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued Song",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+                onPlayQueueItem = { played = it },
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Queued Song").performClick()
+        assertEquals(1, played)
+    }
+
+    @Test
+    fun `queue sheet clear priority invokes onClearQueue`() {
+        var cleared = false
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 2,
+                    priorityQueueSize = 1,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                        UpcomingTrack(
+                            title = "Queued",
+                            isCurrent = false,
+                            isPriority = true,
+                            queueIndex = 1,
+                            entryId = 2,
+                        ),
+                    ),
+                ),
+                onClearQueue = { cleared = true },
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("queue_clear_priority").performClick()
+        assertTrue(cleared)
+    }
+
+    @Test
+    fun `queue sheet empty priority shows placeholder`() {
+        composeRule.setContent {
+            PlayerBar(
+                state = PlayerBarState(
+                    title = "Current",
+                    artist = "Artist",
+                    expanded = true,
+                    queueSize = 1,
+                    priorityQueueSize = 0,
+                    nextTracks = listOf(
+                        UpcomingTrack(title = "Current", isCurrent = true, queueIndex = 0, entryId = 1),
+                    ),
+                ),
+            )
+        }
+        composeRule.onNodeWithTag("queue_peek_strip").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Next in Queue is empty").assertExists()
+    }
 }

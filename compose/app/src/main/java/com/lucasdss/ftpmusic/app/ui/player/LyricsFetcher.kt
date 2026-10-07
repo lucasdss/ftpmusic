@@ -198,7 +198,7 @@ internal object LyricsFetcher {
         if (structuredLines != null && structuredLines.isNotEmpty()) {
             val rawLines = structuredLines.mapNotNull { line ->
                 val m = line as? Map<*, *> ?: return@mapNotNull null
-                val start = (m["start"] as? Number)?.toLong() ?: 0L
+                val start = parseLyricStartMs(m["start"])
                 val value = m["value"] as? String ?: return@mapNotNull null
                 Pair(start, value)
             }
@@ -241,6 +241,13 @@ internal object LyricsFetcher {
     }
 
     private fun isTrulySynced(lines: List<LyricLine>): Boolean = lines.any { it.timeMs > 0L }
+
+    /** OpenSubsonic may emit start as Number or numeric String. */
+    internal fun parseLyricStartMs(raw: Any?): Long = when (raw) {
+        is Number -> raw.toLong()
+        is String -> raw.toLongOrNull() ?: 0L
+        else -> 0L
+    }
 
     private suspend fun putCache(
         trackId: String?,

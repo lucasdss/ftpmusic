@@ -84,6 +84,22 @@ class LyricsFetcherTest {
     }
 
     @Test
+    fun `parseLyricsData accepts start as String`() {
+        val display = LyricsFetcher.parseLyricsData(
+            mapOf(
+                "synced" to true,
+                "line" to listOf(
+                    mapOf("start" to "1500", "value" to "Hello"),
+                    mapOf("start" to "3000", "value" to "World"),
+                ),
+            ),
+        )
+        assertTrue(display.isSynced)
+        assertEquals(1500L, display.lines[0].timeMs)
+        assertEquals(3000L, display.lines[1].timeMs)
+    }
+
+    @Test
     fun `parseResponse lyricsList prefers synced over plain`() {
         val response = mapOf(
             "subsonic-response" to mapOf(

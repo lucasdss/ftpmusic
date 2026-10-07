@@ -84,6 +84,47 @@ class ContinuousPlayGateTest {
     }
 
     @Test
+    fun `ENDED pre-gate casting with Dual last item loads even if CastPlayer empty`() {
+        // Mirrors MediaService STATE_ENDED Dual pre-check
+        val (idx, count) = ContinuousPlayGate.resolveTimeline(
+            isCasting = true,
+            playerIndex = 0,
+            playerCount = 0,
+            dualIndex = 2,
+            dualCount = 3,
+        )
+        assertTrue(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = true,
+                currentIndex = idx,
+                mediaItemCount = count,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `casting Dual index miss fails closed`() {
+        val (idx, count) = ContinuousPlayGate.resolveTimeline(
+            isCasting = true,
+            playerIndex = 0,
+            playerCount = 1,
+            dualIndex = -1,
+            dualCount = 5,
+        )
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = true,
+                currentIndex = idx,
+                mediaItemCount = count,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
     fun `resolveTimeline uses player when not casting`() {
         val (idx, count) = ContinuousPlayGate.resolveTimeline(
             isCasting = false,

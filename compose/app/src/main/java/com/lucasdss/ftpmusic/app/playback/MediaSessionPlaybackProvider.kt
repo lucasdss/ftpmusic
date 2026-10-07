@@ -328,6 +328,10 @@ class MediaSessionPlaybackProvider @Inject constructor(
         }
     }
 
+    override fun clearPlaybackError() {
+        _playbackState.update { it.copy(playbackError = null) }
+    }
+
     /**
      * Dispatch a transport control. While a Player is attached this fires the
      * service-side callback immediately (fire-and-forget, matching the prior

@@ -18,9 +18,11 @@ Peers (Symfonium, Ultrasonic, Tempo) ship Android Auto browse. FTP had
 3. **Media id scheme** — `AutoBrowseIds` (`auto_root`, `auto_album:{id}`, …). Bare
    track ids remain Subsonic ids for existing album expand.
 4. **Play folders** — album / playlist / artist nodes are playable; `onAddMediaItems`
-   expands via `AutoBrowseCatalog.expandForPlayback`.
-5. **Inject `PlaylistDao`** into `MediaSessionCallback` via `MediaModule`.
-6. **Out of scope** — Internet Radio node, Wear layouts, in-Auto search UI.
+   expands via `AutoBrowseCatalog.expandForPlayback`. Empty playlists are not Play-all.
+5. **Track URI** — stream Subsonic URL only (CacheDataSource / `streamCacheKey`); never
+   `file://` from `cachedFilePath` (ADR-0095 revision).
+6. **Inject `PlaylistDao`** into `MediaSessionCallback` via `MediaModule`.
+7. **Out of scope** — Internet Radio node, Wear layouts, in-Auto search UI.
 
 ## Consequences
 

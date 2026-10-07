@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -112,6 +113,35 @@ class DownloadsViewModelTest {
         val viewModel = vm()
         viewModel.clearAll()
         coVerify { cacheService.clearDownloads() }
+        assertTrue(viewModel.state.value.tracks.isEmpty())
+    }
+
+    @Test
+    fun `fetch throw clears loading`() = runTest {
+        coEvery { trackDao.getDownloadedPaged(any(), any()) } throws RuntimeException("db down")
+        val viewModel = vm()
+        assertFalse(viewModel.state.value.loading)
+    }
+
+    @Test
+    fun `clearAll discards late page`() = runTest {
+        val latch = kotlinx.coroutines.CompletableDeferred<Unit>()
+        coEvery { trackDao.getDownloadedPaged(50, 0) } coAnswers {
+            latch.await()
+            listOf(TrackEntity(id = "late", title = "Late", isDownloaded = true))
+        }
+        // Init refresh will hang on latch — start VM then clearAll first
+        val viewModel = DownloadsViewModel(
+            trackDao = trackDao,
+            cacheService = cacheService,
+            playbackManager = playbackManager,
+            authHelper = SubsonicAuthHelper(),
+            storage = mockk(relaxed = true),
+        )
+        viewModel.clearAll()
+        latch.complete(Unit)
+        // Allow hung refresh to finish
+        testScheduler.advanceUntilIdle()
         assertTrue(viewModel.state.value.tracks.isEmpty())
     }
 }

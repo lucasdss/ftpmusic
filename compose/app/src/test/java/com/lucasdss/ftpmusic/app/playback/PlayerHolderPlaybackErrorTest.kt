@@ -54,4 +54,31 @@ class PlayerHolderPlaybackErrorTest {
         assertNull(PlayerHolder.lastPlaybackError)
         assertFalse(PlayerHolder.playbackErrorAutoSkipInFlight)
     }
+
+    @Test
+    fun `sticky scheduler clears after delay without READY`() {
+        var scheduled: (() -> Unit)? = null
+        PlayerHolder.stickyClearScheduler = { _, action -> scheduled = action }
+        var clearedCallback = false
+        PlayerHolder.onPlaybackErrorCleared = { clearedCallback = true }
+        PlayerHolder.setPlaybackError("boom", stickyMs = 100L)
+        assertEquals("boom", PlayerHolder.lastPlaybackError)
+        // Simulate sticky window elapsed
+        PlayerHolder.playbackErrorStickyUntilMs = 0L
+        scheduled!!.invoke()
+        assertNull(PlayerHolder.lastPlaybackError)
+        assertTrue(clearedCallback)
+        PlayerHolder.stickyClearScheduler = null
+        PlayerHolder.onPlaybackErrorCleared = null
+    }
+
+    @Test
+    fun `dismiss invokes onPlaybackErrorCleared for provider patch`() {
+        var cleared = false
+        PlayerHolder.onPlaybackErrorCleared = { cleared = true }
+        PlayerHolder.setPlaybackError("boom", stickyMs = 60_000L)
+        PlayerHolder.dismissPlaybackError()
+        assertTrue(cleared)
+        PlayerHolder.onPlaybackErrorCleared = null
+    }
 }

@@ -36,16 +36,42 @@ object PlayerHolder {
     @Volatile
     var playbackErrorAutoSkipInFlight: Boolean = false
 
+    /**
+     * Optional scheduler for sticky auto-clear (wired by MediaService to main Handler).
+     * Unit tests may inject a no-op or immediate runner.
+     */
+    @Volatile
+    var stickyClearScheduler: ((delayMs: Long, action: () -> Unit) -> Unit)? = null
+
+    /** Invoked after sticky error is cleared (expiry or dismiss) so providers can republish. */
+    @Volatile
+    var onPlaybackErrorCleared: (() -> Unit)? = null
+
+    private var stickyClearGeneration: Int = 0
+
     fun setPlaybackError(message: String?, stickyMs: Long = PLAYBACK_ERROR_STICKY_MS) {
+        stickyClearGeneration++
+        val generation = stickyClearGeneration
         lastPlaybackError = message
         playbackErrorStickyUntilMs =
             if (message.isNullOrBlank()) 0L else System.currentTimeMillis() + stickyMs
+        if (!message.isNullOrBlank() && stickyMs > 0L) {
+            stickyClearScheduler?.invoke(stickyMs) {
+                if (generation == stickyClearGeneration) {
+                    if (clearPlaybackErrorIfSettled()) {
+                        onPlaybackErrorCleared?.invoke()
+                    }
+                }
+            }
+        }
     }
 
     fun dismissPlaybackError() {
+        stickyClearGeneration++
         lastPlaybackError = null
         playbackErrorStickyUntilMs = 0L
         playbackErrorAutoSkipInFlight = false
+        onPlaybackErrorCleared?.invoke()
     }
 
     /** Clear only when sticky window elapsed and not mid auto-skip. */

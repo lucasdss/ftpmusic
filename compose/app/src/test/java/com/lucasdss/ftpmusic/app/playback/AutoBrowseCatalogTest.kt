@@ -178,19 +178,22 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
-    fun `track with cache path uses file uri when stream missing`() = runBlocking {
-        val noStream = AutoBrowseCatalog(
-            trackDao = trackDao,
-            metadataDao = metadataDao,
-            playlistDao = playlistDao,
-            artworkUriFor = { null },
-            streamUriFor = { null },
-        )
+    fun `track with cache path still uses stream uri not file`() = runBlocking {
         coEvery { trackDao.getStarred(any(), any()) } returns listOf(
             TrackEntity(id = "t1", title = "Cached", cachedFilePath = "/data/t1.cache"),
         )
-        val kids = noStream.children(AutoBrowseIds.FAVORITES, 0, 20)
+        val kids = catalog.children(AutoBrowseIds.FAVORITES, 0, 20)
         assertTrue(kids.single().mediaMetadata.isPlayable == true)
-        assertTrue(kids.single().localConfiguration?.uri?.toString()?.startsWith("file://") == true)
+        assertEquals("stream://t1", kids.single().localConfiguration?.uri?.toString())
+        assertFalse(kids.single().localConfiguration?.uri?.toString()?.startsWith("file://") == true)
+    }
+
+    @Test
+    fun `empty playlist folder is not playable`() = runBlocking {
+        coEvery { playlistDao.getAll() } returns listOf(
+            PlaylistEntity(id = "p0", name = "Empty", trackCount = 0),
+        )
+        val kids = catalog.children(AutoBrowseIds.PLAYLISTS, 0, 20)
+        assertFalse(kids.single().mediaMetadata.isPlayable == true)
     }
 }

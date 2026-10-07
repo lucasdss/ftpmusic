@@ -179,18 +179,27 @@ class ScrobbleService @Inject constructor(
             val response = api.getSimilarSongs2(authParams(), id = trackId, count = count)
             val sr = response["subsonic-response"] as? Map<*, *>
             val similar = sr?.get("similarSongs2") as? Map<*, *>
-            val songs = similar?.get("song") as? List<*>
-            songs?.mapNotNull { song ->
+            val raw = similar?.get("song")
+            val songs: List<*> = when (raw) {
+                is List<*> -> raw
+                is Map<*, *> -> listOf(raw)
+                else -> emptyList<Any>()
+            }
+            songs.mapNotNull { song ->
                 val s = song as? Map<*, *> ?: return@mapNotNull null
                 Track(
                     id = s["id"] as? String ?: return@mapNotNull null,
                     title = s["title"] as? String ?: return@mapNotNull null,
                     artist = s["artist"] as? String,
                     album = s["album"] as? String,
+                    artistId = s["artistId"] as? String,
+                    albumId = s["albumId"] as? String,
                     duration = (s["duration"] as? Number)?.toInt(),
                     coverArt = s["coverArt"] as? String,
+                    contentType = s["contentType"] as? String,
+                    suffix = s["suffix"] as? String,
                 )
-            } ?: emptyList()
+            }
         } catch (_: Exception) {
             emptyList()
         }

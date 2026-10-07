@@ -1313,12 +1313,11 @@ class PlaybackManager @Inject constructor(
         val active = PlayerHolder.player
         val activeId = active?.currentMediaItem?.mediaId
         val byId = activeId?.let { id -> merged.indexOfFirst { it.mediaId == id } } ?: -1
-        val fallbackIndex = if (PlayerHolder.isCasting) {
-            PlayerHolder.exoPlayer?.currentMediaItemIndex
-        } else {
-            active?.currentMediaItemIndex
-        }
-        return if (byId >= 0) byId else (fallbackIndex ?: 0).coerceIn(0, merged.lastIndex)
+        if (byId >= 0) return byId
+        // Casting + mediaId miss: fail closed (−1) — never coerce to 0 (false "not last").
+        if (PlayerHolder.isCasting) return -1
+        val fallbackIndex = active?.currentMediaItemIndex ?: return -1
+        return fallbackIndex.coerceIn(0, merged.lastIndex)
     }
 
     /**

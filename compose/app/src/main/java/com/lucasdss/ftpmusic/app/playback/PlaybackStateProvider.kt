@@ -73,6 +73,9 @@ interface PlaybackStateProvider {
         isDisliked: Boolean = false,
         trackRating: Int = 0,
     )
+
+    /** Clear sticky NP playback error in provider StateFlow (dismiss / sticky expiry). */
+    fun clearPlaybackError()
 }
 
 @androidx.compose.runtime.Stable

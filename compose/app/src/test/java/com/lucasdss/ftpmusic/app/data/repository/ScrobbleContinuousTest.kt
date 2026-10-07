@@ -128,4 +128,32 @@ class ScrobbleContinuousTest {
 
         assertTrue(result.isEmpty())
     }
+
+    @Test
+    fun `fetchSimilarSongs accepts single song Map`() = runTest {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "testuser"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "testpass"
+        val mockResponse = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "similarSongs2" to mapOf(
+                    "song" to mapOf(
+                        "id" to "solo",
+                        "title" to "Only One",
+                        "artist" to "A",
+                        "artistId" to "ar1",
+                        "albumId" to "al1",
+                        "contentType" to "audio/mpeg",
+                        "suffix" to "mp3",
+                    ),
+                ),
+            ),
+        )
+        coEvery { api.getSimilarSongs2(any(), id = "track-1", count = 10) } returns mockResponse
+        val result = createService().fetchSimilarSongs("track-1")
+        assertEquals(1, result.size)
+        assertEquals("solo", result[0].id)
+        assertEquals("ar1", result[0].artistId)
+        assertEquals("mp3", result[0].suffix)
+    }
 }

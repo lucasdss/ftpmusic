@@ -132,7 +132,8 @@ class AutoBrowseCatalog(
         title = playlist.name,
         subtitle = "${playlist.trackCount} tracks",
         artwork = artworkUriFor(playlist.coverArt),
-        playable = true,
+        // Empty playlists stay browsable but not Play-all (dead Auto affordance).
+        playable = playlist.trackCount > 0,
         mediaType = MediaMetadata.MEDIA_TYPE_PLAYLIST,
     )
 
@@ -155,8 +156,8 @@ class AutoBrowseCatalog(
     )
 
     private fun trackItem(track: TrackEntity): MediaItem {
-        // ADR-0095: prefer local file when path present; else stream; else not playable
-        val uri = localOrStreamUri(track.cachedFilePath, track.id)
+        // Stream URI only — CacheDataSource keys on stream id= (ADR-0095 revision).
+        val uri = streamUriFor(track.id)
         val metadata = MediaMetadata.Builder()
             .setTitle(track.title)
             .setArtist(track.artist)
@@ -184,8 +185,7 @@ class AutoBrowseCatalog(
     }
 
     private suspend fun cachedTrackItem(track: CachedAlbumTrackEntity, albumId: String): MediaItem {
-        val room = trackDao.getTrack(track.id)
-        val uri = localOrStreamUri(room?.cachedFilePath, track.id)
+        val uri = streamUriFor(track.id)
         val metadata = MediaMetadata.Builder()
             .setTitle(track.title)
             .setArtist(track.artist)
@@ -209,17 +209,6 @@ class AutoBrowseCatalog(
             .apply { if (uri != null) setUri(uri) }
             .setMediaMetadata(metadata)
             .build()
-    }
-
-    private fun localOrStreamUri(cachedFilePath: String?, trackId: String): Uri? {
-        if (!cachedFilePath.isNullOrBlank()) {
-            return try {
-                Uri.parse("file://$cachedFilePath")
-            } catch (_: Exception) {
-                null
-            } ?: streamUriFor(trackId)
-        }
-        return streamUriFor(trackId)
     }
 
     private fun folder(

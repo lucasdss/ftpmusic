@@ -772,9 +772,23 @@ class MediaService : MediaLibraryService() {
                 }
                 // Empty journal / offline miss left hasLoadedContinuation false —
                 // retry Continuous Play when the last item truly ends (ADR-0053).
-                val p = PlayerHolder.player
-                if (p != null && p.mediaItemCount > 0 &&
-                    p.currentMediaItemIndex >= p.mediaItemCount - 1
+                // ADR-0095: pre-gate on Dual while casting (CastPlayer may be empty).
+                val p = PlayerHolder.player ?: return
+                val casting = PlayerHolder.isCasting
+                val (gateIndex, gateCount) = ContinuousPlayGate.resolveTimeline(
+                    isCasting = casting,
+                    playerIndex = p.currentMediaItemIndex,
+                    playerCount = p.mediaItemCount,
+                    dualIndex = playbackManager.currentQueueIndex(),
+                    dualCount = playbackManager.dualQueueSize,
+                )
+                if (ContinuousPlayGate.shouldLoadContinuation(
+                        isCasting = casting,
+                        currentIndex = gateIndex,
+                        mediaItemCount = gateCount,
+                        hasLoadedContinuation = false,
+                        continuousPlayEnabled = playbackManager.continuousPlayEnabled,
+                    )
                 ) {
                     maybeLoadContinuousPlay(
                         player = p,
@@ -1303,6 +1317,13 @@ class MediaService : MediaLibraryService() {
             // UninitializedPropertyAccessException (previously swallowed here,
             // making this restore path a silent no-op).
             super.onCreate()
+            // Sticky NP error: auto-clear after window even without STATE_READY (ADR-0095).
+            PlayerHolder.stickyClearScheduler = { delayMs, action ->
+                handler.postDelayed(action, delayMs)
+            }
+            PlayerHolder.onPlaybackErrorCleared = {
+                playbackProvider.clearPlaybackError()
+            }
             try {
                 serverConfigStore.initialize(force = true)
             } catch (e: Exception) {
@@ -1707,6 +1728,8 @@ class MediaService : MediaLibraryService() {
         // Cancel pending handler callbacks (deferred cast setup, reconnect
         // retries) so none run against this destroyed instance.
         handler.removeCallbacksAndMessages(null)
+        PlayerHolder.stickyClearScheduler = null
+        PlayerHolder.onPlaybackErrorCleared = null
 
         lastTrackId = null
         PlayerHolder.player = null

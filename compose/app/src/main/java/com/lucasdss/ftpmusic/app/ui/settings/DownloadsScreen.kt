@@ -99,12 +99,21 @@ class DownloadsViewModel @Inject constructor(
     /** Synchronous guard so two scrolls cannot both pass before loading=true publishes. */
     private val loadInFlight = AtomicBoolean(false)
 
+    /** Bumped on clearAll so a late fetchPage cannot resurrect deleted rows. */
+    private var loadGeneration = 0
+
+    /** refresh() while busy — flush once current load finishes. */
+    private val pendingRefresh = AtomicBoolean(false)
+
     init {
         refresh()
     }
 
     fun refresh() {
-        if (!loadInFlight.compareAndSet(false, true)) return
+        if (!loadInFlight.compareAndSet(false, true)) {
+            pendingRefresh.set(true)
+            return
+        }
         viewModelScope.launch {
             try {
                 loadMutex.withLock {
@@ -112,8 +121,12 @@ class DownloadsViewModel @Inject constructor(
                     _state.value = DownloadsUiState(loading = true)
                     fetchPage(reset = true)
                 }
+            } catch (_: Exception) {
+                // loading cleared in finally
             } finally {
+                _state.value = _state.value.copy(loading = false)
                 loadInFlight.set(false)
+                flushPendingRefresh()
             }
         }
     }
@@ -127,14 +140,26 @@ class DownloadsViewModel @Inject constructor(
                 loadMutex.withLock {
                     fetchPage(reset = false)
                 }
+            } catch (_: Exception) {
+                // loading cleared in finally
             } finally {
+                _state.value = _state.value.copy(loading = false)
                 loadInFlight.set(false)
+                flushPendingRefresh()
             }
         }
     }
 
+    private fun flushPendingRefresh() {
+        if (pendingRefresh.compareAndSet(true, false)) {
+            refresh()
+        }
+    }
+
     private suspend fun fetchPage(reset: Boolean) {
+        val generation = loadGeneration
         val page = trackDao.getDownloadedPaged(PAGE, if (reset) 0 else offset)
+        if (generation != loadGeneration) return
         val stale = mutableSetOf<String>()
         page.forEach { track ->
             if (cacheService.healStaleCachePath(track.id)) {
@@ -150,6 +175,7 @@ class DownloadsViewModel @Inject constructor(
                 if (t.id in stale) t.copy(cachedFilePath = null) else t
             }
         }
+        if (generation != loadGeneration) return
         offset = if (reset) healedPage.size else offset + healedPage.size
         _state.value = _state.value.copy(
             tracks = if (reset) healedPage else _state.value.tracks + healedPage,
@@ -180,19 +206,25 @@ class DownloadsViewModel @Inject constructor(
 
     fun remove(trackId: String) {
         viewModelScope.launch {
-            cacheService.removeDownload(trackId)
-            _state.value = _state.value.copy(
-                tracks = _state.value.tracks.filter { it.id != trackId },
-                staleIds = _state.value.staleIds - trackId,
-            )
+            loadMutex.withLock {
+                cacheService.removeDownload(trackId)
+                _state.value = _state.value.copy(
+                    tracks = _state.value.tracks.filter { it.id != trackId },
+                    staleIds = _state.value.staleIds - trackId,
+                )
+            }
         }
     }
 
     fun clearAll() {
         viewModelScope.launch {
-            cacheService.clearDownloads()
-            _state.value = DownloadsUiState(loading = false, endReached = true)
-            offset = 0
+            // Bump before mutex so an in-flight fetchPage discards its write.
+            loadGeneration++
+            loadMutex.withLock {
+                cacheService.clearDownloads()
+                _state.value = DownloadsUiState(loading = false, endReached = true)
+                offset = 0
+            }
         }
     }
 

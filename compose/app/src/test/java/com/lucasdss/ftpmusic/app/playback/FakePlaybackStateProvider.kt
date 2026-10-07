@@ -85,4 +85,10 @@ class FakePlaybackStateProvider : PlaybackStateProvider {
             trackRating = trackRating,
         )
     }
+
+    var clearPlaybackErrorCalled = false
+    override fun clearPlaybackError() {
+        clearPlaybackErrorCalled = true
+        _playbackState.value = _playbackState.value.copy(playbackError = null)
+    }
 }

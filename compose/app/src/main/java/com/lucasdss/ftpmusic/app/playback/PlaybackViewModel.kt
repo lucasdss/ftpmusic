@@ -202,9 +202,10 @@ class PlaybackViewModel @Inject constructor(
 
     fun isAutoplayFlags(): List<Boolean> = playbackManager.isAutoplayFlags()
 
-    /** ADR-0095: clear sticky NP playback error banner. */
+    /** ADR-0095: clear sticky NP playback error banner (Holder + provider; no poll resurrect). */
     fun dismissPlaybackError() {
         PlayerHolder.dismissPlaybackError()
+        provider.clearPlaybackError()
         _state.value = _state.value.copy(playbackError = null)
     }
 

@@ -13,8 +13,11 @@ Caveman. ADR-0092. Phase B.
 | Clear all | Existing `clearDownloads` |
 | Stale heal | Path cleared; warning chip |
 | loadMore | Mutex + AtomicBoolean (no duplicate pages) |
+| refresh busy | Pending refresh flushed after load |
+| clearAll / remove | Under mutex; generation discards late page |
 
 ## Edge
 
 Empty list copy. Mid-scroll load more. Heal keeps is_downloaded until remove.
 Healed (null path) not offline-CP playable (ADR-0095).
+Fetch throw → loading=false (no stuck spinner).
