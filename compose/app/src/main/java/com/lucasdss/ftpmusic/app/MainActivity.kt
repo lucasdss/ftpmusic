@@ -8,7 +8,10 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -18,6 +21,7 @@ import com.lucasdss.ftpmusic.app.playback.MediaSessionPlaybackProvider
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import com.lucasdss.ftpmusic.app.ui.FtpmusicNavHost
 import com.lucasdss.ftpmusic.app.ui.FtpmusicTheme
+import com.lucasdss.ftpmusic.app.ui.settings.SettingsViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -46,7 +50,11 @@ class MainActivity : ComponentActivity() {
         playbackInit.action = MediaServiceStartRequest.ACTION_INITIALIZE
         startService(playbackInit)
         setContent {
-            FtpmusicTheme {
+            // Activity-scoped Settings VM — same instance as SettingsScreen / NavHost
+            // so typography prefs update MaterialTheme live (ADR-0099).
+            val settingsViewModel: SettingsViewModel = hiltViewModel()
+            val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+            FtpmusicTheme(typographyPrefs = settingsState.typographyPrefs) {
                 FtpmusicNavHost()
             }
         }

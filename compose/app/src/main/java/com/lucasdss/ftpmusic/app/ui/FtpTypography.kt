@@ -11,121 +11,131 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 
 /**
- * Material3 typography wired to Outfit (UI) + Inter (time/meta) and adaptive
- * tokens (ADR-0057 / ADR-0058).
+ * Material3 typography wired to curated UI + caption faces and adaptive
+ * tokens (ADR-0057 / ADR-0058 / ADR-0099).
  *
  * **No baked [TextStyle.color]** — Unspecified so LocalContentColor wins
  * (nav selected teal, buttons, etc.).
  */
 @Composable
 fun ftpTypography(): Typography {
-    val outfit = outfitFontFamily()
-    val inter = interFontFamily()
+    val prefs = LocalTypographyPrefs.current
+    val ui = resolveUiFontFamily(prefs.uiFont)
+    val caption = resolveCaptionFontFamily(prefs.captionFont)
     val widthFactor = AdaptiveScale.factor()
-    return remember(outfit, inter, widthFactor) {
-        buildFtpTypography(outfit, inter, widthFactor)
+    return remember(ui, caption, widthFactor, prefs) {
+        buildFtpTypography(ui, caption, widthFactor, prefs)
     }
 }
 
 /**
  * Pure builder for tests — [widthFactor] mirrors [AdaptiveScale.factor] /
- * [AdaptiveScale.widthFactor].
+ * [AdaptiveScale.widthFactor]. Role scales from [prefs] multiply sizes.
  * Line heights use the same factor as [asp] so ratios stay stable.
  */
-fun buildFtpTypography(outfit: FontFamily, inter: FontFamily, widthFactor: Float): Typography {
-    fun sz(base: Float): TextUnit = (base * widthFactor).sp
-    fun lh(fontBase: Float): TextUnit = (fontBase * TypographyPolicy.LINE_HEIGHT_MULT * widthFactor).sp
+fun buildFtpTypography(
+    outfit: FontFamily,
+    inter: FontFamily,
+    widthFactor: Float,
+    prefs: TypographyPrefs = TypographyPrefs.DEFAULT,
+): Typography {
+    fun sz(base: Float, role: TextRole): TextUnit = (base * widthFactor * prefs.scaleFor(role)).sp
+
+    fun lh(fontBase: Float, role: TextRole): TextUnit =
+        (fontBase * TypographyPolicy.LINE_HEIGHT_MULT * widthFactor * prefs.scaleFor(role)).sp
+
+    val primaryWeight = prefs.weightBias.toFontWeight()
 
     return Typography(
         displayLarge = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Bold,
-            fontSize = sz(TypographyPolicy.DISPLAY_BASE_SP),
-            lineHeight = lh(TypographyPolicy.DISPLAY_BASE_SP),
+            fontSize = sz(TypographyPolicy.DISPLAY_BASE_SP, TextRole.Heading),
+            lineHeight = lh(TypographyPolicy.DISPLAY_BASE_SP, TextRole.Heading),
         ),
         displayMedium = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Bold,
-            fontSize = sz(20f),
-            lineHeight = lh(20f),
+            fontSize = sz(20f, TextRole.Heading),
+            lineHeight = lh(20f, TextRole.Heading),
         ),
         displaySmall = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Bold,
-            fontSize = sz(TypographyPolicy.SECTION_TITLE_BASE_SP),
-            lineHeight = lh(TypographyPolicy.SECTION_TITLE_BASE_SP),
+            fontSize = sz(TypographyPolicy.SECTION_TITLE_BASE_SP, TextRole.Heading),
+            lineHeight = lh(TypographyPolicy.SECTION_TITLE_BASE_SP, TextRole.Heading),
         ),
         headlineLarge = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Bold,
-            fontSize = sz(20f),
-            lineHeight = lh(20f),
+            fontSize = sz(20f, TextRole.Heading),
+            lineHeight = lh(20f, TextRole.Heading),
         ),
         headlineMedium = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Bold,
-            fontSize = sz(TypographyPolicy.SECTION_TITLE_BASE_SP),
-            lineHeight = lh(TypographyPolicy.SECTION_TITLE_BASE_SP),
+            fontSize = sz(TypographyPolicy.SECTION_TITLE_BASE_SP, TextRole.Heading),
+            lineHeight = lh(TypographyPolicy.SECTION_TITLE_BASE_SP, TextRole.Heading),
         ),
         headlineSmall = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.SemiBold,
-            fontSize = sz(TypographyPolicy.TRACK_TITLE_BASE_SP),
-            lineHeight = lh(TypographyPolicy.TRACK_TITLE_BASE_SP),
+            fontSize = sz(TypographyPolicy.TRACK_TITLE_BASE_SP, TextRole.Heading),
+            lineHeight = lh(TypographyPolicy.TRACK_TITLE_BASE_SP, TextRole.Heading),
         ),
         titleLarge = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.SemiBold,
-            fontSize = sz(TypographyPolicy.SECTION_TITLE_BASE_SP),
-            lineHeight = lh(TypographyPolicy.SECTION_TITLE_BASE_SP),
+            fontSize = sz(TypographyPolicy.SECTION_TITLE_BASE_SP, TextRole.Heading),
+            lineHeight = lh(TypographyPolicy.SECTION_TITLE_BASE_SP, TextRole.Heading),
         ),
         titleMedium = TextStyle(
             fontFamily = outfit,
-            fontWeight = FontWeight.Medium,
-            fontSize = sz(TypographyPolicy.TRACK_TITLE_BASE_SP),
-            lineHeight = lh(TypographyPolicy.TRACK_TITLE_BASE_SP),
+            fontWeight = primaryWeight,
+            fontSize = sz(TypographyPolicy.TRACK_TITLE_BASE_SP, TextRole.Heading),
+            lineHeight = lh(TypographyPolicy.TRACK_TITLE_BASE_SP, TextRole.Heading),
         ),
         titleSmall = TextStyle(
             fontFamily = outfit,
-            fontWeight = FontWeight.Medium,
-            fontSize = sz(15f),
-            lineHeight = lh(15f),
+            fontWeight = primaryWeight,
+            fontSize = sz(15f, TextRole.Body),
+            lineHeight = lh(15f, TextRole.Body),
         ),
         bodyLarge = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Normal,
-            fontSize = sz(15f),
-            lineHeight = lh(15f),
+            fontSize = sz(15f, TextRole.Body),
+            lineHeight = lh(15f, TextRole.Body),
         ),
         bodyMedium = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Normal,
-            fontSize = sz(14f),
-            lineHeight = lh(14f),
+            fontSize = sz(14f, TextRole.Body),
+            lineHeight = lh(14f, TextRole.Body),
         ),
         bodySmall = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.Normal,
-            fontSize = sz(13f),
-            lineHeight = lh(13f),
+            fontSize = sz(13f, TextRole.Body),
+            lineHeight = lh(13f, TextRole.Body),
         ),
         labelLarge = TextStyle(
             fontFamily = outfit,
             fontWeight = FontWeight.SemiBold,
-            fontSize = sz(13f),
-            lineHeight = lh(13f),
+            fontSize = sz(13f, TextRole.Label),
+            lineHeight = lh(13f, TextRole.Label),
         ),
         labelMedium = TextStyle(
             fontFamily = outfit,
-            fontWeight = FontWeight.Medium,
-            fontSize = sz(TypographyPolicy.TRACK_SUBTITLE_BASE_SP),
-            lineHeight = lh(TypographyPolicy.TRACK_SUBTITLE_BASE_SP),
+            fontWeight = primaryWeight,
+            fontSize = sz(TypographyPolicy.TRACK_SUBTITLE_BASE_SP, TextRole.Label),
+            lineHeight = lh(TypographyPolicy.TRACK_SUBTITLE_BASE_SP, TextRole.Label),
         ),
         labelSmall = TextStyle(
             fontFamily = inter,
             fontWeight = FontWeight.Normal,
-            fontSize = sz(10f),
-            lineHeight = lh(10f),
+            fontSize = sz(10f, TextRole.Label),
+            lineHeight = lh(10f, TextRole.Label),
         ),
     )
 }

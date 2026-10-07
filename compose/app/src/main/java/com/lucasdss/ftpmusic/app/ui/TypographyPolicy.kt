@@ -22,6 +22,11 @@ object TypographyPolicy {
     const val UI_FONT = "Outfit"
     const val CAPTION_FONT = "Inter"
 
+    /** User role-scale clamps (ADR-0099). */
+    const val USER_SCALE_MIN = TypographyPrefs.SCALE_MIN
+    const val USER_SCALE_MAX = TypographyPrefs.SCALE_MAX
+    const val USER_SCALE_STEP = TypographyPrefs.SCALE_STEP
+
     /** lineHeight = fontBase * LINE_HEIGHT_MULT * widthFactor (pairs with asp). */
     const val LINE_HEIGHT_MULT = 1.35f
 

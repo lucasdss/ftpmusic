@@ -440,7 +440,7 @@ private fun PlayerMiniBar(
                         text = title ?: stringResource(R.string.player_no_track),
                         fontSize = textHeadingS(),
                         minFontSize = textMicro(),
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = primaryTextWeight(),
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -1611,7 +1611,7 @@ private fun BoxScope.PlayerQueuePanel(
                                             color = Color.White,
                                             fontSize = textHeadingS(),
                                             minFontSize = textMicro(),
-                                            fontWeight = FontWeight.Medium,
+                                            fontWeight = primaryTextWeight(),
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                         FittingText(
@@ -2774,7 +2774,7 @@ private fun QueueTrackRow(
                 text = track.title,
                 color = if (dimmed) NavUnselected else Foreground,
                 fontSize = textHeadingS(),
-                fontWeight = FontWeight.Medium,
+                fontWeight = primaryTextWeight(),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
@@ -2857,7 +2857,7 @@ private fun QueueHistoryRow(track: com.lucasdss.ftpmusic.app.playback.QueueHisto
                 text = track.title,
                 color = Foreground,
                 fontSize = textHeadingS(),
-                fontWeight = FontWeight.Medium,
+                fontWeight = primaryTextWeight(),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),

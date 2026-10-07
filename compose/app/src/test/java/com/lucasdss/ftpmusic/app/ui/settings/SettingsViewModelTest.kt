@@ -545,6 +545,83 @@ class SettingsViewModelTest {
         assertFalse(vm.state.value.hideNavLabels)
     }
 
+    // ── ADR-0099: Typography preferences ────────────────────────────────
+
+    @Test
+    fun `typography prefs default to brand defaults`() {
+        val prefs = viewModel.state.value.typographyPrefs
+        assertEquals(1.0f, prefs.headingScale, 0.001f)
+        assertEquals(1.0f, prefs.bodyScale, 0.001f)
+        assertEquals(1.0f, prefs.labelScale, 0.001f)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.UiFontPreset.Outfit, prefs.uiFont)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.CaptionFontPreset.Inter, prefs.captionFont)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Medium, prefs.weightBias)
+    }
+
+    @Test
+    fun `setHeadingScale persists clamped value`() {
+        viewModel.setHeadingScale(1.27f)
+        assertEquals(1.25f, viewModel.state.value.typographyPrefs.headingScale, 0.001f)
+        verify { storage.put(SecureStorage.KEY_TYPO_HEADING_SCALE, "1.25") }
+    }
+
+    @Test
+    fun `setUiFont and setWeightBias persist`() {
+        viewModel.setUiFont(com.lucasdss.ftpmusic.app.ui.UiFontPreset.System)
+        viewModel.setWeightBias(com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Bold)
+        assertEquals(
+            com.lucasdss.ftpmusic.app.ui.UiFontPreset.System,
+            viewModel.state.value.typographyPrefs.uiFont,
+        )
+        assertEquals(
+            com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Bold,
+            viewModel.state.value.typographyPrefs.weightBias,
+        )
+        verify { storage.put(SecureStorage.KEY_TYPO_UI_FONT, "System") }
+        verify { storage.put(SecureStorage.KEY_TYPO_WEIGHT_BIAS, "Bold") }
+    }
+
+    @Test
+    fun `resetTypographyPrefs restores defaults and persists`() {
+        viewModel.setHeadingScale(1.3f)
+        viewModel.setUiFont(com.lucasdss.ftpmusic.app.ui.UiFontPreset.Inter)
+        viewModel.resetTypographyPrefs()
+        val prefs = viewModel.state.value.typographyPrefs
+        assertEquals(com.lucasdss.ftpmusic.app.ui.TypographyPrefs.DEFAULT, prefs)
+        verify { storage.put(SecureStorage.KEY_TYPO_HEADING_SCALE, "1.0") }
+        verify { storage.put(SecureStorage.KEY_TYPO_UI_FONT, "Outfit") }
+    }
+
+    @Test
+    fun `stored typography prefs restored on init`() {
+        every { storage.get(SecureStorage.KEY_TYPO_HEADING_SCALE) } returns "1.15"
+        every { storage.get(SecureStorage.KEY_TYPO_BODY_SCALE) } returns "0.9"
+        every { storage.get(SecureStorage.KEY_TYPO_LABEL_SCALE) } returns "1.2"
+        every { storage.get(SecureStorage.KEY_TYPO_UI_FONT) } returns "Inter"
+        every { storage.get(SecureStorage.KEY_TYPO_CAPTION_FONT) } returns "System"
+        every { storage.get(SecureStorage.KEY_TYPO_WEIGHT_BIAS) } returns "Regular"
+        val vm = createViewModel()
+        val prefs = vm.state.value.typographyPrefs
+        assertEquals(1.15f, prefs.headingScale, 0.001f)
+        assertEquals(0.9f, prefs.bodyScale, 0.001f)
+        assertEquals(1.2f, prefs.labelScale, 0.001f)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.UiFontPreset.Inter, prefs.uiFont)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.CaptionFontPreset.System, prefs.captionFont)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Regular, prefs.weightBias)
+    }
+
+    @Test
+    fun `corrupt typography prefs fall back to defaults on init`() {
+        every { storage.get(SecureStorage.KEY_TYPO_HEADING_SCALE) } returns "nope"
+        every { storage.get(SecureStorage.KEY_TYPO_UI_FONT) } returns "ComicSans"
+        every { storage.get(SecureStorage.KEY_TYPO_WEIGHT_BIAS) } returns "Heavy"
+        val vm = createViewModel()
+        val prefs = vm.state.value.typographyPrefs
+        assertEquals(1.0f, prefs.headingScale, 0.001f)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.UiFontPreset.Outfit, prefs.uiFont)
+        assertEquals(com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Medium, prefs.weightBias)
+    }
+
     // ── Last.fm / remaining setters ─────────────────────────────────────
 
     @Test

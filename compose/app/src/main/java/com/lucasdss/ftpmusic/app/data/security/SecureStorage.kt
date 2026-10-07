@@ -185,5 +185,13 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
 
         /** Opt-in: include lyrics_cache text in FTS rebuild (ADR 0080 / phase-2). */
         const val KEY_SEARCH_LYRICS = "search_lyrics_enabled"
+
+        // ADR-0099: Settings → Typography (role scales + curated fonts + weight bias)
+        const val KEY_TYPO_HEADING_SCALE = "typo_heading_scale"
+        const val KEY_TYPO_BODY_SCALE = "typo_body_scale"
+        const val KEY_TYPO_LABEL_SCALE = "typo_label_scale"
+        const val KEY_TYPO_UI_FONT = "typo_ui_font"
+        const val KEY_TYPO_CAPTION_FONT = "typo_caption_font"
+        const val KEY_TYPO_WEIGHT_BIAS = "typo_weight_bias"
     }
 }

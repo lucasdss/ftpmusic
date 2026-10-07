@@ -8,8 +8,9 @@ import androidx.compose.ui.text.googlefonts.Font
 import androidx.compose.ui.text.googlefonts.GoogleFont
 
 /**
- * Design system typography (ADR-0057):
- * Outfit for UI (headings/body/labels), Inter for time/meta captions.
+ * Design system typography (ADR-0057 / ADR-0099):
+ * Outfit for UI (headings/body/labels), Inter for time/meta captions —
+ * both swappable via curated Settings presets (Outfit / Inter / System).
  */
 @Composable
 fun outfitFontFamily(): FontFamily = remember {
@@ -28,8 +29,25 @@ fun interFontFamily(): FontFamily = remember {
     FontFamily(
         Font(GoogleFont(TypographyPolicy.CAPTION_FONT), provider, FontWeight.Medium),
         Font(GoogleFont(TypographyPolicy.CAPTION_FONT), provider, FontWeight.Normal),
+        Font(GoogleFont(TypographyPolicy.CAPTION_FONT), provider, FontWeight.Bold),
+        Font(GoogleFont(TypographyPolicy.CAPTION_FONT), provider, FontWeight.SemiBold),
     )
 }
+
+@Composable
+fun resolveUiFontFamily(preset: UiFontPreset = LocalTypographyPrefs.current.uiFont): FontFamily = when (preset) {
+    UiFontPreset.Outfit -> outfitFontFamily()
+    UiFontPreset.Inter -> interFontFamily()
+    UiFontPreset.System -> FontFamily.SansSerif
+}
+
+@Composable
+fun resolveCaptionFontFamily(preset: CaptionFontPreset = LocalTypographyPrefs.current.captionFont): FontFamily =
+    when (preset) {
+        CaptionFontPreset.Inter -> interFontFamily()
+        CaptionFontPreset.Outfit -> outfitFontFamily()
+        CaptionFontPreset.System -> FontFamily.SansSerif
+    }
 
 private fun googleFontsProvider() = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",

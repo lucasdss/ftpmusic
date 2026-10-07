@@ -125,6 +125,42 @@ class SettingsScreenComposeTest {
     }
 
     @Test
+    fun `typography section renders preview and reset`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+
+        composeRule.onNodeWithText("TYPOGRAPHY").performScrollTo().assertIsDisplayed()
+        // Section card is tall — assertExists (not fully on-screen).
+        composeRule.onNodeWithTag("settings_typography_section").assertExists()
+        composeRule.onNodeWithTag("settings_typography_preview_heading")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_typography_heading_slider").assertExists()
+        composeRule.onNodeWithText("UI font").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Default brand UI face").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `typography reset delegates to the view model`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+
+        composeRule.onNodeWithTag("settings_typography_reset").performScrollTo().performClick()
+        verify { vm.resetTypographyPrefs() }
+    }
+
+    @Test
+    fun `typography weight option delegates to the view model`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+
+        composeRule.onNodeWithText("Bold").performScrollTo().performClick()
+        verify {
+            vm.setWeightBias(com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Bold)
+        }
+    }
+
+    @Test
     fun `lastfm section renders and save delegates`() {
         val vm = mockViewModel(SettingsUiState())
         render(vm)

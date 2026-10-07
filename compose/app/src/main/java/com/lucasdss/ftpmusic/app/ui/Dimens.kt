@@ -12,8 +12,9 @@ import androidx.compose.ui.unit.sp
  *
  * Reference width: 360dp (standard phone).
  * Width factor: **0.85–1.25×** (downscales narrow phones, caps tablets).
- * Text tokens ([asp]) use width factor only and still use `.sp`, so system
- * accessibility fontScale is honored. Constrained slots use FittingText.
+ * Text tokens ([asp]) use width factor × user role scale (ADR-0099) and still
+ * use `.sp`, so system accessibility fontScale is honored. Constrained slots
+ * use FittingText.
  */
 object AdaptiveScale {
     /** Pure width scale. Clamp [0.85 .. 1.25]. */
@@ -30,9 +31,15 @@ object AdaptiveScale {
 @Composable
 fun adp(base: Float): Dp = (base * AdaptiveScale.factor()).dp
 
-/** Scale a sp value to current screen width. System fontScale still applies via `.sp`. */
+/**
+ * Scale a sp value to current screen width and optional typography role scale.
+ * System fontScale still applies via `.sp`.
+ */
 @Composable
-fun asp(base: Float): TextUnit = (base * AdaptiveScale.factor()).sp
+fun asp(base: Float, role: TextRole = TextRole.Body): TextUnit {
+    val roleScale = LocalTypographyPrefs.current.scaleFor(role)
+    return (base * AdaptiveScale.factor() * roleScale).sp
+}
 
 // ── Spacing tokens ───────────────────────────────────────────────────────────
 
@@ -62,25 +69,25 @@ fun asp(base: Float): TextUnit = (base * AdaptiveScale.factor()).sp
 
 // ── Text size tokens ─────────────────────────────────────────────────────────
 
-@Composable fun textMicro(): TextUnit = asp(10f)
+@Composable fun textMicro(): TextUnit = asp(10f, TextRole.Label)
 
-@Composable fun textLabelS(): TextUnit = asp(11f)
+@Composable fun textLabelS(): TextUnit = asp(11f, TextRole.Label)
 
-@Composable fun textLabelM(): TextUnit = asp(12f)
+@Composable fun textLabelM(): TextUnit = asp(12f, TextRole.Label)
 
-@Composable fun textLabelL(): TextUnit = asp(13f)
+@Composable fun textLabelL(): TextUnit = asp(13f, TextRole.Label)
 
-@Composable fun textBodyM(): TextUnit = asp(14f)
+@Composable fun textBodyM(): TextUnit = asp(14f, TextRole.Body)
 
-@Composable fun textBodyL(): TextUnit = asp(15f)
+@Composable fun textBodyL(): TextUnit = asp(15f, TextRole.Body)
 
-@Composable fun textHeadingS(): TextUnit = asp(16f)
+@Composable fun textHeadingS(): TextUnit = asp(16f, TextRole.Heading)
 
-@Composable fun textHeadingM(): TextUnit = asp(18f)
+@Composable fun textHeadingM(): TextUnit = asp(18f, TextRole.Heading)
 
-@Composable fun textHeadingL(): TextUnit = asp(20f)
+@Composable fun textHeadingL(): TextUnit = asp(20f, TextRole.Heading)
 
-@Composable fun textDisplay(): TextUnit = asp(24f)
+@Composable fun textDisplay(): TextUnit = asp(24f, TextRole.Heading)
 
 // ── Corner radius tokens ─────────────────────────────────────────────────────
 

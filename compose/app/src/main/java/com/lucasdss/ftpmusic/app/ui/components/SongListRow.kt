@@ -23,11 +23,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.knobSize
+import com.lucasdss.ftpmusic.app.ui.primaryTextWeight
 import com.lucasdss.ftpmusic.app.ui.spacingS
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
 import com.lucasdss.ftpmusic.app.ui.textLabelM
@@ -81,7 +81,7 @@ fun SongListRow(
                 text = title,
                 color = if (isActive) BrandTeal else Color.White,
                 fontSize = textHeadingS(),
-                fontWeight = FontWeight.Medium,
+                fontWeight = primaryTextWeight(),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 softWrap = true,

@@ -74,4 +74,56 @@ class TypographyPolicyTest {
             0.001f,
         )
     }
+
+    @Test
+    fun `user scale clamps snap to step`() {
+        assertEquals(0.85f, TypographyPrefs.clampScale(0.5f), 0.001f)
+        assertEquals(1.30f, TypographyPrefs.clampScale(2f), 0.001f)
+        assertEquals(1.0f, TypographyPrefs.clampScale(1.02f), 0.001f)
+        assertEquals(1.05f, TypographyPrefs.clampScale(1.04f), 0.001f)
+        assertEquals(TypographyPolicy.USER_SCALE_MIN, TypographyPrefs.SCALE_MIN, 0.001f)
+        assertEquals(TypographyPolicy.USER_SCALE_MAX, TypographyPrefs.SCALE_MAX, 0.001f)
+    }
+
+    @Test
+    fun `buildFtpTypography applies role scales and weight bias`() {
+        val prefs = TypographyPrefs(
+            headingScale = 1.2f,
+            bodyScale = 0.9f,
+            labelScale = 1.1f,
+            weightBias = PrimaryWeightBias.Bold,
+        )
+        val factor = 1.0f
+        val typography = buildFtpTypography(FontFamily.Default, FontFamily.Default, factor, prefs)
+        assertEquals(
+            TypographyPolicy.TRACK_TITLE_BASE_SP * factor * 1.2f,
+            typography.titleMedium.fontSize.value,
+            0.001f,
+        )
+        assertEquals(
+            14f * factor * 0.9f,
+            typography.bodyMedium.fontSize.value,
+            0.001f,
+        )
+        assertEquals(
+            TypographyPolicy.TRACK_SUBTITLE_BASE_SP * factor * 1.1f,
+            typography.labelMedium.fontSize.value,
+            0.001f,
+        )
+        assertEquals(
+            PrimaryWeightBias.Bold.toFontWeight(),
+            typography.titleMedium.fontWeight,
+        )
+    }
+
+    @Test
+    fun `font preset storage parsers default safely`() {
+        assertEquals(UiFontPreset.Outfit, UiFontPreset.fromStorage(null))
+        assertEquals(UiFontPreset.Inter, UiFontPreset.fromStorage("inter"))
+        assertEquals(UiFontPreset.Outfit, UiFontPreset.fromStorage("nope"))
+        assertEquals(CaptionFontPreset.Inter, CaptionFontPreset.fromStorage(null))
+        assertEquals(CaptionFontPreset.System, CaptionFontPreset.fromStorage("System"))
+        assertEquals(PrimaryWeightBias.Medium, PrimaryWeightBias.fromStorage(null))
+        assertEquals(PrimaryWeightBias.Regular, PrimaryWeightBias.fromStorage("regular"))
+    }
 }

@@ -16,6 +16,10 @@ import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.OverwriteBehavior
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
+import com.lucasdss.ftpmusic.app.ui.CaptionFontPreset
+import com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias
+import com.lucasdss.ftpmusic.app.ui.TypographyPrefs
+import com.lucasdss.ftpmusic.app.ui.UiFontPreset
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -74,6 +78,8 @@ data class SettingsUiState(
     val playbackNotificationsEnabled: Boolean = true,
     // v49: Hide bottom-nav labels (icon-only). Default OFF = labels shown.
     val hideNavLabels: Boolean = false,
+    // ADR-0099: Typography preferences (role scales + curated fonts + weight)
+    val typographyPrefs: TypographyPrefs = TypographyPrefs.DEFAULT,
     // Last.fm API key (masked in UI when non-blank after save)
     val lastFmApiKey: String = "",
     val lastFmKeySaved: Boolean = false,
@@ -143,6 +149,7 @@ class SettingsViewModel @Inject constructor(
             storage.get(SecureStorage.KEY_PLAYBACK_NOTIFICATIONS)?.toBooleanStrictOrNull() ?: true
         val savedHideNavLabels =
             storage.get(SecureStorage.KEY_NAV_HIDE_LABELS)?.toBooleanStrictOrNull() ?: false
+        val savedTypographyPrefs = loadTypographyPrefs()
         // v47: restore the persisted Wi-Fi-only preference into the download
         // worker so auto-cache respects it after process death.
         val savedDownloadMobileData =
@@ -175,6 +182,7 @@ class SettingsViewModel @Inject constructor(
             showFavRadioSection = savedShowFavRadio,
             playbackNotificationsEnabled = savedPlaybackNotifications,
             hideNavLabels = savedHideNavLabels,
+            typographyPrefs = savedTypographyPrefs,
             castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
             lastFmApiKey = storage.get(SecureStorage.KEY_LASTFM_API_KEY).orEmpty(),
             lastFmKeySaved = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank(),
@@ -304,6 +312,58 @@ class SettingsViewModel @Inject constructor(
     fun setHideNavLabels(enabled: Boolean) {
         _state.value = _state.value.copy(hideNavLabels = enabled)
         storage.put(SecureStorage.KEY_NAV_HIDE_LABELS, enabled.toString())
+    }
+
+    private fun loadTypographyPrefs(): TypographyPrefs = TypographyPrefs(
+        headingScale = TypographyPrefs.parseScale(storage.get(SecureStorage.KEY_TYPO_HEADING_SCALE)),
+        bodyScale = TypographyPrefs.parseScale(storage.get(SecureStorage.KEY_TYPO_BODY_SCALE)),
+        labelScale = TypographyPrefs.parseScale(storage.get(SecureStorage.KEY_TYPO_LABEL_SCALE)),
+        uiFont = UiFontPreset.fromStorage(storage.get(SecureStorage.KEY_TYPO_UI_FONT)),
+        captionFont = CaptionFontPreset.fromStorage(storage.get(SecureStorage.KEY_TYPO_CAPTION_FONT)),
+        weightBias = PrimaryWeightBias.fromStorage(storage.get(SecureStorage.KEY_TYPO_WEIGHT_BIAS)),
+    ).clamped()
+
+    private fun persistTypographyPrefs(prefs: TypographyPrefs) {
+        val clamped = prefs.clamped()
+        storage.put(SecureStorage.KEY_TYPO_HEADING_SCALE, clamped.headingScale.toString())
+        storage.put(SecureStorage.KEY_TYPO_BODY_SCALE, clamped.bodyScale.toString())
+        storage.put(SecureStorage.KEY_TYPO_LABEL_SCALE, clamped.labelScale.toString())
+        storage.put(SecureStorage.KEY_TYPO_UI_FONT, clamped.uiFont.name)
+        storage.put(SecureStorage.KEY_TYPO_CAPTION_FONT, clamped.captionFont.name)
+        storage.put(SecureStorage.KEY_TYPO_WEIGHT_BIAS, clamped.weightBias.name)
+        _state.value = _state.value.copy(typographyPrefs = clamped)
+    }
+
+    fun setTypographyPrefs(prefs: TypographyPrefs) {
+        persistTypographyPrefs(prefs)
+    }
+
+    fun setHeadingScale(scale: Float) {
+        persistTypographyPrefs(_state.value.typographyPrefs.copy(headingScale = scale))
+    }
+
+    fun setBodyScale(scale: Float) {
+        persistTypographyPrefs(_state.value.typographyPrefs.copy(bodyScale = scale))
+    }
+
+    fun setLabelScale(scale: Float) {
+        persistTypographyPrefs(_state.value.typographyPrefs.copy(labelScale = scale))
+    }
+
+    fun setUiFont(preset: UiFontPreset) {
+        persistTypographyPrefs(_state.value.typographyPrefs.copy(uiFont = preset))
+    }
+
+    fun setCaptionFont(preset: CaptionFontPreset) {
+        persistTypographyPrefs(_state.value.typographyPrefs.copy(captionFont = preset))
+    }
+
+    fun setWeightBias(bias: PrimaryWeightBias) {
+        persistTypographyPrefs(_state.value.typographyPrefs.copy(weightBias = bias))
+    }
+
+    fun resetTypographyPrefs() {
+        persistTypographyPrefs(TypographyPrefs.DEFAULT)
     }
 
     fun setSyncIntervalHours(hours: Int) {
