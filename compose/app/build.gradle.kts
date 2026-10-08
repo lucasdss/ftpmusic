@@ -71,6 +71,14 @@ android {
             } else {
                 null
             }
+            // Package native SYMBOL_TABLE into the AAB when extractable (AGP
+            // strip → debugsymbols metadata). Pre-stripped AAR .so (today:
+            // androidx.graphics:graphics-path) yield NO-SOURCE — Play may still
+            // soft-warn until unstripped natives exist.
+            // https://developer.android.com/studio/build/shrink-code#native-crash-support
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
 

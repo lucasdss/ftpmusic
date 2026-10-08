@@ -11,7 +11,7 @@ export JAVA_HOME
 
 GRADLE := cd compose && ./gradlew
 
-.PHONY: all build install clean-install test test-report lint quality format install-hooks logs ui-logs uninstall
+.PHONY: all build install clean-install test test-report lint quality format install-hooks logs ui-logs uninstall verify-native-symbols bundle-release
 
 # ── Default: build debug APK ──────────────────────────────────────────────
 all: build
@@ -51,6 +51,15 @@ quality:
 # ── Format Kotlin ─────────────────────────────────────────────────────────
 format:
 	$(GRADLE) ktlintFormat
+
+# ── Play internal testing: native debug symbols gate (ADR-0018) ───────────
+# Requires a prior :app:bundleRelease (or use bundle-release below).
+verify-native-symbols:
+	./scripts/check-native-debug-symbols.sh
+
+bundle-release:
+	$(GRADLE) :app:bundleRelease
+	$(MAKE) verify-native-symbols
 
 # ── Install repository-managed Git hooks ──────────────────────────────────
 install-hooks:

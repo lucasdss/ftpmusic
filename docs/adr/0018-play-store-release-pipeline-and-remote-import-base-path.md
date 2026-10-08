@@ -4,9 +4,13 @@ Date: 2026-08-19
 Status: Accepted
 
 > **Status note (2026-10-08):** verified on 1.7.0 (versionCode 11) — unit suite
-> (`make test-report`) + `make quality` + `lintVitalRelease` required before
-> upload. Prior: 1.6.0 / 10; 1.5.0 / 9 (2026-10-04); 1.4.2 / 8; 1.4.1 / 7;
-> 1.4.0 / 6; 1.3.0 / 5.
+> (`make test-report`) + `make quality` + `lintVitalRelease` +
+> `make bundle-release` / `verify-native-symbols` required before upload.
+> Release `ndk.debugSymbolLevel = SYMBOL_TABLE` embeds native symbol metadata
+> when AGP can extract it; pre-stripped dependency `.so` (AndroidX
+> graphics-path) may leave Play’s soft “upload debug symbols” warning until
+> unstripped natives exist (gate PASSes with WARN). Prior: 1.6.0 / 10; 1.5.0 /
+> 9 (2026-10-04); 1.4.2 / 8; 1.4.1 / 7; 1.4.0 / 6; 1.3.0 / 5.
 
 ## Context
 
@@ -44,10 +48,19 @@ committed in tests.
 5. **ProGuard** — `proguard-rules.pro`: netty keep rules (the embedded proxy uses
    plain-JAR Netty with reflection), `assumenosideeffects` Log stripping, Gson
    attribute keeps.
+6. **Native debug symbols** — release `ndk { debugSymbolLevel = "SYMBOL_TABLE" }`
+   so `bundleRelease` packages extractable native symbols for Play crash/ANR
+   analysis ([native crash support](https://developer.android.com/studio/build/shrink-code#native-crash-support)).
+   Every internal-testing cut must pass `make verify-native-symbols` (via
+   `make bundle-release` or after a manual `bundleRelease`). Policy: FAIL if
+   unstripped `.so` lack AAB/zip symbols; PASS+WARN if all natives are
+   pre-stripped (current graphics-path case).
 
 ## Consequences
 
 - `bundleRelease` now produces a signed, lint-clean AAB (verified).
+- `make bundle-release` is the Play-pack path: build AAB then run
+  `scripts/check-native-debug-symbols.sh`.
 - Users must configure the API base path when setting up the remote library —
   requests otherwise hit the server root (logged; the UI validates it as required).
 - Existing dev devices with `yt_*` settings migrate on first load.

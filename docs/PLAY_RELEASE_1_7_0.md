@@ -38,14 +38,24 @@ Signed output (when `keystore.properties` is present):
 
 Upload that AAB to Play Console → Internal testing → promote when OK.
 
+**Native debug symbols:** release sets `ndk.debugSymbolLevel = "SYMBOL_TABLE"`
+so AGP embeds extractable native symbols in the AAB (Play crash/ANR
+symbolication). Current packaged `.so` is pre-stripped
+`libandroidx.graphics.path.so` from AndroidX — AGP then has nothing to embed
+(`mergeReleaseNativeDebugMetadata` NO-SOURCE). Console may still soft-warn
+until an unstripped native lands; config is ready for that day.
+
 ## Pre-upload gates
 
 ```bash
 make test-report
 make quality
 cd compose && ./gradlew :app:lintVitalRelease
-cd compose && ./gradlew :app:bundleRelease
+make bundle-release   # :app:bundleRelease + verify-native-symbols (ADR-0018)
 ```
+
+Every future `PLAY_RELEASE_*` pack must keep `make bundle-release` (or
+`make verify-native-symbols` after a manual `bundleRelease`) in this list.
 
 ## Tester checklist
 
