@@ -158,7 +158,7 @@ fun AppHeader(
             Spacer(Modifier.width(8.dp))
         }
 
-        // ── Cast button ──
-        CastButton()
+        // ── Cast button (gated with settings — ADR-0097 / ADR-0100) ──
+        CastButton(enabled = interactive)
     }
 }

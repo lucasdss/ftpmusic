@@ -62,3 +62,11 @@ style:
     active: false
   WildcardImport:
     active: false
+  # Policy/role helpers expose constant predicates for test seams / RoleManager
+  # stubs — converting to vals breaks call-site symmetry (ADR-0100 gate).
+  FunctionOnlyReturningConstant:
+    active: false
+  # Sync/enrich cancel paths use multiple throws for structured abort;
+  # counting them as smells forces fake consolidation (ADR-0100 gate).
+  ThrowsCount:
+    active: false

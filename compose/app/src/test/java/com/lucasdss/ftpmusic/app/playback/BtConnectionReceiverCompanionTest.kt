@@ -93,4 +93,55 @@ class BtConnectionReceiverCompanionTest {
             ),
         )
     }
+
+    @Test
+    fun `handleConnectBroadcast ANY mode resumes when MAC null`() {
+        val ctx = RuntimeEnvironment.getApplication()
+        // No BLUETOOTH_CONNECT — ShadowBluetoothDevice.address may still work;
+        // force null-mac path via dispatchBtConnect directly + handle with denied device.
+        val storage = mockk<SecureStorage>()
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "any"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
+
+        var started = false
+        assertTrue(
+            BtConnectionReceiver.dispatchBtConnect(
+                context = ctx,
+                storage = storage,
+                deviceMac = null,
+                casting = false,
+                starter = {
+                    started = true
+                    BtAutoplayStarter.StartResult.Started
+                },
+            ),
+        )
+        assertTrue(started)
+        assertTrue(BtConnectionReceiver.debounceMap.containsKey(BtResumePolicy.ANY_UNKNOWN_MAC_KEY))
+    }
+
+    @Test
+    fun `handleConnectBroadcast SELECTED mode rejects null MAC`() {
+        val ctx = RuntimeEnvironment.getApplication()
+        val storage = mockk<SecureStorage>()
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "selected"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns
+            """["AA:BB:CC:DD:EE:FF"]"""
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
+
+        assertFalse(
+            BtConnectionReceiver.dispatchBtConnect(
+                context = ctx,
+                storage = storage,
+                deviceMac = null,
+                casting = false,
+                starter = { error("must not start") },
+            ),
+        )
+    }
 }

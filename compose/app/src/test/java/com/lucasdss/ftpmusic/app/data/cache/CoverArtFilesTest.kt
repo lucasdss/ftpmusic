@@ -90,6 +90,19 @@ class CoverArtFilesTest {
     }
 
     @Test
+    fun `deleteIfNotImageUrl evicts file scheme non-images only`() {
+        val text = file("not an image".toByteArray())
+        val valid = file(jpeg)
+
+        assertFalse(CoverArtFiles.deleteIfNotImageUrl(null))
+        assertFalse(CoverArtFiles.deleteIfNotImageUrl("https://cdn.example/art.jpg"))
+        assertTrue(CoverArtFiles.deleteIfNotImageUrl("file://${text.absolutePath}"))
+        assertFalse(text.exists())
+        assertFalse(CoverArtFiles.deleteIfNotImageUrl("file://${valid.absolutePath}"))
+        assertTrue(valid.exists())
+    }
+
+    @Test
     fun `existsNonEmpty is composition-cheap and ignores magic`() {
         val valid = file(jpeg)
         val text = file("not an image".toByteArray())

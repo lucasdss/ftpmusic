@@ -144,4 +144,10 @@ class DownloadsViewModelTest {
         testScheduler.advanceUntilIdle()
         assertTrue(viewModel.state.value.tracks.isEmpty())
     }
+
+    @Test
+    fun `downloadsRowStatus hides glyph when stale`() {
+        assertEquals("downloaded", downloadsRowStatus(stale = false))
+        assertEquals("none", downloadsRowStatus(stale = true))
+    }
 }

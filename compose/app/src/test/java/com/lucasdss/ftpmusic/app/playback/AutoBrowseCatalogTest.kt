@@ -196,4 +196,18 @@ class AutoBrowseCatalogTest {
         val kids = catalog.children(AutoBrowseIds.PLAYLISTS, 0, 20)
         assertFalse(kids.single().mediaMetadata.isPlayable == true)
     }
+
+    @Test
+    fun `empty album folder is not playable`() = runBlocking {
+        coEvery { metadataDao.getAlbumsPaged(any(), any()) } returns listOf(
+            CachedAlbumEntity(id = "a0", name = "Empty Album", songCount = 0),
+            CachedAlbumEntity(id = "a1", name = "Unknown Count", songCount = null),
+            CachedAlbumEntity(id = "a2", name = "Has Tracks", songCount = 3),
+        )
+        val kids = catalog.children(AutoBrowseIds.ALBUMS, 0, 20)
+        assertEquals(3, kids.size)
+        assertFalse(kids[0].mediaMetadata.isPlayable == true)
+        assertFalse(kids[1].mediaMetadata.isPlayable == true)
+        assertTrue(kids[2].mediaMetadata.isPlayable == true)
+    }
 }

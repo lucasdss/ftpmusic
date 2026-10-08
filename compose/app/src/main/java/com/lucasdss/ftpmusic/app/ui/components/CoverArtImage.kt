@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
+import com.lucasdss.ftpmusic.app.data.cache.CoverArtFiles
 
 /**
  * Cover art with an error-driven fallback chain.
@@ -82,7 +83,14 @@ fun CoverArtImage(
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = contentScale,
-            onError = { if (!primaryFailed) primaryFailed = true },
+            onError = {
+                if (!primaryFailed) {
+                    // Corrupt/truncated file:// cache: evict so next resolve can
+                    // re-fetch remote (ADR-0096 / ADR-0100; ArtistAvatar parity).
+                    CoverArtFiles.deleteIfNotImageUrl(modelUrl)
+                    primaryFailed = true
+                }
+            },
         )
     } else {
         Box(modifier.background(Color(0xFF1A1A1A)))

@@ -370,7 +370,7 @@ private fun DownloadRow(track: TrackEntity, stale: Boolean, onPlay: () -> Unit, 
     SongListRow(
         title = track.title,
         subtitle = subtitle,
-        downloadStatus = "downloaded",
+        downloadStatus = downloadsRowStatus(stale),
         durationLabel = track.durationSeconds?.let { formatSongDuration(it) },
         onClick = onPlay,
         modifier = Modifier
@@ -402,3 +402,6 @@ private fun DownloadRow(track: TrackEntity, stale: Boolean, onPlay: () -> Unit, 
         },
     )
 }
+
+/** Stale = file missing; hide purple downloaded glyph (ADR-0100). */
+internal fun downloadsRowStatus(stale: Boolean): String = if (stale) "none" else "downloaded"

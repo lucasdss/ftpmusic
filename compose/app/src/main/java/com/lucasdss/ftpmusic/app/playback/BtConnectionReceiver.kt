@@ -55,11 +55,12 @@ class BtConnectionReceiver : BroadcastReceiver() {
             if (intent == null) return false
             if (!isConnectEvent(intent)) return false
             val device = extractDevice(intent) ?: return false
-            val mac = safeAddress(device) ?: return false
+            // Nullable MAC: ANY-mode still resumes via ANY_UNKNOWN_MAC_KEY
+            // when BLUETOOTH_CONNECT is denied (ADR-0088 / ADR-0100).
             return dispatchBtConnect(
                 context = context,
                 storage = storage,
-                deviceMac = mac,
+                deviceMac = safeAddress(device),
                 casting = casting,
             )
         }

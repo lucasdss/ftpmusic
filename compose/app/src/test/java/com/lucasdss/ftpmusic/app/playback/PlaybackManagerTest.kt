@@ -624,19 +624,28 @@ class PlaybackManagerTest {
     }
 
     @Test
-    fun `PUSH behavior preserves old queue after new context`() {
+    fun `stored push key maps to ASK and blocks when priority non-empty`() {
+        // ADR-0094: fromKey("push") → ASK; Settings triad is Ask/Clean only.
         val (mgr, dual, _) = managerWithBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH)
-        // Seed: context = old album (1 track "old1") + priority (1 track "pri1")
+        mgr.addToQueue(Track("pri1", "P", artist = "A"), "http://s/pri1")
+        val (tracks, urls) = owTracks(2)
+        val started = mgr.tryStartContext(tracks, urls, sourceType = "album")
+        assertFalse("Stored push must behave as ASK when priority non-empty", started)
+        assertEquals(1, dual.prioritySize)
+        assertNotNull(mgr.pendingPlayback)
+    }
+
+    @Test
+    fun `pushContext preserves old queue after new context`() {
+        val (mgr, dual, _) = managerWithBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.ASK)
         val (oldTracks, oldUrls) = owTracks(1)
         mgr.playAlbum(oldTracks, oldUrls) // context = [ow1]
         mgr.addToQueue(Track("pri1", "P", artist = "A"), "http://s/pri1")
 
-        // Push a NEW album with tracks that don't overlap the old queue
         val newTracks = (1..3).map { Track("new$it", "NEW $it", artist = "NewArtist", duration = 100) }
         val newUrls = newTracks.map { "http://server/rest/stream?id=new$it" }
-        val started = mgr.tryStartContext(newTracks, newUrls, sourceType = "album")
+        mgr.pushContext(newTracks, newUrls, sourceType = "album")
 
-        assertTrue("PUSH must always start", started)
         assertEquals("Context = pushed album (3)", 3, dual.contextSize)
         assertEquals("Old queue preserved after (2 items)", 2, dual.prioritySize)
         val merged = dual.getMerged()
@@ -654,12 +663,12 @@ class PlaybackManagerTest {
     }
 
     @Test
-    fun `PUSH behavior dedups tracks already in the new context`() {
-        val (mgr, dual, _) = managerWithBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH)
+    fun `pushContext dedups tracks already in the new context`() {
+        val (mgr, dual, _) = managerWithBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.ASK)
         // Seed: old context already contains ow1 (same track as the push)
         mgr.playAlbum(owTracks(1).first, owTracks(1).second) // context = [ow1]
         val (tracks, urls) = owTracks(3) // push ow1, ow2, ow3
-        mgr.tryStartContext(tracks, urls, sourceType = "album")
+        mgr.pushContext(tracks, urls, sourceType = "album")
 
         // ow1 was already in the old queue → deduped from the new context,
         // but must still appear once in the final queue (via the preserved old queue).
@@ -727,17 +736,16 @@ class PlaybackManagerTest {
     }
 
     @Test
-    fun `PUSH behavior shuffles new context and preserves old queue`() {
-        val (mgr, dual, _) = managerWithBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.PUSH)
+    fun `pushContext shuffled preserves old queue after new context`() {
+        val (mgr, dual, _) = managerWithBehavior(com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.ASK)
         val (oldTracks, oldUrls) = owTracks(1)
         mgr.playAlbum(oldTracks, oldUrls) // context = [ow1]
         mgr.addToQueue(Track("pri1", "P", artist = "A"), "http://s/pri1")
 
         val newTracks = (1..3).map { Track("new$it", "NEW $it", artist = "NewArtist", duration = 100) }
         val newUrls = newTracks.map { "http://server/rest/stream?id=new$it" }
-        val started = mgr.tryShuffleContext(newTracks, newUrls, sourceType = "album")
+        mgr.pushContext(newTracks, newUrls, sourceType = "album", shuffled = true)
 
-        assertTrue("PUSH must always start shuffle", started)
         assertEquals("Context = shuffled pushed album (3)", 3, dual.contextSize)
         assertEquals("Old queue preserved after (2 items)", 2, dual.prioritySize)
         val merged = dual.getMerged()

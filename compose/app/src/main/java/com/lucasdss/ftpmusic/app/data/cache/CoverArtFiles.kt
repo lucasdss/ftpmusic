@@ -97,6 +97,15 @@ object CoverArtFiles {
         }
     }
 
+    /**
+     * Coil onError helper: when [url] is a `file://` path, delete if not an image.
+     * No-op for http(s) / null. Used by [com.lucasdss.ftpmusic.app.ui.components.CoverArtImage].
+     */
+    fun deleteIfNotImageUrl(url: String?): Boolean {
+        val path = url?.takeIf { it.startsWith("file:") }?.removePrefix("file://") ?: return false
+        return deleteIfNotImage(File(path))
+    }
+
     /** JPEG / PNG / GIF / WebP magic-byte check. */
     private fun hasImageMagic(file: File): Boolean {
         return try {

@@ -25,7 +25,11 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
  * Tap → always opens Cast picker.
  */
 @Composable
-fun CastButton(modifier: Modifier = Modifier) {
+fun CastButton(
+    modifier: Modifier = Modifier,
+    /** False while AppHeader collapsed — blocks ghost taps (ADR-0097 / ADR-0100). */
+    enabled: Boolean = true,
+) {
     if (!CastButtonState.isButtonVisible) return
 
     val isCasting = CastButtonState.isCasting.value
@@ -50,7 +54,7 @@ fun CastButton(modifier: Modifier = Modifier) {
                 },
                 shape = CircleShape,
             )
-            .clickable {
+            .clickable(enabled = enabled) {
                 CastButtonState.showDialog.value = true
             },
         contentAlignment = Alignment.Center,

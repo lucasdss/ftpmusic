@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui.player
 
 import android.app.Application
+import android.graphics.Bitmap
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -22,11 +23,13 @@ import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.test.core.app.ApplicationProvider
 import com.lucasdss.ftpmusic.app.playback.PlaybackState
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import com.lucasdss.ftpmusic.app.playback.UpcomingTrack
 import io.mockk.every
 import io.mockk.mockk
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -65,15 +68,28 @@ class NowPlayingComposeTest {
         nextTracks = emptyList(),
     )
 
+    /** Local PNG — Coil file decode, no network → avoids AppNotIdle flakes. */
+    private fun localCoverUrl(): String {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(context.cacheDir, "np-cover-test.png")
+        if (!file.exists()) {
+            Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
+                compress(Bitmap.CompressFormat.PNG, 100, file.outputStream())
+                recycle()
+            }
+        }
+        return "file://${file.absolutePath}"
+    }
+
     /** 3-track queue, current = middle, every track with art. */
     private fun fullStateWithQueue(art: Boolean = true) = fullState().copy(
-        coverArtUrl = if (art) "https://example.com/current.jpg" else null,
+        coverArtUrl = if (art) localCoverUrl() else null,
         queueSize = 3,
         nextTracks = List(3) { i ->
             UpcomingTrack(
                 title = "Track $i",
                 artist = "Artist $i",
-                coverArtUrl = if (art) "https://example.com/art-$i.jpg" else null,
+                coverArtUrl = if (art) localCoverUrl() else null,
                 isCurrent = i == 1,
                 queueIndex = i,
                 entryId = i + 1,
@@ -459,7 +475,7 @@ class NowPlayingComposeTest {
             PlayerBar(state = fullStateWithQueue(), onSkipNext = { next = true })
         }
         composeRule.onNodeWithContentDescription("Cover").performTouchInput { swipeLeft() }
-        composeRule.waitForIdle()
+        composeRule.waitUntil(3_000) { next }
         assertTrue("Swipe left on art must advance", next)
     }
 
@@ -470,7 +486,7 @@ class NowPlayingComposeTest {
             PlayerBar(state = fullStateWithQueue(), onSkipPrev = { prev = true })
         }
         composeRule.onNodeWithContentDescription("Cover").performTouchInput { swipeRight() }
-        composeRule.waitForIdle()
+        composeRule.waitUntil(3_000) { prev }
         assertTrue("Swipe right on art must go back", prev)
     }
 
@@ -518,7 +534,7 @@ class NowPlayingComposeTest {
         slider.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) {
             it(1.0f)
         }
-        composeRule.waitForIdle()
+        composeRule.waitUntil(3_000) { sentVolume >= 0f }
         // displayToVolume(1.0) = 1.0 — full volume passes through the cube curve
         assertEquals(1.0f, sentVolume, 0.01f)
     }

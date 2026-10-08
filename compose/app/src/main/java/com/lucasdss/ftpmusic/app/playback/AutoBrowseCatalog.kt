@@ -142,7 +142,8 @@ class AutoBrowseCatalog(
         title = album.name,
         subtitle = album.artist,
         artwork = artworkUriFor(album.coverArt),
-        playable = true,
+        // Empty / unknown songCount: browsable but not Play-all (playlist parity, ADR-0100).
+        playable = (album.songCount ?: 0) > 0,
         mediaType = MediaMetadata.MEDIA_TYPE_ALBUM,
     )
 
