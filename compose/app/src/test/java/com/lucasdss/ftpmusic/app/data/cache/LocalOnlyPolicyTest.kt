@@ -11,26 +11,33 @@ class LocalOnlyPolicyTest {
     @Before
     fun reset() {
         NetworkAvailabilityHolder.resetForTests(true)
+        NetworkPolicyState.resetForTests()
     }
 
     @Test
     fun `offline alone is local-only`() {
-        assertTrue(LocalOnlyPolicy.isLocalOnly(isOffline = true, hasOsNetwork = true))
+        assertTrue(LocalOnlyPolicy.isLocalOnly(isOffline = true, hasOsNetwork = true, cellularHardLocal = false))
     }
 
     @Test
     fun `no OS network alone is local-only`() {
-        assertTrue(LocalOnlyPolicy.isLocalOnly(isOffline = false, hasOsNetwork = false))
+        assertTrue(LocalOnlyPolicy.isLocalOnly(isOffline = false, hasOsNetwork = false, cellularHardLocal = false))
     }
 
     @Test
     fun `online with OS network is not local-only`() {
-        assertFalse(LocalOnlyPolicy.isLocalOnly(isOffline = false, hasOsNetwork = true))
+        assertFalse(LocalOnlyPolicy.isLocalOnly(isOffline = false, hasOsNetwork = true, cellularHardLocal = false))
+    }
+
+    @Test
+    fun `cellular hard local is local-only`() {
+        assertTrue(LocalOnlyPolicy.isLocalOnly(isOffline = false, hasOsNetwork = true, cellularHardLocal = true))
     }
 
     @Test
     fun `reads NetworkAvailabilityHolder by default`() {
         NetworkAvailabilityHolder.resetForTests(false)
+        NetworkPolicyState.resetForTests(wifiOrEthernet = true)
         assertTrue(LocalOnlyPolicy.isLocalOnly(isOffline = false))
         NetworkAvailabilityHolder.resetForTests(true)
         assertFalse(LocalOnlyPolicy.isLocalOnly(isOffline = false))

@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.playback
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
+import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
@@ -12,6 +13,7 @@ import java.io.IOException
  * Upstream data source that fails fast (IOException) before opening a socket when:
  * - software offline mode is enabled ([OfflineModeManager]), OR
  * - OS has no INTERNET capability ([NetworkAvailabilityHolder]), OR
+ * - cellular + [CellularMediaPolicy.LOCAL_ONLY] (ADR-0105), OR
  * - the Subsonic server is marked unreachable ([ReachabilityStateHolder]).
  *
  * Outside-LAN / 5G with a home Navidrome: phone has cellular but ping fails →
@@ -24,6 +26,7 @@ class OfflineAwareHttpDataSource(
     private val delegate: DataSource,
     private val isServerReachable: () -> Boolean = { ReachabilityStateHolder.isReachable.value },
     private val hasOsNetwork: () -> Boolean = { NetworkAvailabilityHolder.hasOsNetwork.value },
+    private val isCellularHardLocal: () -> Boolean = { NetworkPolicyState.isCellularHardLocal() },
 ) : DataSource by delegate {
 
     override fun open(dataSpec: DataSpec): Long {
@@ -32,6 +35,9 @@ class OfflineAwareHttpDataSource(
         }
         if (!hasOsNetwork()) {
             throw IOException("No network — network blocked")
+        }
+        if (isCellularHardLocal()) {
+            throw IOException("Cellular local-only — network blocked")
         }
         if (!isServerReachable()) {
             throw IOException("Server unreachable — network blocked")

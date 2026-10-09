@@ -189,8 +189,10 @@ class ConnectivityNetworkWatcher(
     override fun start(onAvailable: () -> Unit, onLost: () -> Unit) {
         // Seed before callbacks so airplane-at-boot is honest immediately.
         NetworkAvailabilityHolder.initialize(connectivity)
+        com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.updateTransport(connectivity)
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.updateTransport(connectivity)
                 onAvailable()
             }
 
@@ -200,6 +202,7 @@ class ConnectivityNetworkWatcher(
             }
 
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.updateTransport(connectivity)
                 if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
                     onAvailable()
                 } else {
@@ -216,6 +219,7 @@ class ConnectivityNetworkWatcher(
 
     /** Lost/caps-down for one iface must not flip local-only if another still has INTERNET. */
     private fun reconcileOsNetwork(onAvailable: () -> Unit, onLost: () -> Unit) {
+        com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.updateTransport(connectivity)
         if (NetworkAvailabilityHolder.hasInternetCapability(connectivity)) {
             onAvailable()
         } else {

@@ -42,7 +42,8 @@ No DataStore. No ThemeMode. No download-quality pref.
 | Cast from Phone | `cast_from_phone` | MediaService, SubsonicMediaItemConverter |
 | Casting to: | live PlayerHolder | display only |
 | Use HTTP for Cast | `cast_use_http` | SubsonicMediaItemConverter |
-| Wi-Fi Only downloads | `KEY_DOWNLOAD_MOBILE_DATA` (inverted UX) | DownloadManager (FtpmusicApp) |
+| Cellular media (Auto-cache / Minimal / Local-only) | `KEY_CELLULAR_MEDIA_POLICY` (migrates `KEY_DOWNLOAD_MOBILE_DATA`) | NetworkPolicyHolder → DownloadManager, LocalOnlyPolicy, OfflineAwareHttpDataSource |
+| Library sync on Wi‑Fi only | `KEY_LIBRARY_SYNC_WIFI_ONLY` | MetadataSyncWorker, SyncScheduleWorker, MetadataEnrichWorker |
 | Auto-Download Playlists | `KEY_AUTO_DOWNLOAD_PLAYLISTS` | Library/Playlist VMs |
 
 ### Appearance / DISPLAY

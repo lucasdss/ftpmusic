@@ -24,7 +24,10 @@ class DownloadManager @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     companion object {
-        /** Allow downloads on mobile data. Default: true. Toggled from Settings. */
+        /**
+         * Legacy mirror for AUTO_CACHE vs restricted modes.
+         * Prefer [NetworkPolicyState.allowsDownloadPriority]; kept for residual callers/tests.
+         */
         @Volatile var allowMobileData: Boolean = true
     }
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -194,18 +197,25 @@ class DownloadManager @Inject constructor(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun workerLoop() {
         while (isRunning) {
-            // Priority 0 (play-queue urgent window) always first — but offline
-            // mode blocks it too: no network bytes may leave the device while
-            // the user has offline toggled on (local-first contract).
-            var item = if (offlineModeManager.isOfflineEnabled()) {
-                null
-            } else {
-                cacheQueueDao.getNextPendingByPriority(0)
+            // Offline / cellular LOCAL_ONLY: no download bytes (ADR-0105).
+            if (offlineModeManager.isQueueEnabled() || NetworkPolicyState.isCellularHardLocal()) {
+                delay(1000)
+                continue
             }
-            // If no play-queue items and constraints satisfied, try 1 then 2
+            // Priority 0 (play-queue urgent) — OK on cellular MINIMAL/AUTO_CACHE.
+            var item = if (NetworkPolicyState.allowsDownloadPriority(0)) {
+                cacheQueueDao.getNextPendingByPriority(0)
+            } else {
+                null
+            }
+            // Pri 1/2 need battery + transport constraints + cellular policy.
             if (item == null && checkConstraints()) {
-                item = cacheQueueDao.getNextPendingByPriority(1)
-                    ?: cacheQueueDao.getNextPendingByPriority(2)
+                if (NetworkPolicyState.allowsDownloadPriority(1)) {
+                    item = cacheQueueDao.getNextPendingByPriority(1)
+                }
+                if (item == null && NetworkPolicyState.allowsDownloadPriority(2)) {
+                    item = cacheQueueDao.getNextPendingByPriority(2)
+                }
             }
             if (item == null) {
                 delay(1000)
@@ -230,15 +240,18 @@ class DownloadManager @Inject constructor(
 
     private fun checkConstraints(): Boolean {
         // Software offline mode blocks all downloads — local-first contract.
-        if (offlineModeManager.isOfflineEnabled()) return false
+        if (offlineModeManager.isQueueEnabled()) return false
+        if (NetworkPolicyState.isCellularHardLocal()) return false
         try {
             val net = connectivity.activeNetwork ?: return false
             val caps = connectivity.getNetworkCapabilities(net) ?: return false
             if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false
-            // Wi-Fi or Ethernet required, unless mobile data is allowed
-            if (!allowMobileData && !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-                !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-            ) {
+            val onWifiOrEth = NetworkTransportPolicy.isWifiOrEthernet(caps)
+            // Cellular pri1/2 only when AUTO_CACHE (MINIMAL/LOCAL_ONLY blocked upstream).
+            if (!onWifiOrEth && NetworkPolicyState.cellularMediaPolicy != CellularMediaPolicy.AUTO_CACHE) {
+                return false
+            }
+            if (!allowMobileData && !onWifiOrEth) {
                 return false
             }
         } catch (_: Exception) {

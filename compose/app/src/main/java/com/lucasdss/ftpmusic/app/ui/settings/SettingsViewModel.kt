@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
+import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
+import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyHolder
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
@@ -40,7 +42,8 @@ data class SettingsUiState(
     val coverArtCacheBytes: Long = 0,
     val castFromPhone: Boolean = false,
     val useHttpForCast: Boolean = true,
-    val downloadMobileData: Boolean = true,
+    val cellularMediaPolicy: CellularMediaPolicy = CellularMediaPolicy.AUTO_CACHE,
+    val librarySyncWifiOnly: Boolean = false,
     val autoDownloadPlaylists: Boolean = true,
     val offlineMode: Boolean = false,
     val castDeviceName: String? = null,
@@ -106,6 +109,7 @@ class SettingsViewModel @Inject constructor(
     private val castPreferences: CastPreferences,
     private val storage: SecureStorage,
     private val offlineModeManager: OfflineModeManager,
+    private val networkPolicyHolder: NetworkPolicyHolder,
     private val coverArtFallback: CoverArtFallbackService,
     private val playbackManager: PlaybackManager,
     private val metadataDao: CachedMetadataDao,
@@ -155,11 +159,9 @@ class SettingsViewModel @Inject constructor(
             storage.get(SecureStorage.KEY_NAV_HIDE_LABELS)?.toBooleanStrictOrNull() ?: false
         val savedTypographyPrefs = loadTypographyPrefs()
         val savedListChromePrefs = loadListChromePrefs()
-        // v47: restore the persisted Wi-Fi-only preference into the download
-        // worker so auto-cache respects it after process death.
-        val savedDownloadMobileData =
-            storage.get(SecureStorage.KEY_DOWNLOAD_MOBILE_DATA)?.toBooleanStrictOrNull() ?: true
-        DownloadManager.allowMobileData = savedDownloadMobileData
+        // ADR-0105: cellular media + sync Wi-Fi-only (holder already initialized at app start).
+        val savedCellularPolicy = networkPolicyHolder.cellularMediaPolicy.value
+        val savedSyncWifiOnly = networkPolicyHolder.librarySyncWifiOnly.value
         _state.value = _state.value.copy(
             audioCacheQuotaMb = (savedAudioCacheBytes / (1024 * 1024)).toInt(),
             coverArtQuotaMb = savedCoverArtQuota,
@@ -168,7 +170,8 @@ class SettingsViewModel @Inject constructor(
             customHeaders = headers,
             autoDownloadPlaylists =
                 storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true,
-            downloadMobileData = savedDownloadMobileData,
+            cellularMediaPolicy = savedCellularPolicy,
+            librarySyncWifiOnly = savedSyncWifiOnly,
             offlineMode = storage.get(SecureStorage.KEY_OFFLINE_MODE)?.toBooleanStrictOrNull() ?: false,
             serverUrl = storage.get(SecureStorage.KEY_URL) ?: "",
             username = storage.get(SecureStorage.KEY_USERNAME) ?: "",
@@ -244,11 +247,22 @@ class SettingsViewModel @Inject constructor(
         if (enabled) offlineModeManager.enable() else offlineModeManager.disable()
     }
 
-    fun setDownloadMobileData(enabled: Boolean) {
-        DownloadManager.allowMobileData = enabled
-        storage.put(SecureStorage.KEY_DOWNLOAD_MOBILE_DATA, enabled.toString())
-        _state.value = _state.value.copy(downloadMobileData = enabled)
+    fun setCellularMediaPolicy(policy: CellularMediaPolicy) {
+        networkPolicyHolder.setCellularMediaPolicy(policy)
+        _state.value = _state.value.copy(cellularMediaPolicy = policy)
     }
+
+    fun setLibrarySyncWifiOnly(enabled: Boolean) {
+        networkPolicyHolder.setLibrarySyncWifiOnly(enabled)
+        _state.value = _state.value.copy(librarySyncWifiOnly = enabled)
+    }
+
+    /** True when manual Resync should warn about cellular data (ADR-0105). */
+    fun shouldWarnResyncOnCellular(): Boolean = networkPolicyHolder.shouldWarnManualResyncOnCellular()
+
+    /** Hard local on cellular — Resync cannot run until Wi‑Fi. */
+    fun shouldBlockResyncOnCellular(): Boolean =
+        com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.isCellularHardLocal()
 
     fun setPreferItunesArt(enabled: Boolean) {
         _state.value = _state.value.copy(preferItunesArt = enabled)
@@ -403,27 +417,8 @@ class SettingsViewModel @Inject constructor(
         val clamped = hours.coerceIn(1, 24)
         _state.value = _state.value.copy(syncIntervalHours = clamped)
         storage.put(SecureStorage.KEY_SYNC_INTERVAL_HOURS, clamped.toString())
-        // Reschedule WorkManager with new interval
-        try {
-            androidx.work.WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(
-                    "metadata_sync",
-                    androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
-                    androidx.work.PeriodicWorkRequestBuilder<com.lucasdss.ftpmusic.app.data.db.SyncScheduleWorker>(
-                        clamped.toLong(),
-                        java.util.concurrent.TimeUnit.HOURS,
-                    )
-                        .setConstraints(
-                            androidx.work.Constraints.Builder()
-                                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build(),
-                        )
-                        .addTag("metadata_sync")
-                        .build(),
-                )
-        } catch (e: IllegalStateException) {
-            // WorkManager unavailable in unit tests
-            android.util.Log.d("ftpmusic-work", "WorkManager not available: ${e.message}")
-        }
+        // Reschedule WorkManager with new interval + sync Wi-Fi-only constraint.
+        networkPolicyHolder.rescheduleMetadataSync()
     }
 
     fun setCustomHeaders(headers: List<Pair<String, String>>) {

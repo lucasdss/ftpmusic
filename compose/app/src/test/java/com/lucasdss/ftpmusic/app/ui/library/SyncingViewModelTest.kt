@@ -3,6 +3,8 @@ package com.lucasdss.ftpmusic.app.ui.library
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.viewModelScope
+import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyHolder
+import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
@@ -34,6 +36,7 @@ class SyncingViewModelTest {
     private val appContext: Context = mockk(relaxed = true)
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository =
         mockk(relaxed = true)
+    private val networkPolicyHolder: NetworkPolicyHolder = mockk(relaxed = true)
     private val sharedPrefs: SharedPreferences = mockk(relaxed = true)
 
     private val testDispatcher = StandardTestDispatcher()
@@ -43,6 +46,8 @@ class SyncingViewModelTest {
         Dispatchers.setMain(testDispatcher)
         every { appContext.getSharedPreferences(any(), any()) } returns sharedPrefs
         every { sharedPrefs.edit() } returns mockk(relaxed = true)
+        NetworkPolicyState.resetForTests()
+        every { networkPolicyHolder.shouldWarnFirstLoginOnCellular() } returns false
     }
 
     @After
@@ -59,6 +64,7 @@ class SyncingViewModelTest {
         lyricsCacheDao,
         appContext,
         dailyMixRepository,
+        networkPolicyHolder,
     )
 
     /** Cancel the ViewModel's coroutine scope. Must be called inside runTest { }. */

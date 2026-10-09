@@ -31,4 +31,9 @@ object ReachabilityStateHolder {
             )
         }
     }
+
+    /** Test helper. */
+    internal fun resetForTests(reachable: Boolean = true) {
+        _isReachable.value = reachable
+    }
 }

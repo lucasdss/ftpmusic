@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.R
+import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
 import com.lucasdss.ftpmusic.app.playback.DefaultMusicRoleHelper
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.Background
@@ -41,6 +42,7 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 
 @Composable
 fun SettingsScreen(
@@ -58,6 +60,8 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showResyncCellularWarn by remember { mutableStateOf(false) }
+    var showResyncCellularBlocked by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.shareDiagnosticsEvents.collect { text ->
@@ -582,15 +586,55 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // ═══ Downloads section ═══
+            // ═══ Downloads / cellular media (ADR-0105) ═══
             SectionLabel("DOWNLOADS")
             SectionCard {
-                SectionToggleRow(
-                    label = "Download on Wi-Fi Only",
-                    subtitle = "Restrict downloads to Wi-Fi networks",
-                    checked = !state.downloadMobileData,
-                    onToggle = { viewModel.setDownloadMobileData(!it) },
-                )
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        "On cellular",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        when (state.cellularMediaPolicy) {
+                            CellularMediaPolicy.AUTO_CACHE ->
+                                "Auto-cache albums and downloads on mobile data"
+
+                            CellularMediaPolicy.MINIMAL ->
+                                "Only queue and now-playing use mobile data"
+
+                            CellularMediaPolicy.LOCAL_ONLY ->
+                                "Use only already cached or downloaded content"
+                        },
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                    ) {
+                        SegmentedChip(
+                            label = "Auto-cache",
+                            selected = state.cellularMediaPolicy == CellularMediaPolicy.AUTO_CACHE,
+                            onClick = { viewModel.setCellularMediaPolicy(CellularMediaPolicy.AUTO_CACHE) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        SegmentedChip(
+                            label = "Minimal",
+                            selected = state.cellularMediaPolicy == CellularMediaPolicy.MINIMAL,
+                            onClick = { viewModel.setCellularMediaPolicy(CellularMediaPolicy.MINIMAL) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        SegmentedChip(
+                            label = "Local only",
+                            selected = state.cellularMediaPolicy == CellularMediaPolicy.LOCAL_ONLY,
+                            onClick = { viewModel.setCellularMediaPolicy(CellularMediaPolicy.LOCAL_ONLY) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
                 SectionDivider()
                 SectionRow("Storage Used", formatBytes(state.autoCacheBytes + state.downloadBytes))
                 SectionDivider()
@@ -1139,7 +1183,23 @@ fun SettingsScreen(
                 Divider(color = Surface, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
                 Row(
                     Modifier
-                        .then(if (!state.isResyncing) Modifier.clickable { onResyncLibrary() } else Modifier)
+                        .then(
+                            if (!state.isResyncing) {
+                                Modifier.clickable {
+                                    when {
+                                        viewModel.shouldBlockResyncOnCellular() ->
+                                            showResyncCellularBlocked = true
+
+                                        viewModel.shouldWarnResyncOnCellular() ->
+                                            showResyncCellularWarn = true
+
+                                        else -> onResyncLibrary()
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            },
+                        )
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1252,6 +1312,13 @@ fun SettingsScreen(
                         }
                     }
                 }
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Library sync on Wi-Fi only",
+                    subtitle = "FULL and DELTA wait for Wi-Fi or Ethernet",
+                    checked = state.librarySyncWifiOnly,
+                    onToggle = { viewModel.setLibrarySyncWifiOnly(it) },
+                )
             }
 
             Spacer(Modifier.height(24.dp))
@@ -1407,6 +1474,31 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(32.dp))
         }
+    }
+
+    if (showResyncCellularWarn) {
+        ConfirmationSheet(
+            title = "Use mobile data?",
+            message = "Library sync on Wi-Fi only is enabled, but you are on a cellular network. " +
+                "Continuing will download catalog metadata over mobile data.",
+            confirmLabel = "Sync anyway",
+            onConfirm = {
+                showResyncCellularWarn = false
+                com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.grantCellularSyncOverride()
+                onResyncLibrary()
+            },
+            onDismiss = { showResyncCellularWarn = false },
+        )
+    }
+    if (showResyncCellularBlocked) {
+        ConfirmationSheet(
+            title = "Wi-Fi required",
+            message = "Cellular local-only is enabled. Connect to Wi-Fi to resync your library, " +
+                "or change the On cellular setting under Downloads.",
+            confirmLabel = "OK",
+            onConfirm = { showResyncCellularBlocked = false },
+            onDismiss = { showResyncCellularBlocked = false },
+        )
     }
 }
 

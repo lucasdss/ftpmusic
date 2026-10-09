@@ -167,9 +167,15 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         // controls/artwork (lock-screen controls disappear).
         const val KEY_PLAYBACK_NOTIFICATIONS = "playback_notifications"
 
-        // v47: "Download on Wi-Fi only" persisted so auto-cache/downloads keep
-        // respecting it across process death (DownloadManager reads it at start).
+        // v47 legacy: "Download on Wi-Fi only" — migrate once into KEY_CELLULAR_MEDIA_POLICY
+        // (ADR-0105). Stop writing; still read for migration.
         const val KEY_DOWNLOAD_MOBILE_DATA = "download_mobile_data"
+
+        // ADR-0105: cellular media policy (auto_cache | minimal | local_only)
+        const val KEY_CELLULAR_MEDIA_POLICY = "cellular_media_policy"
+
+        // ADR-0105: library FULL+DELTA sync waits for Wi‑Fi / Ethernet when true
+        const val KEY_LIBRARY_SYNC_WIFI_ONLY = "library_sync_wifi_only"
 
         // v49: Hide bottom-nav labels (icon-only). Default OFF (labels shown).
         const val KEY_NAV_HIDE_LABELS = "nav_hide_labels"

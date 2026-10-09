@@ -4,8 +4,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
+import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
+import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyHolder
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
@@ -37,6 +39,7 @@ class SettingsViewModelTest {
     private val castPreferences: CastPreferences = mockk(relaxed = true)
     private val storage: SecureStorage = mockk(relaxed = true)
     private val offlineModeManager: OfflineModeManager = mockk(relaxed = true)
+    private val networkPolicyHolder: NetworkPolicyHolder = mockk(relaxed = true)
     private val coverArtFallback: CoverArtFallbackService = mockk(relaxed = true)
     private val playbackManager: PlaybackManager = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
@@ -75,6 +78,10 @@ class SettingsViewModelTest {
         // Default SharedPreferences.Editor for context
         every { prefsEditor.putLong(any(), any()) } returns prefsEditor
         every { prefsEditor.apply() } just Runs
+        every { networkPolicyHolder.cellularMediaPolicy } returns
+            kotlinx.coroutines.flow.MutableStateFlow(CellularMediaPolicy.AUTO_CACHE)
+        every { networkPolicyHolder.librarySyncWifiOnly } returns kotlinx.coroutines.flow.MutableStateFlow(false)
+        every { networkPolicyHolder.shouldWarnManualResyncOnCellular() } returns false
         viewModel =
             createViewModel()
     }
@@ -91,6 +98,7 @@ class SettingsViewModelTest {
         castPreferences,
         storage,
         offlineModeManager,
+        networkPolicyHolder,
         coverArtFallback,
         playbackManager,
         metadataDao,
@@ -225,10 +233,17 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `setDownloadMobileData updates state and DownloadManager`() {
-        viewModel.setDownloadMobileData(false)
-        assertFalse(DownloadManager.allowMobileData)
-        assertFalse(viewModel.state.value.downloadMobileData)
+    fun `setCellularMediaPolicy updates state and holder`() {
+        viewModel.setCellularMediaPolicy(CellularMediaPolicy.MINIMAL)
+        verify { networkPolicyHolder.setCellularMediaPolicy(CellularMediaPolicy.MINIMAL) }
+        assertEquals(CellularMediaPolicy.MINIMAL, viewModel.state.value.cellularMediaPolicy)
+    }
+
+    @Test
+    fun `setLibrarySyncWifiOnly updates state and holder`() {
+        viewModel.setLibrarySyncWifiOnly(true)
+        verify { networkPolicyHolder.setLibrarySyncWifiOnly(true) }
+        assertTrue(viewModel.state.value.librarySyncWifiOnly)
     }
 
     @Test

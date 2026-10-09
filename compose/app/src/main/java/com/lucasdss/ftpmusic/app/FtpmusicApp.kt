@@ -2,20 +2,13 @@ package com.lucasdss.ftpmusic.app
 
 import android.app.Application
 import android.util.Log
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
-import com.lucasdss.ftpmusic.app.data.db.SyncScheduleWorker
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import dagger.hilt.android.HiltAndroidApp
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +29,8 @@ class FtpmusicApp : Application() {
     @Inject lateinit var storage: SecureStorage
 
     @Inject lateinit var offlineModeManager: OfflineModeManager
+
+    @Inject lateinit var networkPolicyHolder: com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyHolder
 
     @Inject lateinit var serverConfigStore: com.lucasdss.ftpmusic.app.di.ServerConfigStore
 
@@ -84,13 +79,11 @@ class FtpmusicApp : Application() {
         } catch (e: Exception) {
             Log.w("ftpmusic-reachability", "Reachability monitor start failed: ${e.message}")
         }
-        // v47: restore "Download on Wi-Fi only" so auto-cache and downloads
-        // keep the user's data preference after process death.
+        // ADR-0105: restore cellular media + sync Wi‑Fi-only before download/sync workers.
         try {
-            DownloadManager.allowMobileData =
-                storage.get(SecureStorage.KEY_DOWNLOAD_MOBILE_DATA)?.toBooleanStrictOrNull() ?: true
+            networkPolicyHolder.initialize()
         } catch (e: Exception) {
-            android.util.Log.w("ftpmusic-download", "Mobile-data preference restore failed: ${e.message}")
+            android.util.Log.w("ftpmusic-netpolicy", "Network policy restore failed: ${e.message}")
         }
         // v1.0.0: Remote Library Management (yt-dlp) removed. Purge any
         // credentials stored by pre-release builds of that feature — the
@@ -154,28 +147,12 @@ class FtpmusicApp : Application() {
 
     private fun schedulePeriodicMetadataSync() {
         try {
-            val hours = storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS)?.toIntOrNull()?.coerceIn(1, 24) ?: 12
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
-            val periodicWork = PeriodicWorkRequestBuilder<SyncScheduleWorker>(
-                hours.toLong(),
-                TimeUnit.HOURS,
-            )
-                .setConstraints(constraints)
-                .addTag("metadata_sync")
-                .build()
-
-            WorkManager.getInstance(this)
-                .enqueueUniquePeriodicWork(
-                    "metadata_sync",
-                    ExistingPeriodicWorkPolicy.UPDATE,
-                    periodicWork,
-                )
+            networkPolicyHolder.rescheduleMetadataSync()
         } catch (e: IllegalStateException) {
             // WorkManager not available (unit test environment)
             Log.d("ftpmusic-work", "WorkManager not available: ${e.message}")
+        } catch (e: Exception) {
+            Log.w("ftpmusic-work", "schedulePeriodicMetadataSync failed: ${e.message}")
         }
     }
 

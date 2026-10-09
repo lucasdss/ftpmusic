@@ -87,7 +87,20 @@ Track phase uses `AdaptiveSyncLimiter`:
 ## User controls
 
 - **Sync Interval** 1–24h — “Auto-check for new music every Nh”
-- **Resync Library** — full force catalog + tracks
+- **Library sync on Wi‑Fi only** — FULL **and** DELTA skip on cellular (ADR-0105)
+- **Resync Library** — full force catalog + tracks; warn on cellular when Wi‑Fi-only ON
+- **First-login** — warn on cellular before FULL; optional override
+
+## Network gates (ADR-0105)
+
+| Condition | Auto FULL/DELTA | Manual / first-login |
+|-----------|-----------------|----------------------|
+| Offline / unreachable | skip | skip |
+| Cellular + cellular media `local_only` | skip | blocked (hard local) |
+| Cellular + sync Wi‑Fi-only | skip | warn → override or cancel |
+| Cellular + sync any | run | first-login warn; manual no warn |
+
+WM constraint: `UNMETERED` when sync Wi‑Fi-only else `CONNECTED`.
 
 ## Edge cases
 

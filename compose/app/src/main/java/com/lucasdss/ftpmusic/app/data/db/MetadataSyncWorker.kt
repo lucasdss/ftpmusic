@@ -264,13 +264,15 @@ class MetadataSyncWorker(
     fun syncNow(
         forceTrackResync: Boolean = false,
         mode: LibrarySyncMode = if (forceTrackResync) LibrarySyncMode.FULL else LibrarySyncMode.DELTA,
-    ): Boolean = syncNowAsync(forceTrackResync, mode) != null
+        allowCellularOverride: Boolean = false,
+    ): Boolean = syncNowAsync(forceTrackResync, mode, allowCellularOverride) != null
 
     /** Launch the sync. Returns a Job. */
     @VisibleForTesting
     internal fun syncNowAsync(
         forceTrackResync: Boolean = false,
         mode: LibrarySyncMode = if (forceTrackResync) LibrarySyncMode.FULL else LibrarySyncMode.DELTA,
+        allowCellularOverride: Boolean = false,
     ): kotlinx.coroutines.Job? {
         // Software offline mode: metadata is already cached locally — nothing to
         // fetch, and the local-first contract forbids the network call.
@@ -285,6 +287,15 @@ class MetadataSyncWorker(
             DiagnosticLog.d(TAG, "skip sync — unreachable")
             return null
         }
+        // ADR-0105: cellular local-only or Wi-Fi-only sync (override bypasses Wi-Fi-only only).
+        val effectiveCellularOverride =
+            allowCellularOverride ||
+                com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.consumeCellularSyncOverride()
+        if (com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.shouldSkipMetadataSync(effectiveCellularOverride)) {
+            android.util.Log.d(TAG, "Skipping sync — cellular network policy")
+            DiagnosticLog.d(TAG, "skip sync — cellular policy override=$effectiveCellularOverride")
+            return null
+        }
         // Cooldown: skip auto-triggered syncs if the last sync finished recently.
         // Force resyncs (user-triggered) bypass the cooldown.
         if (!forceTrackResync) {
@@ -297,6 +308,7 @@ class MetadataSyncWorker(
         }
         if (!isSyncing.compareAndSet(false, true)) return null
         val resolvedMode = if (forceTrackResync) LibrarySyncMode.FULL else mode
+        val cellularOverride = effectiveCellularOverride
         val job = scope.launch syncJob@{
             syncJobs.add(coroutineContext[kotlinx.coroutines.Job]!!)
             val startMs = System.currentTimeMillis()
@@ -311,10 +323,24 @@ class MetadataSyncWorker(
                 isRunning = true,
                 elapsedMs = 0L,
             )
+            fun abortIfCellularPolicyViolated(): Boolean {
+                if (!com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.shouldSkipMetadataSync(cellularOverride)) {
+                    return false
+                }
+                Log.w(TAG, "Aborting sync — cellular policy mid-run")
+                DiagnosticLog.d(TAG, "abort sync — cellular policy")
+                _status.value = _status.value.copy(
+                    phase = "error",
+                    isRunning = false,
+                    elapsedMs = System.currentTimeMillis() - startMs,
+                )
+                return true
+            }
             try {
                 Log.d(TAG, "Starting metadata sync… mode=$resolvedMode forceTrackResync=$forceTrackResync")
                 DiagnosticLog.d(TAG, "sync start mode=$resolvedMode force=$forceTrackResync")
                 syncAlbums(resolvedMode)
+                if (abortIfCellularPolicyViolated()) return@syncJob
                 val albumCount = metadataDao.albumCount()
                 DiagnosticLog.d(TAG, "phase=albums albums=$albumCount mode=$resolvedMode")
                 _status.value = _status.value.copy(
@@ -325,6 +351,7 @@ class MetadataSyncWorker(
                 )
 
                 syncArtists()
+                if (abortIfCellularPolicyViolated()) return@syncJob
                 val artistCount = metadataDao.artistCount()
                 DiagnosticLog.d(TAG, "phase=artists artists=$artistCount")
                 _status.value = _status.value.copy(
@@ -335,6 +362,7 @@ class MetadataSyncWorker(
                 )
 
                 syncGenres()
+                if (abortIfCellularPolicyViolated()) return@syncJob
                 val genreCount = genreMixDao.getTopGenres().size
                 DiagnosticLog.d(TAG, "phase=genres genres=$genreCount")
                 _status.value = _status.value.copy(
@@ -346,14 +374,17 @@ class MetadataSyncWorker(
 
                 // ADR-0085: densify album-less / deep-genre songs into `tracks`.
                 syncOrphanSongs(force = forceTrackResync, mode = resolvedMode)
+                if (abortIfCellularPolicyViolated()) return@syncJob
                 DiagnosticLog.d(TAG, "phase=orphans")
 
                 // Sync stars and ratings from server (mirror Navidrome favorites)
                 syncStarredAndRatings()
+                if (abortIfCellularPolicyViolated()) return@syncJob
                 DiagnosticLog.d(TAG, "phase=stars")
                 Log.d(TAG, "Starred/ratings sync complete")
 
                 syncAlbumTracks(forceTrackResync)
+                if (abortIfCellularPolicyViolated()) return@syncJob
                 // Recompute artist album counts AFTER tracks are cached so
                 // track-artist attribution is included (Navidrome attributes
                 // some albums to "Original Soundtrack" while their tracks are

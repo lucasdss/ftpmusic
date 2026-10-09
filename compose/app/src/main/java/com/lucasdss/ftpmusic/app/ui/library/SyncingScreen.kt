@@ -23,6 +23,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyHolder
+import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.DailyMixEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
@@ -55,6 +57,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+enum class CellularSyncWarn {
+    FIRST_LOGIN,
+    BLOCKED_LOCAL_ONLY,
+}
+
 data class DailyMixState(
     val buildingDailyMix: Boolean = false,
     val dailyMixProgress: Int = 0,
@@ -70,6 +77,7 @@ class SyncingViewModel @Inject constructor(
     private val lyricsCacheDao: LyricsCacheDao,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
+    private val networkPolicyHolder: NetworkPolicyHolder,
 ) : ViewModel() {
 
     private val _status = MutableStateFlow(SyncStatus())
@@ -84,10 +92,50 @@ class SyncingViewModel @Inject constructor(
     private val _isError = MutableStateFlow(false)
     val isError: StateFlow<Boolean> = _isError.asStateFlow()
 
+    /** null = no dialog; FIRST_LOGIN / BLOCKED_LOCAL_ONLY for cellular gates. */
+    private val _cellularWarn = MutableStateFlow<CellularSyncWarn?>(null)
+    val cellularWarn: StateFlow<CellularSyncWarn?> = _cellularWarn.asStateFlow()
+
     private var elapsedJob: kotlinx.coroutines.Job? = null
     private var syncJob: kotlinx.coroutines.Job? = null
+    private var pendingUserTriggered: Boolean = false
+    private var pendingRebuildOnly: Boolean = false
 
     fun startSync(userTriggered: Boolean = false, rebuildOnly: Boolean = false) {
+        pendingUserTriggered = userTriggered
+        pendingRebuildOnly = rebuildOnly
+        // First-login FULL on cellular: warn (or block if hard local).
+        if (!rebuildOnly && !userTriggered) {
+            if (NetworkPolicyState.isCellularHardLocal()) {
+                _cellularWarn.value = CellularSyncWarn.BLOCKED_LOCAL_ONLY
+                return
+            }
+            if (networkPolicyHolder.shouldWarnFirstLoginOnCellular()) {
+                _cellularWarn.value = CellularSyncWarn.FIRST_LOGIN
+                return
+            }
+        }
+        beginSync(userTriggered, rebuildOnly, allowCellularOverride = false)
+    }
+
+    fun confirmCellularSync() {
+        val warn = _cellularWarn.value
+        _cellularWarn.value = null
+        if (warn == CellularSyncWarn.BLOCKED_LOCAL_ONLY) {
+            _isError.value = true
+            _isDone.value = true
+            return
+        }
+        NetworkPolicyState.grantCellularSyncOverride()
+        beginSync(pendingUserTriggered, pendingRebuildOnly, allowCellularOverride = true)
+    }
+
+    fun cancelCellularSync() {
+        _cellularWarn.value = null
+        _isDone.value = true
+    }
+
+    private fun beginSync(userTriggered: Boolean, rebuildOnly: Boolean, allowCellularOverride: Boolean) {
         syncJob?.cancel()
         syncJob = viewModelScope.launch {
             val existing = metadataDao.albumCount()
@@ -127,7 +175,10 @@ class SyncingViewModel @Inject constructor(
                 var retries = 0
                 var forceJob: kotlinx.coroutines.Job? = null
                 while (forceJob == null && retries < 3) {
-                    forceJob = metadataSyncWorker.syncNowAsync(forceTrackResync = true)
+                    forceJob = metadataSyncWorker.syncNowAsync(
+                        forceTrackResync = true,
+                        allowCellularOverride = allowCellularOverride,
+                    )
                     if (forceJob == null) {
                         metadataSyncWorker.status.first { !it.isRunning }
                         retries++
@@ -187,7 +238,10 @@ class SyncingViewModel @Inject constructor(
                 isRunning = true,
             )
             startElapsedTimer()
-            metadataSyncWorker.syncNowAsync(mode = LibrarySyncMode.FULL)
+            metadataSyncWorker.syncNowAsync(
+                mode = LibrarySyncMode.FULL,
+                allowCellularOverride = allowCellularOverride,
+            )
             metadataSyncWorker.status.collect { s ->
                 // Merge worker fields into our status — preserve dailyMixTotal
                 // (set by us) and dailyMixProgress (set during generation).
@@ -289,7 +343,54 @@ fun SyncingScreen(
     val status by viewModel.status.collectAsStateWithLifecycle()
     val isDone by viewModel.isDone.collectAsStateWithLifecycle()
     val isError by viewModel.isError.collectAsStateWithLifecycle()
+    val cellularWarn by viewModel.cellularWarn.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    if (cellularWarn != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelCellularSync() },
+            title = {
+                Text(
+                    if (cellularWarn == CellularSyncWarn.BLOCKED_LOCAL_ONLY) {
+                        "Wi-Fi required"
+                    } else {
+                        "Use mobile data?"
+                    },
+                )
+            },
+            text = {
+                Text(
+                    if (cellularWarn == CellularSyncWarn.BLOCKED_LOCAL_ONLY) {
+                        "Cellular local-only is enabled. Connect to Wi-Fi to sync your library, or change Downloads settings."
+                    } else {
+                        "First library sync will download catalog metadata over your mobile network. Continue?"
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (cellularWarn == CellularSyncWarn.BLOCKED_LOCAL_ONLY) {
+                            viewModel.cancelCellularSync()
+                        } else {
+                            viewModel.confirmCellularSync()
+                        }
+                    },
+                ) {
+                    Text(
+                        if (cellularWarn == CellularSyncWarn.BLOCKED_LOCAL_ONLY) "OK" else "Sync anyway",
+                    )
+                }
+            },
+            dismissButton = {
+                if (cellularWarn != CellularSyncWarn.BLOCKED_LOCAL_ONLY) {
+                    TextButton(onClick = { viewModel.cancelCellularSync() }) {
+                        Text("Cancel")
+                    }
+                }
+            },
+        )
+    }
 
     LaunchedEffect(isDone) {
         if (isDone) {

@@ -81,10 +81,27 @@ class OfflineAwareDataSourceTest {
             delegate,
             isServerReachable = { true },
             hasOsNetwork = { true },
+            isCellularHardLocal = { false },
         )
 
         assertEquals(1234L, source.open(spec))
         verify(exactly = 1) { delegate.open(spec) }
+    }
+
+    @Test
+    fun `cellular local-only blocks open with IOException`() {
+        val delegate = mockk<DataSource>(relaxed = true)
+        val source = OfflineAwareHttpDataSource(
+            offlineManager(offline = false),
+            delegate,
+            isServerReachable = { true },
+            hasOsNetwork = { true },
+            isCellularHardLocal = { true },
+        )
+
+        val err = assertThrows(IOException::class.java) { source.open(spec) }
+        assertTrue(err.message!!.contains("Cellular local-only"))
+        verify(exactly = 0) { delegate.open(any()) }
     }
 
     @Test

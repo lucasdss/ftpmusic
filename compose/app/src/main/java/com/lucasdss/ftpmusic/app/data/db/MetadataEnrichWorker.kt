@@ -56,8 +56,14 @@ class MetadataEnrichRunner @Inject constructor(
     /** Enqueue a one-shot enrich job (network required). No-op in unit tests. */
     fun enqueue() {
         try {
+            // ADR-0105: enrich is background network — respect sync Wi‑Fi-only.
+            val netType = if (com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.librarySyncWifiOnly) {
+                NetworkType.UNMETERED
+            } else {
+                NetworkType.CONNECTED
+            }
             val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiredNetworkType(netType)
                 .build()
             val request = OneTimeWorkRequestBuilder<MetadataEnrichScheduleWorker>()
                 .setConstraints(constraints)
@@ -81,6 +87,8 @@ class MetadataEnrichRunner @Inject constructor(
         val password = SubsonicCredentials.password
         if (username.isEmpty()) return
         if (offlineModeManager.isOfflineEnabled()) return
+        // ADR-0105: skip enrich on cellular when local-only or sync Wi-Fi-only.
+        if (com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.shouldSkipMetadataSync()) return
         val params = authHelper.buildAuthParams(username, password)
         val artists = metadataDao.getArtistsNeedingEnrichment(ENRICH_ARTIST_LIMIT)
         for (artist in artists) {
