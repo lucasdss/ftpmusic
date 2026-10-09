@@ -733,7 +733,11 @@ private fun LikedFavoritesList(
     LazyColumn(Modifier.testTag("favorites_liked_list"), state = listState) {
         if (state.tracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbUp) }
-            itemsIndexed(state.tracks, key = { _, t -> "liked_t_${t.id}" }) { index, track ->
+            itemsIndexed(
+                state.tracks,
+                key = { _, t -> "liked_t_${t.id}" },
+                contentType = { _, _ -> "song" },
+            ) { index, track ->
                 TrackFavoriteRow(
                     track = track,
                     isActive = currentTrackId != null && track.id == currentTrackId,
@@ -747,7 +751,7 @@ private fun LikedFavoritesList(
         }
         if (state.showFavArtistsSection && state.artists.isNotEmpty()) {
             item { FavoriteSectionHeader("Artists", Icons.Filled.ThumbUp) }
-            items(state.artists, key = { "liked_ar_${it.id}" }) { artist ->
+            items(state.artists, key = { "liked_ar_${it.id}" }, contentType = { "artist" }) { artist ->
                 ArtistFavoriteRow(
                     artist = artist,
                     actionIcon = Icons.Filled.ThumbUp,
@@ -760,7 +764,7 @@ private fun LikedFavoritesList(
         }
         if (state.showFavAlbumsSection && state.albums.isNotEmpty()) {
             item { FavoriteSectionHeader("Albums", Icons.Filled.ThumbUp) }
-            items(state.albums, key = { "liked_al_${it.id}" }) { album ->
+            items(state.albums, key = { "liked_al_${it.id}" }, contentType = { "album" }) { album ->
                 AlbumFavoriteRow(
                     album = album,
                     isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying,
@@ -774,7 +778,7 @@ private fun LikedFavoritesList(
         }
         if (state.showFavRadioSection && state.radio.isNotEmpty()) {
             item { FavoriteSectionHeader("Radio", Icons.Filled.Bookmark) }
-            items(state.radio, key = { "liked_r_${it.stationId}" }) { station ->
+            items(state.radio, key = { "liked_r_${it.stationId}" }, contentType = { "radio" }) { station ->
                 RadioFavoriteRow(
                     station = station,
                     onRowClick = { onRadioStationClick(station) },
@@ -832,7 +836,11 @@ private fun DislikedFavoritesList(
     LazyColumn(Modifier.testTag("favorites_disliked_list"), state = listState) {
         if (state.dislikedTracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbDown, tint = dislikeTint) }
-            itemsIndexed(state.dislikedTracks, key = { _, t -> "dis_t_${t.id}" }) { index, track ->
+            itemsIndexed(
+                state.dislikedTracks,
+                key = { _, t -> "dis_t_${t.id}" },
+                contentType = { _, _ -> "song" },
+            ) { index, track ->
                 TrackFavoriteRow(
                     track = track,
                     isActive = currentTrackId != null && track.id == currentTrackId,
@@ -846,7 +854,7 @@ private fun DislikedFavoritesList(
         }
         if (state.showFavArtistsSection && state.dislikedArtists.isNotEmpty()) {
             item { FavoriteSectionHeader("Artists", Icons.Filled.ThumbDown, tint = dislikeTint) }
-            items(state.dislikedArtists, key = { "dis_ar_${it.id}" }) { artist ->
+            items(state.dislikedArtists, key = { "dis_ar_${it.id}" }, contentType = { "artist" }) { artist ->
                 ArtistFavoriteRow(
                     artist = artist,
                     actionIcon = Icons.Filled.ThumbDown,
@@ -859,7 +867,7 @@ private fun DislikedFavoritesList(
         }
         if (state.showFavAlbumsSection && state.dislikedAlbums.isNotEmpty()) {
             item { FavoriteSectionHeader("Albums", Icons.Filled.ThumbDown, tint = dislikeTint) }
-            items(state.dislikedAlbums, key = { "dis_al_${it.id}" }) { album ->
+            items(state.dislikedAlbums, key = { "dis_al_${it.id}" }, contentType = { "album" }) { album ->
                 AlbumFavoriteRow(
                     album = album,
                     isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying,

@@ -1,12 +1,5 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,20 +10,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -40,10 +29,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -61,11 +48,10 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
-import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.ScrollAwareEqBars
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
-import com.lucasdss.ftpmusic.app.ui.player.CastButton
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -121,9 +107,13 @@ fun HomeScreen(
             // Hoisted: recomputed only when the playlist list changes, not on
             // every LazyColumn recomposition (scroll/EQ frames).
             val syncedPlaylists = remember(state.playlists) { state.playlists.filter { it.isSynced } }
-            LazyColumn {
+            val recentAlbums = remember(state.randomAlbums) { state.randomAlbums.take(10) }
+            val listState = rememberLazyListState()
+            val scrollInProgress = listState.isScrollInProgress
+            val cardDecode = albumCardWidth()
+            LazyColumn(state = listState) {
                 // ── Surprise Me hero card ──
-                item {
+                item(contentType = "hero") {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -154,22 +144,21 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.width(spacingL()))
                             Column(Modifier.weight(1f)) {
-                                FittingText(
-                                    text = "Surprise Me",
+                                Text(
+                                    "Surprise Me",
                                     color = Color.White,
                                     fontSize = textHeadingL(),
-                                    minFontSize = textMicro(),
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 Spacer(Modifier.height(spacingXS()))
-                                FittingText(
-                                    text = "Random music from your library",
+                                Text(
+                                    "Random music from your library",
                                     color = Color.White.copy(alpha = 0.8f),
                                     fontSize = textLabelL(),
-                                    minFontSize = textMicro(),
                                     maxLines = 2,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
@@ -178,7 +167,7 @@ fun HomeScreen(
 
                 // ── Daily Mixes ──
                 if (state.mixCards.isNotEmpty()) {
-                    item {
+                    item(contentType = "section_header") {
                         HomeSectionHeader(
                             title = "Daily Mixes",
                             leadingIcon = Icons.Default.AutoAwesome,
@@ -188,7 +177,7 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    item {
+                    item(contentType = "lazy_row_mix") {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
@@ -196,9 +185,10 @@ fun HomeScreen(
                                 .padding(bottom = spacingM())
                                 .semantics { testTag = "daily_mix_row" },
                         ) {
-                            items(state.mixCards, key = { it.id }) { mix ->
+                            items(state.mixCards, key = { it.id }, contentType = { "mix" }) { mix ->
                                 GenreMixCard(
                                     mix = mix,
+                                    decodeSize = cardDecode,
                                     onClick = { onMixClick(mix.id) },
                                     modifier = Modifier.semantics { testTag = "daily_mix_card_${mix.id}" },
                                 )
@@ -206,7 +196,7 @@ fun HomeScreen(
                         }
                     }
                 } else if (state.isResyncing || state.isGeneratingMixes) {
-                    item {
+                    item(contentType = "placeholder") {
                         Text(
                             "Building your Daily Mixes…",
                             color = Color(0xFF666666),
@@ -216,7 +206,7 @@ fun HomeScreen(
                     }
                 } else {
                     // No mixes exist yet
-                    item {
+                    item(contentType = "placeholder") {
                         Text(
                             "Daily Mixes will appear after sync completes",
                             color = NavUnselected,
@@ -228,7 +218,7 @@ fun HomeScreen(
 
                 // ── Playlists (synced only) ──
                 if (state.showPlaylistsOnHome && syncedPlaylists.isNotEmpty()) {
-                    item {
+                    item(contentType = "section_header") {
                         HomeSectionHeader(
                             title = "Playlists",
                             leadingIcon = Icons.AutoMirrored.Filled.QueueMusic,
@@ -238,7 +228,7 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    item {
+                    item(contentType = "lazy_row_playlist") {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
@@ -246,10 +236,11 @@ fun HomeScreen(
                                 .padding(bottom = spacingM())
                                 .semantics { testTag = "home_playlists_row" },
                         ) {
-                            items(syncedPlaylists, key = { it.id }) { pl ->
+                            items(syncedPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
                                 HomePlaylistCard(
                                     playlist = pl,
                                     montageCovers = state.playlistMontages[pl.id].orEmpty(),
+                                    decodeSize = cardDecode,
                                     onClick = { onPlaylistClick(pl.id) },
                                 )
                             }
@@ -259,7 +250,7 @@ fun HomeScreen(
 
                 // ── Favorite Artists ──
                 if (state.showFavArtistsSection && state.starredArtists.isNotEmpty()) {
-                    item {
+                    item(contentType = "section_header") {
                         HomeSectionHeader(
                             title = "Favorite Artists",
                             leadingIcon = Icons.Default.ThumbUp,
@@ -269,7 +260,7 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    item {
+                    item(contentType = "lazy_row_artist") {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
@@ -277,7 +268,7 @@ fun HomeScreen(
                                 .padding(bottom = spacingM())
                                 .semantics { testTag = "home_fav_artists_row" },
                         ) {
-                            items(state.starredArtists, key = { it.id }) { artist ->
+                            items(state.starredArtists, key = { it.id }, contentType = { "artist" }) { artist ->
                                 Column(
                                     Modifier.width(albumCardWidth()).clickable { onArtistClick(artist.id) },
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -305,7 +296,7 @@ fun HomeScreen(
 
                 // ── Favorite Albums ──
                 if (state.showFavAlbumsSection && state.starredAlbums.isNotEmpty()) {
-                    item {
+                    item(contentType = "section_header") {
                         HomeSectionHeader(
                             title = "Favorite Albums",
                             leadingIcon = Icons.Default.ThumbUp,
@@ -315,7 +306,7 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    item {
+                    item(contentType = "lazy_row_album") {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
@@ -323,7 +314,7 @@ fun HomeScreen(
                                 .padding(bottom = spacingM())
                                 .semantics { testTag = "home_fav_albums_row" },
                         ) {
-                            items(state.starredAlbums, key = { it.id }) { album ->
+                            items(state.starredAlbums, key = { it.id }, contentType = { "album" }) { album ->
                                 Column(
                                     Modifier.width(albumCardWidth()).clickable { onAlbumClick(album.id) },
                                 ) {
@@ -345,6 +336,7 @@ fun HomeScreen(
                                                 modifier = Modifier.fillMaxSize(),
                                                 fallbackArtist = album.artist,
                                                 fallbackAlbum = album.name,
+                                                decodeSize = cardDecode,
                                             )
                                         } else {
                                             Icon(
@@ -379,7 +371,7 @@ fun HomeScreen(
 
                 // ── Favorite Radio ──
                 if (state.showFavRadioSection && state.bookmarkedRadio.isNotEmpty()) {
-                    item {
+                    item(contentType = "section_header") {
                         HomeSectionHeader(
                             title = "Favorite Radio",
                             leadingIcon = Icons.Default.Bookmark,
@@ -389,7 +381,7 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    item {
+                    item(contentType = "lazy_row_radio") {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
@@ -397,7 +389,7 @@ fun HomeScreen(
                                 .padding(bottom = spacingM())
                                 .semantics { testTag = "home_fav_radio_row" },
                         ) {
-                            items(state.bookmarkedRadio, key = { it.stationId }) { station ->
+                            items(state.bookmarkedRadio, key = { it.stationId }, contentType = { "radio" }) { station ->
                                 HomeRadioPill(
                                     name = station.name,
                                     onClick = {
@@ -418,13 +410,13 @@ fun HomeScreen(
 
                 // ── Tuned In genres ──
                 if (state.genres.isNotEmpty()) {
-                    item {
+                    item(contentType = "section_header") {
                         HomeSectionHeader(
                             title = "Tuned In",
                             leadingIcon = Icons.Default.Tune,
                         )
                     }
-                    item {
+                    item(contentType = "tuned_in") {
                         FlowRow(
                             modifier = Modifier.padding(
                                 start = spacingL(),
@@ -455,13 +447,13 @@ fun HomeScreen(
                                 ) {
                                     Icon(Icons.Filled.PlayArrow, null, tint = color, modifier = Modifier.size(adp(10f)))
                                     Spacer(Modifier.width(spacingXS()))
-                                    FittingText(
-                                        text = genre,
+                                    Text(
+                                        genre,
                                         color = color,
                                         fontSize = textBodyM(),
-                                        minFontSize = textMicro(),
                                         fontWeight = FontWeight.SemiBold,
-                                        fillMaxWidth = false,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                             }
@@ -470,8 +462,8 @@ fun HomeScreen(
                 }
 
                 // ── Recently Added albums ──
-                if (state.randomAlbums.isNotEmpty()) {
-                    item {
+                if (recentAlbums.isNotEmpty()) {
+                    item(contentType = "section_header") {
                         HomeSectionHeader(
                             title = "Recently Added",
                             leadingIcon = Icons.Default.NewReleases,
@@ -481,17 +473,19 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    item {
+                    item(contentType = "lazy_row_recent") {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
                             contentPadding = PaddingValues(horizontal = spacingL()),
                             modifier = Modifier.padding(bottom = spacingM()),
                         ) {
-                            items(state.randomAlbums.take(10), key = { it.id }) { album ->
+                            items(recentAlbums, key = { it.id }, contentType = { "album" }) { album ->
                                 val isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying
                                 AlbumCardDesign(
                                     album,
                                     isActive = isActive,
+                                    scrollInProgress = scrollInProgress,
+                                    decodeSize = cardDecode,
                                     downloadStatus =
                                         state.downloadStatusByAlbumId[album.id] ?: "none",
                                     onClick = { onAlbumClick(album.id) },
@@ -502,7 +496,7 @@ fun HomeScreen(
                     }
                 }
 
-                item { Spacer(Modifier.height(spacingL())) }
+                item(contentType = "spacer") { Spacer(Modifier.height(spacingL())) }
             }
         }
     }
@@ -600,14 +594,14 @@ private fun HomeSectionHeader(
             modifier = Modifier.size(adp(16f)),
         )
         Spacer(Modifier.width(spacingXS()))
-        FittingText(
-            text = title,
+        Text(
+            title,
             color = Color.White,
             fontSize = textHeadingM(),
-            minFontSize = textMicro(),
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
-            fillMaxWidth = false,
         )
         if (trailing != null) {
             IconButton(
@@ -630,6 +624,8 @@ private fun HomeSectionHeader(
 private fun AlbumCardDesign(
     album: Album,
     isActive: Boolean = false,
+    scrollInProgress: Boolean = false,
+    decodeSize: androidx.compose.ui.unit.Dp = albumCardWidth(),
     downloadStatus: String = "none",
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
@@ -656,11 +652,12 @@ private fun AlbumCardDesign(
                     modifier = Modifier.fillMaxSize(),
                     fallbackArtist = album.artist,
                     fallbackAlbum = album.name,
+                    decodeSize = decodeSize,
                 )
             } else {
                 Icon(Icons.Default.Album, null, tint = Color(0xFF444444), modifier = Modifier.size(36.dp))
             }
-            // EQ overlay on active album
+            // EQ overlay on active album — pause infinite anim while flinging (ADR-0102)
             if (isActive) {
                 Box(
                     Modifier
@@ -668,7 +665,7 @@ private fun AlbumCardDesign(
                         .background(Color.Black.copy(alpha = 0.4f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AnimatedEqBars()
+                    ScrollAwareEqBars(scrollInProgress = scrollInProgress)
                 }
             }
             AlbumDownloadBadge(downloadStatus, Modifier.align(Alignment.BottomEnd).padding(4.dp))
@@ -711,6 +708,7 @@ private fun GenreMixCard(
     mix: com.lucasdss.ftpmusic.app.ui.library.MixCard,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    decodeSize: androidx.compose.ui.unit.Dp = albumCardWidth(),
 ) {
     // Clip art Box only — Column clip cut title first glyph against cornerM arc.
     Column(
@@ -741,6 +739,7 @@ private fun GenreMixCard(
                         url = url,
                         contentDescription = mix.name,
                         modifier = Modifier.fillMaxSize(),
+                        decodeSize = decodeSize,
                     )
                 } else {
                     Icon(Icons.Default.MusicNote, null, tint = Color(0xFF444444), modifier = Modifier.size(36.dp))
@@ -785,7 +784,12 @@ internal fun GenreMixCoverImage(coverArtId: String, modifier: Modifier) {
  *  Daily Mix cards (albumCardWidth()): single primary cover (fling-cheap),
  *  teal synced check, track count. */
 @Composable
-private fun HomePlaylistCard(playlist: PlaylistView, montageCovers: List<String>, onClick: () -> Unit) {
+private fun HomePlaylistCard(
+    playlist: PlaylistView,
+    montageCovers: List<String>,
+    onClick: () -> Unit,
+    decodeSize: androidx.compose.ui.unit.Dp = albumCardWidth(),
+) {
     Column(Modifier.width(albumCardWidth()).clickable { onClick() }) {
         Box(
             Modifier
@@ -808,12 +812,23 @@ private fun HomePlaylistCard(playlist: PlaylistView, montageCovers: List<String>
                         url = url,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
+                        decodeSize = decodeSize,
                     )
                 } else {
-                    Icon(Icons.Default.QueueMusic, null, tint = Color(0xFF444444), modifier = Modifier.size(32.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.QueueMusic,
+                        null,
+                        tint = Color(0xFF444444),
+                        modifier = Modifier.size(32.dp),
+                    )
                 }
             } else {
-                Icon(Icons.Default.QueueMusic, null, tint = Color(0xFF444444), modifier = Modifier.size(32.dp))
+                Icon(
+                    Icons.AutoMirrored.Filled.QueueMusic,
+                    null,
+                    tint = Color(0xFF444444),
+                    modifier = Modifier.size(32.dp),
+                )
             }
         }
         Spacer(Modifier.height(spacingBelowArt()))
@@ -873,37 +888,6 @@ private fun HomeRadioPill(name: String, onClick: () -> Unit) {
                 Spacer(Modifier.width(4.dp))
                 Text("Live", color = NavUnselected, fontSize = textMicro())
             }
-        }
-    }
-}
-
-@Composable
-private fun AnimatedEqBars() {
-    val eqAnimation = rememberInfiniteTransition(label = "eqAlbum")
-    Row(
-        Modifier.width(24.dp).height(16.dp),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        val delays = listOf(0, 150, 300)
-        val heights = listOf(0.5f, 0.7f, 1.0f)
-        for (i in 0..2) {
-            val anim by eqAnimation.animateFloat(
-                initialValue = heights[i] * 0.3f,
-                targetValue = heights[i],
-                animationSpec = infiniteRepeatable(
-                    animation = tween(400 + delays[i], easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "eqAlbum$i",
-            )
-            Box(
-                Modifier
-                    .width(4.dp)
-                    .fillMaxHeight(anim)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(BrandTeal),
-            )
         }
     }
 }

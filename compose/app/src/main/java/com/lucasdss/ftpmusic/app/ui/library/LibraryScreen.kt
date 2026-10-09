@@ -1,6 +1,5 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,6 +53,7 @@ import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.RadioBookmarkIcon
+import com.lucasdss.ftpmusic.app.ui.components.ScrollAwareEqBars
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
@@ -188,6 +188,7 @@ fun LibraryContent(
                             }
                         } else {
                             val gridState = rememberLazyGridState()
+                            val scrollInProgress = gridState.isScrollInProgress
                             // No near-end loadMore: Albums tab loads the full alpha
                             // catalog via loadAlphaAlbums (see LIBRARY_SCROLL_PERF).
                             LazyVerticalGrid(
@@ -241,7 +242,7 @@ fun LibraryContent(
                                                     Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
                                                     contentAlignment = Alignment.Center,
                                                 ) {
-                                                    AnimatedEqBars()
+                                                    ScrollAwareEqBars(scrollInProgress = scrollInProgress)
                                                 }
                                             }
                                             AlbumDownloadBadge(
@@ -331,21 +332,21 @@ fun LibraryContent(
                                         )
                                         Spacer(Modifier.width(12.dp))
                                         Column(Modifier.weight(1f)) {
-                                            FittingText(
-                                                text = artist.name,
+                                            Text(
+                                                artist.name,
                                                 color = Color.White,
                                                 fontSize = textHeadingS(),
-                                                minFontSize = textMicro(),
                                                 fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.fillMaxWidth(),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
                                             )
                                             artist.albumCount?.let {
-                                                FittingText(
-                                                    text = "$it albums",
+                                                Text(
+                                                    "$it albums",
                                                     color = Color(0xFF888888),
                                                     fontSize = textLabelM(),
-                                                    minFontSize = textMicro(),
-                                                    modifier = Modifier.fillMaxWidth(),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
                                                 )
                                             }
                                         }
@@ -447,13 +448,13 @@ fun LibraryContent(
                                             }
                                             Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
-                                                FittingText(
-                                                    text = pl.name,
+                                                Text(
+                                                    pl.name,
                                                     color = Color.White,
                                                     fontSize = textHeadingS(),
-                                                    minFontSize = textMicro(),
                                                     fontWeight = FontWeight.Medium,
-                                                    modifier = Modifier.fillMaxWidth(),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
                                                 )
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
@@ -617,20 +618,20 @@ fun LibraryContent(
                                         }
                                         Spacer(Modifier.width(12.dp))
                                         Column(Modifier.weight(1f)) {
-                                            FittingText(
-                                                text = station.name,
+                                            Text(
+                                                station.name,
                                                 color = Color.White,
                                                 fontSize = textHeadingS(),
-                                                minFontSize = textMicro(),
                                                 fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.fillMaxWidth(),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
                                             )
-                                            FittingText(
-                                                text = station.streamUrl,
+                                            Text(
+                                                station.streamUrl,
                                                 color = Color(0xFF888888),
                                                 fontSize = textLabelM(),
-                                                minFontSize = textMicro(),
-                                                modifier = Modifier.fillMaxWidth(),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
                                             )
                                         }
                                         // v43: Bookmark ribbon (local-only favorite)
@@ -1002,11 +1003,12 @@ fun LibraryContent(
                                         modifier = Modifier.size(22.dp),
                                     )
                                     Spacer(Modifier.width(12.dp))
-                                    FittingText(
-                                        text = pl.name,
+                                    Text(
+                                        pl.name,
                                         color = Color.White,
                                         fontSize = textBodyM(),
-                                        minFontSize = textMicro(),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Text("${pl.trackCount} tracks", color = Color(0xFF888888), fontSize = textLabelM())
@@ -1016,37 +1018,6 @@ fun LibraryContent(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun AnimatedEqBars() {
-    val eqAnimation = rememberInfiniteTransition(label = "eqAlbum")
-    Row(
-        Modifier.width(24.dp).height(16.dp),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        val delays = listOf(0, 150, 300)
-        val heights = listOf(0.5f, 0.7f, 1.0f)
-        for (i in 0..2) {
-            val anim by eqAnimation.animateFloat(
-                initialValue = heights[i] * 0.3f,
-                targetValue = heights[i],
-                animationSpec = infiniteRepeatable(
-                    animation = tween(400 + delays[i], easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "eqAlbum$i",
-            )
-            Box(
-                Modifier
-                    .width(4.dp)
-                    .height((16 * anim).dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(BrandTeal),
-            )
         }
     }
 }

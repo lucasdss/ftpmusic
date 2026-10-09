@@ -1890,7 +1890,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     )
                                 }
                             }
-                            items(priorityTracks, key = { queueRowKey(it) }) { track ->
+                            items(priorityTracks, key = { queueRowKey(it) }, contentType = { "queue" }) { track ->
                                 val key = queueRowKey(track)
                                 ReorderableItem(state = reorderableState, key = key) { isDragging ->
                                     QueueDismissTrackRow(
@@ -1964,7 +1964,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     )
                                 }
                             }
-                            items(continueTracks, key = { queueRowKey(it) }) { track ->
+                            items(continueTracks, key = { queueRowKey(it) }, contentType = { "queue" }) { track ->
                                 val key = queueRowKey(track)
                                 ReorderableItem(state = reorderableState, key = key) { isDragging ->
                                     QueueDismissTrackRow(
@@ -2088,7 +2088,7 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
                         if (autoplayTracks.isNotEmpty()) {
-                            items(autoplayTracks, key = { queueRowKey(it) }) { track ->
+                            items(autoplayTracks, key = { queueRowKey(it) }, contentType = { "queue" }) { track ->
                                 val key = queueRowKey(track)
                                 ReorderableItem(state = reorderableState, key = key) { isDragging ->
                                     QueueDismissTrackRow(
@@ -2142,7 +2142,7 @@ private fun BoxScope.PlayerQueuePanel(
                                         .testTag("queue_section_history"),
                                 )
                             }
-                            items(queueHistory, key = { "hist-${it.id}" }) { hist ->
+                            items(queueHistory, key = { "hist-${it.id}" }, contentType = { "history" }) { hist ->
                                 QueueHistoryRow(
                                     track = hist,
                                     onPlayNext = { onPlayHistoryTrack(hist.id) },
