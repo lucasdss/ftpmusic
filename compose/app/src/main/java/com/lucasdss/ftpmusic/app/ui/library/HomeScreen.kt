@@ -897,6 +897,10 @@ private fun TrackRow(
     track: TrackEntity,
     albumCoverArtId: String?,
     isActive: Boolean = false,
+    isLiked: Boolean = false,
+    isDisliked: Boolean = false,
+    onToggleLike: (() -> Unit)? = null,
+    onToggleDislike: (() -> Unit)? = null,
     onTrackClick: ((TrackEntity) -> Unit)? = null,
 ) {
     val ds = downloadStatus(track.isDownloaded, false, track.cachedFilePath != null)
@@ -906,6 +910,10 @@ private fun TrackRow(
         isActive = isActive,
         downloadStatus = ds,
         durationLabel = track.durationSeconds?.let { formatSongDuration(it) },
+        isLiked = if (onToggleLike != null) isLiked else null,
+        isDisliked = if (onToggleDislike != null) isDisliked else null,
+        onLike = onToggleLike,
+        onDislike = onToggleDislike,
         onClick = onTrackClick?.let { handler -> { handler(track) } },
         modifier = Modifier.padding(horizontal = spacingL(), vertical = 10.dp),
         leadingContent = {

@@ -907,7 +907,9 @@ private fun TrackFavoriteRow(
 ) {
     val trackCoverUrl = rememberCoverArtUrl(track.coverArtUrl, 200)
     val ds = downloadStatus(track.isDownloaded, false, track.cachedFilePath != null)
-    // Meta: cache + duration; single like/dislike action stays on the right (Favorites UX).
+    // Meta: cache; duration on title line (ADR-0104). Mode-specific trailing thumb
+    // gated by list chrome prefs — Now Playing keeps reactions always.
+    val showListReactions = LocalListChromePrefs.current.showListReactions
     SongListRow(
         title = track.title,
         subtitle = track.artist,
@@ -940,13 +942,17 @@ private fun TrackFavoriteRow(
                 }
             }
         },
-        trailingContent = {
-            ReactionGlyphButton(
-                icon = actionIcon,
-                contentDescription = actionCd,
-                tint = actionTint,
-                onClick = onAction,
-            )
+        trailingContent = if (showListReactions) {
+            {
+                ReactionGlyphButton(
+                    icon = actionIcon,
+                    contentDescription = actionCd,
+                    tint = actionTint,
+                    onClick = onAction,
+                )
+            }
+        } else {
+            null
         },
     )
     HorizontalDivider(

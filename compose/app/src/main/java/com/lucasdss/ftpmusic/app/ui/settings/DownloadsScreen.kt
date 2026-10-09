@@ -71,6 +71,8 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -82,6 +84,9 @@ data class DownloadsUiState(
     val staleIds: Set<String> = emptySet(),
     val loading: Boolean = true,
     val endReached: Boolean = false,
+    /** Track list reactions (ADR-0104). */
+    val likedTrackIds: Set<String> = emptySet(),
+    val dislikedTrackIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -91,9 +96,14 @@ class DownloadsViewModel @Inject constructor(
     private val playbackManager: PlaybackManager,
     private val authHelper: SubsonicAuthHelper,
     private val storage: SecureStorage,
+    private val favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(DownloadsUiState())
     val state: StateFlow<DownloadsUiState> = _state.asStateFlow()
+
+    private val trackReactions =
+        com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator(favoriteRepository)
+    private var trackReactionWatchJob: kotlinx.coroutines.Job? = null
 
     private var offset = 0
     private val loadMutex = Mutex()
@@ -108,7 +118,63 @@ class DownloadsViewModel @Inject constructor(
     private val pendingRefresh = AtomicBoolean(false)
 
     init {
+        // Reaction id watch first so refresh()'s page publish is observed.
+        viewModelScope.launch {
+            state.map { it.tracks.map { t -> t.id } }
+                .distinctUntilChanged()
+                .collect { ids -> watchTrackReactions(ids) }
+        }
         refresh()
+    }
+
+    private fun watchTrackReactions(trackIds: List<String>) {
+        trackReactionWatchJob?.cancel()
+        if (trackIds.isEmpty()) {
+            _state.value = _state.value.copy(
+                likedTrackIds = emptySet(),
+                dislikedTrackIds = emptySet(),
+            )
+            return
+        }
+        trackReactionWatchJob = viewModelScope.launch {
+            try {
+                trackDao.watchTracksByIds(trackIds).collect { entities ->
+                    val sets = trackReactions.setsFromEntities(entities)
+                    _state.value = _state.value.copy(
+                        likedTrackIds = sets.liked,
+                        dislikedTrackIds = sets.disliked,
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-downloads", "watchTrackReactions: ${e.message}")
+            }
+        }
+    }
+
+    fun toggleTrackLike(trackId: String) {
+        val current = com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleLike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+        }
+    }
+
+    fun toggleTrackDislike(trackId: String) {
+        val current = com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleDislike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+        }
     }
 
     fun refresh() {
@@ -328,8 +394,12 @@ fun DownloadsScreen(onBack: () -> Unit, viewModel: DownloadsViewModel = hiltView
                         DownloadRow(
                             track = track,
                             stale = track.id in state.staleIds,
+                            isLiked = track.id in state.likedTrackIds,
+                            isDisliked = track.id in state.dislikedTrackIds,
                             onPlay = { viewModel.playAt(index) },
                             onRemove = { viewModel.remove(track.id) },
+                            onToggleLike = { viewModel.toggleTrackLike(track.id) },
+                            onToggleDislike = { viewModel.toggleTrackDislike(track.id) },
                         )
                     }
                 }
@@ -358,7 +428,16 @@ fun DownloadsScreen(onBack: () -> Unit, viewModel: DownloadsViewModel = hiltView
 }
 
 @Composable
-private fun DownloadRow(track: TrackEntity, stale: Boolean, onPlay: () -> Unit, onRemove: () -> Unit) {
+private fun DownloadRow(
+    track: TrackEntity,
+    stale: Boolean,
+    isLiked: Boolean,
+    isDisliked: Boolean,
+    onPlay: () -> Unit,
+    onRemove: () -> Unit,
+    onToggleLike: () -> Unit,
+    onToggleDislike: () -> Unit,
+) {
     val coverUrl = rememberCoverArtUrl(track.coverArtUrl)
     val subtitle = buildString {
         append(listOfNotNull(track.artist, track.album).joinToString(" · "))
@@ -372,6 +451,10 @@ private fun DownloadRow(track: TrackEntity, stale: Boolean, onPlay: () -> Unit, 
         subtitle = subtitle,
         downloadStatus = downloadsRowStatus(stale),
         durationLabel = track.durationSeconds?.let { formatSongDuration(it) },
+        isLiked = isLiked,
+        isDisliked = isDisliked,
+        onLike = onToggleLike,
+        onDislike = onToggleDislike,
         onClick = onPlay,
         modifier = Modifier
             .fillMaxWidth()

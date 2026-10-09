@@ -39,6 +39,7 @@ class DownloadsViewModelTest {
         cacheService = mockk(relaxed = true)
         playbackManager = mockk(relaxed = true)
         coEvery { trackDao.getDownloadedPaged(any(), any()) } returns emptyList()
+        every { trackDao.watchTracksByIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
         every { cacheService.isStoredInCache(any()) } returns true
         coEvery { cacheService.healStaleCachePath(any()) } returns false
     }
@@ -54,6 +55,7 @@ class DownloadsViewModelTest {
         playbackManager = playbackManager,
         authHelper = SubsonicAuthHelper(),
         storage = mockk(relaxed = true),
+        favoriteRepository = mockk(relaxed = true),
     )
 
     @Test
@@ -137,6 +139,7 @@ class DownloadsViewModelTest {
             playbackManager = playbackManager,
             authHelper = SubsonicAuthHelper(),
             storage = mockk(relaxed = true),
+            favoriteRepository = mockk(relaxed = true),
         )
         viewModel.clearAll()
         latch.complete(Unit)

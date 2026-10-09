@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.LocalListChromePrefs
+import com.lucasdss.ftpmusic.app.ui.Muted
 import com.lucasdss.ftpmusic.app.ui.knobSize
 import com.lucasdss.ftpmusic.app.ui.primaryTextWeight
 import com.lucasdss.ftpmusic.app.ui.spacingS
@@ -33,10 +35,10 @@ import com.lucasdss.ftpmusic.app.ui.textHeadingS
 import com.lucasdss.ftpmusic.app.ui.textLabelM
 
 /**
- * Shared song list row: fixed-size title (wrap to 2 lines), meta row below
- * (cache · like · dislike · time), options (⋮) on the right.
+ * Shared song list row: title + optional duration on the title line,
+ * meta row below (cache · like · dislike). Options (⋮) on the right.
  *
- * Replaces FittingText shrink-to-fit so every song title uses the same size
+ * List chrome gated by [LocalListChromePrefs] (ADR-0104). Fixed title size
  * (ADR 0096 / SCROLL_FPS).
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -59,6 +61,11 @@ fun SongListRow(
     /** Replaces the default ⋮ when set (e.g. Downloads delete). */
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
+    val chrome = LocalListChromePrefs.current
+    val showDuration = chrome.showListDuration && !durationLabel.isNullOrBlank()
+    val showLike = chrome.showListReactions && isLiked != null && onLike != null
+    val showDislike = chrome.showListReactions && isDisliked != null && onDislike != null
+
     val playableModifier = when {
         onClick != null && onLongClick != null ->
             Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
@@ -76,17 +83,31 @@ fun SongListRow(
             leadingContent()
             Spacer(Modifier.width(12.dp))
         }
-        Column(Modifier.weight(1f).then(playableModifier)) {
-            Text(
-                text = title,
-                color = if (isActive) BrandTeal else Color.White,
-                fontSize = textHeadingS(),
-                fontWeight = primaryTextWeight(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                softWrap = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+        Column(modifier.weight(1f).then(playableModifier)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title,
+                    color = if (isActive) BrandTeal else Color.White,
+                    fontSize = textHeadingS(),
+                    fontWeight = primaryTextWeight(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = true,
+                    modifier = Modifier.weight(1f),
+                )
+                if (showDuration) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = durationLabel!!,
+                        color = Muted,
+                        fontSize = textLabelM(),
+                        maxLines = 1,
+                    )
+                }
+            }
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
@@ -99,10 +120,7 @@ fun SongListRow(
                         .padding(top = 2.dp),
                 )
             }
-            val showMeta = downloadStatus != "none" ||
-                (isLiked != null && onLike != null) ||
-                (isDisliked != null && onDislike != null) ||
-                !durationLabel.isNullOrBlank()
+            val showMeta = downloadStatus != "none" || showLike || showDislike
             if (showMeta) {
                 Row(
                     Modifier
@@ -114,27 +132,20 @@ fun SongListRow(
                     if (downloadStatus != "none") {
                         DownloadDot(downloadStatus)
                     }
-                    if (isLiked != null && onLike != null) {
+                    if (showLike) {
                         ReactionGlyphButton(
                             icon = Icons.Filled.ThumbUp,
-                            contentDescription = if (isLiked) "Unlike" else "Like",
-                            tint = if (isLiked) BrandTeal else Color(0xFF444444),
-                            onClick = onLike,
+                            contentDescription = if (isLiked == true) "Unlike" else "Like",
+                            tint = if (isLiked == true) BrandTeal else Color(0xFF444444),
+                            onClick = onLike!!,
                         )
                     }
-                    if (isDisliked != null && onDislike != null) {
+                    if (showDislike) {
                         ReactionGlyphButton(
                             icon = Icons.Filled.ThumbDown,
-                            contentDescription = if (isDisliked) "Remove dislike" else "Dislike",
-                            tint = if (isDisliked) Color(0xFFE84040) else Color(0xFF444444),
-                            onClick = onDislike,
-                        )
-                    }
-                    if (!durationLabel.isNullOrBlank()) {
-                        Text(
-                            durationLabel,
-                            color = Color(0xFF888888),
-                            fontSize = textLabelM(),
+                            contentDescription = if (isDisliked == true) "Remove dislike" else "Dislike",
+                            tint = if (isDisliked == true) Color(0xFFE84040) else Color(0xFF444444),
+                            onClick = onDislike!!,
                         )
                     }
                 }

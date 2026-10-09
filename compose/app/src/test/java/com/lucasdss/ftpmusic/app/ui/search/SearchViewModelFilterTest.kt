@@ -52,6 +52,7 @@ class SearchViewModelFilterTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
     }
 

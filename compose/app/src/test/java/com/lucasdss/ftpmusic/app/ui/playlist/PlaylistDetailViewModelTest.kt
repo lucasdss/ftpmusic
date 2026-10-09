@@ -36,17 +36,16 @@ class PlaylistDetailViewModelTest {
     private val playlistDao: PlaylistDao = mockk(relaxed = true)
     private val pendingChangeDao: PendingPlaylistChangeDao = mockk(relaxed = true)
     private val syncWorker: PlaylistSyncWorker = mockk(relaxed = true)
-    private val trackDao: TrackDao = mockk(relaxed = true)
+    private val trackDao: TrackDao = mockk(relaxed = true) {
+        every { watchTracksByIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+    }
     private val playbackManager: PlaybackManager = mockk(relaxed = true)
     private val cacheService: CacheService = mockk(relaxed = true)
     private val downloadManager: com.lucasdss.ftpmusic.app.data.cache.DownloadManager = mockk(relaxed = true)
     private val cacheQueueDao: CacheQueueDao = mockk(relaxed = true)
     private val storage: SecureStorage = mockk(relaxed = true)
 
-    private val viewModel = PlaylistDetailViewModel(
-        api, playlistDao, pendingChangeDao, syncWorker, trackDao, playbackManager,
-        cacheService, downloadManager, cacheQueueDao, storage,
-    )
+    private lateinit var viewModel: PlaylistDetailViewModel
 
     @Before
     fun setup() {
@@ -55,6 +54,11 @@ class PlaylistDetailViewModelTest {
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
             "true"
+        viewModel = PlaylistDetailViewModel(
+            api, playlistDao, pendingChangeDao, syncWorker, trackDao, playbackManager,
+            cacheService, downloadManager, cacheQueueDao, storage,
+            favoriteRepository = mockk(relaxed = true),
+        )
     }
 
     @After

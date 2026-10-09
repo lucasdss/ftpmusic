@@ -125,6 +125,24 @@ class SettingsScreenComposeTest {
     }
 
     @Test
+    fun `list reactions toggle delegates to the view model`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+        composeRule.onNodeWithText("Like and dislike on track lists").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_toggle_Like_and_dislike_on_track_lists").performClick()
+        verify { vm.setShowListReactions(false) }
+    }
+
+    @Test
+    fun `list duration toggle delegates to the view model`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+        composeRule.onNodeWithText("Duration on track lists").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_toggle_Duration_on_track_lists").performClick()
+        verify { vm.setShowListDuration(false) }
+    }
+
+    @Test
     fun `typography nav row opens detail callback`() {
         val vm = mockViewModel(SettingsUiState())
         var opened = false

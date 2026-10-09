@@ -54,7 +54,10 @@ class MainActivity : ComponentActivity() {
             // so typography prefs update MaterialTheme live (ADR-0099).
             val settingsViewModel: SettingsViewModel = hiltViewModel()
             val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
-            FtpmusicTheme(typographyPrefs = settingsState.typographyPrefs) {
+            FtpmusicTheme(
+                typographyPrefs = settingsState.typographyPrefs,
+                listChromePrefs = settingsState.listChromePrefs,
+            ) {
                 FtpmusicNavHost()
             }
         }

@@ -23,6 +23,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 data class PlaylistDetailState(
@@ -33,6 +35,9 @@ data class PlaylistDetailState(
     val error: String? = null,
     val isConflicted: Boolean = false,
     val conflictMessage: String? = null,
+    /** Track list reactions (ADR-0104). */
+    val likedTrackIds: Set<String> = emptySet(),
+    val dislikedTrackIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -47,14 +52,77 @@ class PlaylistDetailViewModel @Inject constructor(
     private val downloadManager: com.lucasdss.ftpmusic.app.data.cache.DownloadManager,
     private val cacheQueueDao: CacheQueueDao,
     private val storage: SecureStorage,
+    private val favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlaylistDetailState())
     val state: StateFlow<PlaylistDetailState> = _state.asStateFlow()
 
+    private val trackReactions =
+        com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator(favoriteRepository)
+    private var trackReactionWatchJob: kotlinx.coroutines.Job? = null
+
     private val auth = SubsonicAuthHelper()
     private var username: String = ""
     private var password: String = ""
+
+    init {
+        viewModelScope.launch {
+            state.map { it.tracks.map { t -> t.id } }
+                .distinctUntilChanged()
+                .collect { ids -> watchTrackReactions(ids) }
+        }
+    }
+
+    private fun watchTrackReactions(trackIds: List<String>) {
+        trackReactionWatchJob?.cancel()
+        if (trackIds.isEmpty()) {
+            _state.value = _state.value.copy(
+                likedTrackIds = emptySet(),
+                dislikedTrackIds = emptySet(),
+            )
+            return
+        }
+        trackReactionWatchJob = viewModelScope.launch {
+            try {
+                trackDao.watchTracksByIds(trackIds).collect { entities ->
+                    val sets = trackReactions.setsFromEntities(entities)
+                    _state.value = _state.value.copy(
+                        likedTrackIds = sets.liked,
+                        dislikedTrackIds = sets.disliked,
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-playlist", "watchTrackReactions: ${e.message}")
+            }
+        }
+    }
+
+    fun toggleTrackLike(trackId: String) {
+        val current = com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleLike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+        }
+    }
+
+    fun toggleTrackDislike(trackId: String) {
+        val current = com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleDislike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+        }
+    }
 
     fun loadPlaylist(playlistId: String) {
         if (playlistId.isBlank()) {

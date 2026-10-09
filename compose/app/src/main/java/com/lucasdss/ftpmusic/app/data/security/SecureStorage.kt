@@ -194,5 +194,9 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_TYPO_UI_FONT = "typo_ui_font"
         const val KEY_TYPO_CAPTION_FONT = "typo_caption_font"
         const val KEY_TYPO_WEIGHT_BIAS = "typo_weight_bias"
+
+        // ADR-0104: Settings → Appearance — track list chrome (default both ON)
+        const val KEY_LIST_SHOW_REACTIONS = "list_show_reactions"
+        const val KEY_LIST_SHOW_DURATION = "list_show_duration"
     }
 }

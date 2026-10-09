@@ -1,10 +1,13 @@
 package com.lucasdss.ftpmusic.app.ui.components
 
 import android.app.Application
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import com.lucasdss.ftpmusic.app.ui.ListChromePrefs
+import com.lucasdss.ftpmusic.app.ui.LocalListChromePrefs
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -13,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Compose smoke for SongListRow layout (ADR 0096). */
+/** Compose smoke for SongListRow layout (ADR 0096 / ADR-0104). */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], application = Application::class, qualifiers = "w400dp-h800dp")
@@ -51,5 +54,46 @@ class SongListRowComposeTest {
         composeRule.onNodeWithContentDescription("cached").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Like").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Dislike").assertIsDisplayed()
+    }
+
+    @Test
+    fun `hides reactions when list chrome reactions off`() {
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalListChromePrefs provides ListChromePrefs(showListReactions = false),
+            ) {
+                SongListRow(
+                    title = "No Thumbs",
+                    durationLabel = "2:00",
+                    isLiked = false,
+                    isDisliked = false,
+                    onLike = {},
+                    onDislike = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("No Thumbs").assertIsDisplayed()
+        composeRule.onNodeWithText("2:00").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Like").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Dislike").assertDoesNotExist()
+    }
+
+    @Test
+    fun `hides duration when list chrome duration off`() {
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalListChromePrefs provides ListChromePrefs(showListDuration = false),
+            ) {
+                SongListRow(
+                    title = "No Time",
+                    durationLabel = "4:20",
+                    isLiked = false,
+                    onLike = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("No Time").assertIsDisplayed()
+        composeRule.onNodeWithText("4:20").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Like").assertIsDisplayed()
     }
 }

@@ -64,6 +64,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
     }
 
@@ -108,6 +109,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
@@ -337,6 +339,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         // Force NetworkAvailability so LocalOnlyPolicy treats offline as local-only.
         NetworkAvailabilityHolder.resetForTests(false)
@@ -388,6 +391,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -428,6 +432,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         assertTrue(viewModel.isLocalOnly())
         viewModel.onQueryChanged("air")
@@ -481,6 +486,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("mid")
         viewModel.search()
@@ -515,6 +521,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         advanceUntilIdle()
         assertFalse(viewModel.isLocalOnly())
@@ -539,6 +546,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         advanceUntilIdle()
         NetworkAvailabilityHolder.resetForTests(false)
@@ -568,6 +576,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.setFilterDownloaded(true)
         viewModel.setFilterDownloaded(false)
@@ -597,6 +606,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -659,6 +669,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("test")
         viewModel.setFilterDownloaded(true)
@@ -691,6 +702,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("more")
         viewModel.loadMoreSearchResults()
@@ -732,6 +744,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         // Seed state via search failure path with empty results
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
@@ -762,6 +775,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("ab")
         viewModel.search()
@@ -807,6 +821,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
                 mockk(relaxed = true), // lyricsCache
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("rare")
         viewModel.search()
@@ -837,6 +852,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         val navigated = mutableListOf<String>()
         val hit = DiscoverArtistHit(
@@ -889,6 +905,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("strong")
         viewModel.search()
@@ -937,6 +954,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -975,6 +993,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1011,6 +1030,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1053,6 +1073,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1094,6 +1115,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1174,6 +1196,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("aa")
         viewModel.search()

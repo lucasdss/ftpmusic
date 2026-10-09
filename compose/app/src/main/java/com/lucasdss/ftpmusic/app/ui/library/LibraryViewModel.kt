@@ -26,6 +26,7 @@ import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingKind
 import com.lucasdss.ftpmusic.app.data.favorites.FavoritePendingStore
 import com.lucasdss.ftpmusic.app.data.favorites.FavoritesPaging
+import com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.model.Track
@@ -115,6 +116,9 @@ data class LibraryState(
     val dislikedAlbumIds: Set<String> = emptySet(),
     val likedArtistIds: Set<String> = emptySet(),
     val dislikedArtistIds: Set<String> = emptySet(),
+    /** Track list reactions for Home song rows (ADR-0104). */
+    val likedTrackIds: Set<String> = emptySet(),
+    val dislikedTrackIds: Set<String> = emptySet(),
     val bookmarkedStationIds: Set<String> = emptySet(),
     /** Cover-montage art ids per playlist id (Home Playlists row). */
     val playlistMontages: Map<String, List<String>> = emptyMap(),
@@ -186,6 +190,8 @@ class LibraryViewModel @Inject constructor(
     /** Optimistic overlays so Room Flow cannot clobber in-flight album/artist thumbs. */
     private val albumPending = FavoritePendingStore()
     private val artistPending = FavoritePendingStore()
+    private val trackReactions = TrackListReactionCoordinator(favoriteRepository)
+    private var trackReactionWatchJob: kotlinx.coroutines.Job? = null
 
     private val albumToggleMutexes = ConcurrentHashMap<String, Mutex>()
     private val artistToggleMutexes = ConcurrentHashMap<String, Mutex>()
@@ -1541,9 +1547,60 @@ class LibraryViewModel @Inject constructor(
     private suspend fun loadRecentlyPlayedInternal() {
         try {
             val tracks = trackDao.getRecentlyPlayed(20)
-            _state.value = _state.value.copy(recentlyPlayed = tracks, hasLoadedOnce = true)
+            val sets = trackReactions.setsFromEntities(tracks)
+            _state.value = _state.value.copy(
+                recentlyPlayed = tracks,
+                hasLoadedOnce = true,
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+            watchTrackReactions(tracks.map { it.id })
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-library", "loadRecentlyPlayed: ${e.message}")
+        }
+    }
+
+    private fun watchTrackReactions(trackIds: List<String>) {
+        trackReactionWatchJob?.cancel()
+        if (trackIds.isEmpty()) return
+        trackReactionWatchJob = viewModelScope.launch {
+            try {
+                trackDao.watchTracksByIds(trackIds).collect { entities ->
+                    val sets = trackReactions.setsFromEntities(entities)
+                    _state.value = _state.value.copy(
+                        likedTrackIds = sets.liked,
+                        dislikedTrackIds = sets.disliked,
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-library", "watchTrackReactions: ${e.message}")
+            }
+        }
+    }
+
+    fun toggleTrackLike(trackId: String) {
+        val current = TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleLike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+        }
+    }
+
+    fun toggleTrackDislike(trackId: String) {
+        val current = TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleDislike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
         }
     }
 

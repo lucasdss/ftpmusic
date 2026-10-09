@@ -1376,6 +1376,10 @@ fun SearchScreen(
                             subtitle = subtitle,
                             downloadStatus = if (t.id in state.localTrackIds) "downloaded" else "none",
                             durationLabel = t.formattedDuration.takeIf { it.isNotEmpty() },
+                            isLiked = t.id in state.likedTrackIds,
+                            isDisliked = t.id in state.dislikedTrackIds,
+                            onLike = { viewModel.toggleTrackLike(t.id) },
+                            onDislike = { viewModel.toggleTrackDislike(t.id) },
                             onClick = { onTrackClick(t) },
                             modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                             leadingContent = {

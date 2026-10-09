@@ -12,6 +12,7 @@ import com.lucasdss.ftpmusic.app.data.db.GenreEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.model.Playlist
@@ -19,6 +20,7 @@ import com.lucasdss.ftpmusic.app.data.model.SearchResults
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.repository.SearchRepository
 import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.search.SearchResultMerger
@@ -34,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** Best single hit shown above sectioned results (Phase-4 UX). */
@@ -103,6 +106,9 @@ data class SearchState(
     val ftsRanks: Map<String, Double> = emptyMap(),
     /** Server search failure message; null when ok / cleared on new query. */
     val searchError: String? = null,
+    /** Track list reactions for song rows (ADR-0104). */
+    val likedTrackIds: Set<String> = emptySet(),
+    val dislikedTrackIds: Set<String> = emptySet(),
 )
 
 enum class SearchFilterType { ALL, ARTISTS, ALBUMS, SONGS, PLAYLISTS, GENRES }
@@ -123,7 +129,11 @@ class SearchViewModel @Inject constructor(
     private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
     private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
     private val lyricsCacheDao: com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao,
+    private val favoriteRepository: FavoriteRepository,
 ) : ViewModel() {
+
+    private val trackReactions = TrackListReactionCoordinator(favoriteRepository)
+    private var trackReactionWatchJob: Job? = null
 
     companion object {
         private const val KEY_RECENT_SEARCHES = "recent_searches"
@@ -177,6 +187,65 @@ class SearchViewModel @Inject constructor(
         observeLocalOnly()
         observeIndexing()
         ensureSearchIndex()
+        observeTrackReactionIds()
+    }
+
+    private fun observeTrackReactionIds() {
+        viewModelScope.launch {
+            state.map { it.tracks.map { t -> t.id } }
+                .distinctUntilChanged()
+                .collect { ids -> watchTrackReactions(ids) }
+        }
+    }
+
+    private fun watchTrackReactions(trackIds: List<String>) {
+        trackReactionWatchJob?.cancel()
+        if (trackIds.isEmpty()) {
+            _state.value = _state.value.copy(
+                likedTrackIds = emptySet(),
+                dislikedTrackIds = emptySet(),
+            )
+            return
+        }
+        trackReactionWatchJob = viewModelScope.launch {
+            try {
+                trackDao.watchTracksByIds(trackIds).collect { entities ->
+                    val sets = trackReactions.setsFromEntities(entities)
+                    _state.value = _state.value.copy(
+                        likedTrackIds = sets.liked,
+                        dislikedTrackIds = sets.disliked,
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-search", "watchTrackReactions: ${e.message}")
+            }
+        }
+    }
+
+    fun toggleTrackLike(trackId: String) {
+        val current = TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleLike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+        }
+    }
+
+    fun toggleTrackDislike(trackId: String) {
+        val current = TrackListReactionCoordinator.Sets(
+            liked = _state.value.likedTrackIds,
+            disliked = _state.value.dislikedTrackIds,
+        )
+        trackReactions.toggleDislike(trackId, current, viewModelScope) { sets ->
+            _state.value = _state.value.copy(
+                likedTrackIds = sets.liked,
+                dislikedTrackIds = sets.disliked,
+            )
+        }
     }
 
     private fun ensureSearchIndex() {

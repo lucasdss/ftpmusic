@@ -545,6 +545,38 @@ class SettingsViewModelTest {
         assertFalse(vm.state.value.hideNavLabels)
     }
 
+    // ── ADR-0104: List chrome prefs ─────────────────────────────────────
+
+    @Test
+    fun `list chrome prefs default both on`() {
+        val prefs = viewModel.state.value.listChromePrefs
+        assertTrue(prefs.showListReactions)
+        assertTrue(prefs.showListDuration)
+    }
+
+    @Test
+    fun `setShowListReactions persists to storage`() {
+        viewModel.setShowListReactions(false)
+        assertFalse(viewModel.state.value.listChromePrefs.showListReactions)
+        verify { storage.put(SecureStorage.KEY_LIST_SHOW_REACTIONS, "false") }
+    }
+
+    @Test
+    fun `setShowListDuration persists to storage`() {
+        viewModel.setShowListDuration(false)
+        assertFalse(viewModel.state.value.listChromePrefs.showListDuration)
+        verify { storage.put(SecureStorage.KEY_LIST_SHOW_DURATION, "false") }
+    }
+
+    @Test
+    fun `stored list chrome prefs restored on init`() {
+        every { storage.get(SecureStorage.KEY_LIST_SHOW_REACTIONS) } returns "false"
+        every { storage.get(SecureStorage.KEY_LIST_SHOW_DURATION) } returns "false"
+        val vm = createViewModel()
+        assertFalse(vm.state.value.listChromePrefs.showListReactions)
+        assertFalse(vm.state.value.listChromePrefs.showListDuration)
+    }
+
     // ── ADR-0099: Typography preferences ────────────────────────────────
 
     @Test

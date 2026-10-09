@@ -635,6 +635,20 @@ fun SettingsScreen(
                 }
                 SectionDivider()
                 SectionToggleRow(
+                    label = "Like and dislike on track lists",
+                    subtitle = "Hide to give titles more room; Now Playing keeps thumbs",
+                    checked = state.listChromePrefs.showListReactions,
+                    onToggle = { viewModel.setShowListReactions(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Duration on track lists",
+                    subtitle = "Show track length on the title line",
+                    checked = state.listChromePrefs.showListDuration,
+                    onToggle = { viewModel.setShowListDuration(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
                     label = "Prefer iTunes album art",
                     subtitle = "Use iTunes artwork instead of Navidrome when available",
                     checked = state.preferItunesArt,

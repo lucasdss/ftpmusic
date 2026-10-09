@@ -52,10 +52,14 @@ private val DarkColorScheme = darkColorScheme(
 fun FtpmusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     typographyPrefs: TypographyPrefs = TypographyPrefs.DEFAULT,
+    listChromePrefs: ListChromePrefs = ListChromePrefs.DEFAULT,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = DarkColorScheme // always dark per design spec
-    CompositionLocalProvider(LocalTypographyPrefs provides typographyPrefs) {
+    CompositionLocalProvider(
+        LocalTypographyPrefs provides typographyPrefs,
+        LocalListChromePrefs provides listChromePrefs,
+    ) {
         val typography = ftpTypography()
         MaterialTheme(
             colorScheme = colorScheme,

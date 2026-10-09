@@ -17,6 +17,7 @@ import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.OverwriteBehavior
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.CaptionFontPreset
+import com.lucasdss.ftpmusic.app.ui.ListChromePrefs
 import com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias
 import com.lucasdss.ftpmusic.app.ui.TypographyPrefs
 import com.lucasdss.ftpmusic.app.ui.UiDensityPreset
@@ -81,6 +82,8 @@ data class SettingsUiState(
     val hideNavLabels: Boolean = false,
     // ADR-0099: Typography preferences (role scales + curated fonts + weight)
     val typographyPrefs: TypographyPrefs = TypographyPrefs.DEFAULT,
+    // ADR-0104: Track list chrome (reactions + duration); defaults ON
+    val listChromePrefs: ListChromePrefs = ListChromePrefs.DEFAULT,
     // Last.fm API key (masked in UI when non-blank after save)
     val lastFmApiKey: String = "",
     val lastFmKeySaved: Boolean = false,
@@ -151,6 +154,7 @@ class SettingsViewModel @Inject constructor(
         val savedHideNavLabels =
             storage.get(SecureStorage.KEY_NAV_HIDE_LABELS)?.toBooleanStrictOrNull() ?: false
         val savedTypographyPrefs = loadTypographyPrefs()
+        val savedListChromePrefs = loadListChromePrefs()
         // v47: restore the persisted Wi-Fi-only preference into the download
         // worker so auto-cache respects it after process death.
         val savedDownloadMobileData =
@@ -184,6 +188,7 @@ class SettingsViewModel @Inject constructor(
             playbackNotificationsEnabled = savedPlaybackNotifications,
             hideNavLabels = savedHideNavLabels,
             typographyPrefs = savedTypographyPrefs,
+            listChromePrefs = savedListChromePrefs,
             castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
             lastFmApiKey = storage.get(SecureStorage.KEY_LASTFM_API_KEY).orEmpty(),
             lastFmKeySaved = !storage.get(SecureStorage.KEY_LASTFM_API_KEY).isNullOrBlank(),
@@ -371,6 +376,27 @@ class SettingsViewModel @Inject constructor(
 
     fun resetTypographyPrefs() {
         persistTypographyPrefs(TypographyPrefs.DEFAULT)
+    }
+
+    private fun loadListChromePrefs(): ListChromePrefs = ListChromePrefs(
+        showListReactions =
+            storage.get(SecureStorage.KEY_LIST_SHOW_REACTIONS)?.toBooleanStrictOrNull() ?: true,
+        showListDuration =
+            storage.get(SecureStorage.KEY_LIST_SHOW_DURATION)?.toBooleanStrictOrNull() ?: true,
+    )
+
+    fun setShowListReactions(enabled: Boolean) {
+        storage.put(SecureStorage.KEY_LIST_SHOW_REACTIONS, enabled.toString())
+        _state.value = _state.value.copy(
+            listChromePrefs = _state.value.listChromePrefs.copy(showListReactions = enabled),
+        )
+    }
+
+    fun setShowListDuration(enabled: Boolean) {
+        storage.put(SecureStorage.KEY_LIST_SHOW_DURATION, enabled.toString())
+        _state.value = _state.value.copy(
+            listChromePrefs = _state.value.listChromePrefs.copy(showListDuration = enabled),
+        )
     }
 
     fun setSyncIntervalHours(hours: Int) {
