@@ -4,6 +4,9 @@
     <string name="bt_resume_channel_desc">Prompts to resume playback when Bluetooth audio connects and background start is blocked</string>
     <string name="bt_resume_notif_title">Resume playback</string>
     <string name="bt_resume_notif_body">Tap to continue your last queue</string>
+    <string name="bt_resume_notif_body_empty">No saved queue — open the app to play</string>
+    <string name="bt_resume_notif_body_offline">No downloaded tracks available offline — tap to retry or open the app</string>
+    <string name="bt_resume_notif_body_mac_unknown">Bluetooth connected — tap to resume (device identity unavailable)</string>
     <string name="bt_resume_notif_action">Resume</string>
     <string name="bt_resume_section_label">Bluetooth</string>
     <string name="bt_resume_toggle">Resume on Bluetooth</string>

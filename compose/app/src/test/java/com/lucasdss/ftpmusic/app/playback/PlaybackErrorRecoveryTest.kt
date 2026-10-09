@@ -236,6 +236,49 @@ class PlaybackErrorRecoveryTest {
     }
 
     @Test
+    fun `resolveOfflineStartIndex includes current when cached`() {
+        val ids = listOf("a", "b", "c")
+        val cached = setOf("a")
+        assertEquals(
+            0,
+            resolveOfflineStartIndex(
+                fromIndex = 0,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { it in cached },
+            ),
+        )
+    }
+
+    @Test
+    fun `resolveOfflineStartIndex skips uncached current to next cache hit`() {
+        val ids = listOf("a", "b", "c", "d")
+        val cached = setOf("c")
+        assertEquals(
+            2,
+            resolveOfflineStartIndex(
+                fromIndex = 0,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { it in cached },
+            ),
+        )
+    }
+
+    @Test
+    fun `resolveOfflineStartIndex skips radio and returns null when none cached`() {
+        val ids = listOf("a", "radio:1", "b")
+        assertNull(
+            resolveOfflineStartIndex(
+                fromIndex = 0,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { false },
+            ),
+        )
+    }
+
+    @Test
     fun `error auto-skip resumes playback after seeking to next track`() {
         // SKIP_NEXT contract: seekToNextMediaItem() positions the next source but
         // does NOT resume — the handler must set playWhenReady=true and prepare(),

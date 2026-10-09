@@ -58,4 +58,16 @@ class BtAutoplayStarterRobolectricTest {
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         org.junit.Assert.assertNotNull(nm.getNotificationChannel(BtAutoplayStarter.RESUME_CHANNEL_ID))
     }
+
+    @Test
+    fun `postResumeNotification offline body still creates channel`() {
+        val ctx = RuntimeEnvironment.getApplication()
+        BtAutoplayStarter.postResumeNotification(
+            ctx,
+            com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_offline,
+        )
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        org.junit.Assert.assertNotNull(nm.getNotificationChannel(BtAutoplayStarter.RESUME_CHANNEL_ID))
+        assertTrue(BtAutoplayStarter.notificationsEnabled(ctx))
+    }
 }

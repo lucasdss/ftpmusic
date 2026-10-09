@@ -124,7 +124,33 @@ class BtConnectionReceiverCompanionTest {
     }
 
     @Test
-    fun `handleConnectBroadcast SELECTED mode rejects null MAC`() {
+    fun `handleConnectBroadcast SELECTED null MAC posts Resume notif not autoplay`() {
+        // ADR-0101: never silent — Resume notif only when MAC unreadable.
+        val ctx = RuntimeEnvironment.getApplication()
+        val storage = mockk<SecureStorage>()
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "selected"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns
+            """["AA:BB:CC:DD:EE:FF"]"""
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
+
+        var notif = 0
+        assertTrue(
+            BtConnectionReceiver.dispatchBtConnect(
+                context = ctx,
+                storage = storage,
+                deviceMac = null,
+                casting = false,
+                starter = { error("must not autoplay without MAC") },
+                postSelectedNullMacNotif = { notif++ },
+            ),
+        )
+        assertEquals(1, notif)
+    }
+
+    @Test
+    fun `handleConnectBroadcast SELECTED null MAC skips when casting`() {
         val ctx = RuntimeEnvironment.getApplication()
         val storage = mockk<SecureStorage>()
         every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
@@ -139,8 +165,9 @@ class BtConnectionReceiverCompanionTest {
                 context = ctx,
                 storage = storage,
                 deviceMac = null,
-                casting = false,
+                casting = true,
                 starter = { error("must not start") },
+                postSelectedNullMacNotif = { error("must not notif while casting") },
             ),
         )
     }

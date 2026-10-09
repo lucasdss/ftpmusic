@@ -6,7 +6,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 
 /**
  * Starts [MediaService] with [MediaServiceStartRequest.ACTION_BT_AUTOPLAY].
@@ -74,8 +76,22 @@ object BtAutoplayStarter {
         manager.createNotificationChannel(channel)
     }
 
-    fun postResumeNotification(context: Context) {
+    /** True when the OS will deliver app notifications (ADR-0101). */
+    fun notificationsEnabled(context: Context): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+    fun postResumeNotification(
+        context: Context,
+        @StringRes bodyRes: Int = com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body,
+    ) {
         ensureResumeChannel(context)
+        if (!notificationsEnabled(context)) {
+            android.util.Log.w(
+                "ftpmusic-bt",
+                "Resume notif blocked — POST_NOTIFICATIONS / notifications disabled; " +
+                    "MediaSession seat / MediaButton resumption still required",
+            )
+        }
         val launch = Intent(context, MediaService::class.java).apply {
             action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY
         }
@@ -88,7 +104,7 @@ object BtAutoplayStarter {
         val notification = NotificationCompat.Builder(context, RESUME_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(context.getString(com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_title))
-            .setContentText(context.getString(com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body))
+            .setContentText(context.getString(bodyRes))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setAutoCancel(true)

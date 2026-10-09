@@ -1,8 +1,11 @@
 package com.lucasdss.ftpmusic.app.playback
 
 import android.app.Application
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.test.core.app.ApplicationProvider
 import io.mockk.every
+import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
 import org.junit.After
@@ -186,6 +189,67 @@ class MediaServiceFgsReassertTest {
             playbackServiceStartMode(MediaServiceStartRequest.ACTION_PLAYBACK),
         )
         assertEquals(android.app.Service.START_STICKY, playbackServiceStartMode(null))
+    }
+
+    // ── applyBtPlayAfterSeat offline (ADR-0101) ─────────────────────────
+
+    @Test
+    fun `applyBtPlayAfterSeat offline seeks to first cached then plays on API36`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b", "c"))
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 36,
+            networkBlocked = true,
+            isCached = { it == "b" },
+            postWiuNotif = { error("no WIU on API36") },
+            postOfflineNotif = { error("must not offline-notif when cache exists") },
+        )
+        verify { player.seekTo(1, 0L) }
+        verify { player.play() }
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat offline with no cache posts offline notif`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
+        var offline = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 36,
+            networkBlocked = true,
+            isCached = { false },
+            postOfflineNotif = { offline++ },
+            postWiuNotif = { error("no WIU when offline empty") },
+        )
+        assertEquals(1, offline)
+        verify { player.pause() }
+        verify(exactly = 0) { player.play() }
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat A17 posts WIU notif after offline seek`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
+        var wiu = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            networkBlocked = true,
+            isCached = { it == "a" },
+            postWiuNotif = { wiu++ },
+            postOfflineNotif = { error("current is cached") },
+        )
+        assertEquals(1, wiu)
+        verify { player.pause() }
+        verify(exactly = 0) { player.seekTo(any(), any()) }
+    }
+
+    private fun mockOfflineQueuePlayer(currentIndex: Int, ids: List<String>): Player {
+        val player = mockk<Player>(relaxed = true)
+        every { player.mediaItemCount } returns ids.size
+        every { player.currentMediaItemIndex } returns currentIndex
+        ids.forEachIndexed { i, id ->
+            every { player.getMediaItemAt(i) } returns MediaItem.Builder().setMediaId(id).build()
+        }
+        return player
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

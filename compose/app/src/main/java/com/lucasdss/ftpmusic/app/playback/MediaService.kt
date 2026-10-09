@@ -109,6 +109,25 @@ internal fun findNextCachedIndex(
 }
 
 /**
+ * ADR-0101: BT/offline seat — first fully-cached index at or after [fromIndex]
+ * (includes current). Skips radio. Null when none playable from cache.
+ */
+internal fun resolveOfflineStartIndex(
+    fromIndex: Int,
+    mediaItemCount: Int,
+    mediaIdAt: (Int) -> String?,
+    isCached: (String) -> Boolean,
+): Int? {
+    val start = fromIndex.coerceAtLeast(0)
+    for (i in start until mediaItemCount) {
+        val id = mediaIdAt(i) ?: continue
+        if (id.startsWith("radio:")) continue
+        if (isCached(id)) return i
+    }
+    return null
+}
+
+/**
  * User-facing message when a manual Cast connect times out (no session events
  * within the timeout window). First sentence keeps the historical text; the
  * second gives actionable recovery. A connect that produces NO
@@ -1861,7 +1880,16 @@ class MediaService : MediaLibraryService() {
                 persistenceManager.restore()
             }
             if (saved == null) {
+                // ADR-0101: empty Room must not be silent on BT wake.
                 MediaServiceStartRequest.btAutoplayRequested = false
+                BtAutoplayStarter.postResumeNotification(
+                    this,
+                    com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_empty,
+                )
+                android.util.Log.w(
+                    "ftpmusic-bt",
+                    "BT seat — empty Room queue; Resume notif posted",
+                )
                 return
             }
             applyRestoredQueue(saved, userInitiatedPlayback = p?.playWhenReady == true)
@@ -1905,6 +1933,14 @@ class MediaService : MediaLibraryService() {
                 if (saved == null) {
                     if (btResume) {
                         MediaServiceStartRequest.btAutoplayRequested = false
+                        BtAutoplayStarter.postResumeNotification(
+                            this@MediaService,
+                            com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_empty,
+                        )
+                        android.util.Log.w(
+                            "ftpmusic-bt",
+                            "BT async restore — empty Room queue; Resume notif posted",
+                        )
                     }
                     return@launch
                 }
@@ -1983,13 +2019,46 @@ class MediaService : MediaLibraryService() {
 
     /**
      * ADR-0088: API ≤36 autoplay; API ≥37 seat metadata + Resume notif (WIU).
+     * ADR-0101: when network blocked, prefer fully-cached index before play/WIU.
      */
     @VisibleForTesting
     internal fun applyBtPlayAfterSeat(
         player: Player?,
         sdkInt: Int = android.os.Build.VERSION.SDK_INT,
         postWiuNotif: (android.content.Context) -> Unit = { BtAutoplayStarter.postResumeNotification(it) },
+        postOfflineNotif: (android.content.Context) -> Unit = {
+            BtAutoplayStarter.postResumeNotification(
+                it,
+                com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_offline,
+            )
+        },
+        networkBlocked: Boolean = isBtPlaybackNetworkBlocked(),
+        isCached: (String) -> Boolean = { id -> cacheService.isStoredInCache(id) },
     ) {
+        if (player != null && networkBlocked && player.mediaItemCount > 0) {
+            val cachedIdx = resolveOfflineStartIndex(
+                fromIndex = player.currentMediaItemIndex.coerceAtLeast(0),
+                mediaItemCount = player.mediaItemCount,
+                mediaIdAt = { i -> player.getMediaItemAt(i).mediaId },
+                isCached = isCached,
+            )
+            if (cachedIdx == null) {
+                player.pause()
+                postOfflineNotif(this)
+                android.util.Log.w(
+                    "ftpmusic-bt",
+                    "BT seat offline — no fully cached track; offline notif posted sdk=$sdkInt",
+                )
+                return
+            }
+            if (cachedIdx != player.currentMediaItemIndex) {
+                player.seekTo(cachedIdx, 0L)
+                android.util.Log.i(
+                    "ftpmusic-bt",
+                    "BT seat offline — seek to cached idx=$cachedIdx sdk=$sdkInt",
+                )
+            }
+        }
         if (PlaybackResumptionMapper.shouldBackgroundAutoplay(sdkInt)) {
             player?.play()
             android.util.Log.i("ftpmusic", "[MediaService] BT autoplay — play() after restore sdk=$sdkInt")
@@ -2001,6 +2070,15 @@ class MediaService : MediaLibraryService() {
                 "[MediaService] BT seat only (A17 WIU) — Resume notif posted sdk=$sdkInt",
             )
         }
+    }
+
+    /** Offline / no OS net / server unreachable — same gates as OfflineAwareHttpDataSource. */
+    @VisibleForTesting
+    internal fun isBtPlaybackNetworkBlocked(): Boolean {
+        if (offlineModeManager.isQueueEnabled()) return true
+        if (!com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.hasOsNetwork.value) return true
+        if (!com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value) return true
+        return false
     }
 
     /**

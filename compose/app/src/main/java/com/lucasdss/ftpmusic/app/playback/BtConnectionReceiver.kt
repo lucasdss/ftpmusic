@@ -74,11 +74,32 @@ class BtConnectionReceiver : BroadcastReceiver() {
             starter: (Context) -> BtAutoplayStarter.StartResult = {
                 BtAutoplayStarter.startAutoplay(it)
             },
+            postSelectedNullMacNotif: (Context) -> Unit = {
+                BtAutoplayStarter.postResumeNotification(
+                    it,
+                    com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_mac_unknown,
+                )
+            },
             sdkInt: Int = Build.VERSION.SDK_INT,
         ): Boolean {
             val enabled = BtResumeStorage.isEnabled(storage)
             val mode = BtResumeStorage.mode(storage)
             val allowlist = BtResumeStorage.allowlist(storage)
+            // ADR-0101: SELECTED + unreadable MAC must not be silent — Resume notif only
+            // (no autoplay without a verified allowlist match).
+            if (enabled &&
+                !casting &&
+                mode == BtResumeMode.SELECTED &&
+                BtResumePolicy.normalizeMac(deviceMac) == null &&
+                allowlist.isNotEmpty()
+            ) {
+                android.util.Log.i(
+                    "ftpmusic-bt",
+                    "selected_null_mac — Resume notif (no autoplay) enabled=$enabled sdk=$sdkInt",
+                )
+                postSelectedNullMacNotif(context)
+                return true
+            }
             val allow = BtResumePolicy.shouldResume(
                 enabled = enabled,
                 mode = mode,
