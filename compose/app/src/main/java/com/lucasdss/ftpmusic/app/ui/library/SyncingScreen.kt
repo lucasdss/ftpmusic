@@ -185,7 +185,11 @@ class SyncingViewModel @Inject constructor(
                     }
                 }
                 if (forceJob == null) {
+                    // ADR-0106: never leave Syncing hung (CAS fail / cellular skip /
+                    // process-death lost override). Surface error so UI can exit.
                     elapsedJob?.cancel()
+                    _isError.value = true
+                    _isDone.value = true
                     return@launch
                 }
                 metadataSyncWorker.status.collect { s ->

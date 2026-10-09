@@ -279,6 +279,49 @@ class PlaybackErrorRecoveryTest {
     }
 
     @Test
+    fun `resolveOfflineStartIndex wraps to cached track before fromIndex`() {
+        val ids = listOf("a", "b", "c", "d")
+        val cached = setOf("a", "b")
+        assertEquals(
+            0,
+            resolveOfflineStartIndex(
+                fromIndex = 3,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { it in cached },
+            ),
+        )
+    }
+
+    @Test
+    fun `computeBtPlaybackNetworkBlocked includes cellular hard local`() {
+        assertFalse(
+            computeBtPlaybackNetworkBlocked(
+                offlineQueueEnabled = false,
+                hasOsNetwork = true,
+                serverReachable = true,
+                cellularHardLocal = false,
+            ),
+        )
+        assertTrue(
+            computeBtPlaybackNetworkBlocked(
+                offlineQueueEnabled = false,
+                hasOsNetwork = true,
+                serverReachable = true,
+                cellularHardLocal = true,
+            ),
+        )
+        assertTrue(
+            computeBtPlaybackNetworkBlocked(
+                offlineQueueEnabled = false,
+                hasOsNetwork = true,
+                serverReachable = false,
+                cellularHardLocal = false,
+            ),
+        )
+    }
+
+    @Test
     fun `error auto-skip resumes playback after seeking to next track`() {
         // SKIP_NEXT contract: seekToNextMediaItem() positions the next source but
         // does NOT resume — the handler must set playWhenReady=true and prepare(),

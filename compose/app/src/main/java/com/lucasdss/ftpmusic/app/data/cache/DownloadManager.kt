@@ -197,8 +197,16 @@ class DownloadManager @Inject constructor(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun workerLoop() {
         while (isRunning) {
-            // Offline / cellular LOCAL_ONLY: no download bytes (ADR-0105).
-            if (offlineModeManager.isQueueEnabled() || NetworkPolicyState.isCellularHardLocal()) {
+            // Refresh transport each tick — stale wifiOrEthernet must not leak pri0
+            // bytes on cellular LOCAL_ONLY (ADR-0105/0106).
+            try {
+                NetworkPolicyState.updateTransport(connectivity)
+            } catch (_: Exception) {
+                // Unit tests / missing ConnectivityManager — keep last snapshot.
+            }
+            // Offline / cellular LOCAL_ONLY: no download bytes.
+            // isOfflineEnabled is mock-friendly (isQueueEnabled aliases it on the real class).
+            if (offlineModeManager.isOfflineEnabled() || NetworkPolicyState.isCellularHardLocal()) {
                 delay(1000)
                 continue
             }
@@ -240,7 +248,7 @@ class DownloadManager @Inject constructor(
 
     private fun checkConstraints(): Boolean {
         // Software offline mode blocks all downloads — local-first contract.
-        if (offlineModeManager.isQueueEnabled()) return false
+        if (offlineModeManager.isOfflineEnabled()) return false
         if (NetworkPolicyState.isCellularHardLocal()) return false
         try {
             val net = connectivity.activeNetwork ?: return false

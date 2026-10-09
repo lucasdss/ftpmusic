@@ -30,9 +30,9 @@ Field report on Android 17 with Bluetooth resume **Selected + allowlist filled**
 3. **Notif permission denied** — log loud when `areNotificationsEnabled` is false;
    still seat MediaSession when FGS succeeds so HU Play → `onPlaybackResumption`.
 4. **Off-LAN BT seat** — before play/WIU, if offline / no OS net / server
-   unreachable, seek to first fully-cached index at/after current
-   (`resolveOfflineStartIndex`). If none, do not start doomed playback; post
-   offline hint notification.
+   unreachable / cellular LOCAL_ONLY (ADR-0106), seek to first fully-cached
+   index at/after current then wrap (`resolveOfflineStartIndex`). If none, do
+   not start doomed playback; post offline hint notification.
 5. Keep ADR-0088 A17 gate: no silent-only background `play()` on API ≥ 37.
 
 ## Consequences

@@ -109,8 +109,9 @@ internal fun findNextCachedIndex(
 }
 
 /**
- * ADR-0101: BT/offline seat — first fully-cached index at or after [fromIndex]
- * (includes current). Skips radio. Null when none playable from cache.
+ * ADR-0101/0106: BT/offline seat — prefer fully-cached index at or after
+ * [fromIndex] (includes current), then wrap before [fromIndex]. Skips radio.
+ * Null when none playable from cache.
  */
 internal fun resolveOfflineStartIndex(
     fromIndex: Int,
@@ -118,14 +119,27 @@ internal fun resolveOfflineStartIndex(
     mediaIdAt: (Int) -> String?,
     isCached: (String) -> Boolean,
 ): Int? {
-    val start = fromIndex.coerceAtLeast(0)
-    for (i in start until mediaItemCount) {
+    if (mediaItemCount <= 0) return null
+    val start = fromIndex.coerceIn(0, mediaItemCount - 1)
+    for (offset in 0 until mediaItemCount) {
+        val i = (start + offset) % mediaItemCount
         val id = mediaIdAt(i) ?: continue
         if (id.startsWith("radio:")) continue
         if (isCached(id)) return i
     }
     return null
 }
+
+/**
+ * ADR-0101/0106: same gates as [OfflineAwareHttpDataSource] open path —
+ * offline mode, no OS net, server unreachable, or cellular LOCAL_ONLY.
+ */
+internal fun computeBtPlaybackNetworkBlocked(
+    offlineQueueEnabled: Boolean,
+    hasOsNetwork: Boolean,
+    serverReachable: Boolean,
+    cellularHardLocal: Boolean,
+): Boolean = offlineQueueEnabled || !hasOsNetwork || !serverReachable || cellularHardLocal
 
 /**
  * User-facing message when a manual Cast connect times out (no session events
@@ -2072,14 +2086,14 @@ class MediaService : MediaLibraryService() {
         }
     }
 
-    /** Offline / no OS net / server unreachable — same gates as OfflineAwareHttpDataSource. */
+    /** Offline / no OS net / unreachable / cellular hard-local — OfflineAwareHttpDataSource gates. */
     @VisibleForTesting
-    internal fun isBtPlaybackNetworkBlocked(): Boolean {
-        if (offlineModeManager.isQueueEnabled()) return true
-        if (!com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.hasOsNetwork.value) return true
-        if (!com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value) return true
-        return false
-    }
+    internal fun isBtPlaybackNetworkBlocked(): Boolean = computeBtPlaybackNetworkBlocked(
+        offlineQueueEnabled = offlineModeManager.isQueueEnabled(),
+        hasOsNetwork = com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.hasOsNetwork.value,
+        serverReachable = com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value,
+        cellularHardLocal = com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.isCellularHardLocal(),
+    )
 
     /**
      * ADR-0071/0088: when car-BT resume is pending and a player already has media,

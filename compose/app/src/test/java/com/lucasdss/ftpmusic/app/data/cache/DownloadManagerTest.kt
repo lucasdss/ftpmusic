@@ -283,6 +283,45 @@ class DownloadManagerTest {
     }
 
     @Test
+    fun `worker skips priority-0 on cellular LOCAL_ONLY even if wifiOrEthernet stale true`() {
+        val offline = mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true)
+        every { offline.isOfflineEnabled() } returns false
+        every { offline.isQueueEnabled() } returns false
+        val cm = mockk<android.net.ConnectivityManager>(relaxed = true)
+        val net = mockk<android.net.Network>(relaxed = true)
+        val caps = mockk<android.net.NetworkCapabilities>(relaxed = true)
+        every { context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) } returns cm
+        every { cm.activeNetwork } returns net
+        every { cm.getNetworkCapabilities(net) } returns caps
+        every { caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) } returns true
+        every { caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) } returns false
+        every { caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) } returns false
+        NetworkPolicyState.resetForTests(
+            policy = CellularMediaPolicy.LOCAL_ONLY,
+            wifiOrEthernet = true,
+        )
+        com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.resetForTests(true)
+        val mgr = DownloadManager(dao, cacheService, offline, context)
+        every { cacheService.tempDirectory } returns File(System.getProperty("java.io.tmpdir"))
+        coEvery { dao.getNextPendingByPriority(0) } returns CacheQueueItemEntity(
+            id = 97,
+            trackId = "cell-urgent",
+            remoteUrl = "http://x",
+            priority = 0,
+        )
+
+        try {
+            mgr.start()
+            Thread.sleep(700)
+        } finally {
+            mgr.stop()
+            NetworkPolicyState.resetForTests()
+        }
+
+        coVerify(exactly = 0) { dao.updateStatus(any(), "processing") }
+    }
+
+    @Test
     fun `worker processes urgent priority-0 items when online`() {
         val offline = mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true)
         every { offline.isOfflineEnabled() } returns false

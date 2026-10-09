@@ -44,12 +44,13 @@ class ConnectivityNetworkWatcherTest {
         cbSlot.captured.onAvailable(network)
         assertEquals(1, available)
 
-        val capsWithInternet = mockk<NetworkCapabilities>()
+        val capsWithInternet = mockk<NetworkCapabilities>(relaxed = true)
         every { capsWithInternet.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } returns true
+        every { capsWithInternet.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) } returns true
         cbSlot.captured.onCapabilitiesChanged(network, capsWithInternet)
         assertEquals(2, available)
 
-        val capsNoInternet = mockk<NetworkCapabilities>()
+        val capsNoInternet = mockk<NetworkCapabilities>(relaxed = true)
         every { capsNoInternet.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } returns false
         cbSlot.captured.onCapabilitiesChanged(network, capsNoInternet)
         assertEquals(1, lost)
@@ -70,8 +71,11 @@ class ConnectivityNetworkWatcherTest {
         val cm = mockk<ConnectivityManager>(relaxed = true)
         val wifi = mockk<Network>(relaxed = true)
         val cell = mockk<Network>(relaxed = true)
-        val cellCaps = mockk<NetworkCapabilities>()
+        val cellCaps = mockk<NetworkCapabilities>(relaxed = true)
         every { cellCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } returns true
+        every { cellCaps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) } returns false
+        every { cellCaps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) } returns false
+        every { cellCaps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) } returns true
         every { cm.activeNetwork } returns null andThen cell
         every { cm.getNetworkCapabilities(cell) } returns cellCaps
 
@@ -93,7 +97,7 @@ class ConnectivityNetworkWatcherTest {
         assertEquals(0, lost)
 
         // Caps lose INTERNET on this iface but activeNetwork still has it
-        val noInternet = mockk<NetworkCapabilities>()
+        val noInternet = mockk<NetworkCapabilities>(relaxed = true)
         every { noInternet.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } returns false
         cbSlot.captured.onCapabilitiesChanged(wifi, noInternet)
         assertEquals(2, available)

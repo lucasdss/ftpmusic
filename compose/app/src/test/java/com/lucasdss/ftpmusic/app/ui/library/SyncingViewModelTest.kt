@@ -409,19 +409,23 @@ class SyncingViewModelTest {
     }
 
     @Test
-    fun `user-triggered handles null job from syncNowAsync gracefully`() = runTest(testDispatcher) {
+    fun `user-triggered handles null job from syncNowAsync without hanging`() = runTest(testDispatcher) {
         coEvery { metadataDao.albumCount() } returns 42
         coEvery { genreMixDao.getTopGenres() } returns emptyList()
+        coEvery { dailyMixRepository.getAll() } returns emptyList()
         // isRunning=false so both status.first { } calls resolve immediately
-        val flow = MutableStateFlow(SyncStatus(phase = "complete", isRunning = false))
+        val flow = MutableStateFlow(SyncStatus(phase = "idle", isRunning = false))
         every { metadataSyncWorker.status } returns flow
         every { metadataSyncWorker.syncNowAsync(forceTrackResync = true) } returns null
+        every { metadataSyncWorker.syncNowAsync(forceTrackResync = true, allowCellularOverride = any()) } returns null
 
         val viewModel = createViewModel()
         viewModel.startSync(userTriggered = true)
         advanceUntilIdle()
 
-        assertFalse("isError must be false when existing sync completes", viewModel.isError.value)
+        // ADR-0106: CAS/policy skip must not leave SyncingScreen hung.
+        assertTrue("isDone must be true when force sync cannot start", viewModel.isDone.value)
+        assertTrue("isError must be true when force sync cannot start", viewModel.isError.value)
         cleanup(viewModel)
     }
 

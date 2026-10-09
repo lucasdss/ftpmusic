@@ -123,6 +123,10 @@ class NetworkPolicyHolder @Inject constructor(
         val legacy = storage.get(SecureStorage.KEY_DOWNLOAD_MOBILE_DATA)?.toBooleanStrictOrNull()
         val migrated = CellularMediaPolicy.fromLegacyDownloadMobileData(legacy ?: true)
         storage.put(SecureStorage.KEY_CELLULAR_MEDIA_POLICY, migrated.storageKey)
+        // Drop legacy key so a wiped new-key cannot re-migrate from a stale boolean.
+        if (legacy != null) {
+            storage.remove(SecureStorage.KEY_DOWNLOAD_MOBILE_DATA)
+        }
         return migrated
     }
 }
