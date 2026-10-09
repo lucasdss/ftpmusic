@@ -726,7 +726,13 @@ fun FtpmusicNavHost() {
                         onCustomMixes = { navController.navigate("customMixes") },
                         onDownloads = { navController.navigate("downloads") },
                         onProfile = { navController.navigate("profile") },
+                        onTypography = { navController.navigate("settings/typography") },
                         onServerSettingsSaved = { /* saved, nothing to do */ },
+                    )
+                }
+                composable("settings/typography") {
+                    com.lucasdss.ftpmusic.app.ui.settings.TypographySettingsScreen(
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable("downloads") {

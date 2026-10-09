@@ -19,6 +19,7 @@ import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.CaptionFontPreset
 import com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias
 import com.lucasdss.ftpmusic.app.ui.TypographyPrefs
+import com.lucasdss.ftpmusic.app.ui.UiDensityPreset
 import com.lucasdss.ftpmusic.app.ui.UiFontPreset
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -315,6 +316,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun loadTypographyPrefs(): TypographyPrefs = TypographyPrefs(
+        density = UiDensityPreset.fromStorage(storage.get(SecureStorage.KEY_TYPO_DENSITY)),
         headingScale = TypographyPrefs.parseScale(storage.get(SecureStorage.KEY_TYPO_HEADING_SCALE)),
         bodyScale = TypographyPrefs.parseScale(storage.get(SecureStorage.KEY_TYPO_BODY_SCALE)),
         labelScale = TypographyPrefs.parseScale(storage.get(SecureStorage.KEY_TYPO_LABEL_SCALE)),
@@ -325,6 +327,7 @@ class SettingsViewModel @Inject constructor(
 
     private fun persistTypographyPrefs(prefs: TypographyPrefs) {
         val clamped = prefs.clamped()
+        storage.put(SecureStorage.KEY_TYPO_DENSITY, clamped.density.name)
         storage.put(SecureStorage.KEY_TYPO_HEADING_SCALE, clamped.headingScale.toString())
         storage.put(SecureStorage.KEY_TYPO_BODY_SCALE, clamped.bodyScale.toString())
         storage.put(SecureStorage.KEY_TYPO_LABEL_SCALE, clamped.labelScale.toString())
@@ -336,6 +339,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setTypographyPrefs(prefs: TypographyPrefs) {
         persistTypographyPrefs(prefs)
+    }
+
+    fun setDensity(preset: UiDensityPreset) {
+        persistTypographyPrefs(_state.value.typographyPrefs.copy(density = preset))
     }
 
     fun setHeadingScale(scale: Float) {

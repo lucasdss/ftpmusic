@@ -550,12 +550,23 @@ class SettingsViewModelTest {
     @Test
     fun `typography prefs default to brand defaults`() {
         val prefs = viewModel.state.value.typographyPrefs
+        assertEquals(com.lucasdss.ftpmusic.app.ui.UiDensityPreset.Medium, prefs.density)
         assertEquals(1.0f, prefs.headingScale, 0.001f)
         assertEquals(1.0f, prefs.bodyScale, 0.001f)
         assertEquals(1.0f, prefs.labelScale, 0.001f)
         assertEquals(com.lucasdss.ftpmusic.app.ui.UiFontPreset.Outfit, prefs.uiFont)
         assertEquals(com.lucasdss.ftpmusic.app.ui.CaptionFontPreset.Inter, prefs.captionFont)
         assertEquals(com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Medium, prefs.weightBias)
+    }
+
+    @Test
+    fun `setDensity persists preset`() {
+        viewModel.setDensity(com.lucasdss.ftpmusic.app.ui.UiDensityPreset.Tiny)
+        assertEquals(
+            com.lucasdss.ftpmusic.app.ui.UiDensityPreset.Tiny,
+            viewModel.state.value.typographyPrefs.density,
+        )
+        verify { storage.put(SecureStorage.KEY_TYPO_DENSITY, "Tiny") }
     }
 
     @Test
@@ -584,16 +595,19 @@ class SettingsViewModelTest {
     @Test
     fun `resetTypographyPrefs restores defaults and persists`() {
         viewModel.setHeadingScale(1.3f)
+        viewModel.setDensity(com.lucasdss.ftpmusic.app.ui.UiDensityPreset.Bigger)
         viewModel.setUiFont(com.lucasdss.ftpmusic.app.ui.UiFontPreset.Inter)
         viewModel.resetTypographyPrefs()
         val prefs = viewModel.state.value.typographyPrefs
         assertEquals(com.lucasdss.ftpmusic.app.ui.TypographyPrefs.DEFAULT, prefs)
+        verify { storage.put(SecureStorage.KEY_TYPO_DENSITY, "Medium") }
         verify { storage.put(SecureStorage.KEY_TYPO_HEADING_SCALE, "1.0") }
         verify { storage.put(SecureStorage.KEY_TYPO_UI_FONT, "Outfit") }
     }
 
     @Test
     fun `stored typography prefs restored on init`() {
+        every { storage.get(SecureStorage.KEY_TYPO_DENSITY) } returns "Big"
         every { storage.get(SecureStorage.KEY_TYPO_HEADING_SCALE) } returns "1.15"
         every { storage.get(SecureStorage.KEY_TYPO_BODY_SCALE) } returns "0.9"
         every { storage.get(SecureStorage.KEY_TYPO_LABEL_SCALE) } returns "1.2"
@@ -602,6 +616,7 @@ class SettingsViewModelTest {
         every { storage.get(SecureStorage.KEY_TYPO_WEIGHT_BIAS) } returns "Regular"
         val vm = createViewModel()
         val prefs = vm.state.value.typographyPrefs
+        assertEquals(com.lucasdss.ftpmusic.app.ui.UiDensityPreset.Big, prefs.density)
         assertEquals(1.15f, prefs.headingScale, 0.001f)
         assertEquals(0.9f, prefs.bodyScale, 0.001f)
         assertEquals(1.2f, prefs.labelScale, 0.001f)
@@ -612,11 +627,13 @@ class SettingsViewModelTest {
 
     @Test
     fun `corrupt typography prefs fall back to defaults on init`() {
+        every { storage.get(SecureStorage.KEY_TYPO_DENSITY) } returns "Huge"
         every { storage.get(SecureStorage.KEY_TYPO_HEADING_SCALE) } returns "nope"
         every { storage.get(SecureStorage.KEY_TYPO_UI_FONT) } returns "ComicSans"
         every { storage.get(SecureStorage.KEY_TYPO_WEIGHT_BIAS) } returns "Heavy"
         val vm = createViewModel()
         val prefs = vm.state.value.typographyPrefs
+        assertEquals(com.lucasdss.ftpmusic.app.ui.UiDensityPreset.Medium, prefs.density)
         assertEquals(1.0f, prefs.headingScale, 0.001f)
         assertEquals(com.lucasdss.ftpmusic.app.ui.UiFontPreset.Outfit, prefs.uiFont)
         assertEquals(com.lucasdss.ftpmusic.app.ui.PrimaryWeightBias.Medium, prefs.weightBias)

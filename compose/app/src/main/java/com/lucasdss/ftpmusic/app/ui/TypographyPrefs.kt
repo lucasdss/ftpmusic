@@ -5,13 +5,48 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.font.FontWeight
 
 /**
- * User typography preferences (ADR-0099). Role scales multiply width-adaptive
- * [asp] / [buildFtpTypography] bases; system fontScale still applies via `.sp`.
+ * User typography preferences (ADR-0099 / ADR-0103). Role scales multiply
+ * width-adaptive [asp] / [buildFtpTypography] bases; [UiDensityPreset] also
+ * scales [adp] (icons/art/spacing). System fontScale still applies via `.sp`.
  */
 enum class TextRole {
     Heading,
     Body,
     Label,
+}
+
+/** Master UI density ladder — Tiny…Bigger (ADR-0103). */
+enum class UiDensityPreset {
+    Tiny,
+    Small,
+    Medium,
+    Big,
+    Bigger,
+    ;
+
+    /** Multiplier for [adp] / [asp] / M3 sizes (on top of width factor). */
+    val scale: Float
+        get() = when (this) {
+            Tiny -> 0.80f
+            Small -> 0.90f
+            Medium -> 1.0f
+            Big -> 1.15f
+            Bigger -> 1.30f
+        }
+
+    val label: String
+        get() = when (this) {
+            Tiny -> "Tiny"
+            Small -> "Small"
+            Medium -> "Medium"
+            Big -> "Big"
+            Bigger -> "Bigger"
+        }
+
+    companion object {
+        fun fromStorage(raw: String?): UiDensityPreset =
+            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: Medium
+    }
 }
 
 enum class UiFontPreset {
@@ -57,6 +92,7 @@ enum class PrimaryWeightBias {
 }
 
 data class TypographyPrefs(
+    val density: UiDensityPreset = UiDensityPreset.Medium,
     val headingScale: Float = DEFAULT_SCALE,
     val bodyScale: Float = DEFAULT_SCALE,
     val labelScale: Float = DEFAULT_SCALE,

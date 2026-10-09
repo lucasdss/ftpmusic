@@ -126,4 +126,33 @@ class TypographyPolicyTest {
         assertEquals(PrimaryWeightBias.Medium, PrimaryWeightBias.fromStorage(null))
         assertEquals(PrimaryWeightBias.Regular, PrimaryWeightBias.fromStorage("regular"))
     }
+
+    @Test
+    fun `density ladder scales and combinedFactor`() {
+        assertEquals(0.80f, UiDensityPreset.Tiny.scale, 0.001f)
+        assertEquals(0.90f, UiDensityPreset.Small.scale, 0.001f)
+        assertEquals(1.0f, UiDensityPreset.Medium.scale, 0.001f)
+        assertEquals(1.15f, UiDensityPreset.Big.scale, 0.001f)
+        assertEquals(1.30f, UiDensityPreset.Bigger.scale, 0.001f)
+        assertEquals(UiDensityPreset.Medium, UiDensityPreset.fromStorage(null))
+        assertEquals(UiDensityPreset.Tiny, UiDensityPreset.fromStorage("tiny"))
+        assertEquals(UiDensityPreset.Medium, UiDensityPreset.fromStorage("nope"))
+        assertEquals(0.88f, AdaptiveScale.combinedFactor(1.1f, 0.80f), 0.001f)
+    }
+
+    @Test
+    fun `buildFtpTypography applies density and role scales`() {
+        val prefs = TypographyPrefs(
+            density = UiDensityPreset.Tiny,
+            headingScale = 1.0f,
+            bodyScale = 1.0f,
+            labelScale = 1.0f,
+        )
+        val typography = buildFtpTypography(FontFamily.Default, FontFamily.Default, 1.0f, prefs)
+        assertEquals(
+            TypographyPolicy.TRACK_TITLE_BASE_SP * 0.80f,
+            typography.titleMedium.fontSize.value,
+            0.001f,
+        )
+    }
 }

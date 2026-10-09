@@ -8,36 +8,44 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Adaptive design tokens that scale with screen width.
+ * Adaptive design tokens that scale with screen width and user density
+ * (ADR-0099 / ADR-0103).
  *
  * Reference width: 360dp (standard phone).
  * Width factor: **0.85–1.25×** (downscales narrow phones, caps tablets).
- * Text tokens ([asp]) use width factor × user role scale (ADR-0099) and still
- * use `.sp`, so system accessibility fontScale is honored. Constrained slots
- * use FittingText.
+ * Density: Tiny…Bigger from [LocalTypographyPrefs].
+ * Text tokens ([asp]) use width × density × role scale and still use `.sp`,
+ * so system accessibility fontScale is honored. Constrained slots use FittingText.
  */
 object AdaptiveScale {
     /** Pure width scale. Clamp [0.85 .. 1.25]. */
     fun widthFactor(screenWidthDp: Int): Float = (screenWidthDp / 360f).coerceIn(0.85f, 1.25f)
 
-    /** Screen-width scale factor for spacing/icons/text tokens. */
+    /** Pure: width × UI density (icons/art/spacing + text base). */
+    fun combinedFactor(widthFactor: Float, densityScale: Float): Float = widthFactor * densityScale
+
+    /** Screen-width × density scale for spacing/icons/art tokens. */
     @Composable
-    fun factor(): Float = widthFactor(LocalConfiguration.current.screenWidthDp)
+    fun factor(): Float {
+        val density = LocalTypographyPrefs.current.density.scale
+        return combinedFactor(widthFactor(LocalConfiguration.current.screenWidthDp), density)
+    }
 }
 
 // ── Adaptive dp / sp helpers ─────────────────────────────────────────────────
 
-/** Scale a dp value to current screen width. */
+/** Scale a dp value to current screen width and UI density. */
 @Composable
 fun adp(base: Float): Dp = (base * AdaptiveScale.factor()).dp
 
 /**
- * Scale a sp value to current screen width and optional typography role scale.
+ * Scale a sp value to width × density × typography role scale.
  * System fontScale still applies via `.sp`.
  */
 @Composable
 fun asp(base: Float, role: TextRole = TextRole.Body): TextUnit {
-    val roleScale = LocalTypographyPrefs.current.scaleFor(role)
+    val prefs = LocalTypographyPrefs.current
+    val roleScale = prefs.scaleFor(role)
     return (base * AdaptiveScale.factor() * roleScale).sp
 }
 

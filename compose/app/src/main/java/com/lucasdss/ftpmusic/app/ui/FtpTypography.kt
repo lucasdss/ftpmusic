@@ -29,8 +29,8 @@ fun ftpTypography(): Typography {
 }
 
 /**
- * Pure builder for tests — [widthFactor] mirrors [AdaptiveScale.factor] /
- * [AdaptiveScale.widthFactor]. Role scales from [prefs] multiply sizes.
+ * Pure builder for tests — [widthFactor] mirrors [AdaptiveScale.widthFactor].
+ * Density + role scales from [prefs] multiply sizes (ADR-0103).
  * Line heights use the same factor as [asp] so ratios stay stable.
  */
 fun buildFtpTypography(
@@ -39,10 +39,11 @@ fun buildFtpTypography(
     widthFactor: Float,
     prefs: TypographyPrefs = TypographyPrefs.DEFAULT,
 ): Typography {
-    fun sz(base: Float, role: TextRole): TextUnit = (base * widthFactor * prefs.scaleFor(role)).sp
+    val density = prefs.density.scale
+    fun sz(base: Float, role: TextRole): TextUnit = (base * widthFactor * density * prefs.scaleFor(role)).sp
 
     fun lh(fontBase: Float, role: TextRole): TextUnit =
-        (fontBase * TypographyPolicy.LINE_HEIGHT_MULT * widthFactor * prefs.scaleFor(role)).sp
+        (fontBase * TypographyPolicy.LINE_HEIGHT_MULT * widthFactor * density * prefs.scaleFor(role)).sp
 
     val primaryWeight = prefs.weightBias.toFontWeight()
 

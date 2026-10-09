@@ -51,6 +51,7 @@ fun SettingsScreen(
     onServerSettingsSaved: () -> Unit = {},
     onCustomMixes: () -> Unit = {},
     onDownloads: () -> Unit = {},
+    onTypography: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -603,9 +604,36 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // ═══ Appearance section ═══
+            // ═══ Appearance section (ADR-0103 typography nested page) ═══
             SectionLabel("APPEARANCE")
             SectionCard {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onTypography() }
+                        .padding(16.dp)
+                        .testTag("settings_typography_nav"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.TextFields, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Text & display size",
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            state.typographyPrefs.density.label +
+                                " · fonts, icons, and cover art",
+                            color = Color(0xFF888888),
+                            fontSize = textLabelM(),
+                        )
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = NavUnselected, modifier = Modifier.size(iconSmall()))
+                }
+                SectionDivider()
                 SectionToggleRow(
                     label = "Prefer iTunes album art",
                     subtitle = "Use iTunes artwork instead of Navidrome when available",
@@ -627,20 +655,6 @@ fun SettingsScreen(
                     onToggle = { viewModel.setHideNavLabels(it) },
                 )
             }
-
-            Spacer(Modifier.height(24.dp))
-
-            // ═══ Typography section (ADR-0099) ═══
-            TypographySettingsSection(
-                prefs = state.typographyPrefs,
-                onHeadingScale = { viewModel.setHeadingScale(it) },
-                onBodyScale = { viewModel.setBodyScale(it) },
-                onLabelScale = { viewModel.setLabelScale(it) },
-                onUiFont = { viewModel.setUiFont(it) },
-                onCaptionFont = { viewModel.setCaptionFont(it) },
-                onWeightBias = { viewModel.setWeightBias(it) },
-                onReset = { viewModel.resetTypographyPrefs() },
-            )
 
             Spacer(Modifier.height(24.dp))
 
@@ -1383,191 +1397,6 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun TypographySettingsSection(
-    prefs: TypographyPrefs,
-    onHeadingScale: (Float) -> Unit,
-    onBodyScale: (Float) -> Unit,
-    onLabelScale: (Float) -> Unit,
-    onUiFont: (UiFontPreset) -> Unit,
-    onCaptionFont: (CaptionFontPreset) -> Unit,
-    onWeightBias: (PrimaryWeightBias) -> Unit,
-    onReset: () -> Unit,
-) {
-    SectionLabel("TYPOGRAPHY")
-    SectionCard(Modifier.testTag("settings_typography_section")) {
-        Column(Modifier.padding(horizontal = spacingL(), vertical = spacingM())) {
-            Text(
-                "Preview",
-                color = Color(0xFF888888),
-                fontSize = textLabelM(),
-            )
-            Spacer(Modifier.height(spacingS()))
-            Text(
-                "Heading sample",
-                color = Color.White,
-                fontSize = textHeadingM(),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.testTag("settings_typography_preview_heading"),
-            )
-            Text(
-                "Body sample — track and paragraph text",
-                color = Color.White,
-                fontSize = textBodyM(),
-                fontWeight = primaryTextWeight(),
-                modifier = Modifier.testTag("settings_typography_preview_body"),
-            )
-            Text(
-                "Label sample — meta and captions",
-                color = Color(0xFF888888),
-                fontSize = textLabelM(),
-                modifier = Modifier.testTag("settings_typography_preview_label"),
-            )
-        }
-        SectionDivider()
-        TypographyScaleSlider(
-            label = "Heading size",
-            scale = prefs.headingScale,
-            testTag = "settings_typography_heading_slider",
-            onScale = onHeadingScale,
-        )
-        SectionDivider()
-        TypographyScaleSlider(
-            label = "Body size",
-            scale = prefs.bodyScale,
-            testTag = "settings_typography_body_slider",
-            onScale = onBodyScale,
-        )
-        SectionDivider()
-        TypographyScaleSlider(
-            label = "Label size",
-            scale = prefs.labelScale,
-            testTag = "settings_typography_label_slider",
-            onScale = onLabelScale,
-        )
-        SectionDivider()
-        Text(
-            "UI font",
-            color = Color.White,
-            fontSize = textHeadingS(),
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
-        )
-        UiFontPreset.entries.forEach { preset ->
-            OverwriteBehaviorOption(
-                label = preset.name,
-                subtitle = when (preset) {
-                    UiFontPreset.Outfit -> "Default brand UI face"
-                    UiFontPreset.Inter -> "Clean geometric sans"
-                    UiFontPreset.System -> "Device default sans-serif"
-                },
-                selected = prefs.uiFont == preset,
-                onClick = { onUiFont(preset) },
-            )
-        }
-        SectionDivider()
-        Text(
-            "Caption font",
-            color = Color.White,
-            fontSize = textHeadingS(),
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
-        )
-        CaptionFontPreset.entries.forEach { preset ->
-            OverwriteBehaviorOption(
-                label = preset.name,
-                subtitle = when (preset) {
-                    CaptionFontPreset.Inter -> "Default time / meta face"
-                    CaptionFontPreset.Outfit -> "Match UI face"
-                    CaptionFontPreset.System -> "Device default sans-serif"
-                },
-                selected = prefs.captionFont == preset,
-                onClick = { onCaptionFont(preset) },
-            )
-        }
-        SectionDivider()
-        Text(
-            "Primary weight",
-            color = Color.White,
-            fontSize = textHeadingS(),
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
-        )
-        PrimaryWeightBias.entries.forEach { bias ->
-            OverwriteBehaviorOption(
-                label = bias.name,
-                subtitle = when (bias) {
-                    PrimaryWeightBias.Regular -> "Lighter track titles"
-                    PrimaryWeightBias.Medium -> "Default track title weight"
-                    PrimaryWeightBias.Bold -> "Heavier track titles"
-                },
-                selected = prefs.weightBias == bias,
-                onClick = { onWeightBias(bias) },
-            )
-        }
-        SectionDivider()
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = 48.dp)
-                .clickable(onClick = onReset)
-                .padding(horizontal = spacingL(), vertical = spacingM())
-                .testTag("settings_typography_reset"),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "Reset typography defaults",
-                color = BrandTeal,
-                fontSize = textHeadingS(),
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TypographyScaleSlider(label: String, scale: Float, testTag: String, onScale: (Float) -> Unit) {
-    var local by remember(scale) { mutableStateOf(scale) }
-    val percent = ((local * 100f).toInt())
-    Column(Modifier.padding(horizontal = spacingL(), vertical = spacingS())) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                label,
-                color = Color.White,
-                fontSize = textHeadingS(),
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                "$percent%",
-                color = Color(0xFF888888),
-                fontSize = textLabelM(),
-            )
-        }
-        Slider(
-            value = local,
-            onValueChange = {
-                local = TypographyPrefs.clampScale(it)
-            },
-            onValueChangeFinished = { onScale(local) },
-            valueRange = TypographyPrefs.SCALE_MIN..TypographyPrefs.SCALE_MAX,
-            steps = (
-                ((TypographyPrefs.SCALE_MAX - TypographyPrefs.SCALE_MIN) / TypographyPrefs.SCALE_STEP).toInt() - 1
-                ).coerceAtLeast(0),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(testTag),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = BrandTeal,
-                inactiveTrackColor = Color.White.copy(alpha = 0.2f),
-            ),
-        )
-    }
-}
-
-@Composable
 private fun settingsTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Color.White,
     unfocusedTextColor = Color.White,
@@ -1581,7 +1410,7 @@ private fun settingsTextFieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-private fun SectionLabel(title: String) {
+internal fun SectionLabel(title: String) {
     Text(
         title.uppercase(),
         color = Color(0xFF666666),
@@ -1592,7 +1421,7 @@ private fun SectionLabel(title: String) {
 }
 
 @Composable
-private fun SectionCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun SectionCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier.clip(RoundedCornerShape(16.dp)).background(Surface),
         content = content,
@@ -1664,12 +1493,12 @@ private fun SectionToggleRow(label: String, subtitle: String, checked: Boolean, 
 }
 
 @Composable
-private fun SectionDivider() {
+internal fun SectionDivider() {
     Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF222222)))
 }
 
 @Composable
-private fun OverwriteBehaviorOption(label: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
+internal fun OverwriteBehaviorOption(label: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = spacingL(), vertical = spacingM()),
         verticalAlignment = Alignment.CenterVertically,
