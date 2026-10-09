@@ -712,10 +712,10 @@ private fun GenreMixCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Clip art Box only — Column clip cut title first glyph against cornerM arc.
     Column(
         modifier
             .width(albumCardWidth())
-            .clip(RoundedCornerShape(cornerM()))
             .clickable { onClick() },
     ) {
         // Single primary cover on Home LazyRow — 4-tile montage binds 4×
