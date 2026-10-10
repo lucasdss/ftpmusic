@@ -115,6 +115,50 @@ class MetadataSyncWorkerTest {
         coVerify(exactly = 0) {
             api.getAlbumList2(type = "alphabeticalByName", size = any(), offset = any(), auth = any())
         }
+        verify {
+            prefsEditor.putString(HomeRecentCache.PREF_HOME_RECENT_IDS, "al-new")
+        }
+        verify {
+            prefsEditor.putLong(HomeRecentCache.PREF_HOME_RECENT_FETCHED_MS, any())
+        }
+    }
+
+    @Test
+    fun `syncAlbums FULL fetches newest-10 for home recent snapshot`() = runTest {
+        val alphaPage = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to listOf(
+                        mapOf("id" to "al-a", "name" to "Alpha", "artist" to "A", "songCount" to 1),
+                    ),
+                ),
+            ),
+        )
+        val newestPage = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to listOf(
+                        mapOf("id" to "al-new", "name" to "Newest", "artist" to "N", "songCount" to 2),
+                    ),
+                ),
+            ),
+        )
+        coEvery {
+            api.getAlbumList2(type = "alphabeticalByName", size = 500, offset = 0, auth = any())
+        } returns alphaPage
+        coEvery {
+            api.getAlbumList2(type = "newest", size = 10, offset = 0, auth = any())
+        } returns newestPage
+        coEvery { metadataDao.albumCount() } returns 1
+
+        worker.syncAlbums(LibrarySyncMode.FULL)
+
+        coVerify { metadataDao.upsertAlbumsPreserveEnrich(match { it.any { a -> a.id == "al-new" } }) }
+        verify {
+            prefsEditor.putString(HomeRecentCache.PREF_HOME_RECENT_IDS, "al-new")
+        }
     }
 
     @Test

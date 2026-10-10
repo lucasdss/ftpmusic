@@ -13,6 +13,8 @@ import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreDao
 import com.lucasdss.ftpmusic.app.data.db.GenreEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
+import com.lucasdss.ftpmusic.app.data.db.HomeRecentCache
+import com.lucasdss.ftpmusic.app.data.db.LibrarySyncMode
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeDao
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeEntity
@@ -274,10 +276,17 @@ class LibraryViewModel @Inject constructor(
     private var alphaAlbums: List<Album> = emptyList()
     private var lastAlphaSync: Long = 0
 
+    /**
+     * Albums-tab windowed alpha browse owns `_state.albums` (ADR-0107 hard-fix).
+     * While true, [loadAlbums] must not publish a full-catalog dump into browse state.
+     */
+    @Volatile private var alphaBrowseActive = false
+
     /** Windowed alpha browse (Pass 6) — Compose holds pages, not full catalog. */
     private var alphaBrowseOffset = 0
     @Volatile private var alphaBrowseHasMore = true
-    private val alphaBrowseLoading = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var alphaBrowseGen = 0
+    private val alphaBrowseMutex = Mutex()
 
     init {
         if (username().isNotEmpty()) {
@@ -306,7 +315,7 @@ class LibraryViewModel @Inject constructor(
                     if (was == null || was == localOnly) return@collect
                     if (username().isNotEmpty()) {
                         loadArtists()
-                        loadAlbums()
+                        if (alphaBrowseActive) loadAlphaAlbums() else loadAlbums()
                     }
                     loadGenres()
                 }
@@ -1283,27 +1292,8 @@ class LibraryViewModel @Inject constructor(
     }
 
     private suspend fun loadRandomAlbumsInternal() {
-        try {
-            val auth = authHelper.buildAuthParams(username(), password())
-            val response = api.getAlbumList2("newest", 10, 0, auth)
-            val sr = response["subsonic-response"] as? Map<*, *>
-            val albumList = sr?.get("albumList2") as? Map<*, *>
-            val albums = (albumList?.get("album") as? List<*>)?.mapNotNull { a ->
-                val m = a as? Map<*, *> ?: return@mapNotNull null
-                Album(
-                    id = m["id"] as? String ?: return@mapNotNull null,
-                    name = m["name"] as? String ?: return@mapNotNull null,
-                    artist = m["artist"] as? String,
-                    coverArt = m["coverArt"] as? String,
-                    rating = (m["userRating"] as? Number)?.toInt(),
-                )
-            } ?: emptyList()
-            ensureCachedAlbumsForLikes(albums)
-            _state.value = _state.value.copy(randomAlbums = albums)
-            refreshAlbumDownloadStatuses(albums.map { it.id })
-        } catch (e: Exception) {
-            android.util.Log.w("ftpmusic-library", "loadRandomAlbums: ${e.message}")
-        }
+        // ADR-0109: same path as public loadRandomAlbums (Room-first + TTL).
+        loadRecentlyAddedHome()
     }
 
     fun connect(serverUrl: String, username: String, password: String) {
@@ -1400,6 +1390,11 @@ class LibraryViewModel @Inject constructor(
 
     fun loadAlbums() {
         viewModelScope.launch {
+            // Alpha window owns Albums-tab browse — never dump full catalog into state.
+            if (alphaBrowseActive) {
+                _state.value = _state.value.copy(isLoading = false, hasLoadedOnce = true)
+                return@launch
+            }
             albumOffset = 0
             alphaCatalogComplete = false
             _state.value = _state.value.copy(isLoading = true)
@@ -1448,6 +1443,12 @@ class LibraryViewModel @Inject constructor(
                         rating = (m["userRating"] as? Number)?.toInt(),
                     )
                 } ?: emptyList()
+                // Re-check: alpha may have taken ownership while we were on the network.
+                if (alphaBrowseActive) {
+                    _state.value = _state.value.copy(isLoading = false, hasLoadedOnce = true)
+                    ensureCachedAlbumsForLikes(apiAlbums)
+                    return@launch
+                }
                 // Merge: cached albums + API newest (deduplicated by ID, cache takes precedence)
                 val cachedIds = cached.map { it.id }.toSet()
                 val merged = cached.map {
@@ -1469,54 +1470,113 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun loadRandomAlbums() {
-        if (isLocalOnly()) {
-            // Offline: show cached albums (shuffled) instead of nothing
-            viewModelScope.launch {
-                try {
-                    val cached = metadataDao.getOfflineAlbums()
-                    if (cached.isNotEmpty()) {
-                        val albums = cached.shuffled().take(10).map { a ->
-                            Album(
-                                id = a.id,
-                                name = a.name,
-                                artist = a.artist,
-                                coverArt = a.coverArt,
-                                year = a.year,
-                            )
-                        }
-                        _state.value = _state.value.copy(randomAlbums = albums)
-                        refreshAlbumDownloadStatuses(albums.map { it.id })
-                    }
-                } catch (
-                    e: Exception,
-                ) {
-                    android.util.Log.w("ftpmusic-library", "loadRandomAlbums offline: ${e.message}")
+        viewModelScope.launch { loadRecentlyAddedHome() }
+    }
+
+    /**
+     * Home Recently Added (ADR-0109): paint Room snapshot first; refresh from
+     * server when TTL stale; kick DELTA when ordered ids change.
+     */
+    private suspend fun loadRecentlyAddedHome() {
+        try {
+            val previousIds = metadataSyncWorker.homeRecentIds()
+            paintHomeRecentFromSnapshot(previousIds)
+
+            if (isLocalOnly()) {
+                if (_state.value.randomAlbums.isEmpty()) {
+                    paintHomeRecentOfflineFallback()
                 }
+                return
             }
-            return
+
+            val syncHours = storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS)
+                ?.toIntOrNull()?.coerceIn(1, 24) ?: 12
+            val ttlMin = HomeRecentCache.clampTtlMinutes(
+                storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES)
+                    ?.toIntOrNull() ?: HomeRecentCache.DEFAULT_TTL_MINUTES,
+                syncHours,
+            )
+            val fetchedAt = metadataSyncWorker.homeRecentFetchedMs()
+            val stale = previousIds.isEmpty() ||
+                HomeRecentCache.isStale(fetchedAt, ttlMin)
+            if (!stale) return
+
+            val auth = authHelper.buildAuthParams(username(), password())
+            val response = withTimeoutOrNull(30_000) {
+                api.getAlbumList2("newest", HomeRecentCache.HOME_RECENT_LIMIT, 0, auth)
+            } ?: return
+            val sr = response["subsonic-response"] as? Map<*, *>
+            val albumList = sr?.get("albumList2") as? Map<*, *>
+            val albums = (albumList?.get("album") as? List<*>)?.mapNotNull { a ->
+                val m = a as? Map<*, *> ?: return@mapNotNull null
+                Album(
+                    id = m["id"] as? String ?: return@mapNotNull null,
+                    name = m["name"] as? String ?: return@mapNotNull null,
+                    artist = m["artist"] as? String,
+                    coverArt = m["coverArt"] as? String,
+                    year = (m["year"] as? Number)?.toInt(),
+                    rating = (m["userRating"] as? Number)?.toInt(),
+                )
+            } ?: emptyList()
+            if (albums.isEmpty()) return
+
+            ensureCachedAlbumsForLikes(albums)
+            val newIds = albums.map { it.id }
+            metadataSyncWorker.writeHomeRecentSnapshot(newIds)
+            _state.value = _state.value.copy(randomAlbums = albums)
+            refreshAlbumDownloadStatuses(newIds)
+
+            if (newIds != previousIds) {
+                metadataSyncWorker.syncNowAsync(
+                    forceTrackResync = false,
+                    mode = LibrarySyncMode.DELTA,
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "loadRecentlyAddedHome: ${e.message}")
         }
-        viewModelScope.launch {
-            try {
-                val auth = authHelper.buildAuthParams(username(), password())
-                val response = api.getAlbumList2("newest", 10, 0, auth)
-                val sr = response["subsonic-response"] as? Map<*, *>
-                val albumList = sr?.get("albumList2") as? Map<*, *>
-                val albums = (albumList?.get("album") as? List<*>)?.mapNotNull { a ->
-                    val m = a as? Map<*, *> ?: return@mapNotNull null
-                    Album(
-                        id = m["id"] as? String ?: return@mapNotNull null,
-                        name = m["name"] as? String ?: return@mapNotNull null,
-                        artist = m["artist"] as? String,
-                        coverArt = m["coverArt"] as? String,
-                        rating = (m["userRating"] as? Number)?.toInt(),
-                    )
-                } ?: emptyList()
-                ensureCachedAlbumsForLikes(albums)
+    }
+
+    private suspend fun paintHomeRecentFromSnapshot(ids: List<String>) {
+        if (ids.isEmpty()) return
+        try {
+            val byId = metadataDao.getAlbumsByIds(ids).associateBy { it.id }
+            val albums = ids.mapNotNull { id ->
+                val a = byId[id] ?: return@mapNotNull null
+                Album(
+                    id = a.id,
+                    name = a.name,
+                    artist = a.artist,
+                    coverArt = a.coverArt,
+                    year = a.year,
+                )
+            }
+            if (albums.isNotEmpty()) {
                 _state.value = _state.value.copy(randomAlbums = albums)
                 refreshAlbumDownloadStatuses(albums.map { it.id })
-            } catch (e: Exception) {
-                android.util.Log.w("ftpmusic-library", "loadRandomAlbums: ${e.message}")
             }
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "paintHomeRecent: ${e.message}")
+        }
+    }
+
+    private suspend fun paintHomeRecentOfflineFallback() {
+        try {
+            val cached = metadataDao.getOfflineAlbums()
+            if (cached.isEmpty()) return
+            val albums = cached.shuffled().take(HomeRecentCache.HOME_RECENT_LIMIT).map { a ->
+                Album(
+                    id = a.id,
+                    name = a.name,
+                    artist = a.artist,
+                    coverArt = a.coverArt,
+                    year = a.year,
+                )
+            }
+            _state.value = _state.value.copy(randomAlbums = albums)
+            refreshAlbumDownloadStatuses(albums.map { it.id })
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "loadRandomAlbums offline: ${e.message}")
         }
     }
 
@@ -1611,9 +1671,9 @@ class LibraryViewModel @Inject constructor(
 
     fun loadMoreAlbums() {
         viewModelScope.launch {
-            // Albums tab uses loadAlphaAlbums (full catalog). Appending
-            // newest-offset pages would scramble sort and jank the grid.
-            if (alphaCatalogComplete) return@launch
+            // Albums tab uses windowed loadAlphaAlbums. Appending newest-offset
+            // pages would scramble sort and jank the grid.
+            if (alphaBrowseActive || alphaCatalogComplete) return@launch
             if (isLocalOnly()) return@launch
             if (isLoadingMore) return@launch
             isLoadingMore = true
@@ -1717,20 +1777,29 @@ class LibraryViewModel @Inject constructor(
     }
 
     /**
-     * Load albums alphabetically in pages (ADR-0107 Pass 6).
+     * Load albums alphabetically in pages (ADR-0107 Pass 6 / hard-fix).
      * DB-first first page into Compose; background API refreshes Room then
      * reloads the currently visible window (not the full catalog into state).
      */
     fun loadAlphaAlbums() {
+        val gen = ++alphaBrowseGen
+        alphaBrowseActive = true
+        alphaCatalogComplete = true
         viewModelScope.launch {
-            alphaCatalogComplete = true
-            alphaBrowseOffset = 0
-            alphaBrowseHasMore = true
-            val page = fetchAlphaBrowsePage(limit = LibraryPaging.ALPHA_PAGE_SIZE, offset = 0)
-            alphaBrowseOffset = page.size
-            alphaBrowseHasMore = LibraryPaging.hasMore(page.size)
-            if (page.isNotEmpty()) {
-                _state.value = _state.value.copy(albums = page)
+            alphaBrowseMutex.withLock {
+                if (gen != alphaBrowseGen) return@withLock
+                alphaBrowseOffset = 0
+                alphaBrowseHasMore = true
+                val page = fetchAlphaBrowsePage(limit = LibraryPaging.ALPHA_PAGE_SIZE, offset = 0)
+                if (gen != alphaBrowseGen) return@withLock
+                alphaBrowseOffset = page.size
+                alphaBrowseHasMore = LibraryPaging.hasMore(page.size)
+                // Always publish — clear stale loadAlbums dump when cache empty.
+                _state.value = _state.value.copy(
+                    albums = page,
+                    isLoading = false,
+                    hasLoadedOnce = true,
+                )
             }
         }
         // Background: refresh Room from API; republish only the loaded window.
@@ -1741,6 +1810,7 @@ class LibraryViewModel @Inject constructor(
                 val allAlbums = mutableListOf<Album>()
                 var offset = 0
                 while (true) {
+                    if (gen != alphaBrowseGen) return@launch
                     val response = api.getAlbumList2("alphabeticalByName", 500, offset, auth)
                     val sr = response["subsonic-response"] as? Map<*, *>
                     if (sr?.get("status") as? String == "failed") break
@@ -1763,16 +1833,21 @@ class LibraryViewModel @Inject constructor(
                     if (batch.size < 500) break
                     offset += 500
                 }
-                if (allAlbums.isEmpty()) return@launch
+                if (allAlbums.isEmpty() || gen != alphaBrowseGen) return@launch
                 ensureCachedAlbumsForLikes(allAlbums)
-                alphaAlbums = allAlbums
-                lastAlphaSync = System.currentTimeMillis()
-                val windowSize = alphaBrowseOffset.coerceAtLeast(LibraryPaging.ALPHA_PAGE_SIZE)
-                val window = fetchAlphaBrowsePage(limit = windowSize, offset = 0)
-                alphaBrowseOffset = window.size
-                alphaBrowseHasMore = fetchAlphaBrowsePage(1, window.size).isNotEmpty()
-                if (window.isNotEmpty()) {
-                    _state.value = _state.value.copy(albums = window)
+                alphaBrowseMutex.withLock {
+                    if (gen != alphaBrowseGen) return@withLock
+                    alphaAlbums = allAlbums
+                    lastAlphaSync = System.currentTimeMillis()
+                    val windowSize = alphaBrowseOffset.coerceAtLeast(LibraryPaging.ALPHA_PAGE_SIZE)
+                    val window = fetchAlphaBrowsePage(limit = windowSize, offset = 0)
+                    alphaBrowseOffset = window.size
+                    alphaBrowseHasMore = fetchAlphaBrowsePage(1, window.size).isNotEmpty()
+                    _state.value = _state.value.copy(
+                        albums = window,
+                        isLoading = false,
+                        hasLoadedOnce = true,
+                    )
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-library", "loadAlphaAlbums: ${e.message}")
@@ -1782,17 +1857,19 @@ class LibraryViewModel @Inject constructor(
 
     /** Append next alpha page when Library Albums grid nears the end. */
     fun loadMoreAlphaAlbums() {
-        if (!alphaBrowseHasMore) return
-        if (!alphaBrowseLoading.compareAndSet(false, true)) return
+        if (!alphaBrowseActive || !alphaBrowseHasMore) return
+        val gen = alphaBrowseGen
         viewModelScope.launch {
-            try {
+            alphaBrowseMutex.withLock {
+                if (gen != alphaBrowseGen || !alphaBrowseHasMore) return@withLock
                 val page = fetchAlphaBrowsePage(
                     limit = LibraryPaging.ALPHA_PAGE_SIZE,
                     offset = alphaBrowseOffset,
                 )
+                if (gen != alphaBrowseGen) return@withLock
                 if (page.isEmpty()) {
                     alphaBrowseHasMore = false
-                    return@launch
+                    return@withLock
                 }
                 alphaBrowseOffset += page.size
                 alphaBrowseHasMore = LibraryPaging.hasMore(page.size)
@@ -1801,8 +1878,6 @@ class LibraryViewModel @Inject constructor(
                 if (appended.isNotEmpty()) {
                     _state.value = _state.value.copy(albums = _state.value.albums + appended)
                 }
-            } finally {
-                alphaBrowseLoading.set(false)
             }
         }
     }

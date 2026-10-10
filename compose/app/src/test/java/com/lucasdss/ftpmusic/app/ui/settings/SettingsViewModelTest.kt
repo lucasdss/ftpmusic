@@ -291,6 +291,26 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setSyncIntervalHours reclamps home recent TTL`() = runTest(testDispatcher) {
+        viewModel.setHomeRecentTtlMinutes(120)
+        assertEquals(120, viewModel.state.value.homeRecentTtlMinutes)
+
+        viewModel.setSyncIntervalHours(1)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.state.value.syncIntervalHours)
+        assertEquals(60, viewModel.state.value.homeRecentTtlMinutes)
+        verify { storage.put(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES, "60") }
+    }
+
+    @Test
+    fun `setHomeRecentTtlMinutes clamps to sync interval`() {
+        viewModel.setSyncIntervalHours(2)
+        viewModel.setHomeRecentTtlMinutes(999)
+        assertEquals(120, viewModel.state.value.homeRecentTtlMinutes)
+    }
+
+    @Test
     fun `refresh loads quota from SecureStorage`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_AUDIO_CACHE_MAX_BYTES) } returns (2000L * 1024 * 1024).toString()
         every { storage.get(SecureStorage.KEY_COVER_ART_QUOTA_MB) } returns "500"

@@ -147,6 +147,8 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_COVER_ART_QUOTA_MB = "cover_art_quota_mb"
         const val KEY_AUDIO_CACHE_MAX_BYTES = "audio_cache_max_bytes"
         const val KEY_SYNC_INTERVAL_HOURS = "sync_interval_hours"
+        /** Home Recently Added refresh TTL in minutes (ADR-0109). Max = Sync Interval. */
+        const val KEY_HOME_RECENT_TTL_MINUTES = "home_recent_ttl_minutes"
         const val KEY_PREFER_ITUNES_ART = "prefer_itunes_art"
         const val KEY_LASTFM_API_KEY = "lastfm_api_key"
         const val KEY_QUEUE_OVERWRITE_BEHAVIOR = "queue_overwrite_behavior"

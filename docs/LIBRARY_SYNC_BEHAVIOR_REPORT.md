@@ -1,6 +1,6 @@
 # Library Sync Behavior Report
 
-Caveman terse. Code truth after ADR-0045 + ADR-0068 + ADR-0085 + ADR-0108.
+Caveman terse. Code truth after ADR-0045 + ADR-0068 + ADR-0085 + ADR-0108 + ADR-0109.
 
 ## Modes
 
@@ -38,8 +38,16 @@ daily-mix seed → populate `tracks` → FTS rebuild → **enqueue enrich** (asy
 | First run (`albumCount==0`) | FULL (via `syncNow()` / empty cache → all tracks pending) |
 | WorkManager Sync Interval | DELTA if last full &lt; 7d; else FULL |
 | Settings Resync | FULL + `forceTrackResync=true` |
+| Home Recently Added change (ADR-0109) | DELTA when TTL refresh sees new ordered ids |
 | Cooldown 5min | Blocks auto (not force) |
 | Offline / unreachable | Skip network sync |
+
+## Home Recently Added (ADR-0109)
+
+- Snapshot: prefs ordered ids + `fetched_at`; paint from `cached_albums`.
+- TTL default 5m; clamp **1 … Sync Interval minutes**.
+- Home open: local first; network only if stale.
+- Sync album phase also writes snapshot (DELTA reuse newest pages; FULL `newest`×10).
 
 ## WorkManager completion (ADR-0068)
 

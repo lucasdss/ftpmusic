@@ -1313,6 +1313,49 @@ fun SettingsScreen(
                     }
                 }
                 SectionDivider()
+                Row(
+                    Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.NewReleases, null, tint = Color(0xFFFFB74D), modifier = Modifier.size(iconSmall()))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Recently Added refresh",
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "Home strip rechecks server after " +
+                                com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.formatTtlLabel(
+                                    state.homeRecentTtlMinutes,
+                                ) +
+                                " (max = Sync Interval)",
+                            color = Color(0xFF888888),
+                            fontSize = textLabelM(),
+                        )
+                        val maxTtl = state.syncIntervalHours.coerceIn(1, 24) * 60
+                        Slider(
+                            value = state.homeRecentTtlMinutes.toFloat(),
+                            onValueChange = { viewModel.setHomeRecentTtlMinutes(it.toInt()) },
+                            valueRange = 1f..maxTtl.toFloat(),
+                            steps = (maxTtl - 2).coerceAtLeast(0).coerceAtMost(58),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                        )
+                    }
+                    Text(
+                        com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.formatTtlLabel(
+                            state.homeRecentTtlMinutes,
+                        ),
+                        color = BrandTeal,
+                        fontSize = textHeadingS(),
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                SectionDivider()
                 SectionToggleRow(
                     label = "Library sync on Wi-Fi only",
                     subtitle = "FULL and DELTA wait for Wi-Fi or Ethernet",

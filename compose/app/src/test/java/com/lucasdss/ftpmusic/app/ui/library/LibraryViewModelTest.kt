@@ -1,7 +1,10 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
+import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
+import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreDao
+import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
@@ -365,6 +368,8 @@ class LibraryViewModelTest {
     fun `loadRandomAlbums populates random albums`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS) } returns "12"
+        every { storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES) } returns "5"
         coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
         coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(emptyList())
 
@@ -377,42 +382,78 @@ class LibraryViewModelTest {
             ),
         )
         coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(randomMaps)
+        val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentIds() } returns emptyList()
+        every { metadataSync.homeRecentFetchedMs() } returns 0L
+        every { metadataSync.syncNowAsync(any(), any(), any()) } returns null
 
         viewModel =
             LibraryViewModel(
                 api, trackDao, genreDao, genreMixDao, playlistDao,
-                mockk(
-                    relaxed = true,
-                ),
-                mockk(
-                    relaxed = true,
-                ),
-                mockk(
-                    relaxed = true,
-                ),
-                mockk(
-                    relaxed = true,
-                ),
-                mockk(
-                    relaxed = true,
-                ),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataSync,
                 downloadManager, storage, playbackManager,
-                mockk<OfflineModeManager>(
-                    relaxed = true,
-                ),
-                mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(
-                    relaxed = true,
-                ),
-                mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(
-                    relaxed = true,
-                ),
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { it.randomAlbums.isNotEmpty() }
+        advanceUntilIdle()
 
         assertEquals(1, state.randomAlbums.size)
         assertEquals("Random Album", state.randomAlbums[0].name)
+        verify { metadataSync.writeHomeRecentSnapshot(listOf("ral-1")) }
+        verify {
+            metadataSync.syncNowAsync(
+                forceTrackResync = false,
+                mode = com.lucasdss.ftpmusic.app.data.db.LibrarySyncMode.DELTA,
+            )
+        }
+    }
+
+    @Test
+    fun `loadRandomAlbums fresh TTL skips network and delta`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS) } returns "12"
+        every { storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES) } returns "5"
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns buildAlbumListResponse(emptyList())
+        val metadataDaoLocal: CachedMetadataDao = mockk(relaxed = true)
+        coEvery { metadataDaoLocal.getAllArtists() } returns emptyList()
+        coEvery { metadataDaoLocal.getAlbumsByIds(listOf("cached-1")) } returns listOf(
+            CachedAlbumEntity(id = "cached-1", name = "Cached Recent", artist = "A", coverArt = "c"),
+        )
+        val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentIds() } returns listOf("cached-1")
+        every { metadataSync.homeRecentFetchedMs() } returns System.currentTimeMillis()
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDaoLocal,
+                metadataSync,
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        val state = viewModel.state.first { it.randomAlbums.isNotEmpty() }
+        advanceUntilIdle()
+
+        assertEquals("Cached Recent", state.randomAlbums[0].name)
+        coVerify(exactly = 0) { api.getAlbumList2("newest", 10, 0, any()) }
+        verify(exactly = 0) { metadataSync.syncNowAsync(any(), any(), any()) }
     }
 
     @Test
@@ -1125,7 +1166,7 @@ class LibraryViewModelTest {
         val hit = listOf(
             com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity(id = "a1", name = "Abbey Road", artist = "Beatles"),
         )
-        coEvery { metadataDao.getAllAlbums() } returns browse
+        coEvery { metadataDao.getAlbumsPaged(any(), any()) } returns browse
         coEvery { metadataDao.searchAlbums("Abbey") } returns hit
 
         viewModel =
@@ -1159,7 +1200,7 @@ class LibraryViewModelTest {
         assertNull(viewModel.state.value.albumSearchResults)
         assertEquals(1, viewModel.state.value.albums.size)
         assertEquals("Browse Album", viewModel.state.value.albums[0].name)
-        coVerify(exactly = 1) { metadataDao.getAllAlbums() }
+        coVerify(atLeast = 1) { metadataDao.getAlbumsPaged(any(), any()) }
     }
 
     @Test
@@ -1550,7 +1591,7 @@ class LibraryViewModelTest {
                 songCount = 10,
             ),
         )
-        coEvery { metadataDao.getAllAlbums() } returns cachedAlbums
+        coEvery { metadataDao.getAlbumsPaged(any(), any()) } returns cachedAlbums
 
         viewModel =
             LibraryViewModel(
@@ -1590,6 +1631,7 @@ class LibraryViewModelTest {
         assertEquals("Back in Black", state.albums[1].name)
         // alphaLetters scrubber removed — field stays empty default
         assertTrue(state.alphaLetters.isEmpty())
+        coVerify(atLeast = 1) { metadataDao.getAlbumsPaged(any(), any()) }
     }
 
     @Test
@@ -1605,7 +1647,7 @@ class LibraryViewModelTest {
                 songCount = 17,
             ),
         )
-        coEvery { metadataDao.getAllAlbums() } returns cachedAlbums
+        coEvery { metadataDao.getAlbumsPaged(any(), any()) } returns cachedAlbums
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns buildAlbumListResponse(emptyList())
 
         viewModel =
@@ -1638,7 +1680,7 @@ class LibraryViewModelTest {
     @Test
     fun `loadAlphaAlbums emits empty state when cache is empty`() = runTest {
         val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao = mockk(relaxed = true)
-        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+        coEvery { metadataDao.getAlbumsPaged(any(), any()) } returns emptyList()
 
         viewModel =
             LibraryViewModel(
@@ -1669,12 +1711,95 @@ class LibraryViewModelTest {
                 dailyMixRepository = dailyMixRepository,
                 ioDispatcher = testDispatcher,
             )
+        // Seed a stale dump then clear via empty alpha page.
+        viewModel.state.value // touch
         viewModel.loadAlphaAlbums()
         advanceUntilIdle()
 
         val state = viewModel.state.value
         assertEquals(0, state.albums.size)
         assertEquals(0, state.alphaLetters.size)
+    }
+
+    @Test
+    fun `loadAlbums does not stomp albums after loadAlphaAlbums`() = runTest {
+        val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao = mockk(relaxed = true)
+        val page = listOf(
+            com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity(id = "a1", name = "Alpha One", artist = "A"),
+        )
+        val dump = listOf(
+            com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity(id = "z9", name = "Dump Album", artist = "Z"),
+        )
+        coEvery { metadataDao.getAlbumsPaged(any(), any()) } returns page
+        coEvery { metadataDao.getAllAlbums() } returns dump
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDao,
+                mockk(relaxed = true),
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.loadAlphaAlbums()
+        advanceUntilIdle()
+        assertEquals("Alpha One", viewModel.state.value.albums.single().name)
+
+        viewModel.loadAlbums()
+        advanceUntilIdle()
+        assertEquals(1, viewModel.state.value.albums.size)
+        assertEquals("Alpha One", viewModel.state.value.albums.single().name)
+    }
+
+    @Test
+    fun `loadMoreAlphaAlbums appends next page`() = runTest {
+        val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao = mockk(relaxed = true)
+        val page1 = (1..LibraryPaging.ALPHA_PAGE_SIZE).map { i ->
+            com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity(
+                id = "a$i",
+                name = "Album $i",
+                artist = "A",
+            )
+        }
+        val page2 = listOf(
+            com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity(id = "a-next", name = "Next", artist = "B"),
+        )
+        coEvery { metadataDao.getAlbumsPaged(LibraryPaging.ALPHA_PAGE_SIZE, 0) } returns page1
+        coEvery {
+            metadataDao.getAlbumsPaged(LibraryPaging.ALPHA_PAGE_SIZE, LibraryPaging.ALPHA_PAGE_SIZE)
+        } returns page2
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns buildAlbumListResponse(emptyList())
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDao,
+                mockk(relaxed = true),
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.loadAlphaAlbums()
+        advanceUntilIdle()
+        assertEquals(LibraryPaging.ALPHA_PAGE_SIZE, viewModel.state.value.albums.size)
+
+        viewModel.loadMoreAlphaAlbums()
+        advanceUntilIdle()
+        assertEquals(LibraryPaging.ALPHA_PAGE_SIZE + 1, viewModel.state.value.albums.size)
+        assertEquals("Next", viewModel.state.value.albums.last().name)
     }
 
     // ── Custom Daily Mix cards (v47) ───────────────────────────────────────

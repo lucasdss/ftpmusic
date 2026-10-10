@@ -78,6 +78,8 @@ data class SettingsUiState(
     val lastSyncSkipReason: String = "",
     val isResyncing: Boolean = false,
     val syncIntervalHours: Int = 12,
+    /** Home Recently Added refresh TTL (minutes); max = syncIntervalHours * 60. */
+    val homeRecentTtlMinutes: Int = 5,
     val preferItunesArt: Boolean = false,
     val searchLyricsEnabled: Boolean = false,
     val overwriteBehavior: OverwriteBehavior = OverwriteBehavior.ASK,
@@ -154,6 +156,12 @@ class SettingsViewModel @Inject constructor(
         val resolvedContinuousPlay = savedContinuousPlay ?: true
         playbackManager.setContinuousPlayEnabled(resolvedContinuousPlay)
         val savedSyncInterval = storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS)?.toIntOrNull()
+        val syncHours = savedSyncInterval ?: 12
+        val savedHomeRecentTtl = com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.clampTtlMinutes(
+            storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES)?.toIntOrNull()
+                ?: com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.DEFAULT_TTL_MINUTES,
+            syncHours,
+        )
         val savedPreferItunesArt = storage.get(SecureStorage.KEY_PREFER_ITUNES_ART)?.toBooleanStrictOrNull() ?: false
         val rawSearchLyrics = storage.get(SecureStorage.KEY_SEARCH_LYRICS)
         val savedSearchLyrics = rawSearchLyrics?.toBooleanStrictOrNull() ?: false
@@ -186,7 +194,8 @@ class SettingsViewModel @Inject constructor(
             password = storage.get(SecureStorage.KEY_PASSWORD) ?: "",
             journalCap = resolvedJournalCap,
             continuousPlayEnabled = resolvedContinuousPlay,
-            syncIntervalHours = savedSyncInterval ?: 12,
+            syncIntervalHours = syncHours,
+            homeRecentTtlMinutes = savedHomeRecentTtl,
             preferItunesArt = savedPreferItunesArt,
             searchLyricsEnabled = savedSearchLyrics,
             overwriteBehavior = com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.fromKey(
@@ -423,10 +432,27 @@ class SettingsViewModel @Inject constructor(
 
     fun setSyncIntervalHours(hours: Int) {
         val clamped = hours.coerceIn(1, 24)
-        _state.value = _state.value.copy(syncIntervalHours = clamped)
+        val reclampedTtl = com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.clampTtlMinutes(
+            _state.value.homeRecentTtlMinutes,
+            clamped,
+        )
+        _state.value = _state.value.copy(
+            syncIntervalHours = clamped,
+            homeRecentTtlMinutes = reclampedTtl,
+        )
         storage.put(SecureStorage.KEY_SYNC_INTERVAL_HOURS, clamped.toString())
+        storage.put(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES, reclampedTtl.toString())
         // Reschedule WorkManager with new interval + sync Wi-Fi-only constraint.
         networkPolicyHolder.rescheduleMetadataSync()
+    }
+
+    fun setHomeRecentTtlMinutes(minutes: Int) {
+        val clamped = com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.clampTtlMinutes(
+            minutes,
+            _state.value.syncIntervalHours,
+        )
+        _state.value = _state.value.copy(homeRecentTtlMinutes = clamped)
+        storage.put(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES, clamped.toString())
     }
 
     fun setCustomHeaders(headers: List<Pair<String, String>>) {

@@ -167,6 +167,9 @@ class MetadataSyncWorker(
         /** Why the last syncNowAsync returned null / skipped (empty when ran). */
         const val PREF_LAST_SYNC_SKIP_REASON = "last_sync_skip_reason"
 
+        const val PREF_HOME_RECENT_IDS = HomeRecentCache.PREF_HOME_RECENT_IDS
+        const val PREF_HOME_RECENT_FETCHED_MS = HomeRecentCache.PREF_HOME_RECENT_FETCHED_MS
+
         /** Auto FULL catalog heal cadence (ADR-0045). */
         const val FULL_SYNC_INTERVAL_MS = 7L * 24 * 60 * 60 * 1000
 
@@ -664,11 +667,77 @@ class MetadataSyncWorker(
             }
             Log.d(TAG, "FULL cached ${uniqueAlbums.size} albums")
         }
+        try {
+            refreshHomeRecentAfterAlbumSync(mode, uniqueAlbums, params)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Home recent snapshot: ${e.message}")
+        }
         _status.value = _status.value.copy(
             albums = metadataDao.albumCount(),
             albumsTotal = metadataDao.albumCount(),
         )
     }
+
+    /**
+     * ADR-0109: keep Home Recently Added warm from sync.
+     * DELTA reuses newest pages; FULL fetches newest-10 (alpha list is not newest).
+     */
+    @VisibleForTesting
+    internal suspend fun refreshHomeRecentAfterAlbumSync(
+        mode: LibrarySyncMode,
+        uniqueAlbums: List<CachedAlbumEntity>,
+        params: Map<String, String>,
+    ) {
+        val recent: List<CachedAlbumEntity> = if (
+            mode == LibrarySyncMode.DELTA && uniqueAlbums.isNotEmpty()
+        ) {
+            uniqueAlbums.take(HomeRecentCache.HOME_RECENT_LIMIT)
+        } else {
+            fetchNewestAlbums(params, HomeRecentCache.HOME_RECENT_LIMIT)
+        }
+        if (recent.isEmpty()) return
+        if (mode == LibrarySyncMode.FULL) {
+            metadataDao.upsertAlbumsPreserveEnrich(recent)
+            try {
+                metadataDao.insertNewAlbumsToLedger()
+                metadataDao.refreshAlbumLedgerMetadata()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+        writeHomeRecentSnapshot(recent.map { it.id })
+    }
+
+    private suspend fun fetchNewestAlbums(
+        params: Map<String, String>,
+        size: Int,
+    ): List<CachedAlbumEntity> {
+        val response = api.getAlbumList2(
+            type = "newest",
+            size = size,
+            offset = 0,
+            auth = params,
+        )
+        val sr = response["subsonic-response"] as? Map<*, *> ?: return emptyList()
+        if (sr["status"] as? String == "failed") return emptyList()
+        val albumList = sr["albumList2"] as? Map<*, *> ?: return emptyList()
+        val albums = albumList["album"] as? List<*> ?: return emptyList()
+        return albums.mapNotNull { a ->
+            val m = a as? Map<*, *> ?: return@mapNotNull null
+            parseAlbumMap(m)
+        }.distinctBy { it.id }.take(size)
+    }
+
+    fun writeHomeRecentSnapshot(orderedIds: List<String>) {
+        HomeRecentCache.writeSnapshot(HomeRecentCache.prefs(context), orderedIds)
+    }
+
+    fun homeRecentIds(): List<String> =
+        HomeRecentCache.readIds(HomeRecentCache.prefs(context))
+
+    fun homeRecentFetchedMs(): Long =
+        HomeRecentCache.readFetchedMs(HomeRecentCache.prefs(context))
 
     private fun parseAlbumMap(m: Map<*, *>): CachedAlbumEntity? {
         val id = m["id"] as? String ?: return null
