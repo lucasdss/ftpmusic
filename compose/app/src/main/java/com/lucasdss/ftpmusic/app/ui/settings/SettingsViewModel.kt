@@ -1,6 +1,9 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import android.app.Activity
 import android.content.Context
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
@@ -15,6 +18,8 @@ import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.network.CustomHeadersInterceptor
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
+import com.lucasdss.ftpmusic.app.data.update.UpdateCheckResult
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.OverwriteBehavior
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
@@ -109,7 +114,24 @@ data class SettingsUiState(
     val btHasConnectPermission: Boolean = false,
     val isDefaultMusicApp: Boolean = false,
     val defaultMusicRoleAvailable: Boolean = false,
+    /** Play Store update check (Settings → About; ADR-0113). */
+    val updateCheck: UpdateCheckUi = UpdateCheckUi.Idle,
 )
+
+/** UI state for manual Play update check. */
+sealed class UpdateCheckUi {
+    data object Idle : UpdateCheckUi()
+    data object Checking : UpdateCheckUi()
+    data object UpToDate : UpdateCheckUi()
+    data class Available(val availableVersionCode: Int, val flexibleAllowed: Boolean) : UpdateCheckUi()
+    data class Error(val message: String) : UpdateCheckUi()
+}
+
+/** One-shot events for SettingsScreen to start Play UI or open the listing. */
+sealed class AppUpdateEvent {
+    data object StartFlexibleUpdate : AppUpdateEvent()
+    data class OpenPlayStore(val packageName: String) : AppUpdateEvent()
+}
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -131,6 +153,7 @@ class SettingsViewModel @Inject constructor(
     private val serverConfigStore: com.lucasdss.ftpmusic.app.di.ServerConfigStore,
     private val serverProbe: com.lucasdss.ftpmusic.app.data.network.ServerProbe,
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder,
+    private val appUpdateChecker: AppUpdateChecker,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -677,6 +700,71 @@ class SettingsViewModel @Inject constructor(
 
     /** One-shot share payloads — UI starts ACTION_SEND chooser. */
     val shareDiagnosticsEvents = _shareDiagnosticsEvents.receiveAsFlow()
+
+    private val _appUpdateEvents = Channel<AppUpdateEvent>(Channel.BUFFERED)
+    val appUpdateEvents = _appUpdateEvents.receiveAsFlow()
+
+    /** Manual Play Store update check (no auto-check on Settings open). */
+    fun checkForUpdates() {
+        if (_state.value.updateCheck is UpdateCheckUi.Checking) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(updateCheck = UpdateCheckUi.Checking)
+            _state.value = _state.value.copy(
+                updateCheck = when (val result = appUpdateChecker.check()) {
+                    is UpdateCheckResult.UpToDate -> UpdateCheckUi.UpToDate
+
+                    is UpdateCheckResult.UpdateAvailable ->
+                        UpdateCheckUi.Available(
+                            availableVersionCode = result.availableVersionCode,
+                            flexibleAllowed = result.flexibleAllowed,
+                        )
+
+                    is UpdateCheckResult.Unavailable ->
+                        UpdateCheckUi.Error(result.message)
+                },
+            )
+        }
+    }
+
+    /**
+     * Start flexible Play update when allowed; otherwise open the Play listing.
+     * Screen collects [appUpdateEvents] to run Activity-bound work.
+     */
+    fun startUpdate() {
+        val current = _state.value.updateCheck
+        if (current !is UpdateCheckUi.Available) return
+        viewModelScope.launch {
+            if (current.flexibleAllowed) {
+                _appUpdateEvents.send(AppUpdateEvent.StartFlexibleUpdate)
+            } else {
+                _appUpdateEvents.send(
+                    AppUpdateEvent.OpenPlayStore(appUpdateChecker.applicationId()),
+                )
+            }
+        }
+    }
+
+    /** Called from SettingsScreen after [AppUpdateEvent.StartFlexibleUpdate]. */
+    fun launchFlexibleUpdate(activity: Activity, launcher: ActivityResultLauncher<IntentSenderRequest>): Boolean {
+        val started = appUpdateChecker.startFlexibleUpdate(activity, launcher)
+        if (!started) {
+            viewModelScope.launch {
+                _appUpdateEvents.send(
+                    AppUpdateEvent.OpenPlayStore(appUpdateChecker.applicationId()),
+                )
+            }
+        }
+        return started
+    }
+
+    /** Open Play listing (Error / Unavailable soft path). */
+    fun openPlayStoreListing() {
+        viewModelScope.launch {
+            _appUpdateEvents.send(
+                AppUpdateEvent.OpenPlayStore(appUpdateChecker.applicationId()),
+            )
+        }
+    }
 
     /** Build diagnostics export text (no network upload). Safe off main. */
     fun diagnosticsSnapshot(): String {

@@ -11,6 +11,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,6 +31,9 @@ class SettingsScreenComposeTest {
     private fun mockViewModel(state: SettingsUiState): SettingsViewModel {
         val vm = mockk<SettingsViewModel>(relaxed = true)
         every { vm.state } returns MutableStateFlow(state)
+        every { vm.shareDiagnosticsEvents } returns emptyFlow()
+        every { vm.appUpdateEvents } returns emptyFlow()
+        every { vm.appVersionLabel() } returns "1.9.0 (13)"
         return vm
     }
 
@@ -185,5 +189,45 @@ class SettingsScreenComposeTest {
         }
         composeRule.onNodeWithTag("detail_back_button").assertIsDisplayed().performClick()
         assert(invoked)
+    }
+
+    @Test
+    fun `check for updates row visible and delegates`() {
+        val vm = mockViewModel(SettingsUiState())
+        render(vm)
+
+        composeRule.onNodeWithTag("settings_check_updates").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_check_updates").performClick()
+        verify { vm.checkForUpdates() }
+    }
+
+    @Test
+    fun `update available row shows start update CTA`() {
+        val vm = mockViewModel(
+            SettingsUiState(
+                updateCheck = UpdateCheckUi.Available(
+                    availableVersionCode = 20,
+                    flexibleAllowed = true,
+                ),
+            ),
+        )
+        render(vm)
+
+        composeRule.onNodeWithTag("settings_start_update").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Update available").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_start_update").performClick()
+        verify { vm.startUpdate() }
+    }
+
+    @Test
+    fun `update check error shows open play store`() {
+        val vm = mockViewModel(
+            SettingsUiState(updateCheck = UpdateCheckUi.Error("No network")),
+        )
+        render(vm)
+
+        composeRule.onNodeWithTag("settings_open_play_store").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_open_play_store").performClick()
+        verify { vm.openPlayStoreListing() }
     }
 }

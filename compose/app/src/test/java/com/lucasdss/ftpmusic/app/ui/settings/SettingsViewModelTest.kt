@@ -18,6 +18,7 @@ import com.lucasdss.ftpmusic.app.data.db.SyncStatus
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.repository.WaveformRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import io.mockk.*
@@ -110,6 +111,7 @@ class SettingsViewModelTest {
         serverConfigStore,
         serverProbe,
         mockk(relaxed = true), // searchIndexRebuilder
+        mockk<AppUpdateChecker>(relaxed = true),
     )
 
     @Test

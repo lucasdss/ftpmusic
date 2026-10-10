@@ -63,6 +63,10 @@ fun SettingsScreen(
     var showResyncCellularWarn by remember { mutableStateOf(false) }
     var showResyncCellularBlocked by remember { mutableStateOf(false) }
 
+    val updateLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult(),
+    ) { /* Play flexible UI dismissed; state stays Available / UpToDate */ }
+
     LaunchedEffect(viewModel) {
         viewModel.shareDiagnosticsEvents.collect { text ->
             val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
@@ -76,6 +80,19 @@ fun SettingsScreen(
                 )
             } catch (_: android.content.ActivityNotFoundException) {
                 // No share target — ignore (export stays in-process only).
+            }
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.appUpdateEvents.collect { event ->
+            when (event) {
+                is AppUpdateEvent.StartFlexibleUpdate -> {
+                    val activity = context as? ComponentActivity ?: return@collect
+                    viewModel.launchFlexibleUpdate(activity, updateLauncher)
+                }
+
+                is AppUpdateEvent.OpenPlayStore -> openPlayStoreListing(context, event.packageName)
             }
         }
     }
@@ -1462,6 +1479,13 @@ fun SettingsScreen(
             SectionCard {
                 SectionRow("Version", viewModel.appVersionLabel())
                 SectionDivider()
+                UpdateCheckRow(
+                    updateCheck = state.updateCheck,
+                    onCheck = viewModel::checkForUpdates,
+                    onStartUpdate = viewModel::startUpdate,
+                    onOpenPlayStore = viewModel::openPlayStoreListing,
+                )
+                SectionDivider()
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -1571,6 +1595,147 @@ fun SettingsScreen(
             onConfirm = { showResyncCellularBlocked = false },
             onDismiss = { showResyncCellularBlocked = false },
         )
+    }
+}
+
+@Composable
+private fun UpdateCheckRow(
+    updateCheck: UpdateCheckUi,
+    onCheck: () -> Unit,
+    onStartUpdate: () -> Unit,
+    onOpenPlayStore: () -> Unit,
+) {
+    when (updateCheck) {
+        is UpdateCheckUi.Available -> {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onStartUpdate)
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("settings_start_update"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.SystemUpdate,
+                    null,
+                    tint = BrandTeal,
+                    modifier = Modifier.size(iconSmall()),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Update available",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Version code ${updateCheck.availableVersionCode} on Play Store",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
+                }
+            }
+        }
+
+        UpdateCheckUi.Checking -> {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("settings_check_updates"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(iconSmall()),
+                    color = BrandTeal,
+                    strokeWidth = 2.dp,
+                )
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "Checking for updates…",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Asking Play Store",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
+                }
+            }
+        }
+
+        else -> {
+            val subtitle = when (updateCheck) {
+                UpdateCheckUi.UpToDate -> "You're up to date"
+                is UpdateCheckUi.Error -> updateCheck.message
+                else -> "Play Store only · tap to check"
+            }
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onCheck)
+                        .padding(horizontal = spacingL(), vertical = spacingM())
+                        .testTag("settings_check_updates"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.SystemUpdateAlt,
+                        null,
+                        tint = BrandTeal,
+                        modifier = Modifier.size(iconSmall()),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Check for updates",
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            subtitle,
+                            color = Color(0xFF888888),
+                            fontSize = textLabelM(),
+                        )
+                    }
+                }
+                if (updateCheck is UpdateCheckUi.Error) {
+                    TextButton(
+                        onClick = onOpenPlayStore,
+                        modifier = Modifier
+                            .padding(start = spacingL(), bottom = spacingS())
+                            .testTag("settings_open_play_store"),
+                    ) {
+                        Text("Open Play Store", color = BrandTeal, fontSize = textLabelM())
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun openPlayStoreListing(context: android.content.Context, packageName: String) {
+    val market = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("market://details?id=$packageName"),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    val web = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("https://play.google.com/store/apps/details?id=$packageName"),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(market)
+    } catch (_: android.content.ActivityNotFoundException) {
+        try {
+            context.startActivity(web)
+        } catch (_: android.content.ActivityNotFoundException) {
+            // No browser / store — ignore.
+        }
     }
 }
 

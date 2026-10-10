@@ -241,6 +241,10 @@ dependencies {
         }
     }
 
+    // Play In-App Updates (Settings → About check; ADR-0113)
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
+
     // Reorderable list
     implementation("sh.calvin.reorderable:reorderable:2.4.3")
 
