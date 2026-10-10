@@ -39,7 +39,7 @@ class MixCacheCoordinator @Inject constructor(
         // other-owner set accurate so deleting another mix cannot evict a
         // track this mix still wants.
         customMixDao.upsertCacheTracks(desired.map { CustomMixCacheTrackEntity(customMixId = mix.id, trackId = it) })
-        val missing = desired.filter { !cacheService.isStoredInCache(it) }
+        val missing = desired.filter { !cacheService.isPlayableCached(it) }
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-cache",
             "mixCache onGenerated mixId=${mix.id} autoCache=true count=${trackIds.size} missing=${missing.size}",
@@ -65,7 +65,7 @@ class MixCacheCoordinator @Inject constructor(
         customMixDao.deleteAllCacheTracks(mixId)
         if (desired.isEmpty()) return
         customMixDao.upsertCacheTracks(desired.map { CustomMixCacheTrackEntity(customMixId = mixId, trackId = it) })
-        val missing = desired.filter { !cacheService.isStoredInCache(it) }
+        val missing = desired.filter { !cacheService.isPlayableCached(it) }
         enqueue(missing)
     }
 
@@ -83,7 +83,7 @@ class MixCacheCoordinator @Inject constructor(
 
     /** Drop ownership rows whose cache files were evicted by quota pressure. */
     private suspend fun pruneStaleOwnership(mixId: Long) {
-        val stale = customMixDao.getOwnedTrackIds(mixId).filter { !cacheService.isStoredInCache(it) }
+        val stale = customMixDao.getOwnedTrackIds(mixId).filter { !cacheService.isPlayableCached(it) }
         if (stale.isNotEmpty()) customMixDao.deleteCacheTracks(mixId, stale)
     }
 

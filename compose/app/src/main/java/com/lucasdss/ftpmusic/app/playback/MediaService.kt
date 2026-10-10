@@ -159,6 +159,12 @@ internal fun buildCastConnectTimeoutMessage(deviceName: String): String =
         "same Wi-Fi, and that Google Play Services is up to date " +
         "(Settings → Apps → Google Play Services → Storage → Clear cache)."
 
+/** CastStatusCodes.TIMEOUT — transient; reconnect may succeed. */
+internal const val CAST_END_TIMEOUT = 2155
+
+/** CastStatusCodes.APPLICATION_NOT_RUNNING — receiver launching; reconnect. */
+internal const val CAST_END_APP_NOT_RUNNING = 2161
+
 /**
  * Cache key for a Subsonic stream URL — the track id query parameter, falling
  * back to the full URL when absent. Must be identical across ALL cache users
@@ -458,6 +464,7 @@ class MediaService : MediaLibraryService() {
         override fun onSessionStarting(session: CastSession) {
             // Queue load will happen in onDeviceInfoChanged(remote=true).
             // This is a safety net if that callback doesn't fire.
+            castSessionStartingDeviceId = session.castDevice?.deviceId
             android.util.Log.d("ftpmusic-cast", "[SessionManager] onSessionStarting")
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-cast", "session starting")
         }
@@ -467,6 +474,7 @@ class MediaService : MediaLibraryService() {
                 "ftpmusic-cast",
                 "session started sessionId=$sessionId",
             )
+            castSessionStartingDeviceId = null
             // A NEW session starts a fresh context — the previous resume flag is
             // stale. Without this reset, isReconnectingToExistingSession() stays
             // true forever after the first resume and every later session skips
@@ -498,6 +506,7 @@ class MediaService : MediaLibraryService() {
                 "ftpmusic-cast",
                 "session start failed error=$error",
             )
+            castSessionStartingDeviceId = null
             // A failed start definitively ends the connect attempt. NO isCasting
             // guard (M5): during a device switch isCasting is still true, and a
             // start-failure there must clean up instead of deferring to the 10s
@@ -520,6 +529,7 @@ class MediaService : MediaLibraryService() {
         override fun onSessionEnded(session: CastSession, error: Int) {
             android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionEnded: error=$error")
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "session ended error=$error")
+            castSessionStartingDeviceId = null
             // Safety net (see onSessionEnding): never let the MediaSession
             // process a shrinking cast timeline.
             detachCastSessionFromMediaSession()
@@ -560,12 +570,10 @@ class MediaService : MediaLibraryService() {
                         )
                         return@post
                     }
-                    // Transient errors (2155 TIMEOUT, 2161 APP_NOT_RUNNING): the
-                    // receiver may be reachable again shortly. Retry the last device
-                    // within a 10s window (up to 3 attempts, ~3.3s apart) instead of
-                    // immediately falling back to local playback. A successful retry
-                    // fires onDeviceInfoChanged(remote=true) which restores Cast state.
-                    if (attemptCastReconnect(endGen)) return@post
+                    // Transient errors only (2155 TIMEOUT, 2161 APP_NOT_RUNNING).
+                    // Other ends (e.g. 2055) fall back to local immediately —
+                    // reconnect thrash was observed against non-transient codes.
+                    if (isTransientCastEndError(error) && attemptCastReconnect(endGen)) return@post
                     android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionEnded: forcing local playback")
                     PlayerHolder.isCasting = false
                     PlayerHolder.castDeviceName = null
@@ -673,6 +681,10 @@ class MediaService : MediaLibraryService() {
      *  endCurrentSession no-op) must not suppress the timeout (M5). */
     @Volatile private var castConnectTargetDeviceId: String? = null
 
+    /** deviceId while Cast SDK reports onSessionStarting — used so the connect
+     *  timeout does not fire mid-handshake (timeout then session-started race). */
+    @Volatile private var castSessionStartingDeviceId: String? = null
+
     /** Monotonic token for the active connect attempt. Captured by the
      *  deferred 800ms route.select and compared at execution: a cancelled or
      *  superseded attempt's select is invalidated by bumping the token — the
@@ -776,10 +788,8 @@ class MediaService : MediaLibraryService() {
                             meta?.artist?.toString(),
                             extras?.getString("albumId"),
                             extras?.getString("artistId"),
-                            (
-                                extras?.getLong("duration")
-                                    ?: 0L
-                                ).toInt(),
+                            // QueueManager stores duration as milliseconds.
+                            ((extras?.getLong("duration") ?: 0L) / 1000L).toInt().takeIf { it > 0 },
                             meta?.artworkUri?.lastPathSegment,
                         )
                     }
@@ -842,7 +852,10 @@ class MediaService : MediaLibraryService() {
             // 60% is also captured via the hasPassed60Percent flag set by the
             // position poller.
             val previousTrackId = lastTrackId
-            lastTrackId = mediaItem?.mediaId
+            val newMediaId = mediaItem?.mediaId
+            if (!newMediaId.isNullOrBlank()) {
+                lastTrackId = newMediaId
+            }
             playerErrorCount = 0 // Reset error counter on new track
             // ADR-0095: keep sticky banner across error auto-skip transition
             if (!PlayerHolder.playbackErrorAutoSkipInFlight) {
@@ -874,16 +887,22 @@ class MediaService : MediaLibraryService() {
                 }
             }
 
-            if (mediaItem != null && mediaItem.mediaId != null) {
+            if (mediaItem != null && !mediaItem.mediaId.isNullOrBlank()) {
                 val metadata = mediaItem.mediaMetadata
                 val player = PlayerHolder.player
+                val logIdx = transitionLogIndex(player, mediaItem.mediaId)
+                val logCount = if (PlayerHolder.isCasting) {
+                    PlayerHolder.exoPlayer?.mediaItemCount ?: player?.mediaItemCount
+                } else {
+                    player?.mediaItemCount
+                }
                 android.util.Log.w(
                     "ftpmusic",
-                    "[MediaService] onMediaItemTransition: title=${metadata.title} artist=${metadata.artist} album=${metadata.albumTitle} idx=${player?.currentMediaItemIndex} count=${player?.mediaItemCount}",
+                    "[MediaService] onMediaItemTransition: title=${metadata.title} artist=${metadata.artist} album=${metadata.albumTitle} idx=$logIdx count=$logCount",
                 )
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                     "ftpmusic-playback",
-                    "transition id=${mediaItem.mediaId} reason=$reason idx=${player?.currentMediaItemIndex} count=${player?.mediaItemCount}",
+                    "transition id=${mediaItem.mediaId} reason=$reason idx=$logIdx count=$logCount",
                 )
                 val uriId = mediaItem.localConfiguration?.uri?.toString()?.let { streamUrlTrackId(it) }
                 if (uriId != null && uriId != mediaItem.mediaId) {
@@ -1144,62 +1163,74 @@ class MediaService : MediaLibraryService() {
                 ErrorSkipAction.SKIP_NEXT -> {
                     PlayerHolder.playbackErrorAutoSkipInFlight = true
                     val serverUnreachable = !com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
-                    // Outside-LAN fail-fast is not corrupt cache — don't wipe spans.
-                    // When reachable, remove possibly corrupt cached content so the
-                    // next play of this track re-fetches.
-                    if (!serverUnreachable && !currentId.isNullOrEmpty()) {
-                        scope.launch(Dispatchers.IO) {
+                    val failedId = currentId
+                    val fromIdx = ep.currentMediaItemIndex
+                    val itemCount = ep.mediaItemCount
+                    // Await poison eviction before seek/prepare so an immediate
+                    // reselect cannot hit the same corrupt span (race from logs).
+                    scope.launch {
+                        if (!serverUnreachable && !failedId.isNullOrEmpty()) {
                             try {
-                                cacheService.removeCached(currentId)
-                            } catch (_: Exception) {}
+                                cacheService.removeCached(failedId)
+                            } catch (_: Exception) {
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            if (serverUnreachable) {
+                                val cachedIdx = findNextCachedIndex(
+                                    fromIndex = fromIdx,
+                                    mediaItemCount = itemCount,
+                                    mediaIdAt = { i ->
+                                        runCatching { ep.getMediaItemAt(i).mediaId }.getOrNull()
+                                    },
+                                    isCached = { id -> cacheService.isStoredInCache(id) },
+                                )
+                                if (cachedIdx != null) {
+                                    android.util.Log.w(
+                                        "ftpmusic",
+                                        "[MediaService] Server unreachable — skip to cached idx=$cachedIdx past $failedId",
+                                    )
+                                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                                        "ftpmusic-playback",
+                                        "autoSkip action=CACHED_JUMP trackId=$failedId fromIdx=$fromIdx toIdx=$cachedIdx errorCount=$playerErrorCount reachable=false",
+                                    )
+                                    ep.seekTo(cachedIdx, 0L)
+                                } else {
+                                    android.util.Log.w(
+                                        "ftpmusic",
+                                        "[MediaService] Server unreachable — no cached track ahead; stopping after $failedId",
+                                    )
+                                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                                        "ftpmusic-playback",
+                                        "autoSkip action=STOP_NO_CACHED trackId=$failedId idx=$fromIdx errorCount=$playerErrorCount reachable=false",
+                                    )
+                                    playerErrorCount = 0
+                                    ep.stop()
+                                    return@withContext
+                                }
+                            } else {
+                                android.util.Log.w(
+                                    "ftpmusic",
+                                    "[MediaService] Auto-advancing past failed track: $failedId",
+                                )
+                                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                                    "ftpmusic-playback",
+                                    "autoSkip action=SKIP_NEXT trackId=$failedId " +
+                                        "idx=$fromIdx count=$itemCount " +
+                                        "errorCount=$playerErrorCount reachable=true",
+                                )
+                                ep.seekToNextMediaItem()
+                            }
+                            // seekToNextMediaItem()/seekTo() position the next source but do
+                            // NOT resume playback: with playWhenReady=false (audio-focus loss,
+                            // pause-before-error) the player would sit in STATE_IDLE forever
+                            // — Now Playing / QuickSettings show "stopped". media3's internal
+                            // error-advance policy would have prepared + played, which the
+                            // old retry loop suppressed; restore that behavior explicitly.
+                            ep.playWhenReady = true
+                            ep.prepare()
                         }
                     }
-                    if (serverUnreachable) {
-                        val cachedIdx = findNextCachedIndex(
-                            fromIndex = ep.currentMediaItemIndex,
-                            mediaItemCount = ep.mediaItemCount,
-                            mediaIdAt = { i -> ep.getMediaItemAt(i).mediaId },
-                            isCached = { id -> cacheService.isStoredInCache(id) },
-                        )
-                        if (cachedIdx != null) {
-                            android.util.Log.w(
-                                "ftpmusic",
-                                "[MediaService] Server unreachable — skip to cached idx=$cachedIdx past $currentId",
-                            )
-                            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                                "ftpmusic-playback",
-                                "autoSkip action=CACHED_JUMP trackId=$currentId fromIdx=${ep.currentMediaItemIndex} toIdx=$cachedIdx errorCount=$playerErrorCount reachable=false",
-                            )
-                            ep.seekTo(cachedIdx, 0L)
-                        } else {
-                            android.util.Log.w(
-                                "ftpmusic",
-                                "[MediaService] Server unreachable — no cached track ahead; stopping after $currentId",
-                            )
-                            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                                "ftpmusic-playback",
-                                "autoSkip action=STOP_NO_CACHED trackId=$currentId idx=${ep.currentMediaItemIndex} errorCount=$playerErrorCount reachable=false",
-                            )
-                            playerErrorCount = 0
-                            ep.stop()
-                            return
-                        }
-                    } else {
-                        android.util.Log.w("ftpmusic", "[MediaService] Auto-advancing past failed track: $currentId")
-                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                            "ftpmusic-playback",
-                            "autoSkip action=SKIP_NEXT trackId=$currentId idx=${ep.currentMediaItemIndex} count=${ep.mediaItemCount} errorCount=$playerErrorCount reachable=true",
-                        )
-                        ep.seekToNextMediaItem()
-                    }
-                    // seekToNextMediaItem()/seekTo() position the next source but do
-                    // NOT resume playback: with playWhenReady=false (audio-focus loss,
-                    // pause-before-error) the player would sit in STATE_IDLE forever
-                    // — Now Playing / QuickSettings show "stopped". media3's internal
-                    // error-advance policy would have prepared + played, which the
-                    // old retry loop suppressed; restore that behavior explicitly.
-                    ep.playWhenReady = true
-                    ep.prepare()
                 }
 
                 ErrorSkipAction.LAST_TRACK_STOP -> {
@@ -1239,15 +1270,14 @@ class MediaService : MediaLibraryService() {
     /** Scrobble once per track completion; shared by transition + STATE_ENDED (ADR-0047). */
     private fun scrobbleTrackIfNeeded(trackId: String, meta: androidx.media3.common.MediaMetadata?) {
         if (trackId == lastScrobbledTrackId) return
-        lastScrobbledTrackId = trackId
         val extras = meta?.extras
-        val durationSec = (extras?.getLong("duration") ?: 0L).toInt()
-        var listenedSec = when {
-            lastTrackedPositionMs > 0L -> (lastTrackedPositionMs / 1000L).toInt().coerceAtLeast(1)
-            durationSec > 0 -> (durationSec * 0.6).toInt().coerceAtLeast(1)
-            else -> 1
-        }
-        if (durationSec > 0) listenedSec = listenedSec.coerceAtMost(durationSec)
+        val computed = computeScrobbleListenedSeconds(
+            trackId = trackId,
+            durationMs = extras?.getLong("duration") ?: 0L,
+            lastTrackedPositionMs = lastTrackedPositionMs,
+        ) ?: return
+        val (durationSec, listenedSec) = computed
+        lastScrobbledTrackId = trackId
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
             "scrobble track=$trackId secs=$listenedSec",
@@ -2624,13 +2654,25 @@ class MediaService : MediaLibraryService() {
         castConnectDeadlineMs = deadline
         handler.postDelayed({
             if (castConnectDeadlineMs != deadline) return@postDelayed
-            if (!shouldAbortConnectTimeout(hasLiveCastSessionOn(targetDeviceId))) return@postDelayed
+            if (!shouldAbortConnectTimeout(
+                    hasLiveCastSessionOn(targetDeviceId),
+                    isSessionStartingOn(targetDeviceId),
+                )
+            ) {
+                return@postDelayed
+            }
             // Grace period: the session may be mid-establishment (slow receiver,
             // proxy start). Re-check once before failing.
             handler.postDelayed({
                 if (castConnectDeadlineMs != deadline) return@postDelayed
                 castConnectDeadlineMs = 0L
-                if (!shouldAbortConnectTimeout(hasLiveCastSessionOn(targetDeviceId))) return@postDelayed
+                if (!shouldAbortConnectTimeout(
+                        hasLiveCastSessionOn(targetDeviceId),
+                        isSessionStartingOn(targetDeviceId),
+                    )
+                ) {
+                    return@postDelayed
+                }
                 fireConnectTimeout(deviceName)
             }, 1000L)
         }, castConnectTimeoutMs)
@@ -3231,10 +3273,42 @@ class MediaService : MediaLibraryService() {
      * Bug-B decision: should the connect timeout abort the attempt? Only when
      * no session became real within the window — a live session means the
      * connect succeeded and the deadline was cleared by the success path.
+     * Also abort (do not fail) while the target is mid onSessionStarting.
      * Pure logic, unit-tested.
      */
     @VisibleForTesting
-    internal fun shouldAbortConnectTimeout(hasLiveSession: Boolean): Boolean = !hasLiveSession
+    internal fun shouldAbortConnectTimeout(
+        hasLiveSession: Boolean,
+        sessionStartingForTarget: Boolean = false,
+    ): Boolean = !hasLiveSession && !sessionStartingForTarget
+
+    /** Transient Cast session-end codes that warrant reconnect retry. */
+    @VisibleForTesting
+    internal fun isTransientCastEndError(error: Int): Boolean =
+        error == CAST_END_TIMEOUT || error == CAST_END_APP_NOT_RUNNING
+
+    private fun isSessionStartingOn(targetDeviceId: String?): Boolean =
+        targetDeviceId != null && castSessionStartingDeviceId == targetDeviceId
+
+    /**
+     * Diagnostic index for transition logs. While casting, prefer the local
+     * ExoPlayer index for [mediaId] so CastPlayer window indices do not look
+     * like wild jumps in shared diagnostics.
+     */
+    @VisibleForTesting
+    internal fun transitionLogIndex(player: Player?, mediaId: String?): Int? {
+        if (mediaId.isNullOrBlank()) return null
+        if (PlayerHolder.isCasting) {
+            val exo = PlayerHolder.exoPlayer
+            if (exo != null && exo.mediaItemCount > 0) {
+                val local = (0 until exo.mediaItemCount).firstOrNull { i ->
+                    exo.getMediaItemAt(i).mediaId == mediaId
+                }
+                if (local != null) return local
+            }
+        }
+        return player?.currentMediaItemIndex
+    }
 
     /** ID of the last track we preloaded via queueInsert — prevents duplicates. */
     private var lastPreloadedItemId: String? = null

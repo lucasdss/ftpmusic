@@ -112,6 +112,38 @@ class DownloadManagerWorkerTest {
     }
 
     @Test
+    fun `http 200 json content type never completes`() {
+        val poison = subsonicErrorJsonBytes()
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(okio.Buffer().write(poison)),
+        )
+        server.start()
+        val url = server.url("/stream").toString()
+        try {
+            val item = CacheQueueItemEntity(id = 20, trackId = "poison", remoteUrl = url, priority = 0)
+            coEvery { dao.getByTrackId("poison") } returns null
+            every { cacheService.tempDirectory } returns tmpDir
+            val manager = managerWithPicks(item, null)
+            try {
+                manager.start()
+                coVerify(timeout = 5000) { dao.updateRetryCount(item.id, 1) }
+                coVerify(exactly = 0) { dao.updateStatus(item.id, "completed") }
+                coVerify(exactly = 0) {
+                    cacheService.writeCachedTrackFromFile(any(), any(), isDownload = any())
+                }
+            } finally {
+                manager.stop()
+            }
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `server 500 retries with backoff`() {
         val (server, url) = startHttpServer(status = 500)
         try {

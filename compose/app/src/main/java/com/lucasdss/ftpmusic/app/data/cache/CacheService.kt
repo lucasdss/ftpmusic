@@ -178,6 +178,18 @@ class CacheService @Inject constructor(
             sourceFile.delete()
             return false
         }
+        if (!AudioCacheValidation.looksLikeAudio(sourceFile)) {
+            android.util.Log.w(
+                "ftpmusic-cache",
+                "[writeCached] reject non-audio payload for $trackId size=$size",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-cache",
+                "writeCached reject trackId=$trackId bytes=$size reason=non_audio",
+            )
+            sourceFile.delete()
+            return false
+        }
         if (!importIntoCache(trackId, sourceFile, size)) return false
         if (isDownload) markDownloaded(trackId)
 
@@ -294,6 +306,41 @@ class CacheService @Inject constructor(
 
     /** True if the full resource for [trackId] is present in the unified cache. */
     fun isStoredInCache(trackId: String): Boolean = getSpanFile(trackId) != null
+
+    /**
+     * True when a span is present AND the payload looks like playable audio.
+     * Heals poison spans (Subsonic error docs) so mix/download skip guards
+     * do not treat them as cached forever.
+     */
+    suspend fun isPlayableCached(trackId: String): Boolean {
+        val file = getSpanFile(trackId) ?: return false
+        if (AudioCacheValidation.looksLikeAudio(file)) return true
+        android.util.Log.w("ftpmusic-cache", "[isPlayableCached] healing poison span for $trackId")
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-cache",
+            "healPoison trackId=$trackId bytes=${file.length()}",
+        )
+        try {
+            audioCache.removeResource(trackId)
+        } catch (_: Exception) {
+        }
+        try {
+            trackDao.getTrack(trackId)?.let {
+                trackDao.update(
+                    it.copy(
+                        cachedFilePath = null,
+                        cacheSizeBytes = null,
+                        isAutoCached = false,
+                        // Poison payload is not a real download — clear pin so UI re-queues.
+                        isDownloaded = false,
+                    ),
+                )
+            }
+            evictor.unpin(trackId)
+        } catch (_: Exception) {
+        }
+        return false
+    }
 
     /** Returns the on-disk span file for a fully cached track, or null. */
     private fun getSpanFile(trackId: String): File? {
@@ -461,7 +508,7 @@ class CacheService @Inject constructor(
         val existing = trackDao.getTrack(trackId) ?: return false
         if (existing.isDownloaded) return true // already downloaded
         if (!existing.isAutoCached) return false // nothing to promote from
-        if (!isStoredInCache(trackId)) return false // content already evicted
+        if (!isPlayableCached(trackId)) return false // missing or poison payload
 
         markDownloaded(trackId)
         trackDao.update(

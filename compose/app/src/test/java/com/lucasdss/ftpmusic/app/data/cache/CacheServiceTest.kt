@@ -41,7 +41,7 @@ class CacheServiceTest {
     @Test
     fun `writeCachedTrack stores content in unified cache and updates entity`() = runTest {
         val trackId = "tr-1"
-        val data = "test audio data".toByteArray()
+        val data = fakeAudioBytes()
 
         coEvery { trackDao.getTrack(trackId) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
@@ -70,7 +70,7 @@ class CacheServiceTest {
     fun `writeCachedTrackFromFile moves temp file into cache`() = runTest {
         val trackId = "tr-2"
         val tempFile = File(service.tempDirectory, "$trackId.tmp")
-        tempFile.writeBytes("proxy-streamed-data".toByteArray())
+        tempFile.writeBytes(fakeAudioBytes())
 
         coEvery { trackDao.getTrack(trackId) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
@@ -81,21 +81,21 @@ class CacheServiceTest {
         assertFalse(tempFile.exists())
         val path = service.getCachedPath(trackId)
         assertNotNull(path)
-        assertEquals("proxy-streamed-data", File(path!!).readText())
+        assertEquals(fakeAudioBytes().size.toLong(), File(path!!).length())
     }
 
     @Test
     fun `writeCachedTrackFromFile tracks as autoCache for proxy writes`() = runTest {
         val trackId = "tr-3"
         val tempFile = File(service.tempDirectory, "$trackId.tmp")
-        tempFile.writeBytes("abc".toByteArray())
+        tempFile.writeBytes(fakeAudioBytes())
 
         coEvery { trackDao.getTrack(trackId) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
 
         service.writeCachedTrackFromFile(trackId, tempFile, isDownload = false)
 
-        assertEquals(3, service.getAutoCacheBytes())
+        assertEquals(fakeAudioBytes().size.toLong(), service.getAutoCacheBytes())
         assertEquals(0, service.getDownloadBytes())
     }
 
@@ -103,14 +103,14 @@ class CacheServiceTest {
     fun `writeCachedTrackFromFile counts downloads separately and pins them`() = runTest {
         val trackId = "dl-1"
         val tempFile = File(service.tempDirectory, "$trackId.tmp")
-        tempFile.writeBytes(ByteArray(500))
+        tempFile.writeBytes(fakeAudioBytes(5000))
 
         coEvery { trackDao.getTrack(trackId) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
 
         service.writeCachedTrackFromFile(trackId, tempFile, isDownload = true)
 
-        assertEquals(500, service.getDownloadBytes())
+        assertEquals(5000L, service.getDownloadBytes())
         assertEquals(0, service.getAutoCacheBytes())
         assertTrue(evictor.isPinned(trackId))
     }
@@ -131,8 +131,8 @@ class CacheServiceTest {
         val dlId = "dl-1"
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
-        service.writeCachedTrack(autoId, "auto".toByteArray(), isDownload = false)
-        service.writeCachedTrack(dlId, "dl".toByteArray(), isDownload = true)
+        service.writeCachedTrack(autoId, fakeAudioBytes(), isDownload = false)
+        service.writeCachedTrack(dlId, fakeAudioBytes(5000), isDownload = true)
 
         val autoEntity =
             TrackEntity(
@@ -158,7 +158,7 @@ class CacheServiceTest {
         val dlId = "dl-2"
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
-        service.writeCachedTrack(dlId, "dl-data".toByteArray(), isDownload = true)
+        service.writeCachedTrack(dlId, fakeAudioBytes(), isDownload = true)
 
         val dlEntity =
             TrackEntity(id = dlId, title = "DL", cachedFilePath = service.getCachedPath(dlId), isDownloaded = true)
@@ -177,7 +177,7 @@ class CacheServiceTest {
     fun `writeCachedTrackFromFile preserves existing metadata`() = runTest {
         val trackId = "tr-preserve"
         val tempFile = File(service.tempDirectory, "$trackId.tmp")
-        tempFile.writeBytes("cached".toByteArray())
+        tempFile.writeBytes(fakeAudioBytes())
 
         // Simulate ScrobbleService already created a row with real title
         val existing = TrackEntity(id = trackId, title = "Real Song Name", artist = "Real Artist")
@@ -191,6 +191,19 @@ class CacheServiceTest {
         assertEquals("Real Song Name", slot.captured.title)
         assertEquals("Real Artist", slot.captured.artist)
         assertTrue(slot.captured.isAutoCached)
+    }
+
+    @Test
+    fun `writeCachedTrackFromFile rejects subsonic error json payloads`() = runTest {
+        val trackId = "tr-poison"
+        val tempFile = File(service.tempDirectory, "$trackId.tmp")
+        tempFile.writeBytes(subsonicErrorJsonBytes())
+
+        val ok = service.writeCachedTrackFromFile(trackId, tempFile, isDownload = false)
+
+        assertFalse(ok)
+        assertFalse(tempFile.exists())
+        assertFalse(service.isStoredInCache(trackId))
     }
 
     @Test
@@ -211,7 +224,7 @@ class CacheServiceTest {
         val trackId = "tr-promote"
         coEvery { trackDao.getTrack(trackId) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
-        service.writeCachedTrack(trackId, "promote-me".toByteArray(), isDownload = false)
+        service.writeCachedTrack(trackId, fakeAudioBytes(), isDownload = false)
 
         val entity =
             TrackEntity(id = trackId, title = "T", cachedFilePath = service.getCachedPath(trackId), isAutoCached = true)
@@ -221,7 +234,7 @@ class CacheServiceTest {
         assertTrue(service.promoteToDownload(trackId))
 
         assertTrue(evictor.isPinned(trackId))
-        assertEquals("promote-me".length.toLong(), service.getDownloadBytes())
+        assertEquals(fakeAudioBytes().size.toLong(), service.getDownloadBytes())
         coVerify { trackDao.update(match { it.isDownloaded && !it.isAutoCached }) }
     }
 
@@ -230,7 +243,7 @@ class CacheServiceTest {
         val dlId = "dl-init"
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
-        service.writeCachedTrack(dlId, ByteArray(500), isDownload = true)
+        service.writeCachedTrack(dlId, fakeAudioBytes(5000), isDownload = true)
 
         val downloadedEntity = TrackEntity(
             id = dlId,
@@ -295,8 +308,8 @@ class CacheServiceTest {
     @Test
     fun `initialize imports legacy files and pins downloads recorded in Room`() = runTest {
         val legacyDir = CacheService.legacyDirectory(tempDir).apply { mkdirs() }
-        File(legacyDir, "legacy-dl.cache").writeBytes("legacy download".toByteArray())
-        File(legacyDir, "legacy-auto.cache").writeBytes("legacy auto".toByteArray())
+        File(legacyDir, "legacy-dl.cache").writeBytes(fakeAudioBytes())
+        File(legacyDir, "legacy-auto.cache").writeBytes(fakeAudioBytes())
 
         coEvery { trackDao.getTrack("legacy-dl") } returns
             TrackEntity(id = "legacy-dl", title = "DL", isDownloaded = true)
@@ -308,7 +321,7 @@ class CacheServiceTest {
 
         assertTrue(service.isStoredInCache("legacy-dl"))
         assertTrue(service.isStoredInCache("legacy-auto"))
-        assertEquals("legacy download", File(service.getCachedPath("legacy-dl")!!).readText())
+        assertEquals(fakeAudioBytes().size.toLong(), File(service.getCachedPath("legacy-dl")!!).length())
         // Pin status restored from the Room isDownloaded flag
         assertTrue(evictor.isPinned("legacy-dl"))
         assertFalse(evictor.isPinned("legacy-auto"))
@@ -321,7 +334,7 @@ class CacheServiceTest {
         val trackId = "tr-remove"
         coEvery { trackDao.getTrack(trackId) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
-        service.writeCachedTrack(trackId, "corrupt-data".toByteArray(), isDownload = false)
+        service.writeCachedTrack(trackId, fakeAudioBytes(), isDownload = false)
         assertTrue(service.isStoredInCache(trackId))
 
         val entity =
@@ -353,7 +366,7 @@ class CacheServiceTest {
         val trackId = "tr-download"
         coEvery { trackDao.getTrack(trackId) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
-        service.writeCachedTrack(trackId, "real-audio".toByteArray(), isDownload = true)
+        service.writeCachedTrack(trackId, fakeAudioBytes(), isDownload = true)
         assertTrue(service.isStoredInCache(trackId))
         assertTrue(evictor.isPinned(trackId))
 

@@ -3,11 +3,16 @@ package com.lucasdss.ftpmusic.app.data.cache
 import androidx.media3.datasource.cache.SimpleCache
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.repository.WaveformRepository
-import io.mockk.*
+import io.mockk.Runs
+import io.mockk.coEvery
+import io.mockk.just
+import io.mockk.mockk
 import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -21,8 +26,9 @@ class CacheServiceIntegrationTest {
     private val trackDao: TrackDao = mockk(relaxed = true)
     private val tempDir = File(System.getProperty("java.io.tmpdir"), "ftpmusic-test-int-${System.nanoTime()}")
 
-    // 1000-byte quota so small writes trigger LRU eviction
-    private val evictor = AdjustableCacheEvictor { 1000L }
+    // Quota sized above one fake-audio payload but below two.
+    private val chunk = fakeAudioBytes(6_000)
+    private val evictor = AdjustableCacheEvictor { 10_000L }
 
     @Suppress("DEPRECATION")
     private val simpleCache = SimpleCache(tempDir.apply { mkdirs() }, evictor)
@@ -33,7 +39,8 @@ class CacheServiceIntegrationTest {
     fun tearDown() {
         try {
             simpleCache.release()
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
         tempDir.deleteRecursively()
         File(tempDir.parentFile, "${tempDir.name}_tmp").deleteRecursively()
     }
@@ -43,14 +50,13 @@ class CacheServiceIntegrationTest {
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
 
-        val data = ByteArray(800)
-        service.writeCachedTrack("tr-1", data)
-        service.writeCachedTrack("tr-2", data)
+        service.writeCachedTrack("tr-1", chunk)
+        service.writeCachedTrack("tr-2", chunk)
 
-        // 1600B > 1000B quota — oldest (tr-1) evicted, newest kept
+        // 12000B > 10000B quota — oldest (tr-1) evicted, newest kept
         assertFalse(service.isStoredInCache("tr-1"))
         assertTrue(service.isStoredInCache("tr-2"))
-        assertTrue(service.getTotalBytes() <= 1000L)
+        assertTrue(service.getTotalBytes() <= 10_000L)
     }
 
     @Test
@@ -58,10 +64,9 @@ class CacheServiceIntegrationTest {
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
 
-        val data = ByteArray(800)
-        service.writeCachedTrack("dl-1", data, isDownload = true)
-        service.writeCachedTrack("tr-2", data)
-        service.writeCachedTrack("tr-3", data)
+        service.writeCachedTrack("dl-1", chunk, isDownload = true)
+        service.writeCachedTrack("tr-2", chunk)
+        service.writeCachedTrack("tr-3", chunk)
 
         // Pinned download survives even though total exceeds quota
         assertTrue(service.isStoredInCache("dl-1"))
@@ -75,10 +80,10 @@ class CacheServiceIntegrationTest {
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
 
-        val data = ByteArray(500)
+        val data = fakeAudioBytes(5_000)
         service.writeCachedTrack("dl-1", data, isDownload = true)
-        assertEquals(500, service.getDownloadBytes())
-        assertEquals(0, service.getAutoCacheBytes())
+        assertEquals(5_000L, service.getDownloadBytes())
+        assertEquals(0L, service.getAutoCacheBytes())
     }
 
     @Test
@@ -86,7 +91,7 @@ class CacheServiceIntegrationTest {
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { trackDao.upsert(any()) } just Runs
 
-        var quota = 1000L
+        var quota = 12_000L
         val localDir = File(System.getProperty("java.io.tmpdir"), "ftpmusic-test-refresh-${System.nanoTime()}")
         val localEvictor = AdjustableCacheEvictor { quota }
 
@@ -95,12 +100,13 @@ class CacheServiceIntegrationTest {
         val localService =
             CacheService(trackDao, mockk<WaveformRepository>(relaxed = true), localDir, localCache, localEvictor)
         try {
-            localService.writeCachedTrack("a", ByteArray(400))
-            localService.writeCachedTrack("b", ByteArray(400))
+            val piece = fakeAudioBytes(5_000)
+            localService.writeCachedTrack("a", piece)
+            localService.writeCachedTrack("b", piece)
             assertTrue(localService.isStoredInCache("a"))
             assertTrue(localService.isStoredInCache("b"))
 
-            quota = 500L
+            quota = 5_500L
             localEvictor.refresh()
 
             // Oldest entry evicted to satisfy the new limit
@@ -109,7 +115,8 @@ class CacheServiceIntegrationTest {
         } finally {
             try {
                 localCache.release()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
             localDir.deleteRecursively()
             File(localDir.parentFile, "${localDir.name}_tmp").deleteRecursively()
         }

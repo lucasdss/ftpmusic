@@ -115,6 +115,16 @@ class DownloadManager @Inject constructor(
         }
         // Re-enqueue failed/completed items by resetting status
         if (existing != null) {
+            // Idempotent: already a completed download with playable bytes.
+            if (isDownload && existing.status == "completed" && existing.isDownload &&
+                cacheService.isPlayableCached(trackId)
+            ) {
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-download",
+                    "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=already_download",
+                )
+                return
+            }
             // Completed as auto-cache and now requested as download → promote
             // in place, no re-download needed
             if (isDownload && existing.status == "completed" &&
@@ -131,7 +141,7 @@ class DownloadManager @Inject constructor(
             // on every track advance; without this guard every cached queue track
             // would be fully re-downloaded on each advance (cache thrash).
             if (existing.status == "completed" && !isDownload &&
-                cacheService.isStoredInCache(trackId)
+                cacheService.isPlayableCached(trackId)
             ) {
                 if (priority < existing.priority) {
                     cacheQueueDao.updatePriority(existing.id, priority)
@@ -290,6 +300,19 @@ class DownloadManager @Inject constructor(
                 val body = response.body
                 if (body == null) {
                     // Don't leave the item stuck in "processing"
+                    handleRetry(item)
+                    return
+                }
+                val contentType = response.header("Content-Type")
+                if (!AudioCacheValidation.isAcceptableStreamContentType(contentType)) {
+                    android.util.Log.w(
+                        "ftpmusic-download",
+                        "[worker] reject Content-Type=$contentType for ${item.trackId}",
+                    )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-download",
+                        "worker reject trackId=${item.trackId} contentType=$contentType",
+                    )
                     handleRetry(item)
                     return
                 }

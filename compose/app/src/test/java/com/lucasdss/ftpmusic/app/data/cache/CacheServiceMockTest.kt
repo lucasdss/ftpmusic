@@ -56,9 +56,14 @@ class CacheServiceMockTest {
     }
 
     // Real CacheSpan instances — its public fields are not mockk-interceptable.
-    private fun cachedSpan(file: File? = File("/fake/span.1")): CacheSpan = CacheSpan("t1", 0L, 100L, 0L, file)
+    private fun cachedSpan(file: File? = null): CacheSpan {
+        val spanFile = file ?: File(tempDir, "span-${System.nanoTime()}.1").apply {
+            writeBytes(fakeAudioBytes())
+        }
+        return CacheSpan("t1", 0L, spanFile.length(), 0L, spanFile)
+    }
 
-    private fun holeSpan(): CacheSpan = CacheSpan("t1", 0L, 10L)
+    private fun holeSpan(): CacheSpan = CacheSpan("t1", 0L, AudioCacheValidation.MIN_CACHED_AUDIO_BYTES)
 
     // ── R5: downloads are sacred ─────────────────────────────────────────
 
@@ -113,7 +118,7 @@ class CacheServiceMockTest {
     fun `import defers when the resource is locked by a stream`() = runTest {
         // startReadWriteNonBlocking returns null → another reader/writer holds it
         coEvery { audioCache.startReadWriteNonBlocking(any(), any(), any()) } returns null
-        val source = File(tempDir, "src.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "src.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -127,15 +132,17 @@ class CacheServiceMockTest {
     @Test
     fun `import succeeds when the resource is free`() = runTest {
         val hole = holeSpan()
-        coEvery { audioCache.startReadWriteNonBlocking("t1", 0L, 10L) } returns hole
-        coEvery { audioCache.startFile("t1", 0L, 10L) } returns File(tempDir, "t1.span")
+        coEvery { audioCache.startReadWriteNonBlocking("t1", 0L, AudioCacheValidation.MIN_CACHED_AUDIO_BYTES) } returns
+            hole
+        coEvery { audioCache.startFile("t1", 0L, AudioCacheValidation.MIN_CACHED_AUDIO_BYTES) } returns
+            File(tempDir, "t1.span")
         coEvery { audioCache.getCachedSpans("t1") } returns
             java.util.TreeSet<CacheSpan>().apply { add(cachedSpan(File(tempDir, "t1.span"))) }
         coEvery { audioCache.getContentMetadata("t1") } returns mockk(relaxed = true)
         coEvery { trackDao.getTrack("t1") } returns null
         coEvery { trackDao.upsert(any()) } just runs
 
-        val source = File(tempDir, "src2.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "src2.tmp").apply { writeBytes(fakeAudioBytes()) }
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = true)
 
         assertTrue("Free resource must be imported", ok)
@@ -143,7 +150,14 @@ class CacheServiceMockTest {
         coVerify(atLeast = 1) { audioCache.releaseHoleSpan(hole) }
         coVerify(exactly = 1) { audioCache.removeResource("t1") }
         assertTrue("download must be pinned", evictor.isPinned("t1"))
-        coVerify(exactly = 1) { trackDao.upsert(match { it.isDownloaded && it.cacheSizeBytes == 10 }) }
+        coVerify(exactly = 1) {
+            trackDao.upsert(
+                match {
+                    it.isDownloaded &&
+                        it.cacheSizeBytes == AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt()
+                },
+            )
+        }
     }
 
     @Test
@@ -222,7 +236,7 @@ class CacheServiceMockTest {
 
     @Test
     fun `getCachedPath returns the span path or null`() = runTest {
-        val realFile = File(tempDir, "span.1").apply { writeBytes(ByteArray(4)) }
+        val realFile = File(tempDir, "span.1").apply { writeBytes(fakeAudioBytes()) }
         coEvery { audioCache.getCachedSpans("t1") } returns
             java.util.TreeSet<CacheSpan>().apply { add(cachedSpan(realFile)) }
         coEvery { audioCache.getContentMetadata("t1") } returns mockk(relaxed = true)

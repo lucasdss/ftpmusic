@@ -52,10 +52,15 @@ class CacheServiceBranchTest {
         File(tempDir.parentFile, "${tempDir.name}_legacy").deleteRecursively()
     }
 
-    private fun cachedSpan(file: File = File("/fake/span.1"), length: Long = 100L) =
-        CacheSpan("t1", 0L, length, 0L, file)
+    private fun cachedSpan(file: File? = null, length: Long? = null): CacheSpan {
+        val spanFile = file ?: File(tempDir, "span-${System.nanoTime()}.1").apply {
+            writeBytes(fakeAudioBytes())
+        }
+        val len = length ?: spanFile.length().coerceAtLeast(AudioCacheValidation.MIN_CACHED_AUDIO_BYTES)
+        return CacheSpan("t1", 0L, len, 0L, spanFile)
+    }
 
-    private fun holeSpan() = CacheSpan("t1", 0L, 10L)
+    private fun holeSpan() = CacheSpan("t1", 0L, AudioCacheValidation.MIN_CACHED_AUDIO_BYTES)
 
     private fun spansOf(vararg spans: CacheSpan) = TreeSet<CacheSpan>().apply { addAll(spans) }
 
@@ -146,7 +151,7 @@ class CacheServiceBranchTest {
     @Test
     fun `initialize imports parked legacy files`() = runTest {
         val legacyDir = File(tempDir.parentFile, "${tempDir.name}_legacy").apply { mkdirs() }
-        File(legacyDir, "trackA.cache").writeBytes(ByteArray(5))
+        File(legacyDir, "trackA.cache").writeBytes(fakeAudioBytes())
         coEvery { trackDao.getCachedPaginated(0, 100) } returns emptyList()
         coEvery { trackDao.getTrack(any()) } returns null
         coEvery { audioCache.startReadWriteNonBlocking(any(), any(), any()) } returns holeSpan()
@@ -287,7 +292,7 @@ class CacheServiceBranchTest {
         coEvery { audioCache.getCachedSpans("t1") } returns spansOf(cachedSpan(File(tempDir, "t1.span")))
         coEvery { audioCache.getContentMetadata(any()) } returns mockk(relaxed = true)
         coEvery { trackDao.upsert(any()) } just runs
-        val source = File(tempDir, "src-dl.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "src-dl.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -304,7 +309,7 @@ class CacheServiceBranchTest {
         coEvery { audioCache.getCachedSpans("t1") } returns spansOf(cachedSpan(File(tempDir, "t1.span")))
         coEvery { audioCache.getContentMetadata(any()) } returns mockk(relaxed = true)
         coEvery { trackDao.upsert(any()) } just runs
-        val source = File(tempDir, "src-auto.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "src-auto.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -317,7 +322,7 @@ class CacheServiceBranchTest {
     fun `import aborts when the write lock is taken after the probe`() = runTest {
         val probe = holeSpan()
         coEvery { audioCache.startReadWriteNonBlocking(any(), any(), any()) } returnsMany listOf(probe, null)
-        val source = File(tempDir, "busy.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "busy.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -330,7 +335,7 @@ class CacheServiceBranchTest {
     fun `import returns true when content reappeared as cached`() = runTest {
         val probe = holeSpan()
         coEvery { audioCache.startReadWriteNonBlocking(any(), any(), any()) } returnsMany listOf(probe, cachedSpan())
-        val source = File(tempDir, "reappeared.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "reappeared.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -348,7 +353,7 @@ class CacheServiceBranchTest {
         coEvery { audioCache.getContentMetadata(any()) } returns mockk(relaxed = true)
         coEvery { trackDao.getTrack("t1") } returns null
         coEvery { trackDao.upsert(any()) } just runs
-        val source = File(tempDir, "partial-replacement.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "partial-replacement.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -361,7 +366,7 @@ class CacheServiceBranchTest {
     @Test
     fun `import swallows cache exceptions and deletes the source`() = runTest {
         coEvery { audioCache.startReadWriteNonBlocking(any(), any(), any()) } throws RuntimeException("cache broken")
-        val source = File(tempDir, "crash.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "crash.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -384,7 +389,7 @@ class CacheServiceBranchTest {
         coEvery { audioCache.getContentMetadata(any()) } returns mockk(relaxed = true)
         coEvery { trackDao.getTrack("t1") } returns null
         coEvery { trackDao.upsert(any()) } just runs
-        val source = File(tempDir, "release.tmp").apply { writeBytes(ByteArray(10)) }
+        val source = File(tempDir, "release.tmp").apply { writeBytes(fakeAudioBytes()) }
 
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
@@ -430,7 +435,7 @@ class CacheServiceBranchTest {
     @Test
     fun `initialize imports a legacy download as pinned`() = runTest {
         val legacyDir = File(tempDir.parentFile, "${tempDir.name}_legacy").apply { mkdirs() }
-        File(legacyDir, "trackD.cache").writeBytes(ByteArray(5))
+        File(legacyDir, "trackD.cache").writeBytes(fakeAudioBytes())
         coEvery { trackDao.getCachedPaginated(0, 100) } returns emptyList()
         coEvery { trackDao.getTrack(any()) } returns TrackEntity(id = "trackD", title = "D", isDownloaded = true)
         coEvery { audioCache.startReadWriteNonBlocking(any(), any(), any()) } returns holeSpan()

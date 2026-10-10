@@ -90,7 +90,7 @@ class DownloadManagerBranchTest {
             priority = 2,
             isDownload = false,
         )
-        coEvery { cacheService.isStoredInCache("tr-c") } returns true
+        coEvery { cacheService.isPlayableCached("tr-c") } returns true
 
         manager().enqueue("tr-c", "http://x", priority = 0)
 
@@ -109,7 +109,7 @@ class DownloadManagerBranchTest {
             priority = 0,
             isDownload = false,
         )
-        coEvery { cacheService.isStoredInCache("tr-d") } returns true
+        coEvery { cacheService.isPlayableCached("tr-d") } returns true
 
         manager().enqueue("tr-d", "http://x", priority = 2)
 
@@ -127,7 +127,7 @@ class DownloadManagerBranchTest {
             priority = 2,
             isDownload = false,
         )
-        coEvery { cacheService.isStoredInCache("tr-e") } returns false
+        coEvery { cacheService.isPlayableCached("tr-e") } returns false
 
         manager().enqueue("tr-e", "http://x", priority = 0)
 

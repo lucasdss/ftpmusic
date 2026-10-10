@@ -103,7 +103,10 @@ class DownloadManagerTest {
             remoteUrl = "http://b",
             status = "completed",
             priority = 2,
+            isDownload = false,
         )
+        coEvery { cacheService.isPlayableCached("tr-5") } returns false
+        coEvery { cacheService.promoteToDownload("tr-5") } returns false
 
         manager.enqueue("tr-5", "http://b", priority = 1)
 
@@ -163,6 +166,7 @@ class DownloadManagerTest {
             priority = 2,
             isDownload = false,
         )
+        coEvery { cacheService.isPlayableCached("tr-7") } returns true
         coEvery { cacheService.promoteToDownload("tr-7") } returns true
 
         manager.enqueue("tr-7", "http://d", priority = 1)
@@ -171,6 +175,25 @@ class DownloadManagerTest {
         coVerify { dao.markAsDownload(6) }
         coVerify(exactly = 0) { dao.updateStatus(any(), "pending") }
         coVerify(exactly = 0) { dao.insertIgnore(any()) }
+    }
+
+    @Test
+    fun `enqueue download for already completed download is idempotent`() = runTest {
+        coEvery { dao.getByTrackId("tr-7b") } returns CacheQueueItemEntity(
+            id = 66,
+            trackId = "tr-7b",
+            remoteUrl = "http://d",
+            status = "completed",
+            priority = 1,
+            isDownload = true,
+        )
+        coEvery { cacheService.isPlayableCached("tr-7b") } returns true
+
+        manager.enqueue("tr-7b", "http://d", priority = 1)
+
+        coVerify(exactly = 0) { cacheService.promoteToDownload(any()) }
+        coVerify(exactly = 0) { dao.markAsDownload(any()) }
+        coVerify(exactly = 0) { dao.updateStatus(any(), "pending") }
     }
 
     @Test
