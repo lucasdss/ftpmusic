@@ -162,6 +162,10 @@ class MetadataSyncWorker(
         const val PREF_LAST_FULL_SYNC_MS = "last_full_sync_ms"
         const val PREF_LAST_METADATA_SYNC_MS = "last_metadata_sync_ms"
         const val PREF_METADATA_SYNC_DURATION_MS = "metadata_sync_duration_ms"
+        /** Last completed sync mode: "FULL" or "DELTA". */
+        const val PREF_LAST_SYNC_MODE = "last_sync_mode"
+        /** Why the last syncNowAsync returned null / skipped (empty when ran). */
+        const val PREF_LAST_SYNC_SKIP_REASON = "last_sync_skip_reason"
 
         /** Auto FULL catalog heal cadence (ADR-0045). */
         const val FULL_SYNC_INTERVAL_MS = 7L * 24 * 60 * 60 * 1000
@@ -252,6 +256,18 @@ class MetadataSyncWorker(
     fun lastDeltaSyncMs(): Long = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         .getLong(PREF_LAST_DELTA_SYNC_MS, 0L)
 
+    private fun recordSkipReason(reason: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(PREF_LAST_SYNC_SKIP_REASON, reason)
+            .apply()
+    }
+
+    private fun clearSkipReason() {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(PREF_LAST_SYNC_SKIP_REASON, "")
+            .apply()
+    }
+
     fun stop() {
         syncJob?.cancel()
         syncJobs.toList().forEach { it.cancel() }
@@ -279,12 +295,14 @@ class MetadataSyncWorker(
         if (offlineModeManager.isOfflineEnabled()) {
             android.util.Log.d(TAG, "Skipping sync — offline mode enabled")
             DiagnosticLog.d(TAG, "skip sync — offline")
+            recordSkipReason("offline")
             return null
         }
         // Reachability gate — avoid burning retries when server is marked down.
         if (!com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value) {
             android.util.Log.d(TAG, "Skipping sync — server unreachable")
             DiagnosticLog.d(TAG, "skip sync — unreachable")
+            recordSkipReason("unreachable")
             return null
         }
         // ADR-0105: cellular local-only or Wi-Fi-only sync (override bypasses Wi-Fi-only only).
@@ -294,6 +312,7 @@ class MetadataSyncWorker(
         if (com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.shouldSkipMetadataSync(effectiveCellularOverride)) {
             android.util.Log.d(TAG, "Skipping sync — cellular network policy")
             DiagnosticLog.d(TAG, "skip sync — cellular policy override=$effectiveCellularOverride")
+            recordSkipReason("cellular_policy")
             return null
         }
         // Cooldown: skip auto-triggered syncs if the last sync finished recently.
@@ -303,10 +322,15 @@ class MetadataSyncWorker(
             if (lastSyncFinishMs > 0L && elapsed < MIN_SYNC_COOLDOWN_MS) {
                 android.util.Log.d(TAG, "Skipping sync — cooldown active (${elapsed}ms < ${MIN_SYNC_COOLDOWN_MS}ms)")
                 DiagnosticLog.d(TAG, "skip sync — cooldown")
+                recordSkipReason("cooldown")
                 return null
             }
         }
-        if (!isSyncing.compareAndSet(false, true)) return null
+        if (!isSyncing.compareAndSet(false, true)) {
+            recordSkipReason("already_running")
+            return null
+        }
+        clearSkipReason()
         val resolvedMode = if (forceTrackResync) LibrarySyncMode.FULL else mode
         val cellularOverride = effectiveCellularOverride
         val job = scope.launch syncJob@{
@@ -414,6 +438,19 @@ class MetadataSyncWorker(
                     if (e is CancellationException) throw e
                     Log.w(TAG, "populate tracks for search index: ${e.message}")
                 }
+                // ADR-0108: FULL heals search corpus; DELTA stays upsert-only densify.
+                if (resolvedMode == LibrarySyncMode.FULL) {
+                    try {
+                        val pruned = trackDao.reconcileSearchCorpusAgainstCatalog()
+                        if (pruned > 0) {
+                            Log.d(TAG, "FULL corpus reconcile removed $pruned stale tracks")
+                            DiagnosticLog.d(TAG, "corpus reconcile pruned=$pruned")
+                        }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.w(TAG, "corpus reconcile: ${e.message}")
+                    }
+                }
                 // Search corpus = densified `tracks` (ADR-0085), not only album-tracks.
                 val finalTrackCount = try {
                     trackDao.trackCountAll()
@@ -455,6 +492,8 @@ class MetadataSyncWorker(
                         .putLong(PREF_LAST_METADATA_SYNC_MS, now)
                         .putLong(PREF_METADATA_SYNC_DURATION_MS, durationMs)
                         .putInt("metadata_version", METADATA_VERSION)
+                        .putString(PREF_LAST_SYNC_MODE, resolvedMode.name)
+                        .putString(PREF_LAST_SYNC_SKIP_REASON, "")
                     if (resolvedMode == LibrarySyncMode.FULL) {
                         editor.putLong(PREF_LAST_FULL_SYNC_MS, now)
                     } else {
@@ -1287,16 +1326,28 @@ class MetadataSyncWorker(
             // Failure threshold check
             val f = failedCount.get()
             if (f > 0 && pendingTotal > 0 && f.toDouble() / pendingTotal > 0.05) {
+                val corpusOnError = try {
+                    trackDao.trackCountAll()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    totalTracks.get()
+                }
                 _status.value = _status.value.copy(
                     isRunning = false,
                     phase = "error",
-                    trackCount = totalTracks.get(),
+                    trackCount = corpusOnError,
                     albumTracksProgress = count.get(),
                 )
                 Log.w(TAG, "Album track sync degraded — $f failures out of $pendingTotal pending")
                 return
             }
-            _status.value = _status.value.copy(albumTracksProgress = count.get(), trackCount = totalTracks.get())
+            val corpusCount = try {
+                trackDao.trackCountAll()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                totalTracks.get()
+            }
+            _status.value = _status.value.copy(albumTracksProgress = count.get(), trackCount = corpusCount)
             if (count.get() > 0) Log.d(TAG, "Background-synced tracks for ${count.get()} albums")
             changedAlbumIds.clear()
         } finally {

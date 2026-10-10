@@ -43,3 +43,5 @@ Product chose eventual densify (1A) + dedicated orphan densify (2B).
 - Enrich KEEP policy: concurrent enqueue does not stack duplicate work.
 - Identity remains Subsonic `id` only (no semantic dedupe).
 - ADR 0079 amend: enrich is deferred WM, not inline sync.
+- Amend (ADR-0108): densify remains additive on DELTA; FULL reconcile drops
+  ghost corpus ids not present in album/genre caches (unless local weight).

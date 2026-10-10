@@ -59,6 +59,7 @@ class SyncingViewModelTest {
     private fun createViewModel(): SyncingViewModel = SyncingViewModel(
         metadataSyncWorker,
         metadataDao,
+        trackDao,
         genreMixDao,
         playlistDao,
         lyricsCacheDao,

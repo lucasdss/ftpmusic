@@ -42,11 +42,13 @@ class MetadataSyncWorkerTest {
         every { prefs.edit() } returns prefsEditor
         every { prefsEditor.putLong(any(), any()) } returns prefsEditor
         every { prefsEditor.putInt(any(), any()) } returns prefsEditor
+        every { prefsEditor.putString(any(), any()) } returns prefsEditor
         every { prefsEditor.apply() } just Runs
         coEvery { api.getRandomSongs(any(), size = any()) } returns mapOf(
             "subsonic-response" to mapOf("status" to "ok", "randomSongs" to mapOf("song" to emptyList<Any>())),
         )
         coEvery { trackDao.trackCountAll() } returns 0
+        coEvery { trackDao.reconcileSearchCorpusAgainstCatalog() } returns 0
         worker =
             MetadataSyncWorker(
                 context,
@@ -796,6 +798,46 @@ class MetadataSyncWorkerTest {
         coVerify(atLeast = 1) { prefsEditor.putLong("metadata_sync_duration_ms", any()) }
         coVerify(atLeast = 1) {
             prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
+        }
+        verify(atLeast = 1) {
+            prefsEditor.putString(MetadataSyncWorker.PREF_LAST_SYNC_MODE, "DELTA")
+        }
+        coVerify(exactly = 0) { trackDao.reconcileSearchCorpusAgainstCatalog() }
+    }
+
+    @Test
+    fun `syncNow FULL reconciles search corpus and writes full watermark only`() = runTest {
+        val w = makeWorker()
+        coEvery { metadataDao.albumCount() } returns 1
+        coEvery { metadataDao.artistCount() } returns 1
+        coEvery { metadataDao.cachedTrackCount() } returns 1
+        coEvery { genreMixDao.getTopGenres() } returns emptyList()
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "albumList2" to mapOf<String, Any>()),
+        )
+        coEvery { api.getArtists(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "artists" to mapOf<String, Any>()),
+        )
+        coEvery { api.getGenres(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "genres" to mapOf<String, Any>()),
+        )
+        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+        coEvery { metadataDao.countUncachedAlbums() } returns 0
+        coEvery { trackDao.trackCountAll() } returns 1
+        coEvery { trackDao.reconcileSearchCorpusAgainstCatalog() } returns 7
+
+        w.syncNow(forceTrackResync = true)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { trackDao.reconcileSearchCorpusAgainstCatalog() }
+        verify(atLeast = 1) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, any())
+        }
+        verify(exactly = 0) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
+        }
+        verify(atLeast = 1) {
+            prefsEditor.putString(MetadataSyncWorker.PREF_LAST_SYNC_MODE, "FULL")
         }
     }
 

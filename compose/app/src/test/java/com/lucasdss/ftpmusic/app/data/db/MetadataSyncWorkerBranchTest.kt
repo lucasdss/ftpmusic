@@ -58,6 +58,7 @@ class MetadataSyncWorkerBranchTest {
         every { prefs.edit() } returns prefsEditor
         every { prefsEditor.putLong(any(), any()) } returns prefsEditor
         every { prefsEditor.putInt(any(), any()) } returns prefsEditor
+        every { prefsEditor.putString(any(), any()) } returns prefsEditor
         every { prefsEditor.apply() } just Runs
         every { prefs.getInt("metadata_version", 0) } returns 2
         every { offlineModeManager.isOfflineEnabled() } returns false
@@ -65,6 +66,7 @@ class MetadataSyncWorkerBranchTest {
             "subsonic-response" to mapOf("status" to "ok", "randomSongs" to mapOf("song" to emptyList<Any>())),
         )
         coEvery { trackDao.trackCountAll() } returns 0
+        coEvery { trackDao.reconcileSearchCorpusAgainstCatalog() } returns 0
         coEvery { genreMixDao.getTopGenres() } returns emptyList()
     }
 

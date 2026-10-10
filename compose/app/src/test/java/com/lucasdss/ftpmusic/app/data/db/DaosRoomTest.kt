@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -928,6 +929,50 @@ class DaosRoomTest {
     }
 
     // ── Pending-unstar survival (YT Music second-tap unlike) ───────────────
+
+    @Test
+    fun `reconcileSearchCorpusAgainstCatalog prunes densify ghosts keeps local weight`() = runBlocking {
+        val tracks = db.trackDao()
+        val meta = db.cachedMetadataDao()
+        val genres = db.genreMixDao()
+
+        meta.upsertAlbums(listOf(CachedAlbumEntity(id = "al-1", name = "Keep", songCount = 1)))
+        meta.upsertAlbumTracks(
+            listOf(CachedAlbumTrackEntity(id = "t-album", albumId = "al-1", title = "Album Song")),
+        )
+        genres.upsertSongs(
+            listOf(
+                CachedGenreSongEntity(
+                    id = "t-genre",
+                    genre = "Rock",
+                    title = "Genre Song",
+                ),
+            ),
+        )
+        tracks.upsert(TrackEntity(id = "t-album", title = "Album Song", albumId = "al-1"))
+        tracks.upsert(TrackEntity(id = "t-genre", title = "Genre Song", genre = "Rock"))
+        tracks.upsert(TrackEntity(id = "t-ghost", title = "Ghost densify"))
+        tracks.upsert(TrackEntity(id = "t-star", title = "Starred ghost", starredAt = 99L))
+        tracks.upsert(TrackEntity(id = "t-played", title = "Played ghost", playCount = 3))
+        tracks.upsert(
+            TrackEntity(
+                id = "t-dl",
+                title = "Downloaded ghost",
+                isDownloaded = true,
+                cachedFilePath = "/dl",
+            ),
+        )
+
+        val pruned = tracks.reconcileSearchCorpusAgainstCatalog()
+        assertEquals(1, pruned)
+        assertEquals(5, tracks.trackCountAll())
+        assertNull(tracks.getTrack("t-ghost"))
+        assertNotNull(tracks.getTrack("t-album"))
+        assertNotNull(tracks.getTrack("t-genre"))
+        assertNotNull(tracks.getTrack("t-star"))
+        assertNotNull(tracks.getTrack("t-played"))
+        assertNotNull(tracks.getTrack("t-dl"))
+    }
 
     @Test
     fun `populateAllTrackGenres preserves pending_unstar_at`() = runBlocking {

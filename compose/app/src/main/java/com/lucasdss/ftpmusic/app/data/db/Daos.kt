@@ -224,6 +224,27 @@ interface TrackDao {
     suspend fun trackCountAll(): Int
 
     /**
+     * FULL-heal search corpus (ADR-0108): drop densify ghosts whose Subsonic id
+     * is no longer in album-track or genre caches. Keeps local-weight rows
+     * (star / dislike / download / cache file / play history).
+     */
+    @Query(
+        """
+        DELETE FROM tracks WHERE id NOT IN (
+            SELECT id FROM cached_album_tracks
+            UNION
+            SELECT id FROM cached_genre_songs
+        )
+        AND starred_at IS NULL
+        AND is_disliked = 0
+        AND is_downloaded = 0
+        AND cached_file_path IS NULL
+        AND play_count = 0
+        """,
+    )
+    suspend fun reconcileSearchCorpusAgainstCatalog(): Int
+
+    /**
      * Upsert tracks from orphan/random densify without wiping cache/star columns.
      * Prefers existing album_id when already set (album-track sync wins).
      */
@@ -906,6 +927,10 @@ interface CachedMetadataDao {
 
     @Query("SELECT COUNT(*) FROM cached_album_tracks")
     suspend fun cachedTrackCount(): Int
+
+    /** Sum of per-album server/honest song_count fields (library metrics). */
+    @Query("SELECT COALESCE(SUM(song_count), 0) FROM cached_albums")
+    suspend fun sumAlbumSongCounts(): Int
 
     /**
      * Count albums with zero cached tracks — single SQL query instead of

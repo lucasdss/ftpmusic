@@ -1,6 +1,6 @@
 # Library Sync Behavior Report
 
-Caveman terse. Code truth after ADR-0045 + ADR-0068 + ADR-0085.
+Caveman terse. Code truth after ADR-0045 + ADR-0068 + ADR-0085 + ADR-0108.
 
 ## Modes
 
@@ -55,9 +55,12 @@ daily-mix seed → populate `tracks` → FTS rebuild → **enqueue enrich** (asy
 ## Watermarks (`ftpmusic_sync`)
 
 - `last_metadata_sync_ms` / `metadata_sync_duration_ms` / `metadata_version`
-- `last_delta_sync_ms` / `last_full_sync_ms`
+- `last_delta_sync_ms` / `last_full_sync_ms` (mutual exclusion by mode)
+- `last_sync_mode` = `FULL` \| `DELTA`
+- `last_sync_skip_reason` = offline / unreachable / cellular_policy / cooldown / already_running (cleared on start)
 
 Written **only** when sync ends `phase=complete`. Track-phase error / abort → prior watermarks untouched.
+Settings Resync → FULL watermark only → **Last delta** stays Never until WM DELTA completes.
 
 ## Album list fail-closed
 
@@ -70,9 +73,21 @@ Empty response + populated cache → keep (both modes).
 | Metric | Source |
 |--------|--------|
 | Album progress | `COUNT(cached_albums)` |
-| SyncStatus tracks | `COUNT(tracks)` search corpus |
+| Syncing **Tracks** | `COUNT(tracks)` search corpus (always) |
+| Settings Album track meta | `COUNT(cached_album_tracks)` |
+| Settings Search corpus | `COUNT(tracks)` |
+| Settings Album song_count sum | `SUM(cached_albums.song_count)` |
 | Album song_count | server field; overwritten from fetched `getAlbum` size |
 | Artist album_count | recomputed SQL post tracks |
+
+Meta ≠ corpus. Resync FULL can prune corpus (ADR-0108); meta only drops if
+server `getAlbum` unique ids drop or album heal deletes orphans.
+
+## FULL corpus reconcile (ADR-0108)
+
+After populate on FULL: `DELETE FROM tracks` where id ∉ album-tracks ∪ genre-songs
+and no local weight (star / dislike / download / cache path / play_count>0).
+DELTA: no prune.
 
 ## Adaptive concurrency
 
@@ -104,11 +119,13 @@ WM constraint: `UNMETERED` when sync Wi‑Fi-only else `CONNECTED`.
 
 ## Edge cases
 
-- Deleted albums heal only on FULL diff-replace + orphan track prune
-- Sync CAS — second start returns false / WM skip success
-- Process death mid-batch — WM can retry; Room batch txn; next sync resumes pending tracks
+- Deleted albums heal on FULL diff-replace + `cached_album_tracks` orphan prune
+- FULL also reconciles `tracks` corpus (ADR-0108); played/starred ghosts kept
+- Sync CAS — second start returns false / WM skip success + skip reason
+- Process death mid-batch — WM can retry; Room batch txn; next FULL heals corpus
 - Duplicate ids in one fetch → collapsed before write
 - Enrich columns survive catalog refresh (preserve upsert)
+- `LibraryViewModel.resyncAll` = default DELTA, **no production UI caller**
 
 ## Not in this pass
 

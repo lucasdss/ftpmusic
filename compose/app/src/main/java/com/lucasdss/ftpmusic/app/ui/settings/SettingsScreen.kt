@@ -1344,11 +1344,19 @@ fun SettingsScreen(
                     MetricRow(
                         "Last full sync",
                         if (state.lastFullSyncMs > 0) timeAgo(state.lastFullSyncMs) else "Never",
+                        "Resync Library is always FULL",
                     )
                     SectionDivider()
                     MetricRow(
                         "Last delta sync",
                         if (state.lastDeltaSyncMs > 0) timeAgo(state.lastDeltaSyncMs) else "Never",
+                        "Runs on Sync Interval only (not Resync)",
+                    )
+                    SectionDivider()
+                    MetricRow(
+                        "Last sync mode",
+                        state.lastSyncMode.ifBlank { "—" },
+                        state.lastSyncSkipReason.takeIf { it.isNotBlank() }?.let { "Last skip: $it" },
                     )
                     SectionDivider()
                     MetricRow(
@@ -1357,7 +1365,23 @@ fun SettingsScreen(
                         if (state.lastMetadataSyncMs > 0) timeAgo(state.lastMetadataSyncMs) else "Never synced",
                     )
                     SectionDivider()
-                    MetricRow("Cached Tracks", "${state.cachedTrackCount} tracks meta")
+                    MetricRow(
+                        "Album track meta",
+                        "${state.cachedTrackCount} unique ids",
+                        "cached_album_tracks from getAlbum",
+                    )
+                    SectionDivider()
+                    MetricRow(
+                        "Search corpus",
+                        "${state.searchCorpusTrackCount} tracks",
+                        "tracks table (Syncing Tracks row)",
+                    )
+                    SectionDivider()
+                    MetricRow(
+                        "Album song_count sum",
+                        "${state.albumSongCountSum}",
+                        "SUM(cached_albums.song_count)",
+                    )
                     SectionDivider()
                     MetricRow("Playlists", "${state.playlistCount} playlists")
                     SectionDivider()

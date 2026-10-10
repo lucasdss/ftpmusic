@@ -34,3 +34,5 @@ not appropriate end-user Settings.
 - Weekly full heal restores deleted-album consistency without manual Resync.
 - Stream/cover requests keep headroom during sync.
 - CONTEXT.md / ADR 0013 “30-minute always-on sync” language updated to match.
+- Amend (ADR-0108): FULL also reconciles search corpus `tracks`; Resync still
+  writes only `last_full_sync_ms` (delta watermark needs periodic DELTA).

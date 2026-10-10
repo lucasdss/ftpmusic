@@ -59,6 +59,10 @@ data class SettingsUiState(
     val albumCount: Int = 0,
     val artistCount: Int = 0,
     val cachedTrackCount: Int = 0,
+    /** Search corpus size (`tracks` table). */
+    val searchCorpusTrackCount: Int = 0,
+    /** Sum of per-album song_count fields. */
+    val albumSongCountSum: Int = 0,
     val playlistCount: Int = 0,
     val downloadedTrackCount: Int = 0,
     val lyricsCount: Int = 0,
@@ -68,6 +72,10 @@ data class SettingsUiState(
     val lastLyricsFetchMs: Long = 0,
     val lastFullSyncMs: Long = 0,
     val lastDeltaSyncMs: Long = 0,
+    /** Last completed mode: FULL / DELTA / empty. */
+    val lastSyncMode: String = "",
+    /** Last syncNow skip reason (empty when last attempt ran). */
+    val lastSyncSkipReason: String = "",
     val isResyncing: Boolean = false,
     val syncIntervalHours: Int = 12,
     val preferItunesArt: Boolean = false,
@@ -442,9 +450,13 @@ class SettingsViewModel @Inject constructor(
                 lastLyricsFetchMs = prefs.getLong("last_lyrics_fetch_ms", 0),
                 lastFullSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, 0),
                 lastDeltaSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, 0),
+                lastSyncMode = prefs.getString(MetadataSyncWorker.PREF_LAST_SYNC_MODE, "") ?: "",
+                lastSyncSkipReason = prefs.getString(MetadataSyncWorker.PREF_LAST_SYNC_SKIP_REASON, "") ?: "",
                 albumCount = totalAlbums,
                 artistCount = metadataDao.artistCount(),
                 cachedTrackCount = metadataDao.cachedTrackCount(),
+                searchCorpusTrackCount = trackDao.trackCountAll(),
+                albumSongCountSum = metadataDao.sumAlbumSongCounts(),
                 playlistCount = playlistDao.count(),
                 downloadedTrackCount = trackDao.getDownloadedCount(),
                 lyricsCount = lyricsCacheDao.count(),
@@ -657,7 +669,8 @@ class SettingsViewModel @Inject constructor(
             albums = s.albumCount,
             artists = s.artistCount,
             tracks = s.cachedTrackCount,
-        )
+        ) + "\nmode=${s.lastSyncMode} skip=${s.lastSyncSkipReason}" +
+            " corpus=${s.searchCorpusTrackCount} songSum=${s.albumSongCountSum}"
     }
 
     /** Snapshot on Default → emit for Share chooser (keeps UI thread free). */

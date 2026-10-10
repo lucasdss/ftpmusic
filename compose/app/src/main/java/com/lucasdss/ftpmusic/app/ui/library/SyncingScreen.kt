@@ -33,6 +33,7 @@ import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.SyncStatus
+import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
@@ -72,6 +73,7 @@ data class DailyMixState(
 class SyncingViewModel @Inject constructor(
     private val metadataSyncWorker: MetadataSyncWorker,
     private val metadataDao: CachedMetadataDao,
+    private val trackDao: TrackDao,
     private val genreMixDao: GenreMixDao,
     private val playlistDao: PlaylistDao,
     private val lyricsCacheDao: LyricsCacheDao,
@@ -145,7 +147,11 @@ class SyncingViewModel @Inject constructor(
                     albums = existing,
                     albumsTotal = existing,
                     artists = metadataDao.artistCount(),
-                    trackCount = metadataDao.cachedTrackCount(),
+                    trackCount = try {
+                        trackDao.trackCountAll()
+                    } catch (_: Exception) {
+                        metadataDao.cachedTrackCount()
+                    },
                     genres = genreMixDao.getTopGenres().size,
                     phase = "complete",
                     isRunning = false,

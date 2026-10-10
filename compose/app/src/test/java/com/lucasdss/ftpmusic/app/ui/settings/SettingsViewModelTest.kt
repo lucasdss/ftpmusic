@@ -299,9 +299,13 @@ class SettingsViewModelTest {
             kotlinx.coroutines.flow.MutableStateFlow(com.lucasdss.ftpmusic.app.data.db.SyncStatus())
         coEvery { metadataDao.artistCount() } returns 80
         coEvery { metadataDao.cachedTrackCount() } returns 960
+        coEvery { metadataDao.sumAlbumSongCounts() } returns 900
+        coEvery { trackDao.trackCountAll() } returns 1200
         coEvery { playlistDao.count() } returns 5
         coEvery { trackDao.getDownloadedCount() } returns 42
         coEvery { lyricsCacheDao.count() } returns 15
+        every { prefs.getString(MetadataSyncWorker.PREF_LAST_SYNC_MODE, "") } returns "FULL"
+        every { prefs.getString(MetadataSyncWorker.PREF_LAST_SYNC_SKIP_REASON, "") } returns ""
 
         viewModel.refresh()
         advanceUntilIdle()
@@ -310,6 +314,9 @@ class SettingsViewModelTest {
         assertEquals(120, state.albumCount)
         assertEquals(80, state.artistCount)
         assertEquals(960, state.cachedTrackCount)
+        assertEquals(1200, state.searchCorpusTrackCount)
+        assertEquals(900, state.albumSongCountSum)
+        assertEquals("FULL", state.lastSyncMode)
         assertEquals(5, state.playlistCount)
         assertEquals(42, state.downloadedTrackCount)
         assertEquals(15, state.lyricsCount)

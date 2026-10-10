@@ -37,3 +37,5 @@ honest completion of the existing interval — not faster polling.
   watermarks do not advance after a keep-cache early return.
 - Same Subsonic id cannot appear twice from one fetch batch.
 - Semantic duplicates (same title, different ids) still both kept by design.
+- Amend (ADR-0108): FULL completion prunes stale `tracks` densify rows not in
+  album/genre caches (local star/download/play weight preserved).
