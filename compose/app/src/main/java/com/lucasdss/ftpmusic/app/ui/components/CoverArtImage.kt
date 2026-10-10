@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.components
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
@@ -42,6 +43,8 @@ fun CoverArtImage(
     fallbackService: CoverArtFallbackService? = null,
     /** Decode size hint; defaults to 300dp for album tiles. */
     decodeSize: Dp = 300.dp,
+    /** When false, skip network fallback fetch (e.g. mid-fling) — Pass 7. */
+    allowFallbackFetch: Boolean = true,
 ) {
     var primaryFailed by remember(url) { mutableStateOf(false) }
     var fallbackUrl by remember(url) { mutableStateOf<String?>(null) }
@@ -58,7 +61,8 @@ fun CoverArtImage(
         }
     }
 
-    LaunchedEffect(primaryFailed, url) {
+    LaunchedEffect(primaryFailed, url, allowFallbackFetch) {
+        if (!allowFallbackFetch) return@LaunchedEffect
         if (primaryFailed && fallbackUrl == null && service != null &&
             fallbackArtist != null && fallbackAlbum != null
         ) {
@@ -76,6 +80,8 @@ fun CoverArtImage(
                 .size(sizePx)
                 .memoryCacheKey("$modelUrl@$sizePx")
                 .crossfade(false)
+                // List covers have no alpha — half decode RAM vs ARGB_8888 (Pass 7).
+                .bitmapConfig(Bitmap.Config.RGB_565)
                 .build()
         }
         AsyncImage(

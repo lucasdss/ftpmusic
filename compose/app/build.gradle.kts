@@ -15,6 +15,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("jacoco")
     id("org.jlleitschuh.gradle.ktlint")
+    id("androidx.baselineprofile")
 }
 
 android {
@@ -158,8 +159,10 @@ ktlint {
 
 dependencies {
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    val composeBom = platform("androidx.compose:compose-bom:2025.08.00")
     implementation(composeBom)
+    // Baseline Profiles — AOT critical scroll/startup paths (ADR-0107).
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -264,6 +267,9 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.13")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
+
+    // Generated Baseline Profiles from :macrobenchmark (ADR-0107).
+    baselineProfile(project(":macrobenchmark"))
 }
 
 tasks.register<JacocoReport>("jacocoTestReport") {

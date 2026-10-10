@@ -45,4 +45,11 @@ class AppHeaderScrollStateTest {
         assertEquals(0f, computeSnapTarget(80f, 100f, velocityY = 900f), 0.01f)
         assertEquals(100f, computeSnapTarget(20f, 100f, velocityY = -900f), 0.01f)
     }
+
+    @Test
+    fun `content inset stays full header height when shown`() {
+        assertEquals(100f, computeHeaderContentInsetPx(showHeader = true, headerHeightPx = 100f), 0.01f)
+        assertEquals(0f, computeHeaderContentInsetPx(showHeader = false, headerHeightPx = 100f), 0.01f)
+        assertEquals(0f, computeHeaderContentInsetPx(showHeader = true, headerHeightPx = 0f), 0.01f)
+    }
 }

@@ -19,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -34,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
@@ -57,6 +57,7 @@ import com.lucasdss.ftpmusic.app.ui.album.AlbumDetailScreen
 import com.lucasdss.ftpmusic.app.ui.artist.ArtistDetailScreen
 import com.lucasdss.ftpmusic.app.ui.components.AppHeader
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.computeHeaderContentInsetPx
 import com.lucasdss.ftpmusic.app.ui.components.rememberAppHeaderScrollState
 import com.lucasdss.ftpmusic.app.ui.favorites.FavoritesScreen
 import com.lucasdss.ftpmusic.app.ui.genre.GenreDetailScreen
@@ -418,63 +419,29 @@ fun FtpmusicNavHost() {
             }
         },
     ) { padding ->
-        Column(Modifier.padding(padding)) {
+        Box(Modifier.padding(padding).fillMaxSize()) {
             val route = navBackStackEntry?.destination?.route
             // AppHeader on primary tabs only — detail routes use their own back chrome
             // (avoids stacked logo + TopAppBar). See ADR-0054.
             val showHeader = showAppHeaderForRoute(route)
-            // YT Music enterAlways collapse — continuous offset, content reclaim (ADR 0097).
+            // YT Music enterAlways — overlay + fixed inset (ADR 0097 / ADR-0107).
+            // Do not shrink header layout height per frame (Lazy remeasure hitch).
             val headerScroll = rememberAppHeaderScrollState()
             val density = LocalDensity.current
             LaunchedEffect(route) {
                 // Instant reset on tab/detail change — no mid-collapse flash.
                 headerScroll.resetExpanded()
             }
-
-            if (showHeader) {
-                val headerModifier = Modifier
-                    .fillMaxWidth()
-                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                    .onSizeChanged { size ->
-                        headerScroll.updateHeaderHeight(size.height.toFloat())
-                    }
-                    .graphicsLayer {
-                        translationY = -headerScroll.offsetPx
-                    }
-                if (headerScroll.headerHeightPx <= 0f) {
-                    // First layout: measure natural height before collapsing.
-                    AppHeader(
-                        modifier = headerModifier,
-                        settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
-                        interactive = true,
-                        onSettingsClick = { navController.navigateToSettings() },
-                    )
-                } else {
-                    val visibleDp = with(density) {
-                        headerScroll.visibleHeightPx.toDp().coerceAtLeast(0.dp)
-                    }
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(visibleDp)
-                            .clipToBounds(),
-                    ) {
-                        AppHeader(
-                            modifier = headerModifier,
-                            settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
-                            interactive = headerScroll.isExpanded,
-                            onSettingsClick = { navController.navigateToSettings() },
-                        )
-                    }
-                }
+            val headerInsetDp = with(density) {
+                computeHeaderContentInsetPx(showHeader, headerScroll.headerHeightPx).toDp()
             }
 
             NavHost(
                 navController = navController,
                 startDestination = "splash",
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .padding(top = headerInsetDp)
                     .then(
                         if (showHeader) {
                             Modifier.nestedScroll(headerScroll.nestedScrollConnection)
@@ -1080,6 +1047,26 @@ fun FtpmusicNavHost() {
                         )
                     }
                 }
+            }
+
+            // Overlay header: translation only; content keeps fixed top inset (ADR-0107).
+            if (showHeader) {
+                AppHeader(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .zIndex(1f)
+                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                        .onSizeChanged { size ->
+                            headerScroll.updateHeaderHeight(size.height.toFloat())
+                        }
+                        .graphicsLayer {
+                            translationY = -headerScroll.offsetPx
+                        },
+                    settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
+                    interactive = headerScroll.isExpanded,
+                    onSettingsClick = { navController.navigateToSettings() },
+                )
             }
         }
     }

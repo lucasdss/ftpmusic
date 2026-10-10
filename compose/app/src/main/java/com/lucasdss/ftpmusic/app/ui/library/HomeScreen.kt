@@ -6,11 +6,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -25,6 +28,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -108,10 +113,19 @@ fun HomeScreen(
             // every LazyColumn recomposition (scroll/EQ frames).
             val syncedPlaylists = remember(state.playlists) { state.playlists.filter { it.isSynced } }
             val recentAlbums = remember(state.randomAlbums) { state.randomAlbums.take(10) }
-            val listState = rememberLazyListState()
+            // Compose 1.9+ viewport-relative prefetch (Pass 5 / ADR-0107).
+            val listState = rememberLazyListState(
+                cacheWindow = LazyLayoutCacheWindow(
+                    aheadFraction = 0.5f,
+                    behindFraction = 0.2f,
+                ),
+            )
             val scrollInProgress = listState.isScrollInProgress
             val cardDecode = albumCardWidth()
-            LazyColumn(state = listState) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.testTag("home_scroll"),
+            ) {
                 // ── Surprise Me hero card ──
                 item(contentType = "hero") {
                     Box(
@@ -473,24 +487,30 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    item(contentType = "lazy_row_recent") {
-                        LazyRow(
+                    item(contentType = "row_recent") {
+                        // Fixed ≤10 cards — plain Row avoids nested LazyRow Subcompose tax (Pass 7).
+                        Row(
+                            Modifier
+                                .padding(bottom = spacingM())
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = spacingL()),
                             horizontalArrangement = Arrangement.spacedBy(spacingM()),
-                            contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier.padding(bottom = spacingM()),
                         ) {
-                            items(recentAlbums, key = { it.id }, contentType = { "album" }) { album ->
-                                val isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying
-                                AlbumCardDesign(
-                                    album,
-                                    isActive = isActive,
-                                    scrollInProgress = scrollInProgress,
-                                    decodeSize = cardDecode,
-                                    downloadStatus =
-                                        state.downloadStatusByAlbumId[album.id] ?: "none",
-                                    onClick = { onAlbumClick(album.id) },
-                                    onLongClick = { showAlbumSheet = album },
-                                )
+                            recentAlbums.forEach { album ->
+                                key(album.id) {
+                                    val isActive =
+                                        currentAlbumId != null && album.id == currentAlbumId && isPlaying
+                                    AlbumCardDesign(
+                                        album,
+                                        isActive = isActive,
+                                        scrollInProgress = scrollInProgress,
+                                        decodeSize = cardDecode,
+                                        downloadStatus =
+                                            state.downloadStatusByAlbumId[album.id] ?: "none",
+                                        onClick = { onAlbumClick(album.id) },
+                                        onLongClick = { showAlbumSheet = album },
+                                    )
+                                }
                             }
                         }
                     }
@@ -643,7 +663,7 @@ private fun AlbumCardDesign(
                 coverArtId = album.coverArt,
                 artist = album.artist,
                 album = album.name,
-                size = 300,
+                size = with(LocalDensity.current) { decodeSize.roundToPx().coerceAtLeast(1) },
             )
             if (url != null) {
                 CoverArtImage(
@@ -653,6 +673,7 @@ private fun AlbumCardDesign(
                     fallbackArtist = album.artist,
                     fallbackAlbum = album.name,
                     decodeSize = decodeSize,
+                    allowFallbackFetch = !scrollInProgress,
                 )
             } else {
                 Icon(Icons.Default.Album, null, tint = Color(0xFF444444), modifier = Modifier.size(36.dp))

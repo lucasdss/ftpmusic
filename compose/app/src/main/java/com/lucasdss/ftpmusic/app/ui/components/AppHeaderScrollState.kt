@@ -22,7 +22,10 @@ import kotlinx.coroutines.launch
  * (enterAlways). Continuous float offset — no discrete show/hide (ADR 0097).
  *
  * [offsetPx] = 0 → fully shown; [offsetPx] = [headerHeightPx] → fully hidden.
- * Layout height must be `headerHeight - offset` so content reclaims space.
+ *
+ * Pass 4 (ADR-0107): shell keeps a **fixed** top inset equal to [headerHeightPx]
+ * and moves the header with `graphicsLayer` only — do not shrink layout height
+ * per frame (avoids LazyColumn remeasure during fling).
  */
 @Stable
 class AppHeaderScrollState internal constructor(private val scope: CoroutineScope) {
@@ -161,3 +164,10 @@ fun computeSnapTarget(offset: Float, headerHeight: Float, velocityY: Float): Flo
         else -> headerHeight
     }
 }
+
+/**
+ * Pass 4 fixed content inset — always full header height when shown (never
+ * `headerHeight - offset`). Pure helper for unit tests / shell layout.
+ */
+fun computeHeaderContentInsetPx(showHeader: Boolean, headerHeightPx: Float): Float =
+    if (showHeader && headerHeightPx > 0f) headerHeightPx else 0f

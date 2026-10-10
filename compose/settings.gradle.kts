@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ftpmusic-compose"
 include(":app")
+include(":macrobenchmark")

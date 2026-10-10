@@ -268,11 +268,16 @@ class LibraryViewModel @Inject constructor(
     private var albumOffset = 0
     private var isLoadingMore = false
 
-    /** True after [loadAlphaAlbums] has a full (DB or API) catalog — disables
-     *  [loadMoreAlbums] so newest-page append cannot fight the alpha list. */
+    /** True while Albums tab uses alpha browse — disables [loadMoreAlbums]
+     *  (newest-page append) so it cannot fight the alpha window. */
     @Volatile private var alphaCatalogComplete = false
     private var alphaAlbums: List<Album> = emptyList()
     private var lastAlphaSync: Long = 0
+
+    /** Windowed alpha browse (Pass 6) — Compose holds pages, not full catalog. */
+    private var alphaBrowseOffset = 0
+    @Volatile private var alphaBrowseHasMore = true
+    private val alphaBrowseLoading = java.util.concurrent.atomic.AtomicBoolean(false)
 
     init {
         if (username().isNotEmpty()) {
@@ -1711,24 +1716,24 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Load all albums alphabetically. DB-first, background API refresh. */
+    /**
+     * Load albums alphabetically in pages (ADR-0107 Pass 6).
+     * DB-first first page into Compose; background API refreshes Room then
+     * reloads the currently visible window (not the full catalog into state).
+     */
     fun loadAlphaAlbums() {
-        // Immediate: load from cached_albums DB table (filter to offline-only when offline)
         viewModelScope.launch {
-            val cached = if (isLocalOnly()) metadataDao.getOfflineAlbums() else metadataDao.getAllAlbums()
-            if (cached.isNotEmpty()) {
-                val albums = cached.map { c ->
-                    Album(
-                        id = c.id, name = c.name, artist = c.artist, artistId = c.artistId,
-                        year = c.year, coverArt = c.coverArt, songCount = c.songCount,
-                        duration = c.duration, genre = c.genre,
-                    )
-                }
-                alphaCatalogComplete = true
-                _state.value = _state.value.copy(albums = albums)
+            alphaCatalogComplete = true
+            alphaBrowseOffset = 0
+            alphaBrowseHasMore = true
+            val page = fetchAlphaBrowsePage(limit = LibraryPaging.ALPHA_PAGE_SIZE, offset = 0)
+            alphaBrowseOffset = page.size
+            alphaBrowseHasMore = LibraryPaging.hasMore(page.size)
+            if (page.isNotEmpty()) {
+                _state.value = _state.value.copy(albums = page)
             }
         }
-        // Background: refresh from API (skip when offline)
+        // Background: refresh Room from API; republish only the loaded window.
         viewModelScope.launch {
             if (isLocalOnly()) return@launch
             try {
@@ -1761,12 +1766,65 @@ class LibraryViewModel @Inject constructor(
                 if (allAlbums.isEmpty()) return@launch
                 ensureCachedAlbumsForLikes(allAlbums)
                 alphaAlbums = allAlbums
-                alphaCatalogComplete = true
-                _state.value = _state.value.copy(albums = allAlbums)
                 lastAlphaSync = System.currentTimeMillis()
+                val windowSize = alphaBrowseOffset.coerceAtLeast(LibraryPaging.ALPHA_PAGE_SIZE)
+                val window = fetchAlphaBrowsePage(limit = windowSize, offset = 0)
+                alphaBrowseOffset = window.size
+                alphaBrowseHasMore = fetchAlphaBrowsePage(1, window.size).isNotEmpty()
+                if (window.isNotEmpty()) {
+                    _state.value = _state.value.copy(albums = window)
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-library", "loadAlphaAlbums: ${e.message}")
             }
+        }
+    }
+
+    /** Append next alpha page when Library Albums grid nears the end. */
+    fun loadMoreAlphaAlbums() {
+        if (!alphaBrowseHasMore) return
+        if (!alphaBrowseLoading.compareAndSet(false, true)) return
+        viewModelScope.launch {
+            try {
+                val page = fetchAlphaBrowsePage(
+                    limit = LibraryPaging.ALPHA_PAGE_SIZE,
+                    offset = alphaBrowseOffset,
+                )
+                if (page.isEmpty()) {
+                    alphaBrowseHasMore = false
+                    return@launch
+                }
+                alphaBrowseOffset += page.size
+                alphaBrowseHasMore = LibraryPaging.hasMore(page.size)
+                val existingIds = _state.value.albums.mapTo(HashSet()) { it.id }
+                val appended = page.filter { it.id !in existingIds }
+                if (appended.isNotEmpty()) {
+                    _state.value = _state.value.copy(albums = _state.value.albums + appended)
+                }
+            } finally {
+                alphaBrowseLoading.set(false)
+            }
+        }
+    }
+
+    private suspend fun fetchAlphaBrowsePage(limit: Int, offset: Int): List<Album> {
+        val cached = if (isLocalOnly()) {
+            metadataDao.getOfflineAlbumsPaged(limit, offset)
+        } else {
+            metadataDao.getAlbumsPaged(limit, offset)
+        }
+        return cached.map { c ->
+            Album(
+                id = c.id,
+                name = c.name,
+                artist = c.artist,
+                artistId = c.artistId,
+                year = c.year,
+                coverArt = c.coverArt,
+                songCount = c.songCount,
+                duration = c.duration,
+                genre = c.genre,
+            )
         }
     }
 

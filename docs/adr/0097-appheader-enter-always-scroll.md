@@ -31,3 +31,10 @@ chrome (choice A).
 - Detail TopAppBars / heroes unchanged (ADR-0054).
 - Smoothness depends on ADR-0096 Lazy cell hygiene (no FittingText / unsized
   Coil on hot scroll paths).
+
+### Amendment (ADR-0107 Pass 4)
+
+Continuous **layout height** reclaim was a residual fling hitch. Shell now keeps
+a fixed top inset = full header height and moves the header with
+`graphicsLayer` only — enterAlways math unchanged; content no longer grows into
+header space mid-drag.

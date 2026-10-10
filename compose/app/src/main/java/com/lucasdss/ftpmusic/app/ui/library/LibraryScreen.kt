@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -189,12 +191,26 @@ fun LibraryContent(
                         } else {
                             val gridState = rememberLazyGridState()
                             val scrollInProgress = gridState.isScrollInProgress
-                            // No near-end loadMore: Albums tab loads the full alpha
-                            // catalog via loadAlphaAlbums (see LIBRARY_SCROLL_PERF).
+                            // Windowed alpha browse — near-end append (ADR-0107 Pass 6).
+                            val searching = albumTab.albumSearchResults != null
+                            LaunchedEffect(gridState, searching) {
+                                if (searching) return@LaunchedEffect
+                                snapshotFlow {
+                                    val info = gridState.layoutInfo
+                                    val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                                    last to info.totalItemsCount
+                                }.collect { (last, total) ->
+                                    if (total > 0 && last >= total - 4) {
+                                        viewModel.loadMoreAlphaAlbums()
+                                    }
+                                }
+                            }
                             LazyVerticalGrid(
                                 state = gridState,
                                 columns = GridCells.Fixed(2),
-                                modifier = Modifier.padding(horizontal = spacingM()),
+                                modifier = Modifier
+                                    .padding(horizontal = spacingM())
+                                    .testTag("library_albums_grid"),
                                 contentPadding = PaddingValues(vertical = spacingS()),
                                 horizontalArrangement = Arrangement.spacedBy(gridGapH()),
                                 verticalArrangement = Arrangement.spacedBy(gridGapV()),
@@ -211,7 +227,7 @@ fun LibraryContent(
                                                     album.coverArt,
                                                     album.artist,
                                                     album.name,
-                                                    size = 300,
+                                                    size = 160,
                                                     fallbackService = coverArtFallback,
                                                 )
                                             if (url != null) {
@@ -223,6 +239,7 @@ fun LibraryContent(
                                                     fallbackAlbum = album.name,
                                                     fallbackService = coverArtFallback,
                                                     decodeSize = 160.dp,
+                                                    allowFallbackFetch = !scrollInProgress,
                                                 )
                                             } else {
                                                 Box(

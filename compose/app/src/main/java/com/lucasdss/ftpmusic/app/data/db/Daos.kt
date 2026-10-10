@@ -1116,6 +1116,13 @@ interface CachedMetadataDao {
     suspend fun getOfflineAlbums(): List<CachedAlbumEntity>
 
     @Query(
+        "SELECT DISTINCT a.* FROM cached_albums a JOIN tracks t ON t.album_id = a.id " +
+            "WHERE t.cached_file_path IS NOT NULL OR t.is_downloaded = 1 " +
+            "ORDER BY a.name ASC LIMIT :limit OFFSET :offset",
+    )
+    suspend fun getOfflineAlbumsPaged(limit: Int, offset: Int): List<CachedAlbumEntity>
+
+    @Query(
         "SELECT DISTINCT ar.* FROM cached_artists ar JOIN tracks t ON (t.artist_id = ar.id OR (t.artist_id IS NULL AND t.artist = ar.name)) WHERE t.cached_file_path IS NOT NULL OR t.is_downloaded = 1 ORDER BY ar.name ASC",
     )
     suspend fun getOfflineArtists(): List<CachedArtistEntity>
