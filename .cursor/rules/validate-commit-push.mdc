@@ -1,0 +1,36 @@
+---
+description: Always validate, commit, and push after finishing work in this repo.
+alwaysApply: true
+---
+
+# Validate → commit → push (default)
+
+When finishing implementation or cleanup in this repo, **always** run this loop unless the user explicitly says not to commit/push (e.g. plan-only, “don’t push”).
+
+## 1. Validate (must pass before commit)
+
+- `./gradlew :app:assembleDebug` from `compose/` (or equivalent module build for touched code)
+- Unit tests for changed packages (`:app:testDebugUnitTest --tests '…'`)
+- Fix failures; re-run until green
+- Do **not** commit known-broken builds
+
+## 2. Commit
+
+- Stage **source, tests, docs** relevant to the change
+- Exclude build caches (`**/build/**`), secrets, and unrelated junk
+- Follow repo commit style (concise why-focused message, HEREDOC `-m`)
+- Do **not** wait for a separate “please commit” — finishing the task implies commit
+
+## 3. Push
+
+- `git push -u origin HEAD` (or `git push origin main` after a local merge)
+- Do **not** wait for a separate “please push” — finishing the task implies push
+- Still **never** force-push to `main`/`master` unless the user explicitly demands it
+
+## Overrides
+
+| User says | Behavior |
+|-----------|----------|
+| Plan mode / “don’t implement” | No commit/push |
+| “Don’t commit” / “don’t push” | Skip that step only |
+| “Commit only” | Validate + commit; skip push |

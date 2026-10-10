@@ -1,0 +1,21 @@
+---
+description: Ship via local git worktrees; do not use GitHub PRs for merge.
+alwaysApply: true
+---
+
+# Local worktree merge (no GitHub PRs)
+
+When the user asks to merge / ship feature work:
+
+1. **Do not** create or merge GitHub PRs (`gh pr create`, `gh pr merge`) unless they explicitly ask for a PR.
+2. Use a **local git worktree** for the feature branch when isolation is needed:
+   - `git worktree add ../ftpmusic-<branch> -b <branch>` (or from an existing branch)
+   - Do implementation commits in that worktree
+3. **Merge locally** into `main` (or the named base):
+   - Update main: `git checkout main && git pull`
+   - `git merge --no-ff <branch>` (or fast-forward if clean single-commit preference matches history)
+   - Push **main**: `git push origin main`
+4. Clean up: `git branch -d <branch>`; `git worktree remove <path>` when done
+5. Still respect: no force-push to main. After merge, **validate, commit if needed, and push** per `validate-commit-push.mdc` (finishing ship work includes push of merged main).
+
+Default ship phrase **"merge, commit and push"** → local merge to main + push main, **not** a GitHub PR.
