@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -617,17 +618,28 @@ fun FavoritesScreen(
     val hasAnything = if (state.mode == FavoritesMode.LIKED) likedHasAnything else dislikedHasAnything
 
     // Mode chips sit above Lazy — pad Column so chrome clears overlay AppHeader.
+    // ADR-0114: chips ride -offsetPx into collapsed header band (graphicsLayer only).
     val headerPad = LocalAppHeaderContentPadding.current
+    val headerOffset = LocalAppHeaderOffsetPx.current
     Column(
         Modifier
             .fillMaxSize()
             .background(Background)
             .padding(top = headerPad),
     ) {
-        FavoritesModeChips(
-            selected = state.mode,
-            onSelect = viewModel::setMode,
-        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    translationY = appHeaderChromeTranslationY(headerOffset.offsetPx())
+                }
+                .background(Background),
+        ) {
+            FavoritesModeChips(
+                selected = state.mode,
+                onSelect = viewModel::setMode,
+            )
+        }
 
         if (!hasAnything) {
             Box(Modifier.fillMaxSize().testTag("favorites_empty"), contentAlignment = Alignment.Center) {

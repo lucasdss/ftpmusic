@@ -22,6 +22,13 @@ Tabbed surfaces: Albums `LazyVerticalGrid`; Artists / Playlists / Radio
 - Background API refreshes Room then republishes loaded window only.
 - Hard-fix: `loadAlbums` must not stomp `_state.albums` while alpha browse active.
 
+## Chrome translate (ADR-0114)
+
+- Column keeps full `LocalAppHeaderContentPadding` (fixed inset).
+- Chips + search ride `LocalAppHeaderOffsetPx` via `graphicsLayer` — enter header
+  band when AppHeader collapses; Lazy viewport size unchanged.
+- Artists / Playlists / Radio use `LazyLayoutCacheWindow(0.5 / 0.2)`.
+
 ## Manual check
 
 Fling Library Albums + Artists with music on — subtle hitch reduced vs Pass 2;

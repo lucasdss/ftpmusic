@@ -14,7 +14,8 @@ chrome (choice A).
 ## Decision
 
 1. **Shell only** — `NestedScrollConnection` in `FtpmusicNavHost` around
-   primary-tab content. Bottom nav + mini player stay fixed.
+   primary-tab content. Bottom nav stays fixed. Mini may hide while primary-tab
+   lists scroll (ADR-0114); idle debounce reveals it.
 2. **Continuous offset** — `AppHeaderScrollState.offsetPx` in
    `0..headerHeight`; layout height = `height - offset` + clip +
    `translationY = -offset` so content reclaims space (no empty gap).
@@ -38,3 +39,9 @@ Continuous **layout height** reclaim was a residual fling hitch. Shell now keeps
 a fixed top inset = full header height and moves the header with
 `graphicsLayer` only — enterAlways math unchanged; content no longer grows into
 header space mid-drag.
+
+### Amendment (ADR-0114)
+
+Library/Favorites chrome above Lazy rides `-offsetPx` via `graphicsLayer` so
+chips reclaim the collapsed header band without resizing the Lazy viewport.
+Mini player hide-on-scroll is discrete (200ms idle reveal); nav remains fixed.

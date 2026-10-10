@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui
 
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -11,6 +12,18 @@ import androidx.compose.ui.unit.dp
  * collapse; content scrolls into the header band when chrome translates away.
  */
 val LocalAppHeaderContentPadding = compositionLocalOf { 0.dp }
+
+/**
+ * Reader for AppHeader collapse offset (ADR-0114). Call [AppHeaderOffsetPx.offsetPx]
+ * inside `graphicsLayer` so chrome rides the header without recomposing the list.
+ */
+fun interface AppHeaderOffsetPx {
+    fun offsetPx(): Float
+}
+
+val ZeroAppHeaderOffsetPx = AppHeaderOffsetPx { 0f }
+
+val LocalAppHeaderOffsetPx = staticCompositionLocalOf { ZeroAppHeaderOffsetPx }
 
 /**
  * Pure helper for tests — same rule as shell CompositionLocalProvider.
@@ -24,3 +37,6 @@ fun resolveAppHeaderContentPadding(showHeader: Boolean, headerHeight: Dp, lastKn
         else -> 0.dp
     }
 }
+
+/** Chrome translate Y for fixed-inset tabs (Library / Favorites). Pure for tests. */
+fun appHeaderChromeTranslationY(offsetPx: Float): Float = -offsetPx

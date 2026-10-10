@@ -1,5 +1,10 @@
 package com.lucasdss.ftpmusic.app.ui
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +63,8 @@ import com.lucasdss.ftpmusic.app.ui.artist.ArtistDetailScreen
 import com.lucasdss.ftpmusic.app.ui.components.AppHeader
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.rememberAppHeaderScrollState
+import com.lucasdss.ftpmusic.app.ui.components.rememberMiniPlayerScrollVisibility
+import com.lucasdss.ftpmusic.app.ui.components.withMiniPlayerScrollVisibility
 import com.lucasdss.ftpmusic.app.ui.favorites.FavoritesScreen
 import com.lucasdss.ftpmusic.app.ui.genre.GenreDetailScreen
 import com.lucasdss.ftpmusic.app.ui.library.HomeScreen
@@ -220,6 +227,18 @@ fun FtpmusicNavHost() {
     val showBottomBar = currentRoute != "connect" // hide on login screen
     val isFullPlayer = currentRoute == "nowplaying"
     val isLoginScreen = currentRoute == "connect"
+    val showHeader = showAppHeaderForRoute(currentRoute)
+    // Hoisted above Scaffold so bottomBar + content share scroll chrome (ADR-0114).
+    val headerScroll = rememberAppHeaderScrollState()
+    val miniScroll = rememberMiniPlayerScrollVisibility()
+    val primaryTabScrollConnection = remember(headerScroll, miniScroll) {
+        headerScroll.nestedScrollConnection.withMiniPlayerScrollVisibility(miniScroll)
+    }
+    LaunchedEffect(currentRoute) {
+        // Instant reset on tab/detail change — no mid-collapse flash; mini returns.
+        headerScroll.resetExpanded()
+        miniScroll.forceVisible()
+    }
 
     // Persistent Cast discovery — callback stays alive across dialog open/close
     val context = navController.context
@@ -279,7 +298,14 @@ fun FtpmusicNavHost() {
             Column(Modifier.navigationBarsPadding()) {
                 // Unified player bar — adapts to isCasting automatically.
                 // ADR-0070: hide idle mini (Spotify / Apple / YT) when no track.
-                if (!isFullPlayer && !isLoginScreen && playbackState.isVisible) {
+                // ADR-0114: discrete hide while primary-tab lists scroll; nav stays.
+                val showMiniSlot =
+                    !isFullPlayer && !isLoginScreen && playbackState.isVisible && miniScroll.visible
+                AnimatedVisibility(
+                    visible = showMiniSlot,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
                     // P1: collect the position tick HERE (bottomBar scope), not
                     // in the NavHost scope — only this subtree recomposes 5 Hz.
                     val position by playbackViewModel.positionMs.collectAsStateWithLifecycle(0L)
@@ -422,15 +448,7 @@ fun FtpmusicNavHost() {
             val route = navBackStackEntry?.destination?.route
             // AppHeader on primary tabs only — detail routes use their own back chrome
             // (avoids stacked logo + TopAppBar). See ADR-0054.
-            val showHeader = showAppHeaderForRoute(route)
-            // YT Music enterAlways — overlay + fixed inset (ADR 0097 / ADR-0107).
-            // Do not shrink header layout height per frame (Lazy remeasure hitch).
-            val headerScroll = rememberAppHeaderScrollState()
             val density = LocalDensity.current
-            LaunchedEffect(route) {
-                // Instant reset on tab/detail change — no mid-collapse flash.
-                headerScroll.resetExpanded()
-            }
             // Full-height NavHost; primary Lazy lists use contentPadding via Local
             // (list scrolls into header band when collapsed — no empty strip).
             val headerInsetDp = with(density) {
@@ -440,8 +458,14 @@ fun FtpmusicNavHost() {
                     headerScroll.lastKnownHeaderHeightPx.toDp(),
                 )
             }
+            val headerOffsetReader = remember(headerScroll) {
+                AppHeaderOffsetPx { headerScroll.offsetPx }
+            }
 
-            CompositionLocalProvider(LocalAppHeaderContentPadding provides headerInsetDp) {
+            CompositionLocalProvider(
+                LocalAppHeaderContentPadding provides headerInsetDp,
+                LocalAppHeaderOffsetPx provides headerOffsetReader,
+            ) {
                 NavHost(
                     navController = navController,
                     startDestination = "splash",
@@ -449,7 +473,7 @@ fun FtpmusicNavHost() {
                         .fillMaxSize()
                         .then(
                             if (showHeader) {
-                                Modifier.nestedScroll(headerScroll.nestedScrollConnection)
+                                Modifier.nestedScroll(primaryTabScrollConnection)
                             } else {
                                 Modifier
                             },
