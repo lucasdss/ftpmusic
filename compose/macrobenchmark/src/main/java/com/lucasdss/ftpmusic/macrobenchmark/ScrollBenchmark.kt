@@ -7,13 +7,15 @@ import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
+import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Release scroll frame timing for Home / Library (ADR-0107 Pass 4b).
+ * Release scroll frame timing for Home / Library (ADR-0107 Pass 4b / hard-fix).
  * Run on a connected device: `./gradlew :macrobenchmark:connectedBenchmarkAndroidTest`
  */
 @RunWith(AndroidJUnit4::class)
@@ -33,7 +35,7 @@ class ScrollBenchmark {
     ) {
         startActivityAndWait()
         device.wait(Until.hasObject(By.res(PACKAGE, "home_scroll")), 15_000)
-        val list = device.findObject(By.res(PACKAGE, "home_scroll")) ?: return@measureRepeated
+        val list = requireScrollNode(By.res(PACKAGE, "home_scroll"), "home_scroll")
         list.setGestureMargin(device.displayWidth / 5)
         list.fling(Direction.DOWN)
         device.waitForIdle()
@@ -50,15 +52,25 @@ class ScrollBenchmark {
         setupBlock = { pressHome() },
     ) {
         startActivityAndWait()
-        // Bottom nav "Library" — label text may vary; try content-desc / text.
         device.wait(Until.hasObject(By.text("Library")), 10_000)
-        device.findObject(By.text("Library"))?.click()
+        val libraryTab = device.findObject(By.text("Library"))
+        assertNotNull("Library tab not found", libraryTab)
+        libraryTab.click()
         device.wait(Until.hasObject(By.res(PACKAGE, "library_albums_grid")), 15_000)
-        val grid = device.findObject(By.res(PACKAGE, "library_albums_grid")) ?: return@measureRepeated
+        val grid = requireScrollNode(By.res(PACKAGE, "library_albums_grid"), "library_albums_grid")
         grid.setGestureMargin(device.displayWidth / 5)
         grid.fling(Direction.DOWN)
         device.waitForIdle()
         grid.fling(Direction.UP)
+    }
+
+    private fun androidx.benchmark.macro.MacrobenchmarkScope.requireScrollNode(
+        selector: androidx.test.uiautomator.BySelector,
+        tag: String,
+    ): UiObject2 {
+        val node = device.findObject(selector)
+        assertNotNull("Scroll node missing: $tag (login / seeded library required)", node)
+        return node
     }
 
     companion object {

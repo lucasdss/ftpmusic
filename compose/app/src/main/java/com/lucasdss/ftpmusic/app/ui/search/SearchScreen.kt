@@ -157,7 +157,12 @@ fun SearchScreen(
                 if (nearEnd && state.query.isNotEmpty()) viewModel.loadMoreSearchResults()
             }
         }
-        LazyColumn(state = listState, modifier = Modifier.padding(padding)) {
+        val headerPad = LocalAppHeaderContentPadding.current
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.padding(padding),
+            contentPadding = PaddingValues(top = headerPad),
+        ) {
             // Search bar — full width with icon inside
             item {
                 Box(Modifier.padding(horizontal = spacingL(), vertical = spacingXS())) {

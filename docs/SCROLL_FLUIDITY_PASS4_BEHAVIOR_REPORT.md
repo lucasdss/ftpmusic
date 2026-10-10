@@ -13,11 +13,12 @@ Subtle vertical fling hitch / low-refresh feel after Pass 3 list hygiene.
 
 ### Pass 4a — Header viewport
 
-- Primary-tab AppHeader overlays content; NavHost top padding = **full**
-  measured header height (stable while `offsetPx` changes).
+- Primary-tab AppHeader overlays content; Lazy lists use **fixed**
+  `contentPadding(top)` = full header height (`LocalAppHeaderContentPadding`).
 - Collapse/reveal still enterAlways via nested scroll + `graphicsLayer`
   translation; snap on post-fling unchanged.
-- Content does **not** reclaim header pixels mid-drag.
+- Hard-fix: list scrolls into header band when collapsed (no empty strip).
+  See `docs/SCROLL_FLUIDITY_HARDFIX_BEHAVIOR_REPORT.md`.
 
 ### Pass 4b — Measurement
 

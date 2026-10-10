@@ -284,6 +284,7 @@ class LibraryViewModel @Inject constructor(
 
     /** Windowed alpha browse (Pass 6) — Compose holds pages, not full catalog. */
     private var alphaBrowseOffset = 0
+
     @Volatile private var alphaBrowseHasMore = true
     private var alphaBrowseGen = 0
     private val alphaBrowseMutex = Mutex()

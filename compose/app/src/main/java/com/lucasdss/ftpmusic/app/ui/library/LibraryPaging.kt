@@ -8,6 +8,5 @@ object LibraryPaging {
     const val ALPHA_PAGE_SIZE: Int = 60
 
     /** True when [pageCount] looks like a full page (more rows may exist). */
-    fun hasMore(pageCount: Int, pageSize: Int = ALPHA_PAGE_SIZE): Boolean =
-        pageCount >= pageSize
+    fun hasMore(pageCount: Int, pageSize: Int = ALPHA_PAGE_SIZE): Boolean = pageCount >= pageSize
 }

@@ -189,7 +189,13 @@ fun LibraryContent(
                                 Text("No albums found", color = Color(0xFF666666), fontSize = textBodyM())
                             }
                         } else {
-                            val gridState = rememberLazyGridState()
+                            val headerPad = LocalAppHeaderContentPadding.current
+                            val gridState = rememberLazyGridState(
+                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                    aheadFraction = 0.5f,
+                                    behindFraction = 0.2f,
+                                ),
+                            )
                             val scrollInProgress = gridState.isScrollInProgress
                             // Windowed alpha browse — near-end append (ADR-0107 Pass 6).
                             val searching = albumTab.albumSearchResults != null
@@ -211,7 +217,10 @@ fun LibraryContent(
                                 modifier = Modifier
                                     .padding(horizontal = spacingM())
                                     .testTag("library_albums_grid"),
-                                contentPadding = PaddingValues(vertical = spacingS()),
+                                contentPadding = PaddingValues(
+                                    top = headerPad + spacingS(),
+                                    bottom = spacingS(),
+                                ),
                                 horizontalArrangement = Arrangement.spacedBy(gridGapH()),
                                 verticalArrangement = Arrangement.spacedBy(gridGapV()),
                             ) {
@@ -334,7 +343,8 @@ fun LibraryContent(
                                 Text("No artists found", color = Color(0xFF666666), fontSize = textBodyM())
                             }
                         } else {
-                            LazyColumn {
+                            val headerPad = LocalAppHeaderContentPadding.current
+                            LazyColumn(contentPadding = PaddingValues(top = headerPad)) {
                                 items(displayedArtists, key = { it.id }, contentType = { "artist" }) { artist ->
                                     Row(
                                         Modifier.fillMaxWidth().clickable {
@@ -417,7 +427,8 @@ fun LibraryContent(
                                 }
                             }
                         } else {
-                            LazyColumn {
+                            val headerPad = LocalAppHeaderContentPadding.current
+                            LazyColumn(contentPadding = PaddingValues(top = headerPad)) {
                                 items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
                                     Box {
                                         Row(
@@ -593,7 +604,8 @@ fun LibraryContent(
                                 }
                             }
                         } else {
-                            LazyColumn {
+                            val headerPad = LocalAppHeaderContentPadding.current
+                            LazyColumn(contentPadding = PaddingValues(top = headerPad)) {
                                 item {
                                     Row(
                                         Modifier.padding(horizontal = spacingL(), vertical = 6.dp),

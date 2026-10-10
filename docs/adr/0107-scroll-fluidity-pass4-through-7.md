@@ -21,11 +21,18 @@ header), residual fling hitch remained. Research pointed at:
 
 ### Pass 4 — Header viewport + measurement
 
-- Shell uses **overlay header** + **fixed top inset** = full `headerHeightPx`
-  (never `height - offset` per frame). Collapse is `graphicsLayer` translation
-  only (ADR-0097 enterAlways math unchanged).
+- Shell uses **overlay header** + **fixed Lazy `contentPadding(top)`** = full
+  header height via `LocalAppHeaderContentPadding` (never NavHost
+  `padding(top)` empty band; never `height - offset` per frame). Collapse is
+  `graphicsLayer` translation only (ADR-0097 enterAlways math unchanged).
 - Add `:macrobenchmark` with Home / Library fling `FrameTimingMetric` and
   Baseline Profile generator; app depends on `profileinstaller`.
+
+### Hard-fix (post Pass 4–7 audit)
+
+- `loadAlbums()` must not publish into `_state.albums` while `alphaBrowseActive`.
+- Alpha load / loadMore / background republish share a `Mutex` + generation token.
+- Empty alpha first page clears stale browse state.
 
 ### Pass 5 — Platform
 

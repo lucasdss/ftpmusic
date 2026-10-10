@@ -57,7 +57,6 @@ import com.lucasdss.ftpmusic.app.ui.album.AlbumDetailScreen
 import com.lucasdss.ftpmusic.app.ui.artist.ArtistDetailScreen
 import com.lucasdss.ftpmusic.app.ui.components.AppHeader
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
-import com.lucasdss.ftpmusic.app.ui.components.computeHeaderContentInsetPx
 import com.lucasdss.ftpmusic.app.ui.components.rememberAppHeaderScrollState
 import com.lucasdss.ftpmusic.app.ui.favorites.FavoritesScreen
 import com.lucasdss.ftpmusic.app.ui.genre.GenreDetailScreen
@@ -432,624 +431,633 @@ fun FtpmusicNavHost() {
                 // Instant reset on tab/detail change — no mid-collapse flash.
                 headerScroll.resetExpanded()
             }
+            // Full-height NavHost; primary Lazy lists use contentPadding via Local
+            // (list scrolls into header band when collapsed — no empty strip).
             val headerInsetDp = with(density) {
-                computeHeaderContentInsetPx(showHeader, headerScroll.headerHeightPx).toDp()
+                resolveAppHeaderContentPadding(
+                    showHeader,
+                    headerScroll.headerHeightPx.toDp(),
+                )
             }
 
-            NavHost(
-                navController = navController,
-                startDestination = "splash",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = headerInsetDp)
-                    .then(
-                        if (showHeader) {
-                            Modifier.nestedScroll(headerScroll.nestedScrollConnection)
-                        } else {
-                            Modifier
-                        },
-                    ),
-            ) {
-                composable("splash") {
-                    val context = LocalContext.current
-                    val nav = navController
-                    LaunchedEffect(Unit) {
-                        // Self-heal hook: re-read storage (force) so a transient
-                        // failure during Application.onCreate does not leave the
-                        // session without a server config.
-                        val configStore = com.lucasdss.ftpmusic.app.di.serverConfigStore(context)
-                        val config = withContext(Dispatchers.IO) {
-                            configStore.initialize(force = true)
-                        }
-                        val hasCredentials = config.isConfigured
-                        if (com.lucasdss.ftpmusic.app.BuildConfig.IMAGE_DIAGNOSTICS) {
-                            android.util.Log.w(
-                                "ftpmusic-images",
-                                "[diag] splash restore url=${config.url.isNotBlank()} " +
-                                    "user=${config.username.isNotBlank()} hasCreds=$hasCredentials " +
-                                    "t=${System.currentTimeMillis()}",
-                            )
-                        }
-                        val metadataDao = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                            context.applicationContext,
-                            MetadataEntryPoint::class.java,
-                        ).cachedMetadataDao()
-                        val albumCount = withContext(Dispatchers.IO) { metadataDao.albumCount() }
-                        val targetRoute = SplashRouter.resolveRoute(hasCredentials, albumCount)
-                        nav.navigate(targetRoute) { popUpTo("splash") { inclusive = true } }
-                    }
-                    Box(
-                        Modifier.fillMaxSize().background(Background),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            androidx.compose.foundation.Image(
-                                painter = painterResource(com.lucasdss.ftpmusic.app.R.drawable.play_store_icon_512),
-                                contentDescription = "FTP Music",
-                                modifier = Modifier.size(120.dp),
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            CircularProgressIndicator(color = BrandTeal, modifier = Modifier.size(32.dp))
-                        }
-                    }
-                }
-                composable("connect") {
-                    val connectVm: com.lucasdss.ftpmusic.app.ui.library.LibraryViewModel = hiltViewModel()
-                    ServerConnectScreen(onConnected = {
-                        // First login — show sync progress then navigate home
-                        navController.navigate(syncingRoute("home")) {
-                            popUpTo("connect") { inclusive = true }
-                        }
-                    })
-                }
-                composable(
-                    SYNCING_ROUTE_PATTERN,
-                    arguments = listOf(navArgument("returnTo") { defaultValue = "home" }),
-                ) { backStackEntry ->
-                    val returnTo = backStackEntry.arguments?.getString("returnTo") ?: "home"
-                    com.lucasdss.ftpmusic.app.ui.library.SyncingScreen(
-                        userTriggered = returnTo != "home",
-                        rebuildOnly = false,
-                        onComplete = {
-                            navController.navigate(returnTo) {
-                                popUpTo(SYNCING_ROUTE_PATTERN) { inclusive = true }
+            CompositionLocalProvider(LocalAppHeaderContentPadding provides headerInsetDp) {
+                NavHost(
+                    navController = navController,
+                    startDestination = "splash",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (showHeader) {
+                                Modifier.nestedScroll(headerScroll.nestedScrollConnection)
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
+                    composable("splash") {
+                        val context = LocalContext.current
+                        val nav = navController
+                        LaunchedEffect(Unit) {
+                            // Self-heal hook: re-read storage (force) so a transient
+                            // failure during Application.onCreate does not leave the
+                            // session without a server config.
+                            val configStore = com.lucasdss.ftpmusic.app.di.serverConfigStore(context)
+                            val config = withContext(Dispatchers.IO) {
+                                configStore.initialize(force = true)
                             }
-                        },
-                    )
-                }
-                composable("rebuildmix") {
-                    com.lucasdss.ftpmusic.app.ui.library.SyncingScreen(
-                        userTriggered = true,
-                        rebuildOnly = true,
-                        onComplete = {
-                            navController.popBackStack()
-                        },
-                    )
-                }
-                composable("home") {
-                    HomeScreen(
-                        onAlbumClick = { navController.navigate("album/$it") },
-                        onGenreClick = { genre ->
-                            navController.navigate("genre/$genre")
-                        },
-                        onMixClick = { mixId ->
-                            navController.navigate("mix/$mixId")
-                        },
-                        onPlaylistsClick = {
-                            TabNavigationPolicy.resolveActiveTabForDestination("library?tab=playlists")
-                                ?.let { activeBottomTab = it }
-                            navController.navigate("library?tab=playlists") { launchSingleTop = true }
-                        },
-                        onPlaylistClick = { playlistId ->
-                            navController.navigate("playlist/$playlistId")
-                        },
-                        onArtistClick = { artistId ->
-                            navController.navigate("artist/$artistId")
-                        },
-                        onRadioStationClick = { station ->
-                            playbackViewModel.playStream(station.streamUrl, station.name)
-                        },
-                        onFavoritesClick = {
-                            TabNavigationPolicy.resolveActiveTabForDestination("favorites")
-                                ?.let { activeBottomTab = it }
-                            navController.navigate("favorites") { launchSingleTop = true }
-                        },
-                        onRecentlyAddedClick = {
-                            TabNavigationPolicy.resolveActiveTabForDestination("library?tab=albums")
-                                ?.let { activeBottomTab = it }
-                            navController.navigate("library?tab=albums") { launchSingleTop = true }
-                        },
-                        currentTrackId = playbackState.currentTrackId,
-                        currentAlbumId = playbackState.albumId,
-                        isPlaying = playbackState.isPlaying,
-                        onOpenServerSettings = {
-                            navController.navigateToSettings()
-                        },
-                    )
-                }
-                composable("genre/{genre}") { backStackEntry ->
-                    val genre = backStackEntry.arguments?.getString("genre") ?: ""
-                    GenreDetailScreen(
-                        genre = genre,
-                        onAlbumClick = { navController.navigate("album/$it") },
-                        onArtistClick = { navController.navigate("artist/$it") },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable("mix/{mixId}") { backStackEntry ->
-                    val mixId = backStackEntry.arguments?.getString("mixId")?.toLongOrNull() ?: 0L
-                    val vm: com.lucasdss.ftpmusic.app.ui.library.MixDetailViewModel = hiltViewModel()
-                    val mixName by vm.mixName.collectAsStateWithLifecycle()
-                    com.lucasdss.ftpmusic.app.ui.library.MixDetailScreen(
-                        mixId = mixId,
-                        mixName = mixName,
-                        onBack = { navController.popBackStack() },
-                        onRefresh = { vm.refreshMix(mixId) },
-                        currentTrackId = playbackState.currentTrackId,
-                        isPlaying = playbackState.isPlaying,
-                    )
-                }
-                composable(
-                    "library?tab={tab}",
-                    arguments = listOf(navArgument("tab") { defaultValue = "albums" }),
-                ) { backStackEntry ->
-                    val tab = backStackEntry.arguments?.getString("tab") ?: "albums"
-                    LibraryContent(
-                        initialTab = tab,
-                        onArtistClick = { navController.navigate("artist/$it") },
-                        onAlbumClick = { navController.navigate("album/$it") },
-                        onPlaylistClick = { navController.navigate("playlist/$it") },
-                        onRadioStationClick = { station ->
-                            playbackViewModel.playStream(station.streamUrl, station.name)
-                        },
-                        currentAlbumId = playbackState.albumId,
-                        isPlaying = playbackState.isPlaying,
-                        onOpenServerSettings = {
-                            navController.navigateToSettings()
-                        },
-                    )
-                }
-                composable("favorites") {
-                    FavoritesScreen(
-                        currentTrackId = playbackState.currentTrackId,
-                        currentAlbumId = playbackState.albumId,
-                        isPlaying = playbackState.isPlaying,
-                        onAlbumClick = { album -> navController.navigate("album/${album.id}") },
-                        onArtistClick = { artist -> navController.navigate("artist/${artist.id}") },
-                        onRadioStationClick = { station ->
-                            playbackViewModel.playStream(station.streamUrl, station.name)
-                        },
-                    )
-                }
-                composable("search") {
-                    SearchScreen(
-                        initialQuery = "",
-                        onArtistClick = { navController.navigate("artist/$it") },
-                        onAlbumClick = { navController.navigate("album/$it") },
-                        onGenreClick = { navController.navigate("genre/$it") },
-                        onTrackClick = { track ->
-                            val streamUrl = playbackViewModel.buildStreamUrl(track.id)
-                            playbackViewModel.playSingleTrack(track, streamUrl)
-                        },
-                        onPlaylistClick = { navController.navigate("playlist/$it") },
-                    )
-                }
-                composable("search/{query}") { backStackEntry ->
-                    val query = backStackEntry.arguments?.getString("query") ?: ""
-                    SearchScreen(
-                        initialQuery = query,
-                        onArtistClick = { navController.navigate("artist/$it") },
-                        onAlbumClick = { navController.navigate("album/$it") },
-                        onGenreClick = { navController.navigate("genre/$it") },
-                        onTrackClick = { track ->
-                            val streamUrl = playbackViewModel.buildStreamUrl(track.id)
-                            playbackViewModel.playSingleTrack(track, streamUrl)
-                        },
-                        onPlaylistClick = { navController.navigate("playlist/$it") },
-                    )
-                }
-                composable("album/{albumId}") { backStackEntry ->
-                    AlbumDetailScreen(
-                        albumId = backStackEntry.arguments?.getString("albumId") ?: "",
-                        onNavigateToAlbum = { albumId -> navController.navigate("album/$albumId") },
-                        onNavigateToArtist = { artistId -> navController.navigate("artist/$artistId") },
-                        onBack = { navController.popBackStack() },
-                        currentTrackId = playbackState.currentTrackId,
-                        isPlaying = playbackState.isPlaying,
-                    )
-                }
-                composable("playlist/{playlistId}") { backStackEntry ->
-                    val playlistId = backStackEntry.arguments?.getString("playlistId") ?: ""
-                    com.lucasdss.ftpmusic.app.ui.playlist.PlaylistDetailScreen(
-                        playlistId = playlistId,
-                        onBack = { navController.popBackStack() },
-                        onNavigateToAlbum = { albumId -> navController.navigate("album/$albumId") },
-                        onNavigateToArtist = { artistId -> navController.navigate("artist/$artistId") },
-                        currentTrackId = playbackState.currentTrackId,
-                        isPlaying = playbackState.isPlaying,
-                    )
-                }
-                composable("artist/{artistId}") { backStackEntry ->
-                    val artistId = backStackEntry.arguments?.getString("artistId") ?: ""
-                    ArtistDetailScreen(
-                        artistId = artistId,
-                        onAlbumClick = { albumId -> navController.navigate("album/$albumId") },
-                        onArtistClick = { id -> navController.navigate("artist/$id") },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable("settings") {
-                    SettingsScreen(
-                        onBack = { navController.popBackStack() },
-                        onResyncLibrary = {
-                            if (navController.currentBackStackEntry?.destination?.route?.startsWith("syncing") ==
-                                true
-                            ) {
-                                return@SettingsScreen
-                            }
-                            navController.navigate(syncingRoute("settings"))
-                        },
-                        onRebuildMixes = { navController.navigate("rebuildmix") },
-                        onCustomMixes = { navController.navigate("customMixes") },
-                        onDownloads = { navController.navigate("downloads") },
-                        onProfile = { navController.navigate("profile") },
-                        onTypography = { navController.navigate("settings/typography") },
-                        onServerSettingsSaved = { /* saved, nothing to do */ },
-                    )
-                }
-                composable("settings/typography") {
-                    com.lucasdss.ftpmusic.app.ui.settings.TypographySettingsScreen(
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable("downloads") {
-                    com.lucasdss.ftpmusic.app.ui.settings.DownloadsScreen(
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable("profile") {
-                    com.lucasdss.ftpmusic.app.ui.settings.ProfileScreen(
-                        onBack = { navController.popBackStack() },
-                        onTrackClick = { track ->
-                            val trackModel = com.lucasdss.ftpmusic.app.data.model.Track(
-                                id = track.id,
-                                title = track.title,
-                                artist = track.artist,
-                                album = null,
-                                duration = track.durationSeconds,
-                                coverArt = track.coverArtUrl,
-                                suffix = track.suffix,
-                                contentType = track.contentType,
-                            )
-                            val streamUrl = playbackViewModel.buildStreamUrl(track.id)
-                            playbackViewModel.playSingleTrack(trackModel, streamUrl)
-                            navController.navigate("nowplaying")
-                        },
-                    )
-                }
-                composable("customMixes") {
-                    com.lucasdss.ftpmusic.app.ui.settings.CustomDailyMixesScreen(
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable("nowplaying") {
-                    // P1: position tick collected in THIS scope — the nowplaying
-                    // subtree recomposes at 5 Hz, but NavHost and every other
-                    // screen stay untouched.
-                    val position by playbackViewModel.positionMs.collectAsStateWithLifecycle(0L)
-                    var lyricsText by remember { mutableStateOf<String?>(null) }
-                    var lyricLines by remember {
-                        mutableStateOf<List<com.lucasdss.ftpmusic.app.ui.player.LyricLine>>(emptyList())
-                    }
-                    var lyricsLoading by remember { mutableStateOf(true) }
-                    val appContext = LocalContext.current.applicationContext
-                    var waveformBars by remember { mutableStateOf<List<Float>>(emptyList()) }
-                    var showSleepTimerDialog by remember { mutableStateOf(false) }
-
-                    LaunchedEffect(playbackState.currentTrackId) {
-                        val tid = playbackState.currentTrackId
-                        if (tid == null) {
-                            // Playback stopped — don't keep the previous track's waveform.
-                            waveformBars = emptyList()
-                            return@LaunchedEffect
-                        }
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            try {
-                                val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                                    appContext,
-                                    WaveformDbEntryPoint::class.java,
+                            val hasCredentials = config.isConfigured
+                            if (com.lucasdss.ftpmusic.app.BuildConfig.IMAGE_DIAGNOSTICS) {
+                                android.util.Log.w(
+                                    "ftpmusic-images",
+                                    "[diag] splash restore url=${config.url.isNotBlank()} " +
+                                        "user=${config.username.isNotBlank()} hasCreds=$hasCredentials " +
+                                        "t=${System.currentTimeMillis()}",
                                 )
-                                val bars = entry.waveformRepository().getOrGenerate(tid)
-                                // Fast track skips cancel this effect; only apply if still current.
-                                if (playbackState.currentTrackId == tid) {
-                                    waveformBars = bars
+                            }
+                            val metadataDao = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                                context.applicationContext,
+                                MetadataEntryPoint::class.java,
+                            ).cachedMetadataDao()
+                            val albumCount = withContext(Dispatchers.IO) { metadataDao.albumCount() }
+                            val targetRoute = SplashRouter.resolveRoute(hasCredentials, albumCount)
+                            nav.navigate(targetRoute) { popUpTo("splash") { inclusive = true } }
+                        }
+                        Box(
+                            Modifier.fillMaxSize().background(Background),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                androidx.compose.foundation.Image(
+                                    painter = painterResource(com.lucasdss.ftpmusic.app.R.drawable.play_store_icon_512),
+                                    contentDescription = "FTP Music",
+                                    modifier = Modifier.size(120.dp),
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                CircularProgressIndicator(color = BrandTeal, modifier = Modifier.size(32.dp))
+                            }
+                        }
+                    }
+                    composable("connect") {
+                        val connectVm: com.lucasdss.ftpmusic.app.ui.library.LibraryViewModel = hiltViewModel()
+                        ServerConnectScreen(onConnected = {
+                            // First login — show sync progress then navigate home
+                            navController.navigate(syncingRoute("home")) {
+                                popUpTo("connect") { inclusive = true }
+                            }
+                        })
+                    }
+                    composable(
+                        SYNCING_ROUTE_PATTERN,
+                        arguments = listOf(navArgument("returnTo") { defaultValue = "home" }),
+                    ) { backStackEntry ->
+                        val returnTo = backStackEntry.arguments?.getString("returnTo") ?: "home"
+                        com.lucasdss.ftpmusic.app.ui.library.SyncingScreen(
+                            userTriggered = returnTo != "home",
+                            rebuildOnly = false,
+                            onComplete = {
+                                navController.navigate(returnTo) {
+                                    popUpTo(SYNCING_ROUTE_PATTERN) { inclusive = true }
                                 }
+                            },
+                        )
+                    }
+                    composable("rebuildmix") {
+                        com.lucasdss.ftpmusic.app.ui.library.SyncingScreen(
+                            userTriggered = true,
+                            rebuildOnly = true,
+                            onComplete = {
+                                navController.popBackStack()
+                            },
+                        )
+                    }
+                    composable("home") {
+                        HomeScreen(
+                            onAlbumClick = { navController.navigate("album/$it") },
+                            onGenreClick = { genre ->
+                                navController.navigate("genre/$genre")
+                            },
+                            onMixClick = { mixId ->
+                                navController.navigate("mix/$mixId")
+                            },
+                            onPlaylistsClick = {
+                                TabNavigationPolicy.resolveActiveTabForDestination("library?tab=playlists")
+                                    ?.let { activeBottomTab = it }
+                                navController.navigate("library?tab=playlists") { launchSingleTop = true }
+                            },
+                            onPlaylistClick = { playlistId ->
+                                navController.navigate("playlist/$playlistId")
+                            },
+                            onArtistClick = { artistId ->
+                                navController.navigate("artist/$artistId")
+                            },
+                            onRadioStationClick = { station ->
+                                playbackViewModel.playStream(station.streamUrl, station.name)
+                            },
+                            onFavoritesClick = {
+                                TabNavigationPolicy.resolveActiveTabForDestination("favorites")
+                                    ?.let { activeBottomTab = it }
+                                navController.navigate("favorites") { launchSingleTop = true }
+                            },
+                            onRecentlyAddedClick = {
+                                TabNavigationPolicy.resolveActiveTabForDestination("library?tab=albums")
+                                    ?.let { activeBottomTab = it }
+                                navController.navigate("library?tab=albums") { launchSingleTop = true }
+                            },
+                            currentTrackId = playbackState.currentTrackId,
+                            currentAlbumId = playbackState.albumId,
+                            isPlaying = playbackState.isPlaying,
+                            onOpenServerSettings = {
+                                navController.navigateToSettings()
+                            },
+                        )
+                    }
+                    composable("genre/{genre}") { backStackEntry ->
+                        val genre = backStackEntry.arguments?.getString("genre") ?: ""
+                        GenreDetailScreen(
+                            genre = genre,
+                            onAlbumClick = { navController.navigate("album/$it") },
+                            onArtistClick = { navController.navigate("artist/$it") },
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable("mix/{mixId}") { backStackEntry ->
+                        val mixId = backStackEntry.arguments?.getString("mixId")?.toLongOrNull() ?: 0L
+                        val vm: com.lucasdss.ftpmusic.app.ui.library.MixDetailViewModel = hiltViewModel()
+                        val mixName by vm.mixName.collectAsStateWithLifecycle()
+                        com.lucasdss.ftpmusic.app.ui.library.MixDetailScreen(
+                            mixId = mixId,
+                            mixName = mixName,
+                            onBack = { navController.popBackStack() },
+                            onRefresh = { vm.refreshMix(mixId) },
+                            currentTrackId = playbackState.currentTrackId,
+                            isPlaying = playbackState.isPlaying,
+                        )
+                    }
+                    composable(
+                        "library?tab={tab}",
+                        arguments = listOf(navArgument("tab") { defaultValue = "albums" }),
+                    ) { backStackEntry ->
+                        val tab = backStackEntry.arguments?.getString("tab") ?: "albums"
+                        LibraryContent(
+                            initialTab = tab,
+                            onArtistClick = { navController.navigate("artist/$it") },
+                            onAlbumClick = { navController.navigate("album/$it") },
+                            onPlaylistClick = { navController.navigate("playlist/$it") },
+                            onRadioStationClick = { station ->
+                                playbackViewModel.playStream(station.streamUrl, station.name)
+                            },
+                            currentAlbumId = playbackState.albumId,
+                            isPlaying = playbackState.isPlaying,
+                            onOpenServerSettings = {
+                                navController.navigateToSettings()
+                            },
+                        )
+                    }
+                    composable("favorites") {
+                        FavoritesScreen(
+                            currentTrackId = playbackState.currentTrackId,
+                            currentAlbumId = playbackState.albumId,
+                            isPlaying = playbackState.isPlaying,
+                            onAlbumClick = { album -> navController.navigate("album/${album.id}") },
+                            onArtistClick = { artist -> navController.navigate("artist/${artist.id}") },
+                            onRadioStationClick = { station ->
+                                playbackViewModel.playStream(station.streamUrl, station.name)
+                            },
+                        )
+                    }
+                    composable("search") {
+                        SearchScreen(
+                            initialQuery = "",
+                            onArtistClick = { navController.navigate("artist/$it") },
+                            onAlbumClick = { navController.navigate("album/$it") },
+                            onGenreClick = { navController.navigate("genre/$it") },
+                            onTrackClick = { track ->
+                                val streamUrl = playbackViewModel.buildStreamUrl(track.id)
+                                playbackViewModel.playSingleTrack(track, streamUrl)
+                            },
+                            onPlaylistClick = { navController.navigate("playlist/$it") },
+                        )
+                    }
+                    composable("search/{query}") { backStackEntry ->
+                        val query = backStackEntry.arguments?.getString("query") ?: ""
+                        SearchScreen(
+                            initialQuery = query,
+                            onArtistClick = { navController.navigate("artist/$it") },
+                            onAlbumClick = { navController.navigate("album/$it") },
+                            onGenreClick = { navController.navigate("genre/$it") },
+                            onTrackClick = { track ->
+                                val streamUrl = playbackViewModel.buildStreamUrl(track.id)
+                                playbackViewModel.playSingleTrack(track, streamUrl)
+                            },
+                            onPlaylistClick = { navController.navigate("playlist/$it") },
+                        )
+                    }
+                    composable("album/{albumId}") { backStackEntry ->
+                        AlbumDetailScreen(
+                            albumId = backStackEntry.arguments?.getString("albumId") ?: "",
+                            onNavigateToAlbum = { albumId -> navController.navigate("album/$albumId") },
+                            onNavigateToArtist = { artistId -> navController.navigate("artist/$artistId") },
+                            onBack = { navController.popBackStack() },
+                            currentTrackId = playbackState.currentTrackId,
+                            isPlaying = playbackState.isPlaying,
+                        )
+                    }
+                    composable("playlist/{playlistId}") { backStackEntry ->
+                        val playlistId = backStackEntry.arguments?.getString("playlistId") ?: ""
+                        com.lucasdss.ftpmusic.app.ui.playlist.PlaylistDetailScreen(
+                            playlistId = playlistId,
+                            onBack = { navController.popBackStack() },
+                            onNavigateToAlbum = { albumId -> navController.navigate("album/$albumId") },
+                            onNavigateToArtist = { artistId -> navController.navigate("artist/$artistId") },
+                            currentTrackId = playbackState.currentTrackId,
+                            isPlaying = playbackState.isPlaying,
+                        )
+                    }
+                    composable("artist/{artistId}") { backStackEntry ->
+                        val artistId = backStackEntry.arguments?.getString("artistId") ?: ""
+                        ArtistDetailScreen(
+                            artistId = artistId,
+                            onAlbumClick = { albumId -> navController.navigate("album/$albumId") },
+                            onArtistClick = { id -> navController.navigate("artist/$id") },
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable("settings") {
+                        SettingsScreen(
+                            onBack = { navController.popBackStack() },
+                            onResyncLibrary = {
+                                if (navController.currentBackStackEntry?.destination?.route?.startsWith("syncing") ==
+                                    true
+                                ) {
+                                    return@SettingsScreen
+                                }
+                                navController.navigate(syncingRoute("settings"))
+                            },
+                            onRebuildMixes = { navController.navigate("rebuildmix") },
+                            onCustomMixes = { navController.navigate("customMixes") },
+                            onDownloads = { navController.navigate("downloads") },
+                            onProfile = { navController.navigate("profile") },
+                            onTypography = { navController.navigate("settings/typography") },
+                            onServerSettingsSaved = { /* saved, nothing to do */ },
+                        )
+                    }
+                    composable("settings/typography") {
+                        com.lucasdss.ftpmusic.app.ui.settings.TypographySettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable("downloads") {
+                        com.lucasdss.ftpmusic.app.ui.settings.DownloadsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable("profile") {
+                        com.lucasdss.ftpmusic.app.ui.settings.ProfileScreen(
+                            onBack = { navController.popBackStack() },
+                            onTrackClick = { track ->
+                                val trackModel = com.lucasdss.ftpmusic.app.data.model.Track(
+                                    id = track.id,
+                                    title = track.title,
+                                    artist = track.artist,
+                                    album = null,
+                                    duration = track.durationSeconds,
+                                    coverArt = track.coverArtUrl,
+                                    suffix = track.suffix,
+                                    contentType = track.contentType,
+                                )
+                                val streamUrl = playbackViewModel.buildStreamUrl(track.id)
+                                playbackViewModel.playSingleTrack(trackModel, streamUrl)
+                                navController.navigate("nowplaying")
+                            },
+                        )
+                    }
+                    composable("customMixes") {
+                        com.lucasdss.ftpmusic.app.ui.settings.CustomDailyMixesScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable("nowplaying") {
+                        // P1: position tick collected in THIS scope — the nowplaying
+                        // subtree recomposes at 5 Hz, but NavHost and every other
+                        // screen stay untouched.
+                        val position by playbackViewModel.positionMs.collectAsStateWithLifecycle(0L)
+                        var lyricsText by remember { mutableStateOf<String?>(null) }
+                        var lyricLines by remember {
+                            mutableStateOf<List<com.lucasdss.ftpmusic.app.ui.player.LyricLine>>(emptyList())
+                        }
+                        var lyricsLoading by remember { mutableStateOf(true) }
+                        val appContext = LocalContext.current.applicationContext
+                        var waveformBars by remember { mutableStateOf<List<Float>>(emptyList()) }
+                        var showSleepTimerDialog by remember { mutableStateOf(false) }
+
+                        LaunchedEffect(playbackState.currentTrackId) {
+                            val tid = playbackState.currentTrackId
+                            if (tid == null) {
+                                // Playback stopped — don't keep the previous track's waveform.
+                                waveformBars = emptyList()
+                                return@LaunchedEffect
+                            }
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                                        appContext,
+                                        WaveformDbEntryPoint::class.java,
+                                    )
+                                    val bars = entry.waveformRepository().getOrGenerate(tid)
+                                    // Fast track skips cancel this effect; only apply if still current.
+                                    if (playbackState.currentTrackId == tid) {
+                                        waveformBars = bars
+                                    }
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    android.util.Log.w(
+                                        "ftpmusic-waveform",
+                                        "Failed to load waveform for $tid: ${e.message}",
+                                    )
+                                    waveformBars = emptyList()
+                                }
+                            }
+                        }
+
+                        LaunchedEffect(playbackState.artist, playbackState.title, playbackState.currentTrackId) {
+                            val artist = playbackState.artist
+                            val title = playbackState.title
+                            val trackId = playbackState.currentTrackId
+                            if (artist.isNullOrEmpty() || title.isNullOrEmpty()) {
+                                lyricsText = null
+                                lyricLines = emptyList()
+                                lyricsLoading = false
+                                return@LaunchedEffect
+                            }
+                            lyricsLoading = true
+                            lyricLines = emptyList()
+                            lyricsText = null
+                            val lyricsEntry = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                                appContext,
+                                LyricsCacheEntryPoint::class.java,
+                            )
+                            val allowNetwork = com.lucasdss.ftpmusic.app.ui.player.LyricsFetcher
+                                .shouldFetchLyricsOverNetwork(isOffline = playbackState.isOffline)
+                            try {
+                                val resolve = withContext(Dispatchers.IO) {
+                                    val dao = lyricsEntry.lyricsCacheDao()
+                                    trackId?.let {
+                                        com.lucasdss.ftpmusic.app.ui.player.LyricsFetcher.resolveFromCache(it, dao)
+                                    }
+                                }
+                                if (resolve != null) {
+                                    lyricLines = resolve.display.lines
+                                    lyricsText = resolve.display.text
+                                    lyricsLoading = false
+                                    if (allowNetwork && resolve.needsBackgroundRefresh && trackId != null) {
+                                        // Child of this effect — cancelled on track change (no detached scope).
+                                        launch(Dispatchers.IO) {
+                                            try {
+                                                refreshLyricsInBackground(
+                                                    artist,
+                                                    title,
+                                                    trackId,
+                                                    lyricsEntry,
+                                                    appContext,
+                                                )
+                                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                                throw e
+                                            } catch (_: Exception) {
+                                                // Silent — stale cache still shown
+                                            }
+                                        }
+                                    }
+                                    return@LaunchedEffect
+                                }
+                                if (!allowNetwork) {
+                                    lyricsLoading = false
+                                    return@LaunchedEffect
+                                }
+                                val display = withContext(Dispatchers.IO) {
+                                    fetchLyricsForTrack(artist, title, trackId, lyricsEntry, appContext)
+                                }
+                                lyricLines = display.lines
+                                lyricsText = display.text
+                                lyricsLoading = false
                             } catch (e: kotlinx.coroutines.CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                android.util.Log.w(
-                                    "ftpmusic-waveform",
-                                    "Failed to load waveform for $tid: ${e.message}",
-                                )
-                                waveformBars = emptyList()
+                                android.util.Log.w("ftpmusic-lyrics", "Failed to fetch lyrics: ${e.message}")
+                                lyricsText = null
+                                lyricLines = emptyList()
+                                lyricsLoading = false
                             }
                         }
-                    }
 
-                    LaunchedEffect(playbackState.artist, playbackState.title, playbackState.currentTrackId) {
-                        val artist = playbackState.artist
-                        val title = playbackState.title
-                        val trackId = playbackState.currentTrackId
-                        if (artist.isNullOrEmpty() || title.isNullOrEmpty()) {
-                            lyricsText = null
-                            lyricLines = emptyList()
-                            lyricsLoading = false
-                            return@LaunchedEffect
-                        }
-                        lyricsLoading = true
-                        lyricLines = emptyList()
-                        lyricsText = null
-                        val lyricsEntry = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                            appContext,
-                            LyricsCacheEntryPoint::class.java,
-                        )
-                        val allowNetwork = com.lucasdss.ftpmusic.app.ui.player.LyricsFetcher
-                            .shouldFetchLyricsOverNetwork(isOffline = playbackState.isOffline)
-                        try {
-                            val resolve = withContext(Dispatchers.IO) {
-                                val dao = lyricsEntry.lyricsCacheDao()
-                                trackId?.let {
-                                    com.lucasdss.ftpmusic.app.ui.player.LyricsFetcher.resolveFromCache(it, dao)
+                        // P3: stable callback identities. Fresh lambdas per 200 ms tick
+                        // make every PlayerBar sub-composable non-skippable — the whole
+                        // 1600-line player body re-executed at 5 Hz. Remembering them
+                        // (keys = stable dependencies) keeps the tick inside the seek
+                        // region only. State-read callbacks read vm.state.value live.
+                        val onPlayPause = remember(playbackViewModel) { { playbackViewModel.playPause() } }
+                        val onSkipPrev = remember(playbackViewModel) { { playbackViewModel.skipPrev() } }
+                        val onSkipNext = remember(playbackViewModel) { { playbackViewModel.skipNext() } }
+                        val onSeek =
+                            remember(playbackViewModel) { { fraction: Float -> playbackViewModel.seekTo(fraction) } }
+                        val onVolumeChange =
+                            remember(playbackViewModel) { { v: Float -> playbackViewModel.setVolume(v) } }
+                        val onRepeatToggle = remember(playbackViewModel) { { playbackViewModel.toggleRepeat() } }
+                        val onShuffleToggle = remember(playbackViewModel) { { playbackViewModel.toggleShuffle() } }
+                        val onToggleLike = remember(playbackViewModel) { { playbackViewModel.toggleLike() } }
+                        val onToggleDislike = remember(playbackViewModel) { { playbackViewModel.toggleDislike() } }
+                        val onRate = remember(playbackViewModel) { { r: Int -> playbackViewModel.rateCurrent(r) } }
+                        val onArtistClick = remember(playbackViewModel, navController) {
+                            {
+                                val aid = playbackViewModel.state.value.artistId
+                                if (aid !=
+                                    null
+                                ) {
+                                    navController.navigate("artist/$aid")
                                 }
                             }
-                            if (resolve != null) {
-                                lyricLines = resolve.display.lines
-                                lyricsText = resolve.display.text
-                                lyricsLoading = false
-                                if (allowNetwork && resolve.needsBackgroundRefresh && trackId != null) {
-                                    // Child of this effect — cancelled on track change (no detached scope).
-                                    launch(Dispatchers.IO) {
-                                        try {
-                                            refreshLyricsInBackground(
-                                                artist,
-                                                title,
-                                                trackId,
-                                                lyricsEntry,
-                                                appContext,
-                                            )
-                                        } catch (e: kotlinx.coroutines.CancellationException) {
-                                            throw e
-                                        } catch (_: Exception) {
-                                            // Silent — stale cache still shown
+                        }
+                        val onAlbumClick = remember(playbackViewModel, navController) {
+                            {
+                                val aid = playbackViewModel.state.value.albumId
+                                if (aid !=
+                                    null
+                                ) {
+                                    navController.navigate("album/$aid")
+                                }
+                            }
+                        }
+                        val onBack = remember(navController) {
+                            {
+                                navController.popBackStack()
+                                Unit
+                            }
+                        }
+                        val onClearQueue = remember(playbackViewModel) { { playbackViewModel.clearPriorityQueue() } }
+                        val onClearAutoplayQueue =
+                            remember(playbackViewModel) { { playbackViewModel.clearAutoplayQueue() } }
+                        val onContinuousPlayChange = remember(playbackViewModel) {
+                            { enabled: Boolean -> playbackViewModel.setContinuousPlayEnabled(enabled) }
+                        }
+                        val onRemoveFromQueue =
+                            remember(playbackViewModel) { { index: Int -> playbackViewModel.removeFromQueue(index) } }
+                        val onPlayQueueItem =
+                            remember(playbackViewModel) { { index: Int -> playbackViewModel.playQueueItem(index) } }
+                        val onMoveQueueItem = remember(playbackViewModel) {
+                            { from: Int, to: Int -> playbackViewModel.moveQueueItem(from, to) }
+                        }
+                        val onBeginQueueReorder = remember(playbackViewModel) {
+                            { entryId: Int, fromIndex: Int ->
+                                playbackViewModel.beginQueueReorder(entryId, fromIndex)
+                            }
+                        }
+                        val onCommitQueueReorder =
+                            remember(playbackViewModel) { { playbackViewModel.commitQueueReorder() } }
+                        val onSleepTimerClick = remember { { showSleepTimerDialog = true } }
+                        val onCast = remember { { CastButtonState.showDialog.value = true } }
+                        val onShareQueue =
+                            remember(playbackViewModel, appContext) { { playbackViewModel.shareQueue(appContext) } }
+                        val onSaveQueueAsPlaylist = remember(playbackViewModel, appContext) {
+                            { name: String -> playbackViewModel.saveQueueAsPlaylist(appContext, name) }
+                        }
+                        val onPlayHistoryTrack = remember(playbackViewModel) {
+                            { trackId: String -> playbackViewModel.playNextFromHistory(trackId) }
+                        }
+                        val onRemoveFromQueueBatch = remember(playbackViewModel) {
+                            { indices: Set<Int> -> playbackViewModel.removeFromQueueBatch(indices) }
+                        }
+                        val onQueueSheetOpened = remember(playbackViewModel) {
+                            { playbackViewModel.refreshQueueHistory() }
+                        }
+                        val queueHistory by playbackViewModel.queueHistory.collectAsStateWithLifecycle()
+                        val continuousPlayEnabled by
+                            playbackViewModel.continuousPlayEnabled.collectAsStateWithLifecycle()
+                        val queueRevision by
+                            com.lucasdss.ftpmusic.app.playback.QueueRevisionTracker.revision
+                                .collectAsStateWithLifecycle()
+
+                        PlayerBar(
+                            state = PlayerBarState(
+                                title = playbackState.title,
+                                artist = playbackState.artist,
+                                album = playbackState.album,
+                                isPlaying = playbackState.isPlaying,
+                                isBuffering = playbackState.isBuffering,
+                                coverArtUrl = nowPlayingCoverUrl,
+                                coverArtId = effectiveCoverArtId,
+                                isCasting = playbackState.isCasting,
+                                castDeviceName = playbackState.castDeviceName,
+                                volume = playbackState.volume,
+                                repeatMode = playbackState.repeatMode,
+                                shuffleModeEnabled = playbackState.shuffleModeEnabled,
+                                playbackSpeed = playbackState.playbackSpeed,
+                                sleepTimerEndMs = playbackState.sleepTimerEndMs,
+                                isStarred = playbackState.isStarred,
+                                isDisliked = playbackState.isDisliked,
+                                trackRating = playbackState.trackRating,
+                                nextTrackTitle = playbackState.nextTrackTitle,
+                                nextTrackArtist = playbackState.nextTrackArtist,
+                                trackIndex = playbackState.trackIndex,
+                                queueSize = playbackState.queueSize,
+                                isOffline = playbackState.isOffline,
+                                isQueueSynced = playbackState.isQueueSynced,
+                                playbackError = playbackState.playbackError,
+                                nextTracks = remember(
+                                    queueRevision,
+                                    playbackState.queueSize,
+                                    playbackState.priorityQueueSize,
+                                    playbackState.trackIndex,
+                                    playbackState.currentTrackId,
+                                ) {
+                                    playbackViewModel.getUpcomingTracks(maxOf(50, playbackState.queueSize))
+                                },
+                                downloadedTrackIds = playbackState.downloadedTrackIds,
+                                colors = nowPlayingPlayerColors,
+                                expanded = true,
+                                trackId = playbackState.currentTrackId,
+                                lyricsText = lyricsText,
+                                lyricLines = lyricLines,
+                                lyricsLoading = lyricsLoading,
+                                contextSource = playbackState.contextSource,
+                                priorityQueueSize = playbackState.priorityQueueSize,
+                                continuousPlayEnabled = continuousPlayEnabled,
+                                queueHistory = queueHistory,
+                                waveformBars = waveformBars,
+                            ),
+                            position = position,
+                            duration = playbackState.duration,
+                            onPlayPause = onPlayPause,
+                            onSkipPrev = onSkipPrev,
+                            onSkipNext = onSkipNext,
+                            onSeek = onSeek,
+                            onVolumeChange = onVolumeChange,
+                            onRepeatToggle = onRepeatToggle,
+                            onShuffleToggle = onShuffleToggle,
+                            onToggleLike = onToggleLike,
+                            onToggleDislike = onToggleDislike,
+                            onRate = onRate,
+                            onArtistClick = onArtistClick,
+                            onAlbumClick = onAlbumClick,
+                            onBack = onBack,
+                            onClick = {},
+                            onClearQueue = onClearQueue,
+                            onClearAutoplayQueue = onClearAutoplayQueue,
+                            onContinuousPlayChange = onContinuousPlayChange,
+                            onRemoveFromQueue = onRemoveFromQueue,
+                            onPlayQueueItem = onPlayQueueItem,
+                            onSleepTimer = onSleepTimerClick,
+                            onCast = onCast,
+                            onMoveQueueItem = onMoveQueueItem,
+                            onBeginQueueReorder = onBeginQueueReorder,
+                            onCommitQueueReorder = onCommitQueueReorder,
+                            onShareQueue = onShareQueue,
+                            onSaveQueueAsPlaylist = onSaveQueueAsPlaylist,
+                            onPlayHistoryTrack = onPlayHistoryTrack,
+                            onRemoveFromQueueBatch = onRemoveFromQueueBatch,
+                            onQueueSheetOpened = onQueueSheetOpened,
+                            onDismissPlaybackError = { playbackViewModel.dismissPlaybackError() },
+                            defaultQueuePlaylistName = playbackViewModel.defaultQueuePlaylistName(),
+                            modifier = Modifier,
+                        )
+
+                        if (showSleepTimerDialog) {
+                            androidx.compose.material3.AlertDialog(
+                                onDismissRequest = { showSleepTimerDialog = false },
+                                title = { Text("Sleep timer") },
+                                text = {
+                                    Column {
+                                        listOf(15, 30, 45, 60, 90).forEach { minutes ->
+                                            TextButton(
+                                                onClick = {
+                                                    playbackViewModel.startSleepTimer(minutes)
+                                                    showSleepTimerDialog = false
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) { Text("$minutes minutes") }
+                                        }
+                                        if (playbackState.sleepTimerEndMs > 0L) {
+                                            TextButton(
+                                                onClick = {
+                                                    playbackViewModel.cancelSleepTimer()
+                                                    showSleepTimerDialog = false
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) { Text("Cancel timer", color = Color(0xFFE84040)) }
                                         }
                                     }
-                                }
-                                return@LaunchedEffect
-                            }
-                            if (!allowNetwork) {
-                                lyricsLoading = false
-                                return@LaunchedEffect
-                            }
-                            val display = withContext(Dispatchers.IO) {
-                                fetchLyricsForTrack(artist, title, trackId, lyricsEntry, appContext)
-                            }
-                            lyricLines = display.lines
-                            lyricsText = display.text
-                            lyricsLoading = false
-                        } catch (e: kotlinx.coroutines.CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            android.util.Log.w("ftpmusic-lyrics", "Failed to fetch lyrics: ${e.message}")
-                            lyricsText = null
-                            lyricLines = emptyList()
-                            lyricsLoading = false
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = { showSleepTimerDialog = false }) { Text("Close") }
+                                },
+                            )
                         }
-                    }
-
-                    // P3: stable callback identities. Fresh lambdas per 200 ms tick
-                    // make every PlayerBar sub-composable non-skippable — the whole
-                    // 1600-line player body re-executed at 5 Hz. Remembering them
-                    // (keys = stable dependencies) keeps the tick inside the seek
-                    // region only. State-read callbacks read vm.state.value live.
-                    val onPlayPause = remember(playbackViewModel) { { playbackViewModel.playPause() } }
-                    val onSkipPrev = remember(playbackViewModel) { { playbackViewModel.skipPrev() } }
-                    val onSkipNext = remember(playbackViewModel) { { playbackViewModel.skipNext() } }
-                    val onSeek =
-                        remember(playbackViewModel) { { fraction: Float -> playbackViewModel.seekTo(fraction) } }
-                    val onVolumeChange = remember(playbackViewModel) { { v: Float -> playbackViewModel.setVolume(v) } }
-                    val onRepeatToggle = remember(playbackViewModel) { { playbackViewModel.toggleRepeat() } }
-                    val onShuffleToggle = remember(playbackViewModel) { { playbackViewModel.toggleShuffle() } }
-                    val onToggleLike = remember(playbackViewModel) { { playbackViewModel.toggleLike() } }
-                    val onToggleDislike = remember(playbackViewModel) { { playbackViewModel.toggleDislike() } }
-                    val onRate = remember(playbackViewModel) { { r: Int -> playbackViewModel.rateCurrent(r) } }
-                    val onArtistClick = remember(playbackViewModel, navController) {
-                        {
-                            val aid = playbackViewModel.state.value.artistId
-                            if (aid !=
-                                null
-                            ) {
-                                navController.navigate("artist/$aid")
-                            }
-                        }
-                    }
-                    val onAlbumClick = remember(playbackViewModel, navController) {
-                        {
-                            val aid = playbackViewModel.state.value.albumId
-                            if (aid !=
-                                null
-                            ) {
-                                navController.navigate("album/$aid")
-                            }
-                        }
-                    }
-                    val onBack = remember(navController) {
-                        {
-                            navController.popBackStack()
-                            Unit
-                        }
-                    }
-                    val onClearQueue = remember(playbackViewModel) { { playbackViewModel.clearPriorityQueue() } }
-                    val onClearAutoplayQueue =
-                        remember(playbackViewModel) { { playbackViewModel.clearAutoplayQueue() } }
-                    val onContinuousPlayChange = remember(playbackViewModel) {
-                        { enabled: Boolean -> playbackViewModel.setContinuousPlayEnabled(enabled) }
-                    }
-                    val onRemoveFromQueue =
-                        remember(playbackViewModel) { { index: Int -> playbackViewModel.removeFromQueue(index) } }
-                    val onPlayQueueItem =
-                        remember(playbackViewModel) { { index: Int -> playbackViewModel.playQueueItem(index) } }
-                    val onMoveQueueItem = remember(playbackViewModel) {
-                        { from: Int, to: Int -> playbackViewModel.moveQueueItem(from, to) }
-                    }
-                    val onBeginQueueReorder = remember(playbackViewModel) {
-                        { entryId: Int, fromIndex: Int ->
-                            playbackViewModel.beginQueueReorder(entryId, fromIndex)
-                        }
-                    }
-                    val onCommitQueueReorder =
-                        remember(playbackViewModel) { { playbackViewModel.commitQueueReorder() } }
-                    val onSleepTimerClick = remember { { showSleepTimerDialog = true } }
-                    val onCast = remember { { CastButtonState.showDialog.value = true } }
-                    val onShareQueue =
-                        remember(playbackViewModel, appContext) { { playbackViewModel.shareQueue(appContext) } }
-                    val onSaveQueueAsPlaylist = remember(playbackViewModel, appContext) {
-                        { name: String -> playbackViewModel.saveQueueAsPlaylist(appContext, name) }
-                    }
-                    val onPlayHistoryTrack = remember(playbackViewModel) {
-                        { trackId: String -> playbackViewModel.playNextFromHistory(trackId) }
-                    }
-                    val onRemoveFromQueueBatch = remember(playbackViewModel) {
-                        { indices: Set<Int> -> playbackViewModel.removeFromQueueBatch(indices) }
-                    }
-                    val onQueueSheetOpened = remember(playbackViewModel) {
-                        { playbackViewModel.refreshQueueHistory() }
-                    }
-                    val queueHistory by playbackViewModel.queueHistory.collectAsStateWithLifecycle()
-                    val continuousPlayEnabled by
-                        playbackViewModel.continuousPlayEnabled.collectAsStateWithLifecycle()
-                    val queueRevision by
-                        com.lucasdss.ftpmusic.app.playback.QueueRevisionTracker.revision
-                            .collectAsStateWithLifecycle()
-
-                    PlayerBar(
-                        state = PlayerBarState(
-                            title = playbackState.title,
-                            artist = playbackState.artist,
-                            album = playbackState.album,
-                            isPlaying = playbackState.isPlaying,
-                            isBuffering = playbackState.isBuffering,
-                            coverArtUrl = nowPlayingCoverUrl,
-                            coverArtId = effectiveCoverArtId,
-                            isCasting = playbackState.isCasting,
-                            castDeviceName = playbackState.castDeviceName,
-                            volume = playbackState.volume,
-                            repeatMode = playbackState.repeatMode,
-                            shuffleModeEnabled = playbackState.shuffleModeEnabled,
-                            playbackSpeed = playbackState.playbackSpeed,
-                            sleepTimerEndMs = playbackState.sleepTimerEndMs,
-                            isStarred = playbackState.isStarred,
-                            isDisliked = playbackState.isDisliked,
-                            trackRating = playbackState.trackRating,
-                            nextTrackTitle = playbackState.nextTrackTitle,
-                            nextTrackArtist = playbackState.nextTrackArtist,
-                            trackIndex = playbackState.trackIndex,
-                            queueSize = playbackState.queueSize,
-                            isOffline = playbackState.isOffline,
-                            isQueueSynced = playbackState.isQueueSynced,
-                            playbackError = playbackState.playbackError,
-                            nextTracks = remember(
-                                queueRevision,
-                                playbackState.queueSize,
-                                playbackState.priorityQueueSize,
-                                playbackState.trackIndex,
-                                playbackState.currentTrackId,
-                            ) {
-                                playbackViewModel.getUpcomingTracks(maxOf(50, playbackState.queueSize))
-                            },
-                            downloadedTrackIds = playbackState.downloadedTrackIds,
-                            colors = nowPlayingPlayerColors,
-                            expanded = true,
-                            trackId = playbackState.currentTrackId,
-                            lyricsText = lyricsText,
-                            lyricLines = lyricLines,
-                            lyricsLoading = lyricsLoading,
-                            contextSource = playbackState.contextSource,
-                            priorityQueueSize = playbackState.priorityQueueSize,
-                            continuousPlayEnabled = continuousPlayEnabled,
-                            queueHistory = queueHistory,
-                            waveformBars = waveformBars,
-                        ),
-                        position = position,
-                        duration = playbackState.duration,
-                        onPlayPause = onPlayPause,
-                        onSkipPrev = onSkipPrev,
-                        onSkipNext = onSkipNext,
-                        onSeek = onSeek,
-                        onVolumeChange = onVolumeChange,
-                        onRepeatToggle = onRepeatToggle,
-                        onShuffleToggle = onShuffleToggle,
-                        onToggleLike = onToggleLike,
-                        onToggleDislike = onToggleDislike,
-                        onRate = onRate,
-                        onArtistClick = onArtistClick,
-                        onAlbumClick = onAlbumClick,
-                        onBack = onBack,
-                        onClick = {},
-                        onClearQueue = onClearQueue,
-                        onClearAutoplayQueue = onClearAutoplayQueue,
-                        onContinuousPlayChange = onContinuousPlayChange,
-                        onRemoveFromQueue = onRemoveFromQueue,
-                        onPlayQueueItem = onPlayQueueItem,
-                        onSleepTimer = onSleepTimerClick,
-                        onCast = onCast,
-                        onMoveQueueItem = onMoveQueueItem,
-                        onBeginQueueReorder = onBeginQueueReorder,
-                        onCommitQueueReorder = onCommitQueueReorder,
-                        onShareQueue = onShareQueue,
-                        onSaveQueueAsPlaylist = onSaveQueueAsPlaylist,
-                        onPlayHistoryTrack = onPlayHistoryTrack,
-                        onRemoveFromQueueBatch = onRemoveFromQueueBatch,
-                        onQueueSheetOpened = onQueueSheetOpened,
-                        onDismissPlaybackError = { playbackViewModel.dismissPlaybackError() },
-                        defaultQueuePlaylistName = playbackViewModel.defaultQueuePlaylistName(),
-                        modifier = Modifier,
-                    )
-
-                    if (showSleepTimerDialog) {
-                        androidx.compose.material3.AlertDialog(
-                            onDismissRequest = { showSleepTimerDialog = false },
-                            title = { Text("Sleep timer") },
-                            text = {
-                                Column {
-                                    listOf(15, 30, 45, 60, 90).forEach { minutes ->
-                                        TextButton(
-                                            onClick = {
-                                                playbackViewModel.startSleepTimer(minutes)
-                                                showSleepTimerDialog = false
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) { Text("$minutes minutes") }
-                                    }
-                                    if (playbackState.sleepTimerEndMs > 0L) {
-                                        TextButton(
-                                            onClick = {
-                                                playbackViewModel.cancelSleepTimer()
-                                                showSleepTimerDialog = false
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) { Text("Cancel timer", color = Color(0xFFE84040)) }
-                                    }
-                                }
-                            },
-                            confirmButton = {
-                                TextButton(onClick = { showSleepTimerDialog = false }) { Text("Close") }
-                            },
-                        )
                     }
                 }
-            }
+            } // CompositionLocalProvider
 
-            // Overlay header: translation only; content keeps fixed top inset (ADR-0107).
+            // Overlay header: translation only; lists use fixed contentPadding (ADR-0107).
+            // graphicsLayer moves hit bounds with the chrome — fully collapsed header
+            // is off-screen so the list receives scrolls in the top band.
             if (showHeader) {
                 AppHeader(
                     modifier = Modifier

@@ -20,6 +20,7 @@ Tabbed surfaces: Albums `LazyVerticalGrid`; Artists / Playlists / Radio
 - First page `LibraryPaging.ALPHA_PAGE_SIZE` (60) from Room `LIMIT/OFFSET`.
 - Near-end → `loadMoreAlphaAlbums`; search mode disables append.
 - Background API refreshes Room then republishes loaded window only.
+- Hard-fix: `loadAlbums` must not stomp `_state.albums` while alpha browse active.
 
 ## Manual check
 

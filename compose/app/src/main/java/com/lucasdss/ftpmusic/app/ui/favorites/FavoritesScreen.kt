@@ -730,7 +730,12 @@ private fun LikedFavoritesList(
             }
         }
     }
-    LazyColumn(Modifier.testTag("favorites_liked_list"), state = listState) {
+    val headerPad = LocalAppHeaderContentPadding.current
+    LazyColumn(
+        Modifier.testTag("favorites_liked_list"),
+        state = listState,
+        contentPadding = PaddingValues(top = headerPad),
+    ) {
         if (state.tracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbUp) }
             itemsIndexed(
@@ -833,7 +838,12 @@ private fun DislikedFavoritesList(
             }
         }
     }
-    LazyColumn(Modifier.testTag("favorites_disliked_list"), state = listState) {
+    val headerPad = LocalAppHeaderContentPadding.current
+    LazyColumn(
+        Modifier.testTag("favorites_disliked_list"),
+        state = listState,
+        contentPadding = PaddingValues(top = headerPad),
+    ) {
         if (state.dislikedTracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbDown, tint = dislikeTint) }
             itemsIndexed(
