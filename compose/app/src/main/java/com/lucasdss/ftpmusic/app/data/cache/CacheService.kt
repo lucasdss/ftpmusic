@@ -364,6 +364,25 @@ class CacheService @Inject constructor(
         }
     }
 
+    /**
+     * Mix ownership / enqueue gate (ADR-0112): span is "present enough" when
+     * PLAYABLE or UNKNOWN (keep pin, do not re-download churn). POISON heals
+     * and returns false so the mix can re-enqueue a real payload.
+     */
+    suspend fun hasMixOwnedSpan(trackId: String): Boolean {
+        val file = getSpanFile(trackId) ?: return false
+        return when (AudioCacheValidation.classify(file)) {
+            AudioCacheValidation.PayloadVerdict.PLAYABLE,
+            AudioCacheValidation.PayloadVerdict.UNKNOWN,
+            -> true
+
+            AudioCacheValidation.PayloadVerdict.POISON -> {
+                healPoisonSpan(trackId, file.length())
+                false
+            }
+        }
+    }
+
     private suspend fun healPoisonSpan(trackId: String, bytes: Long) {
         android.util.Log.w("ftpmusic-cache", "[isPlayableCached] healing poison span for $trackId")
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
@@ -505,11 +524,11 @@ class CacheService @Inject constructor(
     /** Remove a track's cached content through SimpleCache (keeps the span index
      *  consistent — never delete span files directly) and clear Room metadata.
      *
-     *  Downloads are sacred: a pinned download is NEVER removed through this
-     *  path. The only caller is the playback error auto-skip (MediaService
-     *  onPlayerError); user-initiated deletions go through [clearDownloads].
-     *  This guard enforces the local-first contract that downloaded tracks can
-     *  only be deleted on explicit user request. */
+     *  Downloads are sacred: a healthy pinned download is NEVER removed through
+     *  this path. Exception (ADR-0112): a pinned span that classifies as
+     *  [PayloadVerdict.POISON] is force-healed so Source-error auto-skip cannot
+     *  leave poison stuck under `isDownloaded=true`. User-initiated deletions
+     *  of healthy downloads go through [clearDownloads]. */
     suspend fun removeCached(trackId: String) {
         val existing = try {
             trackDao.getTrack(trackId)
@@ -517,6 +536,21 @@ class CacheService @Inject constructor(
             null
         }
         if (existing?.isDownloaded == true) {
+            val file = getSpanFile(trackId)
+            if (file != null &&
+                AudioCacheValidation.classify(file) == AudioCacheValidation.PayloadVerdict.POISON
+            ) {
+                android.util.Log.w(
+                    "ftpmusic-cache",
+                    "[removeCached] $trackId pinned but poison — force-healing",
+                )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-cache",
+                    "removeCached trackId=$trackId result=heal_poison_pinned",
+                )
+                healPoisonSpan(trackId, file.length())
+                return
+            }
             android.util.Log.i("ftpmusic-cache", "[removeCached] $trackId is a pinned download — refusing to delete")
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                 "ftpmusic-cache",

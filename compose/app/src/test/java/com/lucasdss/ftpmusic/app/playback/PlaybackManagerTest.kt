@@ -884,7 +884,7 @@ class PlaybackManagerTest {
     }
 
     @Test
-    fun `addAllToQueue during Cast sends one append event per item and skips local append`() {
+    fun `addAllToQueue during Cast sends single AddAll and skips local append`() {
         PlayerHolder.player = mockPlayer
         PlayerHolder.isCasting = true
         val manager = baseManager()
@@ -897,11 +897,10 @@ class PlaybackManagerTest {
         )
 
         verify(exactly = 0) { mockPlayer.addMediaItems(any()) }
-        assertEquals("One Add event per item", 2, actions.size)
-        assertTrue(
-            "All events are appends",
-            actions.all { it is CastQueueAction.Add && it.beforeEntryId == null },
-        )
+        // ADR-0111: one AddAll → one RMC insert → one castAck (not N× Add).
+        val addAll = actions.single() as CastQueueAction.AddAll
+        assertNull(addAll.beforeEntryId)
+        assertEquals(listOf("t1", "t2"), addAll.mediaItems.map { it.mediaId })
     }
 
     // ── Gapless local queue edits (ADR 0042) ─────────────────────────────

@@ -387,6 +387,48 @@ class CacheServiceTest {
     }
 
     @Test
+    fun `removeCached force-heals pinned poison span`() = runTest {
+        val trackId = "tr-pin-poison"
+        val poison = ByteArray(AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt())
+        subsonicErrorJsonBytes().copyInto(poison)
+        plantSpan(trackId, poison)
+        assertTrue(service.isStoredInCache(trackId))
+        evictor.pin(trackId)
+
+        val entity =
+            TrackEntity(id = trackId, title = "P", cachedFilePath = "/x", isDownloaded = true)
+        coEvery { trackDao.getTrack(trackId) } returns entity
+        coEvery { trackDao.update(any()) } just Runs
+
+        service.removeCached(trackId)
+
+        assertFalse(service.isStoredInCache(trackId))
+        assertFalse(evictor.isPinned(trackId))
+        coVerify {
+            trackDao.update(match { !it.isDownloaded && it.cachedFilePath == null })
+        }
+    }
+
+    @Test
+    fun `hasMixOwnedSpan true for playable and unknown false after poison heal`() = runTest {
+        plantSpan("mix-ok", fakeAudioBytes())
+        assertTrue(service.hasMixOwnedSpan("mix-ok"))
+
+        plantSpan("mix-unk", ByteArray(5000) { 0x11 })
+        assertTrue(service.hasMixOwnedSpan("mix-unk"))
+        assertTrue(service.isStoredInCache("mix-unk"))
+
+        val poison = ByteArray(AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt())
+        subsonicErrorJsonBytes().copyInto(poison)
+        plantSpan("mix-poison", poison)
+        coEvery { trackDao.getTrack("mix-poison") } returns
+            TrackEntity(id = "mix-poison", title = "P", isDownloaded = false)
+        coEvery { trackDao.update(any()) } just Runs
+        assertFalse(service.hasMixOwnedSpan("mix-poison"))
+        assertFalse(service.isStoredInCache("mix-poison"))
+    }
+
+    @Test
     fun `hasPlayableSpan true for audio false for poison`() = runTest {
         plantSpan("tr-ok", fakeAudioBytes())
         assertTrue(service.hasPlayableSpan("tr-ok"))

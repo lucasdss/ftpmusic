@@ -48,10 +48,28 @@ class SourceErrorCircuitTest {
     }
 
     @Test
-    fun `scrobble storm guard skips short listens`() {
+    fun `scrobble storm guard skips only ghost near-zero listens`() {
         assertFalse(shouldScrobbleAfterListen(0L))
-        assertFalse(shouldScrobbleAfterListen(4_999L))
-        assertTrue(shouldScrobbleAfterListen(5_000L))
+        assertFalse(shouldScrobbleAfterListen(SCROBBLE_STORM_MAX_GHOST_MS))
+        // Short real listens (e.g. 3s track past 60%) must still scrobble.
+        assertTrue(shouldScrobbleAfterListen(SCROBBLE_STORM_MAX_GHOST_MS + 1))
+        assertTrue(shouldScrobbleAfterListen(1_000L))
+        assertTrue(shouldScrobbleAfterListen(4_999L))
         assertTrue(shouldScrobbleAfterListen(120_000L))
+    }
+
+    @Test
+    fun `circuit clear after trip allows fresh window`() {
+        var state = SourceErrorCircuitState()
+        state = state.onSourceError(1_000L).first
+        state = state.onSourceError(2_000L).first
+        val (trippedState, tripped) = state.onSourceError(3_000L)
+        assertTrue(tripped)
+        // MediaService CIRCUIT_STOP path clears via onSuccessfulPlay (ADR-0112).
+        val cleared = trippedState.onSuccessfulPlay()
+        assertEquals(0, cleared.consecutiveErrors)
+        val (again, tripAgain) = cleared.onSourceError(3_100L)
+        assertFalse(tripAgain)
+        assertEquals(1, again.consecutiveErrors)
     }
 }

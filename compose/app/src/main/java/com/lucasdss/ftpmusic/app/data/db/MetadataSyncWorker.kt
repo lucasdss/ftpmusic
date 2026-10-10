@@ -732,6 +732,11 @@ class MetadataSyncWorker(
         HomeRecentCache.writeSnapshot(HomeRecentCache.prefs(context), orderedIds)
     }
 
+    /** Backoff Home newest poll after timeout/empty without wiping snapshot ids (ADR-0112). */
+    fun touchHomeRecentFetched() {
+        HomeRecentCache.touchFetchedMs(HomeRecentCache.prefs(context))
+    }
+
     fun homeRecentIds(): List<String> = HomeRecentCache.readIds(HomeRecentCache.prefs(context))
 
     fun homeRecentFetchedMs(): Long = HomeRecentCache.readFetchedMs(HomeRecentCache.prefs(context))

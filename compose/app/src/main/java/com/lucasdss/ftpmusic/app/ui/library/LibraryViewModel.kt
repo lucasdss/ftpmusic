@@ -1505,7 +1505,12 @@ class LibraryViewModel @Inject constructor(
             val auth = authHelper.buildAuthParams(username(), password())
             val response = withTimeoutOrNull(30_000) {
                 api.getAlbumList2("newest", HomeRecentCache.HOME_RECENT_LIMIT, 0, auth)
-            } ?: return
+            }
+            if (response == null) {
+                // Stamp TTL so a flaky network does not re-hit newest on every Home open (ADR-0112).
+                metadataSyncWorker.touchHomeRecentFetched()
+                return
+            }
             val sr = response["subsonic-response"] as? Map<*, *>
             val albumList = sr?.get("albumList2") as? Map<*, *>
             val albums = (albumList?.get("album") as? List<*>)?.mapNotNull { a ->
@@ -1519,7 +1524,10 @@ class LibraryViewModel @Inject constructor(
                     rating = (m["userRating"] as? Number)?.toInt(),
                 )
             } ?: emptyList()
-            if (albums.isEmpty()) return
+            if (albums.isEmpty()) {
+                metadataSyncWorker.touchHomeRecentFetched()
+                return
+            }
 
             ensureCachedAlbumsForLikes(albums)
             val newIds = albums.map { it.id }

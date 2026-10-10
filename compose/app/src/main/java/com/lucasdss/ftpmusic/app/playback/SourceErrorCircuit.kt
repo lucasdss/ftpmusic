@@ -5,15 +5,17 @@ package com.lucasdss.ftpmusic.app.playback
  * Per-track [playerErrorCount] resets on every media transition, so a systemic
  * stream failure previously SKIP_NEXT + removeCached through the whole queue.
  */
-internal data class SourceErrorCircuitState(
-    val consecutiveErrors: Int = 0,
-    val windowStartMs: Long = 0L,
-)
+internal data class SourceErrorCircuitState(val consecutiveErrors: Int = 0, val windowStartMs: Long = 0L)
 
 internal const val SOURCE_ERROR_CIRCUIT_THRESHOLD = 3
 internal const val SOURCE_ERROR_CIRCUIT_WINDOW_MS = 15_000L
 internal const val SOURCE_ERROR_CIRCUIT_SUCCESS_PLAY_MS = 2_000L
-internal const val SCROBBLE_STORM_MIN_LISTEN_MS = 5_000L
+
+/**
+ * Ghost Cast AUTO transitions leave [lastTrackedPositionMs] near zero.
+ * Anything above this is a real listen (including short tracks under 5s).
+ */
+internal const val SCROBBLE_STORM_MAX_GHOST_MS = 250L
 
 /**
  * Record a Source/playback error. Returns updated state and whether the circuit
@@ -34,16 +36,15 @@ internal fun SourceErrorCircuitState.onSourceError(
 }
 
 /** Reset after sustained successful playback (≥ [SOURCE_ERROR_CIRCUIT_SUCCESS_PLAY_MS]). */
-internal fun SourceErrorCircuitState.onSuccessfulPlay(): SourceErrorCircuitState =
-    SourceErrorCircuitState()
+internal fun SourceErrorCircuitState.onSuccessfulPlay(): SourceErrorCircuitState = SourceErrorCircuitState()
 
 /** Reset on explicit user seek / queue replace. */
-internal fun SourceErrorCircuitState.onUserSeek(): SourceErrorCircuitState =
-    SourceErrorCircuitState()
+internal fun SourceErrorCircuitState.onUserSeek(): SourceErrorCircuitState = SourceErrorCircuitState()
 
 /**
  * Ghost Cast AUTO transitions leave [lastTrackedPositionMs] near zero.
- * Skip scrobble when listen under [SCROBBLE_STORM_MIN_LISTEN_MS].
+ * Skip scrobble only for those ghosts — short real listens (e.g. 3s track at
+ * 60%) must still scrobble (ADR-0112).
  */
 internal fun shouldScrobbleAfterListen(lastTrackedPositionMs: Long): Boolean =
-    lastTrackedPositionMs >= SCROBBLE_STORM_MIN_LISTEN_MS
+    lastTrackedPositionMs > SCROBBLE_STORM_MAX_GHOST_MS

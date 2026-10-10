@@ -73,6 +73,7 @@ internal enum class ErrorSkipAction {
     LAST_TRACK_STOP,
     RETRY_LIMIT_STOP,
     RADIO_IGNORE,
+
     /** Cross-track Source-error circuit tripped (ADR-0111). */
     CIRCUIT_STOP,
 }
@@ -1326,6 +1327,9 @@ class MediaService : MediaLibraryService() {
                             "trackId=$currentId reachable=$reachable",
                     )
                     playerErrorCount = 0
+                    // Clear sticky circuit so the next play session can seek/skip again
+                    // instead of immediately re-tripping inside the 15s window (ADR-0112).
+                    sourceErrorCircuit = sourceErrorCircuit.onSuccessfulPlay()
                     // Sticky banner already set via setPlaybackError — do not wipe more cache.
                     ep.stop()
                 }

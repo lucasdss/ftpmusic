@@ -37,6 +37,7 @@ test_config.yaml
 .gradle/
 compose/.gradle/
 compose/app/build/
+compose/macrobenchmark/build/
 .env
 
 # Raw waveform source data (~15 MB) — compact generated assets are committed

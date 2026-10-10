@@ -69,8 +69,8 @@ class MixCacheCoordinatorTest {
     fun `onGenerated records ownership and enqueues missing tracks`() = runTest {
         stubCredentials()
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
-        coEvery { cacheService.isPlayableCached("t1") } returns false
-        coEvery { cacheService.isPlayableCached("t2") } returns true
+        coEvery { cacheService.hasMixOwnedSpan("t1") } returns false
+        coEvery { cacheService.hasMixOwnedSpan("t2") } returns true
         coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
 
         coordinator.onGenerated(mix(), listOf("t1", "t2"))
@@ -96,12 +96,24 @@ class MixCacheCoordinatorTest {
     fun `onGenerated prunes ownership rows whose files are gone`() = runTest {
         stubCredentials()
         coEvery { customMixDao.getOwnedTrackIds(1L) } returns listOf("stale")
-        coEvery { cacheService.isPlayableCached("stale") } returns false
-        coEvery { cacheService.isPlayableCached("t1") } returns true
+        coEvery { cacheService.hasMixOwnedSpan("stale") } returns false
+        coEvery { cacheService.hasMixOwnedSpan("t1") } returns true
 
         coordinator.onGenerated(mix(), listOf("t1"))
 
         coVerify { customMixDao.deleteCacheTracks(1L, listOf("stale")) }
+    }
+
+    @Test
+    fun `onGenerated does not enqueue UNKNOWN owned spans`() = runTest {
+        stubCredentials()
+        coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
+        coEvery { cacheService.hasMixOwnedSpan("unk") } returns true
+
+        coordinator.onGenerated(mix(), listOf("unk"))
+
+        coVerify { customMixDao.upsertCacheTracks(any()) }
+        coVerify(exactly = 0) { downloadManager.enqueue(any(), any(), any()) }
     }
 
     @Test
@@ -113,7 +125,7 @@ class MixCacheCoordinatorTest {
         coEvery { trackDao.getTrack("removed") } returns track("removed")
         coEvery { trackDao.getTrack("shared") } returns track("shared")
         coEvery { trackDao.getTrack("download") } returns track("download", downloaded = true)
-        coEvery { cacheService.isPlayableCached(any()) } returns false
+        coEvery { cacheService.hasMixOwnedSpan(any()) } returns false
 
         coordinator.onSourceChanged(1L, listOf("new"))
 
@@ -174,7 +186,7 @@ class MixCacheCoordinatorTest {
     @Test
     fun `enqueue is a no-op without server credentials`() = runTest {
         com.lucasdss.ftpmusic.app.di.DynamicBaseUrl.url = ""
-        coEvery { cacheService.isPlayableCached("t1") } returns false
+        coEvery { cacheService.hasMixOwnedSpan("t1") } returns false
         coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
 
         coordinator.onGenerated(mix(), listOf("t1"))
@@ -185,7 +197,7 @@ class MixCacheCoordinatorTest {
     @Test
     fun `onGenerated still records ownership when all tracks are cached`() = runTest {
         stubCredentials()
-        coEvery { cacheService.isPlayableCached("t1") } returns true
+        coEvery { cacheService.hasMixOwnedSpan("t1") } returns true
         coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
 
         coordinator.onGenerated(mix(), listOf("t1"))
@@ -219,7 +231,7 @@ class MixCacheCoordinatorTest {
         every { storage.get(SecureStorage.KEY_URL) } returns "https://s"
         every { storage.get(SecureStorage.KEY_USERNAME) } returns null
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "p"
-        coEvery { cacheService.isPlayableCached("t1") } returns false
+        coEvery { cacheService.hasMixOwnedSpan("t1") } returns false
         coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
 
         coordinator.onGenerated(mix(), listOf("t1"))
@@ -249,10 +261,10 @@ class MixCacheCoordinatorTest {
     }
 
     @Test
-    fun `onGenerated enqueues when poison span fails playable check`() = runTest {
+    fun `onGenerated enqueues when poison span fails owned-span check`() = runTest {
         stubCredentials()
         coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
-        coEvery { cacheService.isPlayableCached("poison") } returns false
+        coEvery { cacheService.hasMixOwnedSpan("poison") } returns false
 
         coordinator.onGenerated(mix(), listOf("poison"))
 

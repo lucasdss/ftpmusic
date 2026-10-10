@@ -457,6 +457,48 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun `loadRandomAlbums empty newest stamps TTL backoff`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS) } returns "12"
+        every { storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES) } returns "5"
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
+        coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(emptyList())
+        coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(emptyList())
+        val metadataDaoLocal: CachedMetadataDao = mockk(relaxed = true)
+        coEvery { metadataDaoLocal.getAllArtists() } returns emptyList()
+        coEvery { metadataDaoLocal.getAlbumsByIds(listOf("cached-1")) } returns listOf(
+            CachedAlbumEntity(id = "cached-1", name = "Cached Recent", artist = "A", coverArt = "c"),
+        )
+        val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentIds() } returns listOf("cached-1")
+        // Stale TTL forces network; empty response must still stamp backoff (ADR-0112).
+        every { metadataSync.homeRecentFetchedMs() } returns 0L
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDaoLocal,
+                metadataSync,
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.state.first { it.randomAlbums.isNotEmpty() }
+        advanceUntilIdle()
+
+        verify { metadataSync.touchHomeRecentFetched() }
+        verify(exactly = 0) { metadataSync.writeHomeRecentSnapshot(any()) }
+        verify(exactly = 0) { metadataSync.syncNowAsync(any(), any(), any()) }
+    }
+
+    @Test
     fun `loadRecentlyPlayed returns cached tracks`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"

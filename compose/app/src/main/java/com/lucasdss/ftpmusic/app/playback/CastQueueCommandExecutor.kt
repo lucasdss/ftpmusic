@@ -5,6 +5,7 @@ import com.google.android.gms.cast.MediaQueueItem
 
 sealed class CastQueueAction {
     data class Add(val mediaItem: MediaItem, val beforeEntryId: Int? = null) : CastQueueAction()
+
     /** One RMC insert for many items — single optimistic revision / castAck (ADR-0111). */
     data class AddAll(val mediaItems: List<MediaItem>, val beforeEntryId: Int? = null) : CastQueueAction()
     data class Remove(val entryId: Int) : CastQueueAction()

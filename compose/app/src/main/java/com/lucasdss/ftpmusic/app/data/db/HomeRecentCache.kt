@@ -44,6 +44,11 @@ object HomeRecentCache {
             .apply()
     }
 
+    /** Stamp fetch time without changing ids (timeout/empty backoff — ADR-0112). */
+    fun touchFetchedMs(prefs: SharedPreferences, fetchedAtMs: Long = System.currentTimeMillis()) {
+        prefs.edit().putLong(PREF_HOME_RECENT_FETCHED_MS, fetchedAtMs).apply()
+    }
+
     fun isStale(fetchedAtMs: Long, ttlMinutes: Int, nowMs: Long = System.currentTimeMillis()): Boolean {
         if (fetchedAtMs <= 0L) return true
         return nowMs - fetchedAtMs >= ttlMinutes.toLong() * 60_000L
