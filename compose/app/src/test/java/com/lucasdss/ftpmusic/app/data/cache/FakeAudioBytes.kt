@@ -4,10 +4,7 @@ package com.lucasdss.ftpmusic.app.data.cache
  * Minimal ID3-tagged payload that passes [AudioCacheValidation.looksLikeAudio].
  * Pads to at least [AudioCacheValidation.MIN_CACHED_AUDIO_BYTES].
  */
-fun fakeAudioBytes(
-    size: Int = AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt(),
-    fill: Byte = 0x7F,
-): ByteArray {
+fun fakeAudioBytes(size: Int = AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt(), fill: Byte = 0x7F): ByteArray {
     val n = size.coerceAtLeast(AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt())
     val bytes = ByteArray(n) { fill }
     bytes[0] = 'I'.code.toByte()

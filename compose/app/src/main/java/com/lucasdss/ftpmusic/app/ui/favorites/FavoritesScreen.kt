@@ -616,7 +616,14 @@ fun FavoritesScreen(
 
     val hasAnything = if (state.mode == FavoritesMode.LIKED) likedHasAnything else dislikedHasAnything
 
-    Column(Modifier.fillMaxSize().background(Background)) {
+    // Mode chips sit above Lazy — pad Column so chrome clears overlay AppHeader.
+    val headerPad = LocalAppHeaderContentPadding.current
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Background)
+            .padding(top = headerPad),
+    ) {
         FavoritesModeChips(
             selected = state.mode,
             onSelect = viewModel::setMode,
@@ -730,11 +737,9 @@ private fun LikedFavoritesList(
             }
         }
     }
-    val headerPad = LocalAppHeaderContentPadding.current
     LazyColumn(
         Modifier.testTag("favorites_liked_list"),
         state = listState,
-        contentPadding = PaddingValues(top = headerPad),
     ) {
         if (state.tracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbUp) }
@@ -838,11 +843,9 @@ private fun DislikedFavoritesList(
             }
         }
     }
-    val headerPad = LocalAppHeaderContentPadding.current
     LazyColumn(
         Modifier.testTag("favorites_disliked_list"),
         state = listState,
-        contentPadding = PaddingValues(top = headerPad),
     ) {
         if (state.dislikedTracks.isNotEmpty()) {
             item { FavoriteSectionHeader("Tracks", Icons.Filled.ThumbDown, tint = dislikeTint) }

@@ -1,5 +1,7 @@
 package com.lucasdss.ftpmusic.app.data.cache
 
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.cache.ContentMetadataMutations
 import androidx.media3.datasource.cache.SimpleCache
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
@@ -382,5 +384,55 @@ class CacheServiceTest {
         assertTrue(service.isStoredInCache(trackId))
         assertTrue(evictor.isPinned(trackId))
         coVerify(exactly = 0) { trackDao.update(any()) }
+    }
+
+    @Test
+    fun `hasPlayableSpan true for audio false for poison`() = runTest {
+        plantSpan("tr-ok", fakeAudioBytes())
+        assertTrue(service.hasPlayableSpan("tr-ok"))
+        assertTrue(service.isPlayableCached("tr-ok"))
+
+        val poison = ByteArray(AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt())
+        subsonicErrorJsonBytes().copyInto(poison)
+        plantSpan("tr-poison", poison)
+        assertTrue(service.isStoredInCache("tr-poison"))
+        assertFalse(service.hasPlayableSpan("tr-poison"))
+        coEvery { trackDao.getTrack("tr-poison") } returns
+            TrackEntity(id = "tr-poison", title = "P", isDownloaded = true, cachedFilePath = "/x")
+        coEvery { trackDao.update(any()) } just Runs
+        assertFalse(service.isPlayableCached("tr-poison"))
+        assertFalse(service.isStoredInCache("tr-poison"))
+        coVerify {
+            trackDao.update(match { !it.isDownloaded && it.cachedFilePath == null })
+        }
+    }
+
+    @Test
+    fun `isPlayableCached keeps unknown magic pin`() = runTest {
+        val unknown = ByteArray(5000) { 0x11 }
+        plantSpan("tr-unk", unknown)
+        assertTrue(service.isStoredInCache("tr-unk"))
+        assertFalse(service.hasPlayableSpan("tr-unk"))
+        coEvery { trackDao.getTrack("tr-unk") } returns
+            TrackEntity(id = "tr-unk", title = "U", isDownloaded = true, cachedFilePath = "/u")
+        assertFalse(service.isPlayableCached("tr-unk"))
+        assertTrue(service.isStoredInCache("tr-unk"))
+        coVerify(exactly = 0) { trackDao.update(any()) }
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun plantSpan(trackId: String, data: ByteArray) {
+        val length = data.size.toLong()
+        val probe = simpleCache.startReadWriteNonBlocking(trackId, 0, length)!!
+        if (probe.isHoleSpan) simpleCache.releaseHoleSpan(probe)
+        simpleCache.removeResource(trackId)
+        val hole = simpleCache.startReadWriteNonBlocking(trackId, 0, length)!!
+        val mutations = ContentMetadataMutations()
+        ContentMetadataMutations.setContentLength(mutations, length)
+        simpleCache.applyContentMetadataMutations(trackId, mutations)
+        val cacheFile = simpleCache.startFile(trackId, 0, length)
+        cacheFile.writeBytes(data)
+        simpleCache.commitFile(cacheFile, length)
+        simpleCache.releaseHoleSpan(hole)
     }
 }

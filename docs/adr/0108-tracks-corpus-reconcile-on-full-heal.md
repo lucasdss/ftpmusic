@@ -21,7 +21,7 @@ Never unless periodic WorkManager completed a DELTA.
    force Resync), run `TrackDao.reconcileSearchCorpusAgainstCatalog()`:
    delete `tracks` rows whose id is not in `cached_album_tracks` ∪
    `cached_genre_songs`, unless local weight remains (starred, disliked,
-   downloaded, cached file, or `play_count > 0`).
+   downloaded, cached file, `play_count > 0`, or `last_played_at IS NOT NULL`).
 2. **DELTA** — no corpus prune (upsert-only densify continues).
 3. **Honest metrics** — Settings shows album-track meta, search corpus, and
    `SUM(song_count)` separately; prefs record `last_sync_mode` and

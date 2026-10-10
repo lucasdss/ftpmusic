@@ -32,6 +32,13 @@ class AppHeaderScrollState internal constructor(private val scope: CoroutineScop
     var headerHeightPx by mutableFloatStateOf(0f)
         private set
 
+    /**
+     * Last positive measured height — used for content inset before the first
+     * onSizeChanged (avoids one-frame underlap under the overlay header).
+     */
+    var lastKnownHeaderHeightPx by mutableFloatStateOf(0f)
+        private set
+
     /** 0 = shown, headerHeight = hidden. Isolated float — do not hoist into shell UI state. */
     var offsetPx by mutableFloatStateOf(0f)
         private set
@@ -50,6 +57,7 @@ class AppHeaderScrollState internal constructor(private val scope: CoroutineScop
         // Keep collapse fraction when height remeasures (font scale / config).
         val fraction = if (headerHeightPx > 0f) offsetPx / headerHeightPx else 0f
         headerHeightPx = heightPx
+        lastKnownHeaderHeightPx = heightPx
         offsetPx = (fraction * heightPx).coerceIn(0f, heightPx)
     }
 
@@ -168,6 +176,13 @@ fun computeSnapTarget(offset: Float, headerHeight: Float, velocityY: Float): Flo
 /**
  * Pass 4 fixed content inset — always full header height when shown (never
  * `headerHeight - offset`). Pure helper for unit tests / shell layout.
+ * [lastKnownHeightPx] fills the pre-measure frame when [headerHeightPx] is 0.
  */
-fun computeHeaderContentInsetPx(showHeader: Boolean, headerHeightPx: Float): Float =
-    if (showHeader && headerHeightPx > 0f) headerHeightPx else 0f
+fun computeHeaderContentInsetPx(showHeader: Boolean, headerHeightPx: Float, lastKnownHeightPx: Float = 0f): Float {
+    if (!showHeader) return 0f
+    return when {
+        headerHeightPx > 0f -> headerHeightPx
+        lastKnownHeightPx > 0f -> lastKnownHeightPx
+        else -> 0f
+    }
+}

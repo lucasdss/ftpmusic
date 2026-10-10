@@ -162,8 +162,10 @@ class MetadataSyncWorker(
         const val PREF_LAST_FULL_SYNC_MS = "last_full_sync_ms"
         const val PREF_LAST_METADATA_SYNC_MS = "last_metadata_sync_ms"
         const val PREF_METADATA_SYNC_DURATION_MS = "metadata_sync_duration_ms"
+
         /** Last completed sync mode: "FULL" or "DELTA". */
         const val PREF_LAST_SYNC_MODE = "last_sync_mode"
+
         /** Why the last syncNowAsync returned null / skipped (empty when ran). */
         const val PREF_LAST_SYNC_SKIP_REASON = "last_sync_skip_reason"
 
@@ -709,10 +711,7 @@ class MetadataSyncWorker(
         writeHomeRecentSnapshot(recent.map { it.id })
     }
 
-    private suspend fun fetchNewestAlbums(
-        params: Map<String, String>,
-        size: Int,
-    ): List<CachedAlbumEntity> {
+    private suspend fun fetchNewestAlbums(params: Map<String, String>, size: Int): List<CachedAlbumEntity> {
         val response = api.getAlbumList2(
             type = "newest",
             size = size,
@@ -733,11 +732,9 @@ class MetadataSyncWorker(
         HomeRecentCache.writeSnapshot(HomeRecentCache.prefs(context), orderedIds)
     }
 
-    fun homeRecentIds(): List<String> =
-        HomeRecentCache.readIds(HomeRecentCache.prefs(context))
+    fun homeRecentIds(): List<String> = HomeRecentCache.readIds(HomeRecentCache.prefs(context))
 
-    fun homeRecentFetchedMs(): Long =
-        HomeRecentCache.readFetchedMs(HomeRecentCache.prefs(context))
+    fun homeRecentFetchedMs(): Long = HomeRecentCache.readFetchedMs(HomeRecentCache.prefs(context))
 
     private fun parseAlbumMap(m: Map<*, *>): CachedAlbumEntity? {
         val id = m["id"] as? String ?: return null

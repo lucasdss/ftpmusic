@@ -17,4 +17,24 @@ class AppHeaderContentPaddingTest {
         assertEquals(0.dp, resolveAppHeaderContentPadding(showHeader = false, headerHeight = 72.dp))
         assertEquals(0.dp, resolveAppHeaderContentPadding(showHeader = true, headerHeight = 0.dp))
     }
+
+    @Test
+    fun `padding uses last known height before first measure`() {
+        assertEquals(
+            72.dp,
+            resolveAppHeaderContentPadding(
+                showHeader = true,
+                headerHeight = 0.dp,
+                lastKnownHeight = 72.dp,
+            ),
+        )
+        assertEquals(
+            80.dp,
+            resolveAppHeaderContentPadding(
+                showHeader = true,
+                headerHeight = 80.dp,
+                lastKnownHeight = 72.dp,
+            ),
+        )
+    }
 }

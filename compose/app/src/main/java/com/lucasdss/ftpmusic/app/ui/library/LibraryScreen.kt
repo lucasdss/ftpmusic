@@ -60,6 +60,7 @@ import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 import com.lucasdss.ftpmusic.app.ui.playlist.AddSongsPickerContent
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -107,7 +108,14 @@ fun LibraryContent(
     val context = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
 
-    Column(Modifier.background(Background)) {
+    // Chrome (chips + search) sits above Lazy — pad Column, not only list content
+    // (ADR-0107 / post-1.8.0 hard-fix). Lazy top pad is local spacing only.
+    val headerPad = LocalAppHeaderContentPadding.current
+    Column(
+        Modifier
+            .background(Background)
+            .padding(top = headerPad),
+    ) {
         // Server config/reachability warning (stale proxy URL, unreachable server)
         com.lucasdss.ftpmusic.app.ui.components.ServerErrorBanner(
             configWarning = shell.configWarning,
@@ -189,7 +197,6 @@ fun LibraryContent(
                                 Text("No albums found", color = Color(0xFF666666), fontSize = textBodyM())
                             }
                         } else {
-                            val headerPad = LocalAppHeaderContentPadding.current
                             val gridState = rememberLazyGridState(
                                 cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
                                     aheadFraction = 0.5f,
@@ -204,12 +211,13 @@ fun LibraryContent(
                                 snapshotFlow {
                                     val info = gridState.layoutInfo
                                     val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                                    last to info.totalItemsCount
-                                }.collect { (last, total) ->
-                                    if (total > 0 && last >= total - 4) {
-                                        viewModel.loadMoreAlphaAlbums()
-                                    }
+                                    val total = info.totalItemsCount
+                                    total > 0 && last >= total - 4
                                 }
+                                    .distinctUntilChanged()
+                                    .collect { nearEnd ->
+                                        if (nearEnd) viewModel.loadMoreAlphaAlbums()
+                                    }
                             }
                             LazyVerticalGrid(
                                 state = gridState,
@@ -218,7 +226,7 @@ fun LibraryContent(
                                     .padding(horizontal = spacingM())
                                     .testTag("library_albums_grid"),
                                 contentPadding = PaddingValues(
-                                    top = headerPad + spacingS(),
+                                    top = spacingS(),
                                     bottom = spacingS(),
                                 ),
                                 horizontalArrangement = Arrangement.spacedBy(gridGapH()),
@@ -343,8 +351,7 @@ fun LibraryContent(
                                 Text("No artists found", color = Color(0xFF666666), fontSize = textBodyM())
                             }
                         } else {
-                            val headerPad = LocalAppHeaderContentPadding.current
-                            LazyColumn(contentPadding = PaddingValues(top = headerPad)) {
+                            LazyColumn(contentPadding = PaddingValues(top = spacingS())) {
                                 items(displayedArtists, key = { it.id }, contentType = { "artist" }) { artist ->
                                     Row(
                                         Modifier.fillMaxWidth().clickable {
@@ -427,8 +434,7 @@ fun LibraryContent(
                                 }
                             }
                         } else {
-                            val headerPad = LocalAppHeaderContentPadding.current
-                            LazyColumn(contentPadding = PaddingValues(top = headerPad)) {
+                            LazyColumn(contentPadding = PaddingValues(top = spacingS())) {
                                 items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
                                     Box {
                                         Row(
@@ -604,8 +610,7 @@ fun LibraryContent(
                                 }
                             }
                         } else {
-                            val headerPad = LocalAppHeaderContentPadding.current
-                            LazyColumn(contentPadding = PaddingValues(top = headerPad)) {
+                            LazyColumn(contentPadding = PaddingValues(top = spacingS())) {
                                 item {
                                     Row(
                                         Modifier.padding(horizontal = spacingL(), vertical = 6.dp),

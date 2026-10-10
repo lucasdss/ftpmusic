@@ -613,6 +613,9 @@ class MediaService : MediaLibraryService() {
     private var remoteCastPlayer: androidx.media3.cast.RemoteCastPlayer? = null
     private var lastTrackId: String? = null
     private var playerErrorCount = 0
+
+    /** Bumped on each SKIP_NEXT launch — stale coroutines abort on Main. */
+    private var autoSkipGeneration = 0
     private var hasLoadedContinuation = false
 
     /** ADR-0087/0088: ensure Room→player restore runs once, as early as possible. */
@@ -1166,6 +1169,7 @@ class MediaService : MediaLibraryService() {
                     val failedId = currentId
                     val fromIdx = ep.currentMediaItemIndex
                     val itemCount = ep.mediaItemCount
+                    val skipGen = ++autoSkipGeneration
                     // Await poison eviction before seek/prepare so an immediate
                     // reselect cannot hit the same corrupt span (race from logs).
                     scope.launch {
@@ -1176,6 +1180,25 @@ class MediaService : MediaLibraryService() {
                             }
                         }
                         withContext(Dispatchers.Main) {
+                            if (skipGen != autoSkipGeneration) {
+                                android.util.Log.w(
+                                    "ftpmusic",
+                                    "[MediaService] Auto-skip aborted — superseded gen=$skipGen current=$autoSkipGeneration",
+                                )
+                                PlayerHolder.playbackErrorAutoSkipInFlight = false
+                                return@withContext
+                            }
+                            val stillOnFailed =
+                                failedId.isNullOrEmpty() ||
+                                    ep.currentMediaItem?.mediaId == failedId
+                            if (!stillOnFailed) {
+                                android.util.Log.w(
+                                    "ftpmusic",
+                                    "[MediaService] Auto-skip aborted — item changed past $failedId",
+                                )
+                                PlayerHolder.playbackErrorAutoSkipInFlight = false
+                                return@withContext
+                            }
                             if (serverUnreachable) {
                                 val cachedIdx = findNextCachedIndex(
                                     fromIndex = fromIdx,
@@ -1183,7 +1206,7 @@ class MediaService : MediaLibraryService() {
                                     mediaIdAt = { i ->
                                         runCatching { ep.getMediaItemAt(i).mediaId }.getOrNull()
                                     },
-                                    isCached = { id -> cacheService.isStoredInCache(id) },
+                                    isCached = { id -> cacheService.hasPlayableSpan(id) },
                                 )
                                 if (cachedIdx != null) {
                                     android.util.Log.w(
@@ -1205,6 +1228,7 @@ class MediaService : MediaLibraryService() {
                                         "autoSkip action=STOP_NO_CACHED trackId=$failedId idx=$fromIdx errorCount=$playerErrorCount reachable=false",
                                     )
                                     playerErrorCount = 0
+                                    PlayerHolder.playbackErrorAutoSkipInFlight = false
                                     ep.stop()
                                     return@withContext
                                 }
@@ -1227,6 +1251,7 @@ class MediaService : MediaLibraryService() {
                             // — Now Playing / QuickSettings show "stopped". media3's internal
                             // error-advance policy would have prepared + played, which the
                             // old retry loop suppressed; restore that behavior explicitly.
+                            // Flag cleared on media-item transition (ADR-0095 sticky banner).
                             ep.playWhenReady = true
                             ep.prepare()
                         }
@@ -2077,7 +2102,7 @@ class MediaService : MediaLibraryService() {
             )
         },
         networkBlocked: Boolean = isBtPlaybackNetworkBlocked(),
-        isCached: (String) -> Boolean = { id -> cacheService.isStoredInCache(id) },
+        isCached: (String) -> Boolean = { id -> cacheService.hasPlayableSpan(id) },
     ) {
         if (player != null && networkBlocked && player.mediaItemCount > 0) {
             val cachedIdx = resolveOfflineStartIndex(

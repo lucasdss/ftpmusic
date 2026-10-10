@@ -1317,7 +1317,12 @@ fun SettingsScreen(
                     Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.NewReleases, null, tint = Color(0xFFFFB74D), modifier = Modifier.size(iconSmall()))
+                    Icon(
+                        Icons.Default.NewReleases,
+                        null,
+                        tint = Color(0xFFFFB74D),
+                        modifier = Modifier.size(iconSmall()),
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

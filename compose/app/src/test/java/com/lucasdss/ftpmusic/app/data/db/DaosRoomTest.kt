@@ -956,6 +956,14 @@ class DaosRoomTest {
         tracks.upsert(TrackEntity(id = "t-played", title = "Played ghost", playCount = 3))
         tracks.upsert(
             TrackEntity(
+                id = "t-played-once",
+                title = "Last-played ghost",
+                playCount = 0,
+                lastPlayedAt = 1_700_000_000_000L,
+            ),
+        )
+        tracks.upsert(
+            TrackEntity(
                 id = "t-dl",
                 title = "Downloaded ghost",
                 isDownloaded = true,
@@ -965,12 +973,13 @@ class DaosRoomTest {
 
         val pruned = tracks.reconcileSearchCorpusAgainstCatalog()
         assertEquals(1, pruned)
-        assertEquals(5, tracks.trackCountAll())
+        assertEquals(6, tracks.trackCountAll())
         assertNull(tracks.getTrack("t-ghost"))
         assertNotNull(tracks.getTrack("t-album"))
         assertNotNull(tracks.getTrack("t-genre"))
         assertNotNull(tracks.getTrack("t-star"))
         assertNotNull(tracks.getTrack("t-played"))
+        assertNotNull(tracks.getTrack("t-played-once"))
         assertNotNull(tracks.getTrack("t-dl"))
     }
 

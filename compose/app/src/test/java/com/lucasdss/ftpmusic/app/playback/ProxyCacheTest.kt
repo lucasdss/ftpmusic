@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.playback
 
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
+import com.lucasdss.ftpmusic.app.data.cache.fakeAudioBytes
 import com.lucasdss.ftpmusic.app.data.repository.WaveformRepository
 import io.mockk.*
 import java.io.File
@@ -52,7 +53,7 @@ class ProxyCacheTest {
             val cacheService =
                 CacheService(trackDao, mockk<WaveformRepository>(relaxed = true), tmpDir, simpleCache, evictor)
             val trackId = "cached-track-1"
-            val data = "test audio data".toByteArray()
+            val data = fakeAudioBytes()
 
             kotlinx.coroutines.runBlocking {
                 cacheService.writeCachedTrack(trackId, data, isDownload = false)

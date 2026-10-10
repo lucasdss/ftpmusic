@@ -1075,6 +1075,8 @@ class MetadataSyncWorkerTest {
         coEvery { metadataDao.getAllAlbums() } returns albums
         coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
         coEvery { metadataDao.countUncachedAlbums() } returns 12
+        // Status.trackCount is search-corpus COUNT(tracks), not album-fetch sum.
+        coEvery { trackDao.trackCountAll() } returns 12
 
         albums.forEach {
             coEvery { api.getAlbum(id = it.id, auth = any()) } returns mapOf(
@@ -1094,7 +1096,7 @@ class MetadataSyncWorkerTest {
 
         // Status should show albumTracksProgressTotal was set
         assertEquals(12, worker.status.value.albumTracksProgressTotal)
-        // Progress emitted every album (not just % 5), trackCount reflects per-sync total
+        // Progress emitted every album (not just % 5), trackCount reflects corpus COUNT
         assertTrue(worker.status.value.albumTracksProgress > 0)
         assertTrue(worker.status.value.trackCount > 0)
     }

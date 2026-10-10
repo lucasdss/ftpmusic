@@ -17,23 +17,24 @@ object HomeRecentCache {
     fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun maxTtlMinutes(syncIntervalHours: Int): Int =
-        syncIntervalHours.coerceIn(1, 24) * 60
+    fun maxTtlMinutes(syncIntervalHours: Int): Int = syncIntervalHours.coerceIn(1, 24) * 60
 
     fun clampTtlMinutes(ttlMinutes: Int, syncIntervalHours: Int): Int =
         ttlMinutes.coerceIn(MIN_TTL_MINUTES, maxTtlMinutes(syncIntervalHours))
 
-    fun readIds(prefs: SharedPreferences): List<String> =
-        prefs.getString(PREF_HOME_RECENT_IDS, "")
-            ?.split(',')
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?: emptyList()
+    fun readIds(prefs: SharedPreferences): List<String> = prefs.getString(PREF_HOME_RECENT_IDS, "")
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?: emptyList()
 
-    fun readFetchedMs(prefs: SharedPreferences): Long =
-        prefs.getLong(PREF_HOME_RECENT_FETCHED_MS, 0L)
+    fun readFetchedMs(prefs: SharedPreferences): Long = prefs.getLong(PREF_HOME_RECENT_FETCHED_MS, 0L)
 
-    fun writeSnapshot(prefs: SharedPreferences, orderedIds: List<String>, fetchedAtMs: Long = System.currentTimeMillis()) {
+    fun writeSnapshot(
+        prefs: SharedPreferences,
+        orderedIds: List<String>,
+        fetchedAtMs: Long = System.currentTimeMillis(),
+    ) {
         prefs.edit()
             .putString(
                 PREF_HOME_RECENT_IDS,

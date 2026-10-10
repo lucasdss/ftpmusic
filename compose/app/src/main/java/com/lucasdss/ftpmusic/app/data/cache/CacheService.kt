@@ -103,8 +103,9 @@ class CacheService @Inject constructor(
     private var initialized = false
 
     /** Reconcile Room metadata with the unified cache state on startup:
-     *  pin downloaded tracks so they're never evicted, and clear rows whose
-     *  content no longer exists in the cache. */
+     *  pin downloaded tracks so they're never evicted, heal poison spans, and
+     *  clear rows whose content no longer exists in the cache. Unknown-magic
+     *  spans keep their pin (ADR-0110 hybrid heal). */
     suspend fun initialize(batchSize: Int = 100) {
         if (initialized) return
         importLegacyFiles()
@@ -114,10 +115,28 @@ class CacheService @Inject constructor(
             val batch = trackDao.getCachedPaginated(offset, batchSize)
             if (batch.isEmpty()) break
             for (track in batch) {
-                if (isStoredInCache(track.id)) {
-                    if (track.isDownloaded) evictor.pin(track.id)
-                } else {
+                val file = getSpanFile(track.id)
+                if (file == null) {
                     staleIds.add(track.id)
+                    continue
+                }
+                when (AudioCacheValidation.classify(file)) {
+                    AudioCacheValidation.PayloadVerdict.PLAYABLE -> {
+                        if (track.isDownloaded) evictor.pin(track.id)
+                    }
+
+                    AudioCacheValidation.PayloadVerdict.POISON -> {
+                        healPoisonSpan(track.id, file.length())
+                    }
+
+                    AudioCacheValidation.PayloadVerdict.UNKNOWN -> {
+                        // Keep pin/file — exotic codec without matched magic.
+                        if (track.isDownloaded) evictor.pin(track.id)
+                        android.util.Log.i(
+                            "ftpmusic-cache",
+                            "[initialize] unknown magic kept for ${track.id} bytes=${file.length()}",
+                        )
+                    }
                 }
             }
             offset += batch.size
@@ -308,17 +327,48 @@ class CacheService @Inject constructor(
     fun isStoredInCache(trackId: String): Boolean = getSpanFile(trackId) != null
 
     /**
+     * Sync check for offline/BT seek: span exists and classifies as [PayloadVerdict.PLAYABLE].
+     * Does not heal — safe to call from the main thread.
+     */
+    fun hasPlayableSpan(trackId: String): Boolean {
+        val file = getSpanFile(trackId) ?: return false
+        return AudioCacheValidation.classify(file) == AudioCacheValidation.PayloadVerdict.PLAYABLE
+    }
+
+    /**
      * True when a span is present AND the payload looks like playable audio.
-     * Heals poison spans (Subsonic error docs) so mix/download skip guards
-     * do not treat them as cached forever.
+     * Heals [PayloadVerdict.POISON] only; [PayloadVerdict.UNKNOWN] returns false
+     * without deleting the span or clearing the download pin (ADR-0110).
      */
     suspend fun isPlayableCached(trackId: String): Boolean {
         val file = getSpanFile(trackId) ?: return false
-        if (AudioCacheValidation.looksLikeAudio(file)) return true
+        return when (AudioCacheValidation.classify(file)) {
+            AudioCacheValidation.PayloadVerdict.PLAYABLE -> true
+
+            AudioCacheValidation.PayloadVerdict.POISON -> {
+                healPoisonSpan(trackId, file.length())
+                false
+            }
+
+            AudioCacheValidation.PayloadVerdict.UNKNOWN -> {
+                android.util.Log.i(
+                    "ftpmusic-cache",
+                    "[isPlayableCached] unknown magic kept for $trackId bytes=${file.length()}",
+                )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-cache",
+                    "unknownMagic keep trackId=$trackId bytes=${file.length()}",
+                )
+                false
+            }
+        }
+    }
+
+    private suspend fun healPoisonSpan(trackId: String, bytes: Long) {
         android.util.Log.w("ftpmusic-cache", "[isPlayableCached] healing poison span for $trackId")
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
             "ftpmusic-cache",
-            "healPoison trackId=$trackId bytes=${file.length()}",
+            "healPoison trackId=$trackId bytes=$bytes",
         )
         try {
             audioCache.removeResource(trackId)
@@ -339,7 +389,6 @@ class CacheService @Inject constructor(
             evictor.unpin(trackId)
         } catch (_: Exception) {
         }
-        return false
     }
 
     /** Returns the on-disk span file for a fully cached track, or null. */

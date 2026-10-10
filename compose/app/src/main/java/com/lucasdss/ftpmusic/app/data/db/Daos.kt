@@ -226,7 +226,7 @@ interface TrackDao {
     /**
      * FULL-heal search corpus (ADR-0108): drop densify ghosts whose Subsonic id
      * is no longer in album-track or genre caches. Keeps local-weight rows
-     * (star / dislike / download / cache file / play history).
+     * (star / dislike / download / cache file / play_count / last_played_at).
      */
     @Query(
         """
@@ -240,6 +240,7 @@ interface TrackDao {
         AND is_downloaded = 0
         AND cached_file_path IS NULL
         AND play_count = 0
+        AND last_played_at IS NULL
         """,
     )
     suspend fun reconcileSearchCorpusAgainstCatalog(): Int

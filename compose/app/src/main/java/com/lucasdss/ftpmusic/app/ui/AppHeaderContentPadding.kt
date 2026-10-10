@@ -12,6 +12,15 @@ import androidx.compose.ui.unit.dp
  */
 val LocalAppHeaderContentPadding = compositionLocalOf { 0.dp }
 
-/** Pure helper for tests — same rule as shell CompositionLocalProvider. */
-fun resolveAppHeaderContentPadding(showHeader: Boolean, headerHeight: Dp): Dp =
-    if (showHeader && headerHeight > 0.dp) headerHeight else 0.dp
+/**
+ * Pure helper for tests — same rule as shell CompositionLocalProvider.
+ * [lastKnownHeight] bridges the first-frame gap before measure (`headerHeight == 0`).
+ */
+fun resolveAppHeaderContentPadding(showHeader: Boolean, headerHeight: Dp, lastKnownHeight: Dp = 0.dp): Dp {
+    if (!showHeader) return 0.dp
+    return when {
+        headerHeight > 0.dp -> headerHeight
+        lastKnownHeight > 0.dp -> lastKnownHeight
+        else -> 0.dp
+    }
+}

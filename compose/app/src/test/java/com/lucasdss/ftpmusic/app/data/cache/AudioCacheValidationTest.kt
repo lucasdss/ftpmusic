@@ -1,6 +1,8 @@
 package com.lucasdss.ftpmusic.app.data.cache
 
+import com.lucasdss.ftpmusic.app.data.cache.AudioCacheValidation.PayloadVerdict
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -77,6 +79,78 @@ class AudioCacheValidationTest {
     }
 
     @Test
+    fun `classify poison undersize and subsonic unknown for random playable for id3`() {
+        assertEquals(
+            PayloadVerdict.POISON,
+            AudioCacheValidation.classifyBytes(byteArrayOf(1, 2, 3, 4), 100),
+        )
+        assertEquals(
+            PayloadVerdict.POISON,
+            AudioCacheValidation.classifyBytes(padded(subsonicErrorJsonBytes())),
+        )
+        assertEquals(
+            PayloadVerdict.UNKNOWN,
+            AudioCacheValidation.classify(file(ByteArray(5000) { 0x11 })),
+        )
+        assertEquals(
+            PayloadVerdict.PLAYABLE,
+            AudioCacheValidation.classify(file(fakeAudioBytes())),
+        )
+    }
+
+    @Test
+    fun `accepts aiff and wavpack magic`() {
+        assertTrue(
+            AudioCacheValidation.hasAudioMagic(
+                padded(
+                    byteArrayOf(
+                        'F'.code.toByte(),
+                        'O'.code.toByte(),
+                        'R'.code.toByte(),
+                        'M'.code.toByte(),
+                        0, 0, 0, 0,
+                        'A'.code.toByte(),
+                        'I'.code.toByte(),
+                        'F'.code.toByte(),
+                        'F'.code.toByte(),
+                    ),
+                ),
+            ),
+        )
+        assertTrue(
+            AudioCacheValidation.hasAudioMagic(
+                padded(
+                    byteArrayOf(
+                        'w'.code.toByte(),
+                        'v'.code.toByte(),
+                        'p'.code.toByte(),
+                        'k'.code.toByte(),
+                    ),
+                ),
+            ),
+        )
+        assertTrue(
+            AudioCacheValidation.looksLikeAudio(
+                file(
+                    padded(
+                        byteArrayOf(
+                            'F'.code.toByte(),
+                            'O'.code.toByte(),
+                            'R'.code.toByte(),
+                            'M'.code.toByte(),
+                            0, 0, 0, 0,
+                            'A'.code.toByte(),
+                            'I'.code.toByte(),
+                            'F'.code.toByte(),
+                            'C'.code.toByte(),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `accepts id3 mpeg flac ogg wave and ftyp magic`() {
         assertTrue(AudioCacheValidation.looksLikeAudio(file(fakeAudioBytes())))
         assertTrue(
@@ -136,7 +210,10 @@ class AudioCacheValidationTest {
                 file(
                     padded(
                         byteArrayOf(
-                            0, 0, 0, 0,
+                            0,
+                            0,
+                            0,
+                            0,
                             'f'.code.toByte(),
                             't'.code.toByte(),
                             'y'.code.toByte(),
@@ -179,6 +256,9 @@ class AudioCacheValidationTest {
         assertTrue(AudioCacheValidation.isAcceptableStreamContentType(""))
         assertTrue(AudioCacheValidation.isAcceptableStreamContentType("application/ogg"))
         assertTrue(AudioCacheValidation.isAcceptableStreamContentType("   "))
+        assertTrue(AudioCacheValidation.isAcceptableStreamContentType("video/mp4"))
+        assertTrue(AudioCacheValidation.isAcceptableStreamContentType("application/mp4"))
+        assertTrue(AudioCacheValidation.isAcceptableStreamContentType("application/x-flac"))
     }
 
     @Test

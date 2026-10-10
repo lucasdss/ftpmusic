@@ -437,6 +437,7 @@ fun FtpmusicNavHost() {
                 resolveAppHeaderContentPadding(
                     showHeader,
                     headerScroll.headerHeightPx.toDp(),
+                    headerScroll.lastKnownHeaderHeightPx.toDp(),
                 )
             }
 

@@ -33,6 +33,10 @@ header), residual fling hitch remained. Research pointed at:
 - `loadAlbums()` must not publish into `_state.albums` while `alphaBrowseActive`.
 - Alpha load / loadMore / background republish share a `Mutex` + generation token.
 - Empty alpha first page clears stale browse state.
+- Library/Favorites chrome above Lazy: pad outer `Column` with
+  `LocalAppHeaderContentPadding`; Lazy top pad is local spacing only.
+  Content inset falls back to last-known header height before first measure.
+  Alpha `loadMore` near-end uses `distinctUntilChanged`.
 
 ### Pass 5 — Platform
 

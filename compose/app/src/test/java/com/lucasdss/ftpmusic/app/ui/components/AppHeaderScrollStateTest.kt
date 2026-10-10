@@ -52,4 +52,26 @@ class AppHeaderScrollStateTest {
         assertEquals(0f, computeHeaderContentInsetPx(showHeader = false, headerHeightPx = 100f), 0.01f)
         assertEquals(0f, computeHeaderContentInsetPx(showHeader = true, headerHeightPx = 0f), 0.01f)
     }
+
+    @Test
+    fun `content inset falls back to last known height before measure`() {
+        assertEquals(
+            96f,
+            computeHeaderContentInsetPx(
+                showHeader = true,
+                headerHeightPx = 0f,
+                lastKnownHeightPx = 96f,
+            ),
+            0.01f,
+        )
+        assertEquals(
+            0f,
+            computeHeaderContentInsetPx(
+                showHeader = false,
+                headerHeightPx = 0f,
+                lastKnownHeightPx = 96f,
+            ),
+            0.01f,
+        )
+    }
 }
