@@ -2,10 +2,12 @@ package com.lucasdss.ftpmusic.app.data.update
 
 import com.google.android.play.core.appupdate.AppUpdateInfo
 import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,16 +50,14 @@ class UpdateCheckMapperTest {
     }
 
     @Test
-    fun `DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS maps to UpdateAvailable`() {
+    fun `DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS maps to InProgress`() {
         val info = mockk<AppUpdateInfo>()
         every { info.updateAvailability() } returns
             UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS
         every { info.availableVersionCode() } returns 15
-        every { info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) } returns true
 
-        val result = UpdateCheckMapper.fromPlayInfo(info) as UpdateCheckResult.UpdateAvailable
+        val result = UpdateCheckMapper.fromPlayInfo(info) as UpdateCheckResult.InProgress
         assertEquals(15, result.availableVersionCode)
-        assertTrue(result.flexibleAllowed)
     }
 
     @Test
@@ -67,5 +67,46 @@ class UpdateCheckMapperTest {
 
         val result = UpdateCheckMapper.fromPlayInfo(info)
         assertTrue(result is UpdateCheckResult.Unavailable)
+    }
+
+    @Test
+    fun `fromInstallStatus maps downloading family`() {
+        assertEquals(
+            FlexibleInstallEvent.Downloading,
+            UpdateCheckMapper.fromInstallStatus(InstallStatus.DOWNLOADING),
+        )
+        assertEquals(
+            FlexibleInstallEvent.Downloading,
+            UpdateCheckMapper.fromInstallStatus(InstallStatus.PENDING),
+        )
+        assertEquals(
+            FlexibleInstallEvent.Downloading,
+            UpdateCheckMapper.fromInstallStatus(InstallStatus.INSTALLING),
+        )
+    }
+
+    @Test
+    fun `fromInstallStatus maps downloaded`() {
+        assertEquals(
+            FlexibleInstallEvent.Downloaded,
+            UpdateCheckMapper.fromInstallStatus(InstallStatus.DOWNLOADED),
+        )
+    }
+
+    @Test
+    fun `fromInstallStatus maps failed and canceled`() {
+        assertEquals(
+            FlexibleInstallEvent.Failed("Play update download failed"),
+            UpdateCheckMapper.fromInstallStatus(InstallStatus.FAILED),
+        )
+        assertEquals(
+            FlexibleInstallEvent.Failed("Play update canceled"),
+            UpdateCheckMapper.fromInstallStatus(InstallStatus.CANCELED),
+        )
+    }
+
+    @Test
+    fun `fromInstallStatus unknown returns null`() {
+        assertNull(UpdateCheckMapper.fromInstallStatus(InstallStatus.UNKNOWN))
     }
 }

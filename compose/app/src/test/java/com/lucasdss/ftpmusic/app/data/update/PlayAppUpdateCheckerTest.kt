@@ -8,13 +8,19 @@ import com.google.android.gms.tasks.OnSuccessListener
 import com.google.android.gms.tasks.Task
 import com.google.android.play.core.appupdate.AppUpdateInfo
 import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.install.InstallState
+import com.google.android.play.core.install.InstallStateUpdatedListener
 import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
 import com.lucasdss.ftpmusic.app.BuildConfig
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -51,6 +57,20 @@ class PlayAppUpdateCheckerTest {
         result as UpdateCheckResult.UpdateAvailable
         assertEquals(21, result.availableVersionCode)
         assertTrue(result.flexibleAllowed)
+    }
+
+    @Test
+    fun `check maps IN_PROGRESS to InProgress`() = runTest {
+        val info = mockInfo(
+            availability = UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS,
+            versionCode = 22,
+            flexible = true,
+            installStatus = InstallStatus.DOWNLOADING,
+        )
+        stubAppUpdateInfoSuccess(info)
+
+        val result = checker.check() as UpdateCheckResult.InProgress
+        assertEquals(22, result.availableVersionCode)
     }
 
     @Test
@@ -134,11 +154,68 @@ class PlayAppUpdateCheckerTest {
         )
     }
 
-    private fun mockInfo(availability: Int, versionCode: Int, flexible: Boolean): AppUpdateInfo {
+    @Test
+    fun `completeUpdate returns true when Play accepts`() {
+        every { appUpdateManager.completeUpdate() } returns mockk(relaxed = true)
+        assertTrue(checker.completeUpdate())
+        verify { appUpdateManager.completeUpdate() }
+    }
+
+    @Test
+    fun `completeUpdate returns false when Play throws`() {
+        every { appUpdateManager.completeUpdate() } throws IllegalStateException("no")
+        assertFalse(checker.completeUpdate())
+    }
+
+    @Test
+    fun `observeFlexibleInstall emits Downloaded from listener`() = runTest(UnconfinedTestDispatcher()) {
+        val listenerSlot = slot<InstallStateUpdatedListener>()
+        every { appUpdateManager.registerListener(capture(listenerSlot)) } returns Unit
+        every { appUpdateManager.unregisterListener(any()) } returns Unit
+
+        val events = mutableListOf<FlexibleInstallEvent>()
+        val job = launch {
+            checker.observeFlexibleInstall().collect { events.add(it) }
+        }
+
+        val state = mockk<InstallState>()
+        every { state.installStatus() } returns InstallStatus.DOWNLOADED
+        listenerSlot.captured.onStateUpdate(state)
+
+        assertEquals(listOf(FlexibleInstallEvent.Downloaded), events)
+        job.cancel()
+        verify { appUpdateManager.unregisterListener(listenerSlot.captured) }
+    }
+
+    @Test
+    fun `observeFlexibleInstall emits Downloaded from cached DOWNLOADED info`() = runTest {
+        val info = mockInfo(
+            availability = UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS,
+            versionCode = 30,
+            flexible = true,
+            installStatus = InstallStatus.DOWNLOADED,
+        )
+        stubAppUpdateInfoSuccess(info)
+        checker.check()
+
+        every { appUpdateManager.registerListener(any()) } returns Unit
+        every { appUpdateManager.unregisterListener(any()) } returns Unit
+
+        val first = checker.observeFlexibleInstall().first()
+        assertEquals(FlexibleInstallEvent.Downloaded, first)
+    }
+
+    private fun mockInfo(
+        availability: Int,
+        versionCode: Int,
+        flexible: Boolean,
+        installStatus: Int = InstallStatus.UNKNOWN,
+    ): AppUpdateInfo {
         val info = mockk<AppUpdateInfo>()
         every { info.updateAvailability() } returns availability
         every { info.availableVersionCode() } returns versionCode
         every { info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) } returns flexible
+        every { info.installStatus() } returns installStatus
         return info
     }
 

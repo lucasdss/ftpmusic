@@ -17,6 +17,7 @@ import com.lucasdss.ftpmusic.app.data.db.SyncStatus
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
+import com.lucasdss.ftpmusic.app.data.update.FlexibleInstallEvent
 import com.lucasdss.ftpmusic.app.data.update.UpdateCheckResult
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
@@ -30,6 +31,7 @@ import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -86,6 +88,8 @@ class AppUpdateSettingsViewModelTest {
             kotlinx.coroutines.flow.MutableStateFlow(false)
         every { networkPolicyHolder.shouldWarnManualResyncOnCellular() } returns false
         every { appUpdateChecker.applicationId() } returns "com.lucasdss.ftpmusic.app"
+        every { appUpdateChecker.observeFlexibleInstall() } returns MutableSharedFlow()
+        every { appUpdateChecker.completeUpdate() } returns true
         viewModel = createViewModel()
     }
 
@@ -234,5 +238,76 @@ class AppUpdateSettingsViewModelTest {
             AppUpdateEvent.OpenPlayStore("com.lucasdss.ftpmusic.app"),
             event.await(),
         )
+    }
+
+    @Test
+    fun `checkForUpdates maps InProgress and observes install`() = runTest(testDispatcher) {
+        val installEvents = MutableSharedFlow<FlexibleInstallEvent>(extraBufferCapacity = 1)
+        every { appUpdateChecker.observeFlexibleInstall() } returns installEvents
+        coEvery { appUpdateChecker.check() } returns UpdateCheckResult.InProgress(25)
+
+        viewModel.checkForUpdates()
+        advanceUntilIdle()
+
+        assertEquals(UpdateCheckUi.InProgress(25), viewModel.state.value.updateCheck)
+
+        installEvents.tryEmit(FlexibleInstallEvent.Downloaded)
+        advanceUntilIdle()
+
+        assertEquals(UpdateCheckUi.ReadyToInstall, viewModel.state.value.updateCheck)
+    }
+
+    @Test
+    fun `launchFlexibleUpdate success moves to InProgress`() = runTest(testDispatcher) {
+        val installEvents = MutableSharedFlow<FlexibleInstallEvent>(extraBufferCapacity = 1)
+        every { appUpdateChecker.observeFlexibleInstall() } returns installEvents
+        every { appUpdateChecker.startFlexibleUpdate(any(), any()) } returns true
+        coEvery { appUpdateChecker.check() } returns
+            UpdateCheckResult.UpdateAvailable(14, flexibleAllowed = true)
+        viewModel.checkForUpdates()
+        advanceUntilIdle()
+
+        val started = viewModel.launchFlexibleUpdate(mockk(relaxed = true), mockk(relaxed = true))
+        advanceUntilIdle()
+
+        assertTrue(started)
+        assertEquals(UpdateCheckUi.InProgress(14), viewModel.state.value.updateCheck)
+    }
+
+    @Test
+    fun `completeFlexibleUpdate calls checker when ReadyToInstall`() = runTest(testDispatcher) {
+        val installEvents = MutableSharedFlow<FlexibleInstallEvent>(extraBufferCapacity = 1)
+        every { appUpdateChecker.observeFlexibleInstall() } returns installEvents
+        coEvery { appUpdateChecker.check() } returns UpdateCheckResult.InProgress(25)
+        viewModel.checkForUpdates()
+        advanceUntilIdle()
+        installEvents.tryEmit(FlexibleInstallEvent.Downloaded)
+        advanceUntilIdle()
+
+        viewModel.completeFlexibleUpdate()
+        advanceUntilIdle()
+
+        verify { appUpdateChecker.completeUpdate() }
+    }
+
+    @Test
+    fun `completeFlexibleUpdate no-op when not ReadyToInstall`() = runTest(testDispatcher) {
+        viewModel.completeFlexibleUpdate()
+        advanceUntilIdle()
+        verify(exactly = 0) { appUpdateChecker.completeUpdate() }
+    }
+
+    @Test
+    fun `install Failed maps to Error`() = runTest(testDispatcher) {
+        val installEvents = MutableSharedFlow<FlexibleInstallEvent>(extraBufferCapacity = 1)
+        every { appUpdateChecker.observeFlexibleInstall() } returns installEvents
+        coEvery { appUpdateChecker.check() } returns UpdateCheckResult.InProgress(25)
+        viewModel.checkForUpdates()
+        advanceUntilIdle()
+
+        installEvents.tryEmit(FlexibleInstallEvent.Failed("Play update canceled"))
+        advanceUntilIdle()
+
+        assertEquals(UpdateCheckUi.Error("Play update canceled"), viewModel.state.value.updateCheck)
     }
 }

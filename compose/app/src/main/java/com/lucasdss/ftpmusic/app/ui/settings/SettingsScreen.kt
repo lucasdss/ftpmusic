@@ -1483,6 +1483,7 @@ fun SettingsScreen(
                     updateCheck = state.updateCheck,
                     onCheck = viewModel::checkForUpdates,
                     onStartUpdate = viewModel::startUpdate,
+                    onCompleteUpdate = viewModel::completeFlexibleUpdate,
                     onOpenPlayStore = viewModel::openPlayStoreListing,
                 )
                 SectionDivider()
@@ -1603,6 +1604,7 @@ private fun UpdateCheckRow(
     updateCheck: UpdateCheckUi,
     onCheck: () -> Unit,
     onStartUpdate: () -> Unit,
+    onCompleteUpdate: () -> Unit,
     onOpenPlayStore: () -> Unit,
 ) {
     when (updateCheck) {
@@ -1631,6 +1633,68 @@ private fun UpdateCheckRow(
                     )
                     Text(
                         "Version code ${updateCheck.availableVersionCode} on Play Store",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
+                }
+            }
+        }
+
+        is UpdateCheckUi.InProgress -> {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("settings_update_in_progress"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(iconSmall()),
+                    color = BrandTeal,
+                    strokeWidth = 2.dp,
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Downloading update…",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Version code ${updateCheck.availableVersionCode}",
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
+                }
+            }
+        }
+
+        UpdateCheckUi.ReadyToInstall -> {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onCompleteUpdate)
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("settings_complete_update"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.SystemUpdate,
+                    null,
+                    tint = BrandTeal,
+                    modifier = Modifier.size(iconSmall()),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Restart to install",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Update downloaded · tap to finish",
                         color = Color(0xFF888888),
                         fontSize = textLabelM(),
                     )

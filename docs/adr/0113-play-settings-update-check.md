@@ -18,14 +18,23 @@ Home banners, and header gear badges were considered and rejected for v1
    No cold-start banner. No settings-icon badge.
 3. **Update style:** Soft **flexible** flow when Play allows it; otherwise open
    the Play Store listing (`market://` then HTTPS fallback). Never block the app.
-4. **Seam:** `AppUpdateChecker` / `PlayAppUpdateChecker` keep Play SDK types out
-   of the ViewModel; unit tests use a fake checker.
-5. **No auto-check** on Settings open (privacy + noise).
+4. **Same-session install:** Register `InstallStateUpdatedListener` while a
+   flexible update is in flight; on `DOWNLOADED` show **Restart to install** and
+   call `AppUpdateManager.completeUpdate()`. Without this, downloads never apply.
+5. **In-progress mapping:** `DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS` maps to
+   `InProgress` (observe + complete), not a fresh “Update available” CTA.
+6. **Seam:** `AppUpdateChecker` / `PlayAppUpdateChecker` keep Play SDK types out
+   of the ViewModel; unit tests use a fake checker. Play Task await uses
+   `suspendCancellableCoroutine`.
+7. **No auto-check** on Settings open (privacy + noise).
 
 ## Consequences
 
 - Sideload / `make install` debug builds typically get `UPDATE_NOT_AVAILABLE`
   or an error — UI shows Up to date / Error + optional Open Play Store; never
   a false “update available” without Play confirmation.
-- Flexible-update resume after process death is out of scope for v1.
-- About card gains one row (+ Error secondary CTA); diagnostics export unchanged.
+- Full flexible-update resume UI after process death remains out of scope for
+  v1; a later manual check may still surface `InProgress` / Ready if Play
+  reports it.
+- About card gains update row states (Idle/Checking/Available/InProgress/
+  ReadyToInstall/Error); diagnostics export unchanged.

@@ -230,4 +230,27 @@ class SettingsScreenComposeTest {
         composeRule.onNodeWithTag("settings_open_play_store").performClick()
         verify { vm.openPlayStoreListing() }
     }
+
+    @Test
+    fun `update in progress row shows downloading state`() {
+        val vm = mockViewModel(
+            SettingsUiState(updateCheck = UpdateCheckUi.InProgress(availableVersionCode = 21)),
+        )
+        render(vm)
+
+        composeRule.onNodeWithTag("settings_update_in_progress").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Downloading update…").assertIsDisplayed()
+    }
+
+    @Test
+    fun `ready to install row delegates to completeFlexibleUpdate`() {
+        val vm = mockViewModel(
+            SettingsUiState(updateCheck = UpdateCheckUi.ReadyToInstall),
+        )
+        render(vm)
+
+        composeRule.onNodeWithTag("settings_complete_update").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_complete_update").performClick()
+        verify { vm.completeFlexibleUpdate() }
+    }
 }

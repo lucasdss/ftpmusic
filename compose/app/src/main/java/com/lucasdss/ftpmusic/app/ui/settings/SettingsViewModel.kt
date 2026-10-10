@@ -19,6 +19,7 @@ import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.network.CustomHeadersInterceptor
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
+import com.lucasdss.ftpmusic.app.data.update.FlexibleInstallEvent
 import com.lucasdss.ftpmusic.app.data.update.UpdateCheckResult
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.OverwriteBehavior
@@ -33,6 +34,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -124,6 +126,8 @@ sealed class UpdateCheckUi {
     data object Checking : UpdateCheckUi()
     data object UpToDate : UpdateCheckUi()
     data class Available(val availableVersionCode: Int, val flexibleAllowed: Boolean) : UpdateCheckUi()
+    data class InProgress(val availableVersionCode: Int) : UpdateCheckUi()
+    data object ReadyToInstall : UpdateCheckUi()
     data class Error(val message: String) : UpdateCheckUi()
 }
 
@@ -704,25 +708,41 @@ class SettingsViewModel @Inject constructor(
     private val _appUpdateEvents = Channel<AppUpdateEvent>(Channel.BUFFERED)
     val appUpdateEvents = _appUpdateEvents.receiveAsFlow()
 
+    private var flexibleInstallJob: Job? = null
+
     /** Manual Play Store update check (no auto-check on Settings open). */
     fun checkForUpdates() {
         if (_state.value.updateCheck is UpdateCheckUi.Checking) return
         viewModelScope.launch {
             _state.value = _state.value.copy(updateCheck = UpdateCheckUi.Checking)
-            _state.value = _state.value.copy(
-                updateCheck = when (val result = appUpdateChecker.check()) {
-                    is UpdateCheckResult.UpToDate -> UpdateCheckUi.UpToDate
+            when (val result = appUpdateChecker.check()) {
+                is UpdateCheckResult.UpToDate -> {
+                    stopFlexibleInstallObserve()
+                    _state.value = _state.value.copy(updateCheck = UpdateCheckUi.UpToDate)
+                }
 
-                    is UpdateCheckResult.UpdateAvailable ->
-                        UpdateCheckUi.Available(
+                is UpdateCheckResult.UpdateAvailable -> {
+                    stopFlexibleInstallObserve()
+                    _state.value = _state.value.copy(
+                        updateCheck = UpdateCheckUi.Available(
                             availableVersionCode = result.availableVersionCode,
                             flexibleAllowed = result.flexibleAllowed,
-                        )
+                        ),
+                    )
+                }
 
-                    is UpdateCheckResult.Unavailable ->
-                        UpdateCheckUi.Error(result.message)
-                },
-            )
+                is UpdateCheckResult.InProgress -> {
+                    _state.value = _state.value.copy(
+                        updateCheck = UpdateCheckUi.InProgress(result.availableVersionCode),
+                    )
+                    observeFlexibleInstall()
+                }
+
+                is UpdateCheckResult.Unavailable -> {
+                    stopFlexibleInstallObserve()
+                    _state.value = _state.value.copy(updateCheck = UpdateCheckUi.Error(result.message))
+                }
+            }
         }
     }
 
@@ -753,8 +773,26 @@ class SettingsViewModel @Inject constructor(
                     AppUpdateEvent.OpenPlayStore(appUpdateChecker.applicationId()),
                 )
             }
+        } else {
+            val versionHint = (_state.value.updateCheck as? UpdateCheckUi.Available)
+                ?.availableVersionCode
+                ?: 0
+            _state.value = _state.value.copy(updateCheck = UpdateCheckUi.InProgress(versionHint))
+            observeFlexibleInstall()
         }
         return started
+    }
+
+    /** Apply downloaded flexible update (Play restarts the process). */
+    fun completeFlexibleUpdate() {
+        if (_state.value.updateCheck !is UpdateCheckUi.ReadyToInstall) return
+        val ok = appUpdateChecker.completeUpdate()
+        if (!ok) {
+            _state.value = _state.value.copy(
+                updateCheck = UpdateCheckUi.Error("Unable to finish installing the update"),
+            )
+            stopFlexibleInstallObserve()
+        }
     }
 
     /** Open Play listing (Error / Unavailable soft path). */
@@ -764,6 +802,38 @@ class SettingsViewModel @Inject constructor(
                 AppUpdateEvent.OpenPlayStore(appUpdateChecker.applicationId()),
             )
         }
+    }
+
+    private fun observeFlexibleInstall() {
+        if (flexibleInstallJob?.isActive == true) return
+        flexibleInstallJob = viewModelScope.launch {
+            appUpdateChecker.observeFlexibleInstall().collect { event ->
+                when (event) {
+                    FlexibleInstallEvent.Downloading -> {
+                        val code = (_state.value.updateCheck as? UpdateCheckUi.InProgress)
+                            ?.availableVersionCode
+                            ?: (_state.value.updateCheck as? UpdateCheckUi.Available)
+                                ?.availableVersionCode
+                            ?: 0
+                        _state.value = _state.value.copy(updateCheck = UpdateCheckUi.InProgress(code))
+                    }
+
+                    FlexibleInstallEvent.Downloaded -> {
+                        _state.value = _state.value.copy(updateCheck = UpdateCheckUi.ReadyToInstall)
+                    }
+
+                    is FlexibleInstallEvent.Failed -> {
+                        _state.value = _state.value.copy(updateCheck = UpdateCheckUi.Error(event.message))
+                        stopFlexibleInstallObserve()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopFlexibleInstallObserve() {
+        flexibleInstallJob?.cancel()
+        flexibleInstallJob = null
     }
 
     /** Build diagnostics export text (no network upload). Safe off main. */
