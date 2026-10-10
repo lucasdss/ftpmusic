@@ -1,9 +1,12 @@
 package com.lucasdss.ftpmusic.app.ui.playlist
 
+import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
 import com.lucasdss.ftpmusic.app.data.db.CacheQueueDao
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeDao
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeEntity
@@ -15,6 +18,7 @@ import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +57,8 @@ class PlaylistDetailViewModel @Inject constructor(
     private val cacheQueueDao: CacheQueueDao,
     private val storage: SecureStorage,
     private val favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository,
+    private val playlistRepository: PlaylistRepository,
+    private val coverStore: CollectionCoverStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlaylistDetailState())
@@ -687,6 +693,7 @@ class PlaylistDetailViewModel @Inject constructor(
     fun removeLocally() {
         val playlist = _state.value.playlist ?: return
         viewModelScope.launch {
+            playlistRepository.onPlaylistDeleted(playlist.id)
             playlistDao.clearEntries(playlist.id)
             playlistDao.delete(playlist.id)
         }
@@ -769,10 +776,60 @@ class PlaylistDetailViewModel @Inject constructor(
         }
     }
 
+    fun setFixedCoverFromLibrary(coverArtId: String) {
+        val playlist = _state.value.playlist ?: return
+        viewModelScope.launch {
+            playlistRepository.setFixedCover(
+                playlist.id,
+                CollectionCoverKind.NAVIDROME,
+                coverArtId,
+            )
+            _state.value = _state.value.copy(
+                playlist = playlist.copy(
+                    fixedCoverKind = CollectionCoverKind.NAVIDROME,
+                    fixedCoverValue = coverArtId,
+                ),
+            )
+        }
+    }
+
+    fun setFixedCoverFromDevice(uri: Uri) {
+        val playlist = _state.value.playlist ?: return
+        viewModelScope.launch {
+            val relative = coverStore.importFromUri(
+                uri,
+                PlaylistRepository.COVER_PREFIX,
+                playlist.id,
+            ) ?: return@launch
+            playlistRepository.setFixedCover(
+                playlist.id,
+                CollectionCoverKind.LOCAL,
+                relative,
+            )
+            _state.value = _state.value.copy(
+                playlist = playlist.copy(
+                    fixedCoverKind = CollectionCoverKind.LOCAL,
+                    fixedCoverValue = relative,
+                ),
+            )
+        }
+    }
+
+    fun clearFixedCover() {
+        val playlist = _state.value.playlist ?: return
+        viewModelScope.launch {
+            playlistRepository.clearFixedCover(playlist.id)
+            _state.value = _state.value.copy(
+                playlist = playlist.copy(fixedCoverKind = null, fixedCoverValue = null),
+            )
+        }
+    }
+
     fun deletePlaylist(onComplete: () -> Unit = {}) {
         val playlist = _state.value.playlist ?: return
         viewModelScope.launch {
             try {
+                playlistRepository.onPlaylistDeleted(playlist.id)
                 // Local-first: delete from DB immediately
                 playlistDao.clearEntries(playlist.id)
                 playlistDao.delete(playlist.id)

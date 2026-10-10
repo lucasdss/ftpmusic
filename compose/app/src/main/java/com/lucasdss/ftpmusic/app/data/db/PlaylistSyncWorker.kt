@@ -154,6 +154,8 @@ class PlaylistSyncWorker(
                         val pl = sr?.get("playlist") as? Map<*, *>
                         val serverId = pl?.get("id") as? String
                         if (serverId != null && serverId != change.playlistId) {
+                            // Preserve local fixed cover across temp→server id remap.
+                            val prior = playlistDao.getById(change.playlistId)
                             // Replace temp local ID with server-assigned ID
                             playlistDao.delete(change.playlistId)
                             // Re-point entries written under the temp ID (tracks added
@@ -169,6 +171,8 @@ class PlaylistSyncWorker(
                                             (pl["songCount"] as? Number)?.toInt() ?: 0,
                                         ),
                                         coverArt = pl["coverArt"] as? String,
+                                        fixedCoverKind = prior?.fixedCoverKind,
+                                        fixedCoverValue = prior?.fixedCoverValue,
                                     ),
                                 ),
                             )

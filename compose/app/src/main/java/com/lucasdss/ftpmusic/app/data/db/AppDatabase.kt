@@ -36,7 +36,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ListenEventEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 61,
+    version = 62,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1096,6 +1096,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_61 = ALL_MIGRATIONS_60 + MIGRATION_60_61
+
+        // Migration 61→62: local fixed covers for custom mixes + playlists (ADR 0115).
+        val MIGRATION_61_62 = object : Migration(61, 62) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE custom_mixes ADD COLUMN fixed_cover_kind TEXT")
+                database.execSQL("ALTER TABLE custom_mixes ADD COLUMN fixed_cover_value TEXT")
+                database.execSQL("ALTER TABLE playlists ADD COLUMN fixed_cover_kind TEXT")
+                database.execSQL("ALTER TABLE playlists ADD COLUMN fixed_cover_value TEXT")
+            }
+        }
+        val ALL_MIGRATIONS_62 = ALL_MIGRATIONS_61 + MIGRATION_61_62
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

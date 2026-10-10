@@ -2,6 +2,8 @@ package com.lucasdss.ftpmusic.app.data.repository
 
 import android.util.Log
 import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeDao
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
@@ -27,7 +29,11 @@ class PlaylistRepository @Inject constructor(
     private val trackDao: TrackDao,
     private val storage: SecureStorage,
     private val downloadManager: DownloadManager,
+    private val coverStore: CollectionCoverStore,
 ) {
+    companion object {
+        const val COVER_PREFIX = "pl"
+    }
     private val auth = SubsonicAuthHelper()
 
     private suspend fun authParams(): Map<String, String> {
@@ -79,6 +85,7 @@ class PlaylistRepository @Inject constructor(
         val sr = response["subsonic-response"] as? Map<*, *> ?: return
         val pl = sr["playlist"] as? Map<*, *> ?: return
 
+        val existing = playlistDao.getById(playlistId)
         val entity = PlaylistEntity(
             id = pl["id"] as? String ?: playlistId,
             name = pl["name"] as? String ?: "Playlist",
@@ -88,6 +95,8 @@ class PlaylistRepository @Inject constructor(
             trackCount = (pl["songCount"] as? Number)?.toInt() ?: 0,
             coverArt = pl["coverArt"] as? String,
             lastSyncedAt = System.currentTimeMillis(),
+            fixedCoverKind = existing?.fixedCoverKind,
+            fixedCoverValue = existing?.fixedCoverValue,
         )
         playlistDao.upsertAll(listOf(entity))
 
@@ -252,5 +261,46 @@ class PlaylistRepository @Inject constructor(
             Log.w("ftpmusic-playlist", "setPlaylistPublic failed: ${e.message}")
             false
         }
+    }
+
+    /** Pin a local-only fixed cover (library navidrome id or gallery relative path). */
+    suspend fun setFixedCover(playlistId: String, kind: String, value: String) {
+        if (!CollectionCoverKind.isValid(kind) || value.isBlank()) return
+        val old = playlistDao.getById(playlistId) ?: return
+        if (old.fixedCoverKind == CollectionCoverKind.LOCAL &&
+            old.fixedCoverValue != null &&
+            old.fixedCoverValue != value
+        ) {
+            coverStore.deleteRelative(old.fixedCoverValue)
+        }
+        playlistDao.updateFixedCover(
+            id = playlistId,
+            kind = kind,
+            value = value,
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
+    suspend fun clearFixedCover(playlistId: String) {
+        val old = playlistDao.getById(playlistId) ?: return
+        if (old.fixedCoverKind == CollectionCoverKind.LOCAL) {
+            coverStore.deleteRelative(old.fixedCoverValue)
+        }
+        coverStore.deleteForPrefix(COVER_PREFIX, playlistId)
+        playlistDao.updateFixedCover(
+            id = playlistId,
+            kind = null,
+            value = null,
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
+    /** Drop local cover files when a playlist is removed. */
+    suspend fun onPlaylistDeleted(playlistId: String) {
+        val old = playlistDao.getById(playlistId)
+        if (old?.fixedCoverKind == CollectionCoverKind.LOCAL) {
+            coverStore.deleteRelative(old.fixedCoverValue)
+        }
+        coverStore.deleteForPrefix(COVER_PREFIX, playlistId)
     }
 }

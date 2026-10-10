@@ -2,6 +2,8 @@ package com.lucasdss.ftpmusic.app.data.repository
 
 import androidx.compose.runtime.Immutable
 import com.lucasdss.ftpmusic.app.data.cache.MixCacheCoordinator
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -46,6 +48,9 @@ data class CustomMix(
     val isDefault: Boolean,
     /** When false (default), short pools shrink — no Phase-3 fill from other mixes. */
     val allowCrossMixFill: Boolean = false,
+    /** Local fixed cover: [CollectionCoverKind.NAVIDROME] | [CollectionCoverKind.LOCAL]. */
+    val fixedCoverKind: String? = null,
+    val fixedCoverValue: String? = null,
 )
 
 /**
@@ -61,11 +66,13 @@ class DailyMixRepository @Inject constructor(
     private val trackDao: TrackDao,
     private val metadataDao: CachedMetadataDao,
     private val mixCacheCoordinator: MixCacheCoordinator,
+    private val coverStore: CollectionCoverStore,
     private val ioDispatcher: CoroutineDispatcher,
 ) {
     companion object {
         const val MAX_MIXES = 20
         const val NAME_MAX = 32
+        const val COVER_PREFIX = "mix"
 
         const val KIND_GENRES = "genres"
         const val KIND_DECADES = "decades"
@@ -211,6 +218,8 @@ class DailyMixRepository @Inject constructor(
                 isDefault = false,
                 id = old.id,
                 createdAt = old.createdAt,
+                fixedCoverKind = old.fixedCoverKind,
+                fixedCoverValue = old.fixedCoverValue,
             ),
         )
         when {
@@ -237,8 +246,40 @@ class DailyMixRepository @Inject constructor(
     }
 
     suspend fun deleteMix(id: Long) = withContext(ioDispatcher) {
+        val old = customMixDao.getById(id)
+        if (old?.fixedCoverKind == CollectionCoverKind.LOCAL) {
+            coverStore.deleteRelative(old.fixedCoverValue)
+        }
+        coverStore.deleteForPrefix(COVER_PREFIX, id.toString())
         mixCacheCoordinator.onDeleted(id)
         customMixDao.deleteById(id)
+    }
+
+    /**
+     * Pin a fixed cover for a mix recipe (local only). [kind] is
+     * [CollectionCoverKind.NAVIDROME] or [CollectionCoverKind.LOCAL].
+     */
+    suspend fun setFixedCover(id: Long, kind: String, value: String) = withContext(ioDispatcher) {
+        if (!CollectionCoverKind.isValid(kind) || value.isBlank()) return@withContext
+        val old = customMixDao.getById(id) ?: return@withContext
+        if (old.fixedCoverKind == CollectionCoverKind.LOCAL &&
+            old.fixedCoverValue != null &&
+            old.fixedCoverValue != value
+        ) {
+            coverStore.deleteRelative(old.fixedCoverValue)
+        }
+        customMixDao.update(
+            old.copy(fixedCoverKind = kind, fixedCoverValue = value),
+        )
+    }
+
+    suspend fun clearFixedCover(id: Long) = withContext(ioDispatcher) {
+        val old = customMixDao.getById(id) ?: return@withContext
+        if (old.fixedCoverKind == CollectionCoverKind.LOCAL) {
+            coverStore.deleteRelative(old.fixedCoverValue)
+        }
+        coverStore.deleteForPrefix(COVER_PREFIX, id.toString())
+        customMixDao.update(old.copy(fixedCoverKind = null, fixedCoverValue = null))
     }
 
     /** Build pools + one weight map for the whole run. Run on IO by callers. */
@@ -545,6 +586,8 @@ private fun CustomMixEntity.toDomain(): CustomMix = CustomMix(
     autoCache = autoCache,
     isDefault = isDefault,
     allowCrossMixFill = allowCrossMixFill,
+    fixedCoverKind = fixedCoverKind,
+    fixedCoverValue = fixedCoverValue,
 )
 
 private fun CustomMixEntity.toEntity(
@@ -553,6 +596,8 @@ private fun CustomMixEntity.toEntity(
     isDefault: Boolean,
     id: Long = this.id,
     createdAt: Long = this.createdAt,
+    fixedCoverKind: String? = this.fixedCoverKind,
+    fixedCoverValue: String? = this.fixedCoverValue,
 ): CustomMixEntity = CustomMixEntity(
     id = id,
     name = name,
@@ -565,6 +610,8 @@ private fun CustomMixEntity.toEntity(
     allowCrossMixFill = allowCrossMixFill,
     isDefault = isDefault,
     createdAt = createdAt,
+    fixedCoverKind = fixedCoverKind,
+    fixedCoverValue = fixedCoverValue,
 )
 
 private fun TrackEntity.toSongInfo(): DailyMixGenerator.SongInfo = DailyMixGenerator.SongInfo(

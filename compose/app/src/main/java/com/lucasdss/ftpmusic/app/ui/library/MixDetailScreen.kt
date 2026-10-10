@@ -54,6 +54,7 @@ import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
@@ -176,31 +177,53 @@ fun MixDetailScreen(
                             Modifier.fillMaxWidth().padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            // Cover art montage from first 4 unique covers
+                            // Fixed cover, else montage (1–4 tiles), else lettermark.
                             val covers = state.tracks.mapNotNull { it.coverArt }.distinct().take(4)
+                            val hasFixed = !state.fixedCoverKind.isNullOrBlank() &&
+                                !state.fixedCoverValue.isNullOrBlank()
                             Box(
                                 Modifier.size(200.dp).clip(RoundedCornerShape(16.dp))
                                     .background(Color(0xFF1E1E3E)),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (covers.size >= 4) {
-                                    Column(Modifier.fillMaxSize()) {
-                                        Row(Modifier.weight(1f)) {
+                                when {
+                                    hasFixed || covers.isEmpty() -> {
+                                        CollectionCoverArt(
+                                            name = mixName,
+                                            fixedCoverKind = state.fixedCoverKind,
+                                            fixedCoverValue = state.fixedCoverValue,
+                                            derivedCoverArtIds = covers,
+                                            primaryArtist = state.tracks.firstOrNull()?.artist,
+                                            primaryAlbum = null,
+                                            decodeSize = 200.dp,
+                                            lettermarkLarge = true,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+
+                                    covers.size >= 4 -> {
+                                        Column(Modifier.fillMaxSize()) {
+                                            Row(Modifier.weight(1f)) {
+                                                GenreMixCoverImage(covers[0], Modifier.weight(1f).fillMaxHeight())
+                                                GenreMixCoverImage(covers[1], Modifier.weight(1f).fillMaxHeight())
+                                            }
+                                            Row(Modifier.weight(1f)) {
+                                                GenreMixCoverImage(covers[2], Modifier.weight(1f).fillMaxHeight())
+                                                GenreMixCoverImage(covers[3], Modifier.weight(1f).fillMaxHeight())
+                                            }
+                                        }
+                                    }
+
+                                    covers.size >= 2 -> {
+                                        Row(Modifier.fillMaxSize()) {
                                             GenreMixCoverImage(covers[0], Modifier.weight(1f).fillMaxHeight())
                                             GenreMixCoverImage(covers[1], Modifier.weight(1f).fillMaxHeight())
                                         }
-                                        Row(Modifier.weight(1f)) {
-                                            GenreMixCoverImage(covers[2], Modifier.weight(1f).fillMaxHeight())
-                                            GenreMixCoverImage(covers[3], Modifier.weight(1f).fillMaxHeight())
-                                        }
                                     }
-                                } else {
-                                    Text(
-                                        mixName,
-                                        color = Color.White,
-                                        fontSize = textDisplay(),
-                                        fontWeight = FontWeight.Bold,
-                                    )
+
+                                    else -> {
+                                        GenreMixCoverImage(covers[0], Modifier.fillMaxSize())
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
@@ -471,6 +494,8 @@ class MixDetailViewModel @Inject constructor(
         val dislikedTrackIds: Set<String> = emptySet(),
         val isLoading: Boolean = false,
         val error: String? = null,
+        val fixedCoverKind: String? = null,
+        val fixedCoverValue: String? = null,
     )
 
     private val _state = MutableStateFlow(State())
@@ -709,7 +734,10 @@ class MixDetailViewModel @Inject constructor(
             try {
                 val today = java.time.LocalDate.now().toString()
                 val yesterday = java.time.LocalDate.now().minusDays(1).toString()
-                dailyMixRepository.getMix(mixId)?.let { _mixName.value = it.name }
+                val recipe = dailyMixRepository.getMix(mixId)
+                recipe?.let { _mixName.value = it.name }
+                val fixedKind = recipe?.fixedCoverKind
+                val fixedValue = recipe?.fixedCoverValue
                 val dailyMix = genreMixDao.getDailyMix(today, mixId)
                     ?: genreMixDao.getDailyMix(yesterday, mixId)
                 val trackIds: List<String> = if (dailyMix != null) {
@@ -750,6 +778,8 @@ class MixDetailViewModel @Inject constructor(
                         likedTrackIds = liked,
                         dislikedTrackIds = disliked,
                         isLoading = false,
+                        fixedCoverKind = fixedKind,
+                        fixedCoverValue = fixedValue,
                     )
                     return@launch
                 }

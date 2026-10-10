@@ -421,6 +421,25 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `getDailyMixCovers falls back to album cover when track art null`() = runBlocking {
+        val mixDao = db.customMixDao()
+        val mixId = mixDao.insert(CustomMixEntity(name = "Album Art Mix", sourceKind = "genres", genresJson = "Rock"))
+        val trackDao = db.trackDao()
+        trackDao.upsert(TrackEntity(id = "t1", title = "One", albumId = "al1", coverArtUrl = null))
+        db.cachedMetadataDao().replaceAlbums(
+            listOf(CachedAlbumEntity(id = "al1", name = "Album", coverArt = "album-ca")),
+        )
+        val genreMixDao = db.genreMixDao()
+        genreMixDao.replaceDailyMix(
+            "2026-09-10",
+            mixId,
+            listOf(DailyMixTrackEntity(mixId = 0, trackId = "t1", position = 0)),
+        )
+        val daily = genreMixDao.getDailyMix("2026-09-10", mixId)!!
+        assertEquals(listOf("album-ca"), genreMixDao.getDailyMixCovers(daily.id).map { it.coverArtUrl })
+    }
+
+    @Test
     fun `mix source pools filter disliked tracks and join albums and artists`() = runBlocking {
         val trackDao = db.trackDao()
         trackDao.upsert(TrackEntity(id = "g1", title = "G1", genre = "Rock"))

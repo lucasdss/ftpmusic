@@ -697,6 +697,12 @@ interface PlaylistDao {
 
     @Query("SELECT COUNT(*) FROM playlists")
     suspend fun count(): Int
+
+    @Query(
+        "UPDATE playlists SET fixed_cover_kind = :kind, fixed_cover_value = :value, " +
+            "updated_at = :updatedAt WHERE id = :id",
+    )
+    suspend fun updateFixedCover(id: String, kind: String?, value: String?, updatedAt: Long)
 }
 
 // ── Pending Playlist Changes DAO ────────────────────────────────────────────────
@@ -1390,11 +1396,34 @@ interface CachedMetadataDao {
     )
     suspend fun pruneArtistLedger()
 
-    /** Up to 4 distinct album cover art ids for a playlist's tracks (montage). */
+    /** Up to 4 distinct cover art ids for a playlist's tracks (track art, else album). */
     @Query(
-        "SELECT DISTINCT ca.cover_art FROM tracks t JOIN cached_albums ca ON ca.id = t.album_id WHERE t.id IN (:trackIds) AND ca.cover_art IS NOT NULL LIMIT 4",
+        """
+        SELECT DISTINCT COALESCE(t.cover_art_url, ca.cover_art, a.cover_art_url)
+        FROM tracks t
+        LEFT JOIN cached_albums ca ON ca.id = t.album_id
+        LEFT JOIN albums a ON a.id = t.album_id
+        WHERE t.id IN (:trackIds)
+          AND COALESCE(t.cover_art_url, ca.cover_art, a.cover_art_url) IS NOT NULL
+        LIMIT 4
+        """,
     )
     suspend fun getPlaylistMontageCovers(trackIds: List<String>): List<String>
+
+    /** First playlist track artist+album for CoverArtFallbackService. */
+    @Query(
+        """
+        SELECT t.artist AS artist, t.album AS album,
+               COALESCE(t.cover_art_url, ca.cover_art, a.cover_art_url) AS cover_art_url
+        FROM tracks t
+        LEFT JOIN cached_albums ca ON ca.id = t.album_id
+        LEFT JOIN albums a ON a.id = t.album_id
+        WHERE t.id IN (:trackIds)
+        ORDER BY t.id ASC
+        LIMIT 1
+        """,
+    )
+    suspend fun getPlaylistPrimaryCoverMeta(trackIds: List<String>): MixCoverMetaProjection?
 
     // ── Album tracks lazy cache ──
 
@@ -1535,14 +1564,38 @@ interface GenreMixDao {
     @Query("SELECT COUNT(*) FROM daily_mix WHERE date = :date")
     suspend fun countDailyMixesForDate(date: String): Int
 
-    /** First 4 unique cover URLs of a generated mix, in track order — Home cards. */
+    /** First 4 unique cover ids of a generated mix (track art, else album),
+     *  in track order — Home cards + detail montage. */
     @Query(
-        "SELECT DISTINCT t.cover_art_url FROM daily_mix_tracks dmt " +
-            "JOIN tracks t ON dmt.track_id = t.id " +
-            "WHERE dmt.mix_id = :dailyMixId AND t.cover_art_url IS NOT NULL " +
-            "ORDER BY dmt.position ASC LIMIT 4",
+        """
+        SELECT DISTINCT COALESCE(t.cover_art_url, a.cover_art_url, ca.cover_art) AS cover_art_url
+        FROM daily_mix_tracks dmt
+        JOIN tracks t ON dmt.track_id = t.id
+        LEFT JOIN albums a ON a.id = t.album_id
+        LEFT JOIN cached_albums ca ON ca.id = t.album_id
+        WHERE dmt.mix_id = :dailyMixId
+          AND COALESCE(t.cover_art_url, a.cover_art_url, ca.cover_art) IS NOT NULL
+        ORDER BY dmt.position ASC
+        LIMIT 4
+        """,
     )
     suspend fun getDailyMixCovers(dailyMixId: Int): List<CoverArtProjection>
+
+    /** First track with artist+album metadata for CoverArtFallbackService. */
+    @Query(
+        """
+        SELECT t.artist AS artist, t.album AS album,
+               COALESCE(t.cover_art_url, a.cover_art_url, ca.cover_art) AS cover_art_url
+        FROM daily_mix_tracks dmt
+        JOIN tracks t ON dmt.track_id = t.id
+        LEFT JOIN albums a ON a.id = t.album_id
+        LEFT JOIN cached_albums ca ON ca.id = t.album_id
+        WHERE dmt.mix_id = :dailyMixId
+        ORDER BY dmt.position ASC
+        LIMIT 1
+        """,
+    )
+    suspend fun getDailyMixPrimaryCoverMeta(dailyMixId: Int): MixCoverMetaProjection?
 
     /** Fetch ALL songs for a genre (no LIMIT) — used during manual refresh. */
     @Query("SELECT * FROM cached_genre_songs WHERE genre = :genre ORDER BY title ASC")

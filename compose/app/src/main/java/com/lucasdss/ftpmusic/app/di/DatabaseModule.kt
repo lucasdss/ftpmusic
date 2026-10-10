@@ -53,7 +53,7 @@ object DatabaseModule {
         // SupportSQLite path required: existing migrations only override
         // migrate(SupportSQLiteDatabase). BundledSQLiteDriver deferred until
         // all migrations dual-override migrate(SQLiteConnection) — ADR 0084.
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_61)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_62)
         .addCallback(AppDatabase.FTS5_CALLBACK)
         // NO fallbackToDestructiveMigration: all migrations registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)

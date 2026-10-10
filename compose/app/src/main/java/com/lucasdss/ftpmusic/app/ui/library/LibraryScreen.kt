@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -51,6 +53,7 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
@@ -110,18 +113,14 @@ fun LibraryContent(
 
     // Chrome (chips + search) sits above Lazy — pad Column, not only list content
     // (ADR-0107 / post-1.8.0 hard-fix). Lazy top pad is local spacing only.
+    // ADR-0114: chrome rides -offsetPx into collapsed header band (graphicsLayer only).
     val headerPad = LocalAppHeaderContentPadding.current
+    val headerOffset = LocalAppHeaderOffsetPx.current
     Column(
         Modifier
             .background(Background)
             .padding(top = headerPad),
     ) {
-        // Server config/reachability warning (stale proxy URL, unreachable server)
-        com.lucasdss.ftpmusic.app.ui.components.ServerErrorBanner(
-            configWarning = shell.configWarning,
-            isOffline = viewModel.isOffline(),
-            onOpenServerSettings = onOpenServerSettings,
-        )
         // Refresh favorites (thumbs/bookmarks) whenever Library becomes visible
         val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
         LaunchedEffect(lifecycleOwner) {
@@ -129,48 +128,63 @@ fun LibraryContent(
                 viewModel.loadFavorites()
             }
         }
-        SegmentedChipRow {
-            LibraryTab.entries.forEach { tab ->
-                SegmentedChip(
-                    label = tab.label,
-                    selected = selectedTab == tab,
-                    onClick = { selectedTab = tab },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        // Contextual search bar
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search ${selectedTab.label}…", color = Color(0xFF666666)) },
-            leadingIcon = { Icon(Icons.Default.Search, null, tint = NavUnselected) },
-            trailingIcon = if (searchQuery.isNotEmpty()) {
-                {
-                    Icon(
-                        Icons.Default.Close,
-                        "Clear",
-                        tint = NavUnselected,
-                        modifier = Modifier.clickable {
-                            searchQuery = ""
-                        },
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    translationY = appHeaderChromeTranslationY(headerOffset.offsetPx())
+                }
+                .background(Background),
+        ) {
+            // Server config/reachability warning (stale proxy URL, unreachable server)
+            com.lucasdss.ftpmusic.app.ui.components.ServerErrorBanner(
+                configWarning = shell.configWarning,
+                isOffline = viewModel.isOffline(),
+                onOpenServerSettings = onOpenServerSettings,
+            )
+            SegmentedChipRow {
+                LibraryTab.entries.forEach { tab ->
+                    SegmentedChip(
+                        label = tab.label,
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        modifier = Modifier.weight(1f),
                     )
                 }
-            } else {
-                null
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
-                focusedContainerColor = Color(0xFF1C1C1C),
-                unfocusedContainerColor = Color(0xFF1C1C1C),
-                cursorColor = BrandTeal,
-            ),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
-            shape = RoundedCornerShape(cornerM()), singleLine = true,
-        )
+            }
+            // Contextual search bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search ${selectedTab.label}…", color = Color(0xFF666666)) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = NavUnselected) },
+                trailingIcon = if (searchQuery.isNotEmpty()) {
+                    {
+                        Icon(
+                            Icons.Default.Close,
+                            "Clear",
+                            tint = NavUnselected,
+                            modifier = Modifier.clickable {
+                                searchQuery = ""
+                            },
+                        )
+                    }
+                } else {
+                    null
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = Color(0xFF1C1C1C),
+                    unfocusedContainerColor = Color(0xFF1C1C1C),
+                    cursorColor = BrandTeal,
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
+                shape = RoundedCornerShape(cornerM()), singleLine = true,
+            )
+        }
         // Data-first: spinner only until the first content render — a stalled
         // loader must never leave the screen spinning forever.
         if (shell.isLoading && !shell.hasLoadedOnce) {
@@ -351,7 +365,16 @@ fun LibraryContent(
                                 Text("No artists found", color = Color(0xFF666666), fontSize = textBodyM())
                             }
                         } else {
-                            LazyColumn(contentPadding = PaddingValues(top = spacingS())) {
+                            val artistListState = rememberLazyListState(
+                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                    aheadFraction = 0.5f,
+                                    behindFraction = 0.2f,
+                                ),
+                            )
+                            LazyColumn(
+                                state = artistListState,
+                                contentPadding = PaddingValues(top = spacingS()),
+                            ) {
                                 items(displayedArtists, key = { it.id }, contentType = { "artist" }) { artist ->
                                     Row(
                                         Modifier.fillMaxWidth().clickable {
@@ -434,7 +457,16 @@ fun LibraryContent(
                                 }
                             }
                         } else {
-                            LazyColumn(contentPadding = PaddingValues(top = spacingS())) {
+                            val playlistListState = rememberLazyListState(
+                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                    aheadFraction = 0.5f,
+                                    behindFraction = 0.2f,
+                                ),
+                            )
+                            LazyColumn(
+                                state = playlistListState,
+                                contentPadding = PaddingValues(top = spacingS()),
+                            ) {
                                 items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
                                     Box {
                                         Row(
@@ -446,40 +478,19 @@ fun LibraryContent(
                                                 .padding(horizontal = spacingL(), vertical = spacingM()),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            Box(
-                                                Modifier.size(
-                                                    52.dp,
-                                                ).clip(RoundedCornerShape(cornerM())).background(Color(0xFF1E1E1E)),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                if (pl.coverArt != null) {
-                                                    val url = rememberCoverArtUrl(pl.coverArt, 120)
-                                                    if (url !=
-                                                        null
-                                                    ) {
-                                                        CoverArtImage(
-                                                            url = url,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            decodeSize = 52.dp,
-                                                        )
-                                                    } else {
-                                                        Icon(
-                                                            Icons.Default.QueueMusic,
-                                                            null,
-                                                            tint = NavUnselected,
-                                                            modifier = Modifier.size(24.dp),
-                                                        )
-                                                    }
-                                                } else {
-                                                    Icon(
-                                                        Icons.Default.QueueMusic,
-                                                        null,
-                                                        tint = NavUnselected,
-                                                        modifier = Modifier.size(24.dp),
-                                                    )
-                                                }
-                                            }
+                                            CollectionCoverArt(
+                                                name = pl.name,
+                                                fixedCoverKind = pl.fixedCoverKind,
+                                                fixedCoverValue = pl.fixedCoverValue,
+                                                derivedCoverArtIds = listOfNotNull(pl.coverArt),
+                                                serverCoverArtId = pl.coverArt,
+                                                primaryArtist = pl.primaryArtist,
+                                                primaryAlbum = pl.primaryAlbum,
+                                                decodeSize = 52.dp,
+                                                modifier = Modifier
+                                                    .size(52.dp)
+                                                    .clip(RoundedCornerShape(cornerM())),
+                                            )
                                             Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
                                                 Text(
@@ -610,7 +621,16 @@ fun LibraryContent(
                                 }
                             }
                         } else {
-                            LazyColumn(contentPadding = PaddingValues(top = spacingS())) {
+                            val radioListState = rememberLazyListState(
+                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                    aheadFraction = 0.5f,
+                                    behindFraction = 0.2f,
+                                ),
+                            )
+                            LazyColumn(
+                                state = radioListState,
+                                contentPadding = PaddingValues(top = spacingS()),
+                            ) {
                                 item {
                                     Row(
                                         Modifier.padding(horizontal = spacingL(), vertical = 6.dp),

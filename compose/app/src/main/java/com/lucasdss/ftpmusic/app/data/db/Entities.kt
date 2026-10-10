@@ -152,6 +152,9 @@ data class PlaylistEntity(
     @ColumnInfo(name = "is_conflicted", defaultValue = "0") val isConflicted: Boolean = false,
     @ColumnInfo(name = "conflict_message") val conflictMessage: String? = null,
     @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null,
+    /** Local fixed cover: "navidrome" | "local" (ADR 0115). Sync never clears. */
+    @ColumnInfo(name = "fixed_cover_kind") val fixedCoverKind: String? = null,
+    @ColumnInfo(name = "fixed_cover_value") val fixedCoverValue: String? = null,
 )
 
 @Entity(
@@ -472,6 +475,9 @@ data class CustomMixEntity(
     @ColumnInfo(name = "allow_cross_mix_fill", defaultValue = "0") val allowCrossMixFill: Boolean = false,
     @ColumnInfo(name = "is_default") val isDefault: Boolean = false,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    /** Local fixed cover: "navidrome" | "local" (ADR 0115). Survives regeneration. */
+    @ColumnInfo(name = "fixed_cover_kind") val fixedCoverKind: String? = null,
+    @ColumnInfo(name = "fixed_cover_value") val fixedCoverValue: String? = null,
 )
 
 /** Auto-cache ownership: which tracks a mix asked to keep cached. A track may
@@ -511,6 +517,13 @@ data class StarredIdProjection(val id: String, @ColumnInfo(name = "user_rating")
 
 /** Cover-art projection for Daily Mix cards (first N unique covers). */
 data class CoverArtProjection(@ColumnInfo(name = "cover_art_url") val coverArtUrl: String?)
+
+/** First mix track's artist/album + resolved cover id for fallback art. */
+data class MixCoverMetaProjection(
+    val artist: String?,
+    val album: String?,
+    @ColumnInfo(name = "cover_art_url") val coverArtUrl: String?,
+)
 
 /** Projection: track count per `daily_mix` row (Home card batch read). */
 data class DailyMixTrackCount(

@@ -58,6 +58,8 @@ class PlaylistDetailViewModelTest {
             api, playlistDao, pendingChangeDao, syncWorker, trackDao, playbackManager,
             cacheService, downloadManager, cacheQueueDao, storage,
             favoriteRepository = mockk(relaxed = true),
+            playlistRepository = mockk(relaxed = true),
+            coverStore = mockk(relaxed = true),
         )
     }
 

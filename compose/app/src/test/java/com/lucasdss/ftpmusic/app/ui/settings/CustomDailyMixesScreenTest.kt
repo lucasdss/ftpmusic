@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
@@ -23,7 +24,7 @@ import org.robolectric.annotation.Config
 
 /** Compose tests for the Custom Daily Mixes list + composite editor (v48). */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = Application::class, qualifiers = "w400dp-h800dp")
+@Config(sdk = [34], application = Application::class, qualifiers = "w400dp-h1200dp")
 class CustomDailyMixesScreenTest {
 
     @get:Rule
@@ -49,7 +50,7 @@ class CustomDailyMixesScreenTest {
         composeRule.setContent {
             CustomDailyMixesScreen(
                 onBack = {},
-                viewModel = CustomDailyMixesViewModel(repository, metadataDao),
+                viewModel = CustomDailyMixesViewModel(repository, metadataDao, mockk(relaxed = true)),
             )
         }
         composeRule.waitForIdle()
@@ -114,8 +115,9 @@ class CustomDailyMixesScreenTest {
         composeRule.waitForIdle()
 
         // Cumulative: both dimensions kept, tab labels show counts.
-        composeRule.onNodeWithText("Genre (1)").assertIsDisplayed()
-        composeRule.onNodeWithText("Decade (1)").assertIsDisplayed()
+        // Cover section adds height — scroll source tabs back into view.
+        composeRule.onNodeWithText("Genre (1)").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Decade (1)").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -128,11 +130,11 @@ class CustomDailyMixesScreenTest {
         composeRule.onNodeWithTag("custom_mixes_add").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("genre_chip_G20").assertExists()
+        composeRule.onNodeWithTag("genre_chip_G20").performScrollTo().assertExists()
         composeRule.onNodeWithTag("genre_chip_G21").assertDoesNotExist()
-        composeRule.onNodeWithTag("genre_load_more").performClick()
+        composeRule.onNodeWithTag("genre_load_more").performScrollTo().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("genre_chip_G21").assertExists()
+        composeRule.onNodeWithTag("genre_chip_G21").performScrollTo().assertExists()
     }
 
     @Test
@@ -182,11 +184,13 @@ class CustomDailyMixesScreenTest {
         composeRule.onNodeWithTag("custom_mixes_add").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("mix_editor_cross_mix_fill").assertIsDisplayed()
-        composeRule.onNodeWithText("Fill from other mixes").assertIsDisplayed()
+        composeRule.onNodeWithTag("mix_editor_cross_mix_fill").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Fill from other mixes").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("mix_editor_cross_mix_fill").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Fill remaining slots from your other mix pools").assertIsDisplayed()
+        composeRule.onNodeWithText("Fill remaining slots from your other mix pools")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test
@@ -210,7 +214,7 @@ class CustomDailyMixesScreenTest {
         composeRule.onNodeWithTag("custom_mix_edit_1").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("genre_chip_Gone").assertExists()
+        composeRule.onNodeWithTag("genre_chip_Gone").performScrollTo().assertExists()
         composeRule.onNodeWithTag("genre_chip_Gone").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("genre_chip_Gone").assertDoesNotExist()

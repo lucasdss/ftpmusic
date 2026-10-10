@@ -1,6 +1,9 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,7 +51,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +74,8 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.AlbumCoverPickerSheet
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.textBodyM
@@ -414,6 +421,8 @@ private fun MixEditor(editor: MixEditorState, state: CustomDailyMixesUiState, vi
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 )
             }
+
+            MixCoverEditorSection(editor = editor, viewModel = viewModel)
 
             // Suggestions
             Column {
@@ -856,6 +865,74 @@ private fun SuggestionChip(text: String, selected: Boolean, onClick: () -> Unit)
             color = if (selected) BrandBg else Color(0xFFAAAAAA),
             fontSize = textLabelM(),
             fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDailyMixesViewModel) {
+    var showAlbumPicker by remember { mutableStateOf(false) }
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) viewModel.setFixedCoverFromDevice(uri)
+    }
+    Column(Modifier.semantics { testTag = "mix_cover_section" }) {
+        Text("COVER IMAGE", color = MUTED, fontSize = textLabelS(), fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Fixed cover stays across regenerations. Local only.",
+            color = DIM,
+            fontSize = textLabelS(),
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CollectionCoverArt(
+                name = editor.name.ifBlank { "Mix" },
+                fixedCoverKind = editor.fixedCoverKind,
+                fixedCoverValue = editor.fixedCoverValue,
+                derivedCoverArtIds = emptyList(),
+                decodeSize = 72.dp,
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(
+                    onClick = { showAlbumPicker = true },
+                    modifier = Modifier.semantics { testTag = "mix_cover_library" },
+                ) {
+                    Text("Library", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
+                }
+                TextButton(
+                    onClick = {
+                        photoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    },
+                    modifier = Modifier.semantics { testTag = "mix_cover_device" },
+                ) {
+                    Text("Device", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
+                }
+                if (editor.fixedCoverKind != null || editor.clearFixedCover) {
+                    TextButton(
+                        onClick = viewModel::clearFixedCoverInEditor,
+                        modifier = Modifier.semantics { testTag = "mix_cover_clear" },
+                    ) {
+                        Text("Clear", color = RED, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+    if (showAlbumPicker) {
+        AlbumCoverPickerSheet(
+            onPicked = {
+                viewModel.setFixedCoverFromLibrary(it)
+                showAlbumPicker = false
+            },
+            onDismiss = { showAlbumPicker = false },
         )
     }
 }

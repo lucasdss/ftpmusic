@@ -1,6 +1,8 @@
 package com.lucasdss.ftpmusic.app.data.repository
 
 import com.lucasdss.ftpmusic.app.data.cache.MixCacheCoordinator
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
@@ -33,12 +35,14 @@ class DailyMixRepositoryTest {
     private val trackDao: TrackDao = mockk(relaxed = true)
     private val metadataDao: CachedMetadataDao = mockk(relaxed = true)
     private val mixCacheCoordinator: MixCacheCoordinator = mockk(relaxed = true)
+    private val coverStore: CollectionCoverStore = mockk(relaxed = true)
     private val repository = DailyMixRepository(
         customMixDao,
         genreMixDao,
         trackDao,
         metadataDao,
         mixCacheCoordinator,
+        coverStore,
         UnconfinedTestDispatcher(),
     )
 
@@ -783,5 +787,33 @@ class DailyMixRepositoryTest {
         coVerify { customMixDao.update(match { it.allowCrossMixFill }) }
         coVerify { genreMixDao.replaceDailyMix(today, 5L, any()) }
         coVerify { mixCacheCoordinator.onSourceChanged(5L, listOf("t1")) }
+    }
+
+    @Test
+    fun `setFixedCover persists navidrome id`() = runTest {
+        val old = mixEntity(id = 3L)
+        coEvery { customMixDao.getById(3L) } returns old
+        repository.setFixedCover(3L, CollectionCoverKind.NAVIDROME, "al-9")
+        coVerify {
+            customMixDao.update(
+                match {
+                    it.fixedCoverKind == CollectionCoverKind.NAVIDROME && it.fixedCoverValue == "al-9"
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `clearFixedCover wipes columns and local file`() = runTest {
+        val old = mixEntity(id = 3L).copy(
+            fixedCoverKind = CollectionCoverKind.LOCAL,
+            fixedCoverValue = "mix_3.jpg",
+        )
+        coEvery { customMixDao.getById(3L) } returns old
+        repository.clearFixedCover(3L)
+        coVerify { coverStore.deleteRelative("mix_3.jpg") }
+        coVerify {
+            customMixDao.update(match { it.fixedCoverKind == null && it.fixedCoverValue == null })
+        }
     }
 }

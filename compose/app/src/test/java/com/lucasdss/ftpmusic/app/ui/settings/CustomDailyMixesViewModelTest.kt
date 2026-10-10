@@ -55,7 +55,7 @@ class CustomDailyMixesViewModelTest {
         autoCache: Boolean = false,
     ) = CustomMix(id = id, name = name, filters = filters, autoCache = autoCache, isDefault = true)
 
-    private fun vm() = CustomDailyMixesViewModel(repository, metadataDao)
+    private fun vm() = CustomDailyMixesViewModel(repository, metadataDao, mockk(relaxed = true))
 
     @Test
     fun `load populates mixes genres and liked artists`() = runTest(testDispatcher) {

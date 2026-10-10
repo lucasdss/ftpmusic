@@ -1,8 +1,11 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -42,6 +45,10 @@ data class MixEditorState(
     val autoCache: Boolean = false,
     val allowCrossMixFill: Boolean = false,
     val pendingDelete: Boolean = false,
+    val fixedCoverKind: String? = null,
+    val fixedCoverValue: String? = null,
+    /** True when user cleared cover this session (persist on save). */
+    val clearFixedCover: Boolean = false,
 ) {
     val isNew: Boolean get() = mixId == null
 }
@@ -73,6 +80,7 @@ data class CustomDailyMixesUiState(
 class CustomDailyMixesViewModel @Inject constructor(
     private val repository: DailyMixRepository,
     private val metadataDao: CachedMetadataDao,
+    private val coverStore: CollectionCoverStore,
 ) : ViewModel() {
 
     companion object {
@@ -139,6 +147,8 @@ class CustomDailyMixesViewModel @Inject constructor(
                 includeFavoriteArtists = mix.filters.includeFavoriteArtists,
                 autoCache = mix.autoCache,
                 allowCrossMixFill = mix.allowCrossMixFill,
+                fixedCoverKind = mix.fixedCoverKind,
+                fixedCoverValue = mix.fixedCoverValue,
             ),
         )
         val ids = mix.filters.artistIds
@@ -182,6 +192,37 @@ class CustomDailyMixesViewModel @Inject constructor(
     fun setAutoCache(enabled: Boolean) = updateEditor { it.copy(autoCache = enabled) }
 
     fun setAllowCrossMixFill(enabled: Boolean) = updateEditor { it.copy(allowCrossMixFill = enabled) }
+
+    fun setFixedCoverFromLibrary(coverArtId: String) = updateEditor {
+        it.copy(
+            fixedCoverKind = CollectionCoverKind.NAVIDROME,
+            fixedCoverValue = coverArtId,
+            clearFixedCover = false,
+        )
+    }
+
+    fun setFixedCoverFromDevice(uri: Uri) {
+        val editor = _state.value.editor ?: return
+        val idKey = editor.mixId?.toString() ?: "new_${System.currentTimeMillis()}"
+        viewModelScope.launch {
+            val relative = coverStore.importFromUri(uri, DailyMixRepository.COVER_PREFIX, idKey)
+                ?: run {
+                    _toast.value = "Could not import image"
+                    return@launch
+                }
+            updateEditor {
+                it.copy(
+                    fixedCoverKind = CollectionCoverKind.LOCAL,
+                    fixedCoverValue = relative,
+                    clearFixedCover = false,
+                )
+            }
+        }
+    }
+
+    fun clearFixedCoverInEditor() = updateEditor {
+        it.copy(fixedCoverKind = null, fixedCoverValue = null, clearFixedCover = true)
+    }
 
     fun requestDelete() = updateEditor { it.copy(pendingDelete = true) }
 
@@ -334,7 +375,7 @@ class CustomDailyMixesViewModel @Inject constructor(
             _state.value = _state.value.copy(isSaving = true)
             try {
                 val mixId = editor.mixId
-                if (mixId == null) {
+                val savedId = if (mixId == null) {
                     val id = repository.addMix(
                         name,
                         filters,
@@ -348,6 +389,7 @@ class CustomDailyMixesViewModel @Inject constructor(
                         return@launch
                     }
                     _toast.value = "\"$name\" added"
+                    id
                 } else {
                     repository.updateMix(
                         mixId,
@@ -357,6 +399,13 @@ class CustomDailyMixesViewModel @Inject constructor(
                         editor.allowCrossMixFill,
                     )
                     _toast.value = "\"$name\" saved"
+                    mixId
+                }
+                when {
+                    editor.clearFixedCover -> repository.clearFixedCover(savedId)
+
+                    editor.fixedCoverKind != null && editor.fixedCoverValue != null ->
+                        repository.setFixedCover(savedId, editor.fixedCoverKind, editor.fixedCoverValue)
                 }
                 _state.value = _state.value.copy(editor = null)
                 load()

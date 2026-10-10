@@ -73,6 +73,10 @@ data class PlaylistView(
     val coverArt: String? = null,
     val isSynced: Boolean = false,
     val isDownloaded: Boolean = false,
+    val fixedCoverKind: String? = null,
+    val fixedCoverValue: String? = null,
+    val primaryArtist: String? = null,
+    val primaryAlbum: String? = null,
 )
 
 data class LibraryState(
@@ -162,7 +166,16 @@ data class LibraryShellUi(
 data class RadioStation(val id: String, val name: String, val streamUrl: String, val homePageUrl: String? = null)
 
 @androidx.compose.runtime.Stable
-data class MixCard(val id: Long, val name: String, val coverArts: List<String>, val songCount: Int = 0)
+data class MixCard(
+    val id: Long,
+    val name: String,
+    val coverArts: List<String>,
+    val songCount: Int = 0,
+    val fixedCoverKind: String? = null,
+    val fixedCoverValue: String? = null,
+    val primaryArtist: String? = null,
+    val primaryAlbum: String? = null,
+)
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
@@ -831,7 +844,17 @@ class LibraryViewModel @Inject constructor(
             val songCount = counts[existing.id] ?: 0
             if (songCount == 0) return@mapNotNull null
             val coverArts = genreMixDao.getDailyMixCovers(existing.id).mapNotNull { it.coverArtUrl }
-            MixCard(id = mix.id, name = mix.name, coverArts = coverArts, songCount = songCount)
+            val meta = genreMixDao.getDailyMixPrimaryCoverMeta(existing.id)
+            MixCard(
+                id = mix.id,
+                name = mix.name,
+                coverArts = coverArts,
+                songCount = songCount,
+                fixedCoverKind = mix.fixedCoverKind,
+                fixedCoverValue = mix.fixedCoverValue,
+                primaryArtist = meta?.artist,
+                primaryAlbum = meta?.album,
+            )
         }
     }
 
@@ -924,6 +947,8 @@ class LibraryViewModel @Inject constructor(
                             coverArt = entity.coverArt,
                             isSynced = isSynced,
                             isDownloaded = autoDownload,
+                            fixedCoverKind = entity.fixedCoverKind,
+                            fixedCoverValue = entity.fixedCoverValue,
                         )
                     },
                     hasLoadedOnce = true,

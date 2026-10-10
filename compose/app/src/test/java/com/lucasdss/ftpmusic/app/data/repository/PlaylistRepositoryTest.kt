@@ -33,7 +33,16 @@ class PlaylistRepositoryTest {
     fun setup() {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        repo = PlaylistRepository(api, playlistDao, pendingChangeDao, syncWorker, trackDao, storage, downloadManager)
+        repo = PlaylistRepository(
+            api,
+            playlistDao,
+            pendingChangeDao,
+            syncWorker,
+            trackDao,
+            storage,
+            downloadManager,
+            mockk(relaxed = true),
+        )
     }
 
     @Test

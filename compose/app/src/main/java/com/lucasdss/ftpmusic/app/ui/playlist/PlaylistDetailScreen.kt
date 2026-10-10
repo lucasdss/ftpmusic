@@ -2,6 +2,9 @@
 
 package com.lucasdss.ftpmusic.app.ui.playlist
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -34,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +51,8 @@ import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.components.AlbumCoverPickerSheet
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
@@ -75,6 +82,12 @@ fun PlaylistDetailScreen(
     var showPlaylistSheet by remember { mutableStateOf(false) }
     var showAddToPlaylistPicker by remember { mutableStateOf(false) }
     var showAddSongsSheet by remember { mutableStateOf(false) }
+    var showAlbumCoverPicker by remember { mutableStateOf(false) }
+    val playlistPhotoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) viewModel.setFixedCoverFromDevice(uri)
+    }
     val availablePlaylists by viewModel.availablePlaylists.collectAsStateWithLifecycle()
 
     val bgBrush = Brush.verticalGradient(
@@ -213,27 +226,60 @@ fun PlaylistDetailScreen(
                     }
                 }
                 LazyColumn {
-                    // Cover art header
-                    if (state.playlist?.coverArt != null) {
-                        item {
-                            Box(
-                                Modifier.fillMaxWidth().height(coverArtSize()),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                val coverUrl = remember(state.playlist?.coverArt) {
-                                    state.playlist?.coverArt?.let { viewModel.buildCoverArtUrl(it) }
+                    // Cover art header — always present (fixed / derived / lettermark).
+                    item {
+                        val pl = state.playlist
+                        val derived = state.tracks.mapNotNull { it.coverArt }.distinct().take(4)
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = spacingL()),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            CollectionCoverArt(
+                                name = pl?.name ?: "Playlist",
+                                fixedCoverKind = pl?.fixedCoverKind,
+                                fixedCoverValue = pl?.fixedCoverValue,
+                                derivedCoverArtIds = derived,
+                                serverCoverArtId = pl?.coverArt,
+                                primaryArtist = state.tracks.firstOrNull()?.artist,
+                                primaryAlbum = state.tracks.firstOrNull()?.album,
+                                decodeSize = 160.dp,
+                                lettermarkLarge = true,
+                                modifier = Modifier
+                                    .size(adp(160f))
+                                    .clip(RoundedCornerShape(cornerS()))
+                                    .semantics { testTag = "playlist_cover_art" },
+                            )
+                            Spacer(Modifier.height(spacingS()))
+                            Row(horizontalArrangement = Arrangement.spacedBy(spacingS())) {
+                                TextButton(
+                                    onClick = { showAlbumCoverPicker = true },
+                                    modifier = Modifier.semantics { testTag = "playlist_cover_library" },
+                                ) {
+                                    Text("Library", color = BrandTeal, fontSize = textLabelM())
                                 }
-                                if (coverUrl != null) {
-                                    AsyncImage(
-                                        model = coverUrl,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(adp(160f)).clip(RoundedCornerShape(cornerS())),
-                                        contentScale = ContentScale.Crop,
-                                    )
+                                TextButton(
+                                    onClick = {
+                                        playlistPhotoPicker.launch(
+                                            PickVisualMediaRequest(
+                                                ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                            ),
+                                        )
+                                    },
+                                    modifier = Modifier.semantics { testTag = "playlist_cover_device" },
+                                ) {
+                                    Text("Device", color = BrandTeal, fontSize = textLabelM())
+                                }
+                                if (pl?.fixedCoverKind != null) {
+                                    TextButton(
+                                        onClick = viewModel::clearFixedCover,
+                                        modifier = Modifier.semantics { testTag = "playlist_cover_clear" },
+                                    ) {
+                                        Text("Clear", color = Color(0xFFE84040), fontSize = textLabelM())
+                                    }
                                 }
                             }
-                            Spacer(Modifier.height(spacingS()))
                         }
+                        Spacer(Modifier.height(spacingS()))
                     }
 
                     // Action buttons
@@ -599,6 +645,16 @@ fun PlaylistDetailScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showAlbumCoverPicker) {
+        AlbumCoverPickerSheet(
+            onPicked = {
+                viewModel.setFixedCoverFromLibrary(it)
+                showAlbumCoverPicker = false
+            },
+            onDismiss = { showAlbumCoverPicker = false },
         )
     }
 

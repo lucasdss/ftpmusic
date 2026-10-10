@@ -52,6 +52,7 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.ScrollAwareEqBars
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
@@ -741,36 +742,19 @@ private fun GenreMixCard(
     ) {
         // Single primary cover on Home LazyRow — 4-tile montage binds 4×
         // resolver + Coil and stalls horizontal fling (HOME_SCROLL_PERF).
-        Box(
-            Modifier
+        CollectionCoverArt(
+            name = mix.name,
+            fixedCoverKind = mix.fixedCoverKind,
+            fixedCoverValue = mix.fixedCoverValue,
+            derivedCoverArtIds = mix.coverArts,
+            primaryArtist = mix.primaryArtist,
+            primaryAlbum = mix.primaryAlbum,
+            decodeSize = decodeSize,
+            modifier = Modifier
                 .width(albumCardWidth())
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(cornerM()))
-                .background(Color(0xFF1E1E1E)),
-            contentAlignment = Alignment.Center,
-        ) {
-            val primaryId = mix.coverArts.firstOrNull()
-            if (primaryId != null) {
-                val url = rememberPreferredCoverArt(
-                    coverArtId = primaryId,
-                    artist = null,
-                    album = null,
-                    size = 300,
-                )
-                if (url != null) {
-                    CoverArtImage(
-                        url = url,
-                        contentDescription = mix.name,
-                        modifier = Modifier.fillMaxSize(),
-                        decodeSize = decodeSize,
-                    )
-                } else {
-                    Icon(Icons.Default.MusicNote, null, tint = Color(0xFF444444), modifier = Modifier.size(36.dp))
-                }
-            } else {
-                Icon(Icons.Default.MusicNote, null, tint = Color(0xFF444444), modifier = Modifier.size(36.dp))
-            }
-        }
+                .clip(RoundedCornerShape(cornerM())),
+        )
         Spacer(Modifier.height(spacingBelowArt()))
         Text(
             mix.name,
@@ -814,46 +798,20 @@ private fun HomePlaylistCard(
     decodeSize: androidx.compose.ui.unit.Dp = albumCardWidth(),
 ) {
     Column(Modifier.width(albumCardWidth()).clickable { onClick() }) {
-        Box(
-            Modifier
+        CollectionCoverArt(
+            name = playlist.name,
+            fixedCoverKind = playlist.fixedCoverKind,
+            fixedCoverValue = playlist.fixedCoverValue,
+            derivedCoverArtIds = montageCovers,
+            serverCoverArtId = playlist.coverArt,
+            primaryArtist = playlist.primaryArtist,
+            primaryAlbum = playlist.primaryAlbum,
+            decodeSize = decodeSize,
+            modifier = Modifier
                 .width(albumCardWidth())
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1E1E1E)),
-            contentAlignment = Alignment.Center,
-        ) {
-            val primaryId = montageCovers.firstOrNull()
-            if (primaryId != null) {
-                val url = rememberPreferredCoverArt(
-                    coverArtId = primaryId,
-                    artist = null,
-                    album = null,
-                    size = 300,
-                )
-                if (url != null) {
-                    CoverArtImage(
-                        url = url,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        decodeSize = decodeSize,
-                    )
-                } else {
-                    Icon(
-                        Icons.AutoMirrored.Filled.QueueMusic,
-                        null,
-                        tint = Color(0xFF444444),
-                        modifier = Modifier.size(32.dp),
-                    )
-                }
-            } else {
-                Icon(
-                    Icons.AutoMirrored.Filled.QueueMusic,
-                    null,
-                    tint = Color(0xFF444444),
-                    modifier = Modifier.size(32.dp),
-                )
-            }
-        }
+                .clip(RoundedCornerShape(10.dp)),
+        )
         Spacer(Modifier.height(spacingBelowArt()))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.CheckCircle, null, tint = BrandTeal, modifier = Modifier.size(10.dp))
