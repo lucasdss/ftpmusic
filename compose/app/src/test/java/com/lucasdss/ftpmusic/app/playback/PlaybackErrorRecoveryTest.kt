@@ -207,6 +207,27 @@ class PlaybackErrorRecoveryTest {
     }
 
     @Test
+    fun `source circuit trips before fourth removeCached`() {
+        // MediaService prefers CIRCUIT_STOP over SKIP_NEXT when cross-track
+        // consecutive Source errors hit the threshold (ADR-0111).
+        var state = SourceErrorCircuitState()
+        var removeCachedCalls = 0
+        var stopped = false
+        repeat(5) { i ->
+            val (next, tripped) = state.onSourceError(nowMs = 1_000L + i * 100L)
+            state = next
+            if (tripped) {
+                stopped = true
+            } else {
+                removeCachedCalls++
+            }
+        }
+        assertTrue(stopped)
+        assertEquals(2, removeCachedCalls) // errors 1–2 skip+evict; 3+ circuit stop
+        assertTrue(state.consecutiveErrors >= SOURCE_ERROR_CIRCUIT_THRESHOLD)
+    }
+
+    @Test
     fun `findNextCachedIndex skips uncached and radio to first cache hit`() {
         val ids = listOf("a", "b", "radio:1", "c", "d")
         val cached = setOf("c")

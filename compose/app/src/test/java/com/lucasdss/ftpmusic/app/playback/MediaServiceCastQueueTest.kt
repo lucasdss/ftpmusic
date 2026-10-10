@@ -566,6 +566,25 @@ class MediaServiceCastQueueTest {
     }
 
     @Test
+    fun `syncLocalToRemote AddAll inserts once with all items`() {
+        val items = listOf(
+            buildTestMediaItem("a", "A"),
+            buildTestMediaItem("b", "B"),
+            buildTestMediaItem("c", "C"),
+        )
+
+        service.syncLocalToRemote(CastQueueAction.AddAll(items))
+
+        verify(exactly = 1) {
+            mockRmc.queueInsertItems(
+                match { it.size == 3 },
+                eq(MediaQueueItem.INVALID_ITEM_ID),
+                isNull(),
+            )
+        }
+    }
+
+    @Test
     fun `syncLocalToRemote Remove sends queueRemoveItems with correct itemId`() {
         injectField(service, "castMediaQueue", mockMediaQueue)
         service.syncLocalToRemote(CastQueueAction.Remove(2))

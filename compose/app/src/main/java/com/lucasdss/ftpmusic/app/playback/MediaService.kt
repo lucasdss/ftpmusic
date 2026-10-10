@@ -68,7 +68,14 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 
 /** Action taken by the error auto-skip guard after a track fails to play. */
-internal enum class ErrorSkipAction { SKIP_NEXT, LAST_TRACK_STOP, RETRY_LIMIT_STOP, RADIO_IGNORE }
+internal enum class ErrorSkipAction {
+    SKIP_NEXT,
+    LAST_TRACK_STOP,
+    RETRY_LIMIT_STOP,
+    RADIO_IGNORE,
+    /** Cross-track Source-error circuit tripped (ADR-0111). */
+    CIRCUIT_STOP,
+}
 
 /**
  * Pure decision logic for [MediaService]'s error auto-skip guard.
@@ -614,6 +621,9 @@ class MediaService : MediaLibraryService() {
     private var lastTrackId: String? = null
     private var playerErrorCount = 0
 
+    /** Cross-track Source-error circuit (ADR-0111) — survives per-track reset. */
+    private var sourceErrorCircuit = SourceErrorCircuitState()
+
     /** Bumped on each SKIP_NEXT launch — stale coroutines abort on Main. */
     private var autoSkipGeneration = 0
     private var hasLoadedContinuation = false
@@ -866,7 +876,10 @@ class MediaService : MediaLibraryService() {
             } else {
                 PlayerHolder.playbackErrorAutoSkipInFlight = false
             }
-            if (previousTrackId != null && (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || hasPassed60Percent)) {
+            if (previousTrackId != null &&
+                (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || hasPassed60Percent) &&
+                shouldScrobbleAfterListen(lastTrackedPositionMs)
+            ) {
                 scrobbleTrackIfNeeded(previousTrackId, previousMeta)
             }
             // Replaying the same track after a scrobble — allow another completion event.
@@ -950,10 +963,14 @@ class MediaService : MediaLibraryService() {
                 // Real queue-empty is handled via saveQueueState + player state elsewhere.
                 android.util.Log.d("ftpmusic", "[MediaService] onMediaItemTransition: null item suppressed")
             }
-            // Cast: receiver handles auto-advance with full queue loaded.
-            // No sliding-window management needed — the receiver has all items.
-            // Local-first: persist queue to DB immediately, sync to server async
-            saveQueueState()
+            // Cast EMPTY / blank mediaId: do not persist idx from CastPlayer window
+            // (ADR-0111 storm guard). Real queue empty handled elsewhere.
+            val persistOk = mediaItem != null && !mediaItem.mediaId.isNullOrBlank()
+            if (persistOk) {
+                // Cast: receiver handles auto-advance with full queue loaded.
+                // Local-first: persist queue to DB immediately, sync to server async
+                saveQueueState()
+            }
             // Rebuild the QS/notification metadata on EVERY track change, including
             // gapless auto-advance (onIsPlayingChanged doesn't fire there, so the
             // notification previously froze on the old track). Deferred via
@@ -972,6 +989,11 @@ class MediaService : MediaLibraryService() {
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK ||
+                reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
+            ) {
+                sourceErrorCircuit = sourceErrorCircuit.onUserSeek()
+            }
             // Position is read from Player directly by MediaSessionPlaybackProvider.
             // The seek coalescer treats a discontinuity as the settle point: apply
             // the next coalesced seek (if any) so rapid fast-forwards serialize.
@@ -1162,7 +1184,20 @@ class MediaService : MediaLibraryService() {
             if (ep == null || ep.playerError == null) return
             playerErrorCount++
             val currentId = ep.currentMediaItem?.mediaId
-            when (decideErrorSkipAction(playerErrorCount, currentId, ep.currentMediaItemIndex, ep.mediaItemCount)) {
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            val (nextCircuit, circuitTripped) = sourceErrorCircuit.onSourceError(nowMs)
+            sourceErrorCircuit = nextCircuit
+            val skipAction = if (circuitTripped) {
+                ErrorSkipAction.CIRCUIT_STOP
+            } else {
+                decideErrorSkipAction(
+                    playerErrorCount,
+                    currentId,
+                    ep.currentMediaItemIndex,
+                    ep.mediaItemCount,
+                )
+            }
+            when (skipAction) {
                 ErrorSkipAction.SKIP_NEXT -> {
                     PlayerHolder.playbackErrorAutoSkipInFlight = true
                     val serverUnreachable = !com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
@@ -1278,6 +1313,23 @@ class MediaService : MediaLibraryService() {
                     ep.stop()
                 }
 
+                ErrorSkipAction.CIRCUIT_STOP -> {
+                    val reachable =
+                        com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
+                    android.util.Log.e(
+                        "ftpmusic",
+                        "[MediaService] Source-error circuit tripped — stopping (errors=${sourceErrorCircuit.consecutiveErrors})",
+                    )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "autoSkip action=CIRCUIT_STOP errors=${sourceErrorCircuit.consecutiveErrors} " +
+                            "trackId=$currentId reachable=$reachable",
+                    )
+                    playerErrorCount = 0
+                    // Sticky banner already set via setPlaybackError — do not wipe more cache.
+                    ep.stop()
+                }
+
                 ErrorSkipAction.RADIO_IGNORE -> {
                     // Radio streams — no cached file, no queue position to advance.
                     // Leave the player as-is; the radio listener owns its lifecycle.
@@ -1336,6 +1388,12 @@ class MediaService : MediaLibraryService() {
                 // Position is read every 200ms; once crossed, the flag persists
                 // until the next track transition.
                 lastTrackedPositionMs = player.currentPosition
+                if (player.playerError == null &&
+                    lastTrackedPositionMs >= SOURCE_ERROR_CIRCUIT_SUCCESS_PLAY_MS &&
+                    sourceErrorCircuit.consecutiveErrors > 0
+                ) {
+                    sourceErrorCircuit = sourceErrorCircuit.onSuccessfulPlay()
+                }
                 if (!hasPassed60Percent && player.duration > 0 &&
                     player.currentPosition >= player.duration * 0.6f
                 ) {
@@ -3389,7 +3447,13 @@ class MediaService : MediaLibraryService() {
         if (nextIdx >= exo.mediaItemCount) return
         val nextItem = exo.getMediaItemAt(nextIdx) ?: return
         val nextId = nextItem.mediaId ?: return
-        if (nextId == lastAdvanceItemId) return
+        if (nextId == lastAdvanceItemId) {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-cast",
+                "castAdvance skip=already next=$nextId",
+            )
+            return
+        }
         lastAdvanceItemId = nextId
         lastPreloadedItemId = nextId
 
@@ -4010,7 +4074,7 @@ class MediaService : MediaLibraryService() {
         val rmc = castCtx?.sessionManager?.currentCastSession?.remoteMediaClient ?: return
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-cast",
-            "syncLocalToRemote action=${action::class.simpleName}",
+            "syncLocalToRemote action=${castQueueActionDiag(action)}",
         )
         if (action is CastQueueAction.ClearAndPlay && action.mediaItems.isNotEmpty()) {
             lastPreloadedItemId = null
@@ -4029,6 +4093,11 @@ class MediaService : MediaLibraryService() {
 
                 override fun insert(item: MediaQueueItem, beforeItemId: Int) {
                     pending = rmc.queueInsertItems(arrayOf(item), beforeItemId, null)
+                }
+
+                override fun insertAll(items: Array<MediaQueueItem>, beforeItemId: Int) {
+                    if (items.isEmpty()) return
+                    pending = rmc.queueInsertItems(items, beforeItemId, null)
                 }
 
                 override fun remove(itemId: Int) {

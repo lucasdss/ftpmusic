@@ -5,6 +5,8 @@ import com.google.android.gms.cast.MediaQueueItem
 
 sealed class CastQueueAction {
     data class Add(val mediaItem: MediaItem, val beforeEntryId: Int? = null) : CastQueueAction()
+    /** One RMC insert for many items — single optimistic revision / castAck (ADR-0111). */
+    data class AddAll(val mediaItems: List<MediaItem>, val beforeEntryId: Int? = null) : CastQueueAction()
     data class Remove(val entryId: Int) : CastQueueAction()
     data class Move(val entryId: Int, val beforeEntryId: Int?) : CastQueueAction()
     data class JumpTo(val entryId: Int) : CastQueueAction()
@@ -12,10 +14,21 @@ sealed class CastQueueAction {
         CastQueueAction()
 }
 
+/** Stable diagnostic token — never R8-minified simpleName alone (ADR-0111). */
+internal fun castQueueActionDiag(action: CastQueueAction): String = when (action) {
+    is CastQueueAction.Add -> "Add"
+    is CastQueueAction.AddAll -> "AddAll count=${action.mediaItems.size}"
+    is CastQueueAction.Remove -> "Remove"
+    is CastQueueAction.Move -> "Move"
+    is CastQueueAction.JumpTo -> "JumpTo"
+    is CastQueueAction.ClearAndPlay -> "ClearAndPlay count=${action.mediaItems.size}"
+}
+
 interface CastQueueReceiver {
     val itemIds: Set<Int>
 
     fun insert(item: MediaQueueItem, beforeItemId: Int)
+    fun insertAll(items: Array<MediaQueueItem>, beforeItemId: Int)
     fun remove(itemId: Int)
     fun move(itemId: Int, beforeItemId: Int)
     fun jumpTo(itemId: Int)
@@ -38,6 +51,12 @@ class CastQueueCommandExecutor(private val toQueueItem: (MediaItem) -> MediaQueu
             is CastQueueAction.Add -> {
                 val beforeId = resolve(action.beforeEntryId, receiver.itemIds)
                 receiver.insert(toQueueItem(action.mediaItem), beforeId)
+            }
+
+            is CastQueueAction.AddAll -> {
+                if (action.mediaItems.isEmpty()) return
+                val beforeId = resolve(action.beforeEntryId, receiver.itemIds)
+                receiver.insertAll(action.mediaItems.map(toQueueItem).toTypedArray(), beforeId)
             }
 
             is CastQueueAction.Remove -> {

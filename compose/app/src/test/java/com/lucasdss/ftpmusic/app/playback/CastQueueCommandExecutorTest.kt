@@ -30,6 +30,39 @@ class CastQueueCommandExecutorTest {
     }
 
     @Test
+    fun `addAll inserts once with all items`() {
+        val receiver = FakeReceiver(setOf(10))
+        val items = listOf(item("a"), item("b"), item("c"))
+
+        executor.execute(CastQueueAction.AddAll(items, 10), receiver)
+
+        assertEquals(listOf("insertAll:3:10"), receiver.calls)
+        assertEquals(3, receiver.convertedItems.size)
+    }
+
+    @Test
+    fun `addAll empty is no-op`() {
+        val receiver = FakeReceiver(setOf(1))
+        executor.execute(CastQueueAction.AddAll(emptyList()), receiver)
+        assertTrue(receiver.calls.isEmpty())
+    }
+
+    @Test
+    fun `castQueueActionDiag uses stable tokens`() {
+        assertEquals("Add", castQueueActionDiag(CastQueueAction.Add(item("x"))))
+        assertEquals(
+            "AddAll count=2",
+            castQueueActionDiag(CastQueueAction.AddAll(listOf(item("a"), item("b")))),
+        )
+        assertEquals("Remove", castQueueActionDiag(CastQueueAction.Remove(1)))
+        assertEquals("JumpTo", castQueueActionDiag(CastQueueAction.JumpTo(1)))
+        assertEquals(
+            "ClearAndPlay count=1",
+            castQueueActionDiag(CastQueueAction.ClearAndPlay(listOf(item("a")))),
+        )
+    }
+
+    @Test
     fun `remove and jump ignore items absent from receiver`() {
         val receiver = FakeReceiver(setOf(7))
 
@@ -87,6 +120,11 @@ class CastQueueCommandExecutorTest {
 
         override fun insert(item: MediaQueueItem, beforeItemId: Int) {
             calls += "insert:$beforeItemId"
+        }
+
+        override fun insertAll(items: Array<MediaQueueItem>, beforeItemId: Int) {
+            convertedItems += items
+            calls += "insertAll:${items.size}:$beforeItemId"
         }
 
         override fun remove(itemId: Int) {

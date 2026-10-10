@@ -1269,9 +1269,10 @@ class PlaybackManager @Inject constructor(
 
     private fun emitCastAddsOrCommit(items: List<MediaItem>) {
         if (PlayerHolder.isCasting) {
-            for (item in items) {
-                castQueueListener?.invoke(CastQueueAction.Add(item))
-            }
+            if (items.isEmpty()) return
+            // One AddAll → one RMC insert → one castAck (ADR-0111). N× Add shared
+            // the same revision and produced castAckFail floods in v1.8.0 logs.
+            castQueueListener?.invoke(CastQueueAction.AddAll(items))
         } else {
             optimist.commit()
         }

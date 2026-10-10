@@ -558,6 +558,27 @@ class PlaybackManagerBranchCoverageTest {
     }
 
     @Test
+    fun `appendToContext during Cast emits single AddAll not N Adds`() {
+        val m = mgr()
+        m.playAlbum(listOf(track("a")), listOf(url("a")), skipPersistence = true)
+        PlayerHolder.exoPlayer = mockk(relaxed = true)
+        PlayerHolder.isCasting = true
+        val actions = mutableListOf<CastQueueAction>()
+        m.castQueueListener = { actions.add(it) }
+
+        m.appendToContext(
+            listOf(track("c1"), track("c2"), track("c3")),
+            listOf(url("c1"), url("c2"), url("c3")),
+            asAutoplay = true,
+        )
+
+        assertEquals(1, actions.size)
+        val addAll = actions.single() as CastQueueAction.AddAll
+        assertEquals(3, addAll.mediaItems.size)
+        assertEquals(0, actions.filterIsInstance<CastQueueAction.Add>().size)
+    }
+
+    @Test
     fun `buildQueueStateFromPlayer tolerates missing uri and sparse metadata`() {
         val m = mgr()
         every { mockPlayer.mediaItemCount } returns 1

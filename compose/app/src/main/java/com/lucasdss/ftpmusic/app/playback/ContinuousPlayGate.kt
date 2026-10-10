@@ -6,7 +6,7 @@ package com.lucasdss.ftpmusic.app.playback
  * the Android service lifecycle (ADR-0052).
  *
  * ADR-0093: Cast is allowed — [PlaybackManager.appendToContext] already mutates
- * Dual + Cast via `emitCastAddsOrCommit`.
+ * Dual + Cast via `emitCastAddsOrCommit` (ADR-0111: single AddAll / one ack).
  * ADR-0095: While casting, timeline SoT is Dual (CastPlayer may be empty/windowed).
  */
 object ContinuousPlayGate {

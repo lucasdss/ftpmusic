@@ -4,6 +4,9 @@ Date: 2026-10-10
 Source: device diagnostics v1.8.0 Pixel 8 Pro  
 Status: fixed (client harden)
 
+Follow-up (Cast CP ack flood, Source circuit, storm guards):
+[CAST_PLAYBACK_DIAGNOSTICS_BEHAVIOR_REPORT.md](CAST_PLAYBACK_DIAGNOSTICS_BEHAVIOR_REPORT.md) / ADR-0111.
+
 ## Symptom (logs)
 
 - Mix auto-cache: `writeCached … bytes=182` (cluster) mixed with real MB sizes
