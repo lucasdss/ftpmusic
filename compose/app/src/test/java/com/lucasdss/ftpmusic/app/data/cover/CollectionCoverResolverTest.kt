@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.data.cover
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -90,5 +91,29 @@ class CollectionCoverResolverTest {
         val b = CollectionCoverResolver.hueFromName("Jazz Mix")
         assertEquals(a, b, 0.001f)
         assertTrue(a in 160f..300f)
+    }
+
+    @Test
+    fun `isUsableFixed navidrome needs value`() {
+        assertTrue(
+            CollectionCoverResolver.isUsableFixed(CollectionCoverKind.NAVIDROME, "al-1", null),
+        )
+        assertFalse(
+            CollectionCoverResolver.isUsableFixed(CollectionCoverKind.NAVIDROME, "", null),
+        )
+    }
+
+    @Test
+    fun `isUsableFixed local requires absolute path`() {
+        assertFalse(
+            CollectionCoverResolver.isUsableFixed(CollectionCoverKind.LOCAL, "mix_1.jpg", null),
+        )
+        assertTrue(
+            CollectionCoverResolver.isUsableFixed(
+                CollectionCoverKind.LOCAL,
+                "mix_1.jpg",
+                "/data/mix_1.jpg",
+            ),
+        )
     }
 }

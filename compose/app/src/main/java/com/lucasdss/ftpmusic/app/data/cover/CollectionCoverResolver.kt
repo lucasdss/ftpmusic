@@ -29,6 +29,19 @@ object CollectionCoverResolver {
         val serverCoverArtId: String? = null,
     )
 
+    /**
+     * True when a fixed cover should win over montage/lettermark in list/detail UI.
+     * LOCAL requires a resolvable file; missing file → treat as no fixed cover.
+     */
+    fun isUsableFixed(kind: String?, value: String?, localAbsolutePath: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        return when (kind) {
+            CollectionCoverKind.NAVIDROME -> true
+            CollectionCoverKind.LOCAL -> !localAbsolutePath.isNullOrBlank()
+            else -> false
+        }
+    }
+
     fun resolve(input: Input): Resolved {
         val kind = input.fixedKind
         val value = input.fixedValue?.takeIf { it.isNotBlank() }

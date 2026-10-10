@@ -404,8 +404,17 @@ class CustomDailyMixesViewModel @Inject constructor(
                 when {
                     editor.clearFixedCover -> repository.clearFixedCover(savedId)
 
-                    editor.fixedCoverKind != null && editor.fixedCoverValue != null ->
-                        repository.setFixedCover(savedId, editor.fixedCoverKind, editor.fixedCoverValue)
+                    editor.fixedCoverKind != null && editor.fixedCoverValue != null -> {
+                        val value = resolveFixedCoverValueForSave(
+                            mixIdWasNull = mixId == null,
+                            savedId = savedId,
+                            kind = editor.fixedCoverKind,
+                            value = editor.fixedCoverValue,
+                        )
+                        if (value != null) {
+                            repository.setFixedCover(savedId, editor.fixedCoverKind, value)
+                        }
+                    }
                 }
                 _state.value = _state.value.copy(editor = null)
                 load()
@@ -413,6 +422,23 @@ class CustomDailyMixesViewModel @Inject constructor(
                 _state.value = _state.value.copy(isSaving = false)
             }
         }
+    }
+
+    /**
+     * New mixes stage gallery files under `mix_new_<ts>.*`. After [DailyMixRepository.addMix]
+     * returns a numeric id, rekey so [CollectionCoverStore.deleteForPrefix] matches.
+     */
+    private suspend fun resolveFixedCoverValueForSave(
+        mixIdWasNull: Boolean,
+        savedId: Long,
+        kind: String,
+        value: String,
+    ): String? {
+        if (kind != CollectionCoverKind.LOCAL) return value
+        if (!mixIdWasNull) return value
+        val stem = value.substringBeforeLast('.')
+        if (!stem.startsWith("${DailyMixRepository.COVER_PREFIX}_new_")) return value
+        return coverStore.rekey(DailyMixRepository.COVER_PREFIX, value, savedId.toString()) ?: value
     }
 
     /** Context-sensitive name suggestions for the ACTIVE tab. */

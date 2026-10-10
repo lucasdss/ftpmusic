@@ -31,10 +31,19 @@ Collection art (Daily Mix + playlist) always resolves: **fixed → derived track
 - Sync updates server `coverArt` only — never clears fixed columns.
 - Temp playlist id → server id remap copies fixed cover.
 - Delete mix/playlist deletes local cover files.
-- Gallery import = atomic temp+rename.
+- Gallery import = atomic temp+rename; raw copy ≤ **8 MiB**; downsample max edge **2048**.
+- New Daily Mix gallery stage uses `mix_new_<ts>.*`; **save rekeys** → `mix_{id}.*` so deleteForPrefix works.
+- Library **Remove locally** calls `onPlaylistDeleted` (cover wipe) — mirrors detail path.
+- Mix detail: stale LOCAL (file gone) → **not** usable fixed → montage/lettermark (`isUsableFixed`).
+- Library playlist rows fill `primaryArtist`/`primaryAlbum` in montage load (fallback art).
 - Empty tracklist / null art → lettermark (still “proper” tile).
 - Subsonic has no playlist cover upload; Navidrome native image API deferred (auth mismatch).
 
 ## Perf
 
 Home stays single Coil decode. Fixed path skips multi-cover fan-out. Album picker page ≤60.
+
+## 1.10.0 fixes (post-1.9.1)
+
+- P0 orphan LOCAL files on Library remove / new-mix id mismatch → fixed.
+- P1 import cap, playlist primary meta, mix-detail usable-fixed gate → fixed.

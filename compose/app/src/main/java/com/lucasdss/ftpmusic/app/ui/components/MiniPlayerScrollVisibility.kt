@@ -87,10 +87,16 @@ fun NestedScrollConnection.withMiniPlayerScrollVisibility(mini: MiniPlayerScroll
         }
 
         override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            val result = inner.onPostScroll(consumed, available, source)
             if (abs(consumed.y) > 0.5f) {
                 mini.onVerticalScrollActivity()
+            } else if (!mini.visible &&
+                abs(consumed.y) <= 0.5f && abs(available.y) <= 0.5f
+            ) {
+                // Idle nested-scroll frame while hidden (drag ended without fling).
+                mini.onScrollSettled()
             }
-            return inner.onPostScroll(consumed, available, source)
+            return result
         }
 
         override suspend fun onPreFling(available: Velocity): Velocity = inner.onPreFling(available)

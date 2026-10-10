@@ -1,5 +1,9 @@
 package com.lucasdss.ftpmusic.app.ui.components
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.unit.Velocity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -76,6 +80,35 @@ class MiniPlayerScrollVisibilityTest {
         val mini = MiniPlayerScrollVisibility(this, idleDelayMs = 200L)
         mini.onVerticalScrollActivity()
         mini.onScrollSettled()
+        advanceTimeBy(200)
+        runCurrent()
+        assertTrue(mini.visible)
+    }
+
+    @Test
+    fun `idle postScroll without fling reveals after delay`() = runTest(StandardTestDispatcher()) {
+        val mini = MiniPlayerScrollVisibility(this, idleDelayMs = 200L)
+        val noop = object : NestedScrollConnection {}
+        val conn = noop.withMiniPlayerScrollVisibility(mini)
+
+        conn.onPreScroll(Offset(0f, -40f), NestedScrollSource.UserInput)
+        assertFalse(mini.visible)
+        // Drag released — idle postScroll, no onPostFling.
+        conn.onPostScroll(Offset.Zero, Offset.Zero, NestedScrollSource.UserInput)
+        advanceTimeBy(200)
+        runCurrent()
+        assertTrue(mini.visible)
+    }
+
+    @Test
+    fun `postFling settle still reveals`() = runTest(StandardTestDispatcher()) {
+        val mini = MiniPlayerScrollVisibility(this, idleDelayMs = 200L)
+        val noop = object : NestedScrollConnection {}
+        val conn = noop.withMiniPlayerScrollVisibility(mini)
+
+        conn.onPreScroll(Offset(0f, -40f), NestedScrollSource.UserInput)
+        assertFalse(mini.visible)
+        conn.onPostFling(Velocity.Zero, Velocity.Zero)
         advanceTimeBy(200)
         runCurrent()
         assertTrue(mini.visible)

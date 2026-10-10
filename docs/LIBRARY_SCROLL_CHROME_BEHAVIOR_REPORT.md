@@ -26,6 +26,8 @@ Spotify/YTM keep mini — we diverge on purpose (more list space).
 - Shell-owned on primary tabs (Home / Library / Search / Favorites).
 - Vertical nested-scroll activity → mini slot height → 0 (discrete anim).
 - Idle debounce **200ms** → mini returns.
+- Idle nested-scroll frame while hidden (drag end **without fling**) also settles/reveal.
+- `onPostFling` still settles (unchanged).
 - Route change → force visible.
 - Bottom `NavigationBar` never hides.
 - No track / Now Playing / login → unchanged ADR-0070 gates.

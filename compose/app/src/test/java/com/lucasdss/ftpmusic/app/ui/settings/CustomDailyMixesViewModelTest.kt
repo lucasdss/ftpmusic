@@ -1,5 +1,8 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import android.net.Uri
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -8,6 +11,7 @@ import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.data.repository.MixFilters
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -55,7 +59,8 @@ class CustomDailyMixesViewModelTest {
         autoCache: Boolean = false,
     ) = CustomMix(id = id, name = name, filters = filters, autoCache = autoCache, isDefault = true)
 
-    private fun vm() = CustomDailyMixesViewModel(repository, metadataDao, mockk(relaxed = true))
+    private fun vm(coverStore: CollectionCoverStore = mockk(relaxed = true)) =
+        CustomDailyMixesViewModel(repository, metadataDao, coverStore)
 
     @Test
     fun `load populates mixes genres and liked artists`() = runTest(testDispatcher) {
@@ -134,6 +139,29 @@ class CustomDailyMixesViewModelTest {
         coVerify {
             repository.addMix("Pure MPB", MixFilters(genres = listOf("MPB")), false, true)
         }
+    }
+
+    @Test
+    fun `save rekeys staged new_ local cover to numeric mix id`() = runTest(testDispatcher) {
+        val coverStore: CollectionCoverStore = mockk(relaxed = true)
+        coEvery { coverStore.importFromUri(any(), any(), any()) } returns "mix_new_999.jpg"
+        coEvery { coverStore.rekey("mix", "mix_new_999.jpg", "42") } returns "mix_42.jpg"
+        coEvery { repository.addMix(any(), any(), any(), any()) } returns 42L
+        val model = vm(coverStore)
+        advanceUntilIdle()
+        model.openNew()
+        model.setName("Covered")
+        model.toggleGenre("Rock")
+        val uri = mockk<Uri>(relaxed = true)
+        every { uri.toString() } returns "content://test/img"
+        model.setFixedCoverFromDevice(uri)
+        advanceUntilIdle()
+
+        model.save()
+        advanceUntilIdle()
+
+        coVerify { coverStore.rekey("mix", "mix_new_999.jpg", "42") }
+        coVerify { repository.setFixedCover(42L, CollectionCoverKind.LOCAL, "mix_42.jpg") }
     }
 
     @Test

@@ -2685,6 +2685,12 @@ class LibraryViewModelTest {
         )
         coEvery { playlistDao.getEntries("pl-2") } returns emptyList()
         coEvery { metadataDao.getPlaylistMontageCovers(listOf("t1")) } returns listOf("ca-1", "ca-2")
+        coEvery { metadataDao.getPlaylistPrimaryCoverMeta(listOf("t1")) } returns
+            com.lucasdss.ftpmusic.app.data.db.MixCoverMetaProjection(
+                artist = "Artist A",
+                album = "Album A",
+                coverArtUrl = "ca-1",
+            )
         val vm = favoritesVm(favRepo, radioDao)
 
         vm.loadPlaylists()
@@ -2692,6 +2698,9 @@ class LibraryViewModelTest {
 
         assertEquals(listOf("ca-1", "ca-2"), vm.state.value.playlistMontages["pl-1"])
         assertNull(vm.state.value.playlistMontages["pl-2"])
+        val pl1 = vm.state.value.playlists.first { it.id == "pl-1" }
+        assertEquals("Artist A", pl1.primaryArtist)
+        assertEquals("Album A", pl1.primaryAlbum)
     }
 
     // ── v44: ledger healing (network-free fix-up) ────────────────────────
@@ -3021,6 +3030,7 @@ class LibraryViewModelTest {
         viewModel.removePlaylistLocally("pl-1")
         advanceUntilIdle()
 
+        coVerify { playlistRepo.onPlaylistDeleted("pl-1") }
         coVerify { playlistDao.clearEntries("pl-1") }
         coVerify { playlistDao.delete("pl-1") }
         // list refreshed from DB: pl-1 gone, pl-2 kept
@@ -3048,6 +3058,7 @@ class LibraryViewModelTest {
 
         assertFalse(viewModel.state.value.playlistCreated)
         assertNull(viewModel.state.value.createdPlaylist)
+        coVerify { playlistRepo.onPlaylistDeleted("new-123") }
         coVerify { playlistDao.delete("new-123") }
     }
 
@@ -3058,6 +3069,7 @@ class LibraryViewModelTest {
         viewModel.removePlaylistLocally("")
         advanceUntilIdle()
 
+        coVerify(exactly = 0) { playlistRepo.onPlaylistDeleted(any()) }
         coVerify(exactly = 0) { playlistDao.clearEntries(any()) }
         coVerify(exactly = 0) { playlistDao.delete(any()) }
     }

@@ -725,13 +725,30 @@ class LibraryViewModel @Inject constructor(
                 if (signature == lastMontageSignature) return@launch
                 lastMontageSignature = signature
                 val montages = mutableMapOf<String, List<String>>()
+                val metaById = mutableMapOf<String, Pair<String?, String?>>()
                 for (pl in playlists) {
                     val entries = playlistDao.getEntries(pl.id)
                     if (entries.isEmpty()) continue
-                    val covers = metadataDao.getPlaylistMontageCovers(entries.map { it.trackId })
+                    val trackIds = entries.map { it.trackId }
+                    val covers = metadataDao.getPlaylistMontageCovers(trackIds)
                     montages[pl.id] = covers.ifEmpty { listOfNotNull(pl.coverArt) }
+                    val meta = metadataDao.getPlaylistPrimaryCoverMeta(trackIds)
+                    if (meta != null) {
+                        metaById[pl.id] = meta.artist to meta.album
+                    }
                 }
-                _state.value = _state.value.copy(playlistMontages = montages)
+                val updatedPlaylists = if (metaById.isEmpty()) {
+                    playlists
+                } else {
+                    playlists.map { pl ->
+                        val meta = metaById[pl.id] ?: return@map pl
+                        pl.copy(primaryArtist = meta.first, primaryAlbum = meta.second)
+                    }
+                }
+                _state.value = _state.value.copy(
+                    playlists = updatedPlaylists,
+                    playlistMontages = montages,
+                )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
             }
@@ -1090,6 +1107,9 @@ class LibraryViewModel @Inject constructor(
         if (playlistId.isBlank()) return
         viewModelScope.launch {
             try {
+                // Mirror PlaylistDetailViewModel.removeLocally: wipe pinned LOCAL
+                // cover files before the DB row goes away.
+                playlistRepo.onPlaylistDeleted(playlistId)
                 playlistDao.clearEntries(playlistId)
                 playlistDao.delete(playlistId)
                 // Drop the stale post-create reference if this was the new playlist

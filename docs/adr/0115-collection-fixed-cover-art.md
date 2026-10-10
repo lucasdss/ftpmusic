@@ -15,9 +15,10 @@ Users need: (1) always-filled collection art, (2) optional fixed cover per Custo
 1. **Schema (Room v62).** Nullable `fixed_cover_kind` / `fixed_cover_value` on `custom_mixes` and `playlists`. Kind = `navidrome` | `local`.
 2. **Local-only persistence.** Fixed covers never upload via Subsonic (`updatePlaylist` has no cover). Navidrome native `POST /api/playlist/{id}/image` exists but needs non-Subsonic auth — deferred.
 3. **Shared resolver.** `CollectionCoverResolver` + `CollectionCoverArt` / `CollectionLettermark`. Priority: fixed → derived (track/album/server) → preferred/fallback → lettermark.
-4. **Gallery store.** `CollectionCoverStore` copies into `filesDir/collection_covers/` with atomic write; delete on clear/entity delete.
+4. **Gallery store.** `CollectionCoverStore` copies into `filesDir/collection_covers/` with atomic write; delete on clear/entity delete. Cap raw import **8 MiB**; downsample longest edge **2048**. New-mix staged files use `mix_new_*`; `rekey` on save → `mix_{id}.*`.
 5. **Sync hygiene.** Playlist import/refresh/create-remap update server `coverArt` only; preserve fixed columns.
 6. **DAO hardening.** `getDailyMixCovers` / montage queries `COALESCE` track + album covers so derived tier fills more often.
+7. **Cleanup parity.** Library remove-locally and detail remove-locally both call `PlaylistRepository.onPlaylistDeleted` before DB delete.
 
 ## Alternatives
 

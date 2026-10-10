@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverResolver
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreSongEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.model.Track
@@ -177,17 +181,31 @@ fun MixDetailScreen(
                             Modifier.fillMaxWidth().padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            // Fixed cover, else montage (1–4 tiles), else lettermark.
+                            // Fixed cover (usable), else montage (1–4 tiles), else lettermark.
                             val covers = state.tracks.mapNotNull { it.coverArt }.distinct().take(4)
-                            val hasFixed = !state.fixedCoverKind.isNullOrBlank() &&
-                                !state.fixedCoverValue.isNullOrBlank()
+                            val context = LocalContext.current
+                            val coverStore = remember(context) {
+                                CollectionCoverStore(context.applicationContext)
+                            }
+                            val localFixedPath = remember(state.fixedCoverKind, state.fixedCoverValue) {
+                                if (state.fixedCoverKind == CollectionCoverKind.LOCAL) {
+                                    coverStore.absolutePath(state.fixedCoverValue.orEmpty())
+                                } else {
+                                    null
+                                }
+                            }
+                            val hasUsableFixed = CollectionCoverResolver.isUsableFixed(
+                                state.fixedCoverKind,
+                                state.fixedCoverValue,
+                                localFixedPath,
+                            )
                             Box(
                                 Modifier.size(200.dp).clip(RoundedCornerShape(16.dp))
                                     .background(Color(0xFF1E1E3E)),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 when {
-                                    hasFixed || covers.isEmpty() -> {
+                                    hasUsableFixed || covers.isEmpty() -> {
                                         CollectionCoverArt(
                                             name = mixName,
                                             fixedCoverKind = state.fixedCoverKind,
