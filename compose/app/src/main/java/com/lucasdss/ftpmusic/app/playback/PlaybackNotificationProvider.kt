@@ -264,24 +264,33 @@ class PlaybackNotificationProvider(
         builder.addAction(android.R.drawable.ic_media_previous, "Previous", prevAction.actionIntent)
 
         // Thumbs in expanded row (compact stays 0,1,2 = play/pause/next).
+        // ADR-0122: one bad button must not abort the whole media notification.
         val reactionButtons = if (lastCustomLayout.isEmpty()) {
             MediaSessionReactionCommands.buttons(state.isStarred, state.isDisliked)
         } else {
             lastCustomLayout
         }
         for (button in reactionButtons) {
-            val custom = actionFactory.createCustomActionFromCustomCommandButton(session, button)
-            val iconRes = when (button.sessionCommand?.customAction) {
-                MediaSessionReactionCommands.ACTION_LIKE ->
-                    com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_up
+            try {
+                val custom = actionFactory.createCustomActionFromCustomCommandButton(session, button)
+                val intent = custom.actionIntent ?: continue
+                val iconRes = when (button.sessionCommand?.customAction) {
+                    MediaSessionReactionCommands.ACTION_LIKE ->
+                        com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_up
 
-                MediaSessionReactionCommands.ACTION_DISLIKE ->
-                    com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_down
+                    MediaSessionReactionCommands.ACTION_DISLIKE ->
+                        com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_down
 
-                else ->
-                    if (button.iconResId != 0) button.iconResId else android.R.drawable.ic_media_play
+                    else ->
+                        if (button.iconResId != 0) button.iconResId else android.R.drawable.ic_media_play
+                }
+                builder.addAction(iconRes, button.displayName, intent)
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "ftpmusic",
+                    "[PlaybackNotification] skip reaction button: ${e.message}",
+                )
             }
-            builder.addAction(iconRes, button.displayName, custom.actionIntent)
         }
 
         return MediaNotification(NOTIFICATION_ID, builder.build()).also { lastBuiltNotification = it }
@@ -301,9 +310,17 @@ class PlaybackNotificationProvider(
             // Use the callback if available (set by Media3 after first createNotification call)
             lastCallback?.onNotificationChanged(buildNotification(session, factory))
         } catch (_: Exception) {
-            // Fallback: post directly to NotificationManager (first call before Media3 init)
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(NOTIFICATION_ID, buildNotification(session, factory).notification)
+            // ADR-0122: do not recursively die — fallback build is also guarded.
+            try {
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.notify(NOTIFICATION_ID, buildNotification(session, factory).notification)
+            } catch (fallback: Exception) {
+                android.util.Log.e(
+                    "ftpmusic",
+                    "[PlaybackNotification] notifyChanged failed: ${fallback.message}",
+                    fallback,
+                )
+            }
         }
     }
 

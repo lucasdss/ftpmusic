@@ -175,6 +175,21 @@ class PlaybackNotificationProviderRobolectricTest {
     }
 
     @Test
+    fun `buildNotification skips exploding reaction buttons`() {
+        val base = liveFactory()
+        val thumbsExplode = object : MediaNotification.ActionFactory by base {
+            override fun createCustomActionFromCustomCommandButton(
+                s: MediaSession,
+                button: androidx.media3.session.CommandButton,
+            ): NotificationCompat.Action = error("boom thumb")
+        }
+        // Must not throw — transport actions remain (ADR-0122).
+        val notif = provider.createNotification(session, ImmutableList.of(), thumbsExplode) { }.notification
+        assertNotNull(notif.actions)
+        assertEquals(3, notif.actions.size)
+    }
+
+    @Test
     fun `minimal notification path also memoizes`() {
         notificationsEnabled = false
         val first = build()

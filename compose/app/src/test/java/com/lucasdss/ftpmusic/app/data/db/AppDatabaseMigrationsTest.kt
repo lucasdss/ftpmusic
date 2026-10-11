@@ -563,6 +563,23 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 61 to 62 adds fixed cover columns`() {
+        run(AppDatabase.MIGRATION_61_62)
+        verify {
+            db.execSQL("ALTER TABLE custom_mixes ADD COLUMN fixed_cover_kind TEXT")
+        }
+        verify {
+            db.execSQL("ALTER TABLE custom_mixes ADD COLUMN fixed_cover_value TEXT")
+        }
+        verify {
+            db.execSQL("ALTER TABLE playlists ADD COLUMN fixed_cover_kind TEXT")
+        }
+        verify {
+            db.execSQL("ALTER TABLE playlists ADD COLUMN fixed_cover_value TEXT")
+        }
+    }
+
+    @Test
     fun `FTS5 callback creates table on create and open`() {
         AppDatabase.FTS5_CALLBACK.onCreate(db)
         AppDatabase.FTS5_CALLBACK.onOpen(db)
@@ -580,6 +597,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(59, AppDatabase.ALL_MIGRATIONS_59.last().endVersion)
         assertEquals(60, AppDatabase.ALL_MIGRATIONS_60.last().endVersion)
         assertEquals(61, AppDatabase.ALL_MIGRATIONS_61.last().endVersion)
+        assertEquals(62, AppDatabase.ALL_MIGRATIONS_62.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -608,8 +626,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_56, AppDatabase.ALL_MIGRATIONS_57,
             AppDatabase.ALL_MIGRATIONS_58, AppDatabase.ALL_MIGRATIONS_59,
             AppDatabase.ALL_MIGRATIONS_60, AppDatabase.ALL_MIGRATIONS_61,
+            AppDatabase.ALL_MIGRATIONS_62,
         )
-        assertEquals(52, all.size)
+        assertEquals(53, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

@@ -1,5 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui.issues
 
+import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -103,5 +105,27 @@ class AppIssueAggregatorTest {
         // timeout 0 = passthrough
         flowOf(1, 2, 3).debounceAfterFirst(0).toList(out)
         assertEquals(listOf(1, 2, 3), out)
+    }
+
+    @Test
+    fun `mapConflictedFailSoft emits empty when upstream throws`() = runTest {
+        val upstream = flow<List<PlaylistEntity>> {
+            throw IllegalStateException("db boom")
+        }
+        val out = mapConflictedFailSoft(upstream).toList()
+        assertEquals(listOf(emptyList<ConflictedPlaylist>()), out)
+    }
+
+    @Test
+    fun `mapConflictedFailSoft maps rows`() = runTest {
+        val upstream = flowOf(
+            listOf(
+                PlaylistEntity(id = "pl1", name = "Mix", isConflicted = true, conflictMessage = "c"),
+            ),
+        )
+        val out = mapConflictedFailSoft(upstream).toList()
+        assertEquals(1, out.single().size)
+        assertEquals("pl1", out.single().single().id)
+        assertEquals("Mix", out.single().single().name)
     }
 }

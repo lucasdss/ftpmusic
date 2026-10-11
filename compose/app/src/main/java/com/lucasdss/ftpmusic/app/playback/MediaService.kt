@@ -741,7 +741,14 @@ class MediaService : MediaLibraryService() {
             .setPriority(android.app.Notification.PRIORITY_LOW)
             .build()
     private val handler = Handler(Looper.getMainLooper())
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // ADR-0122: fire-and-forget jobs must not kill the process on throw.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            kotlinx.coroutines.CoroutineExceptionHandler { _, t ->
+                android.util.Log.e("ftpmusic", "[MediaService] scope failed: ${t.message}", t)
+            },
+    )
 
     /** Process-lifetime best-effort persistence scope. NEVER cancelled in
      *  onDestroy: teardown persistence (playback state + queue) drains here so
@@ -2109,7 +2116,24 @@ class MediaService : MediaLibraryService() {
         if (!queueRestoreStarted.compareAndSet(false, true)) return
         queueRestoreInFlight = true
         scope.launch {
-            try {
+            QueueRestoreSafely.run(
+                onFailure = { e ->
+                    android.util.Log.e(
+                        "ftpmusic",
+                        "[MediaService] queue restore failed: ${e.message}",
+                        e,
+                    )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "queue_restore_failed=${e.javaClass.simpleName}",
+                    )
+                    MediaServiceStartRequest.btAutoplayRequested = false
+                },
+                finallyBlock = {
+                    queueRestoreInFlight = false
+                    queueRestoreLatch.countDown()
+                },
+            ) {
                 val persistedSleep = persistenceManager.sleepTimerEndMs()
                 if (persistedSleep > 0L) {
                     armSleepTimer(persistedSleep)
@@ -2129,7 +2153,7 @@ class MediaService : MediaLibraryService() {
                     if (btResume) {
                         withContext(Dispatchers.Main) { handleBtAutoplayIfNeeded() }
                     }
-                    return@launch
+                    return@run
                 }
                 val saved = persistenceManager.restore()
                 if (saved == null) {
@@ -2148,7 +2172,7 @@ class MediaService : MediaLibraryService() {
                             "result=empty_queue",
                         )
                     }
-                    return@launch
+                    return@run
                 }
                 withContext(Dispatchers.Main) {
                     val p = PlayerHolder.player
@@ -2169,9 +2193,6 @@ class MediaService : MediaLibraryService() {
                     }
                     applyRestoredQueue(saved, userInitiatedPlayback = p?.playWhenReady == true)
                 }
-            } finally {
-                queueRestoreInFlight = false
-                queueRestoreLatch.countDown()
             }
         }
     }

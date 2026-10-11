@@ -7,6 +7,7 @@ import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyHolder
 import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
+import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
@@ -14,6 +15,7 @@ import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -33,6 +36,9 @@ import kotlinx.coroutines.launch
 /**
  * Combines connectivity / config / playback / playlist-conflict signals into a
  * single [issues] flow for the AppHeader status tray (ADR-0120).
+ *
+ * ADR-0122: fail-soft — Room/Flow failures must never kill the process on
+ * cold start (1.10.1 upgrade force-close). CEH + [catch] keep the tray empty.
  */
 @Singleton
 class AppIssueAggregator @Inject constructor(
@@ -41,7 +47,10 @@ class AppIssueAggregator @Inject constructor(
     private val networkPolicyHolder: NetworkPolicyHolder,
     private val playlistDao: PlaylistDao,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val exceptionHandler = CoroutineExceptionHandler { _, t ->
+        android.util.Log.e("ftpmusic-issues", "aggregator failed: ${t.message}", t)
+    }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + exceptionHandler)
 
     private val debouncedOsNetwork: Flow<Boolean> =
         NetworkAvailabilityHolder.hasOsNetwork.debounceAfterFirst(DEFAULT_DEBOUNCE_MS)
@@ -50,9 +59,7 @@ class AppIssueAggregator @Inject constructor(
         ReachabilityStateHolder.isReachable.debounceAfterFirst(DEFAULT_DEBOUNCE_MS)
 
     private val conflictedFlow: Flow<List<ConflictedPlaylist>> =
-        playlistDao.observeConflicted().map { rows ->
-            rows.map { ConflictedPlaylist(it.id, it.name, it.conflictMessage) }
-        }
+        mapConflictedFailSoft(playlistDao.observeConflicted())
 
     private data class ConnSlice(
         val hasOs: Boolean,
@@ -100,11 +107,27 @@ class AppIssueAggregator @Inject constructor(
 
     val issues: StateFlow<List<AppIssue>> = snapshotFlow
         .map { snap -> buildLocalized(snap) }
+        .catch { e ->
+            android.util.Log.w("ftpmusic-issues", "issues map failed: ${e.message}")
+            emit(emptyList())
+        }
         .distinctUntilChanged()
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     val headerState: StateFlow<AppIssueHeaderState> = issues
         .map { list -> toHeaderState(list) }
+        .catch { e ->
+            android.util.Log.w("ftpmusic-issues", "headerState map failed: ${e.message}")
+            emit(
+                AppIssueHeaderState(
+                    issues = emptyList(),
+                    iconKind = AppIssueIconKind.WARNING,
+                    showBadge = false,
+                    badgeCount = 0,
+                    contentDescription = "",
+                ),
+            )
+        }
         .stateIn(
             scope,
             SharingStarted.Eagerly,
@@ -169,6 +192,19 @@ class AppIssueAggregator @Inject constructor(
         const val DEFAULT_DEBOUNCE_MS = 2_500L
     }
 }
+
+/** ADR-0122: Room observeConflicted failures → empty list, never crash. */
+internal fun mapConflictedFailSoft(upstream: Flow<List<PlaylistEntity>>): Flow<List<ConflictedPlaylist>> = upstream
+    .map { rows ->
+        rows.map { ConflictedPlaylist(it.id, it.name, it.conflictMessage) }
+    }
+    .catch { e ->
+        android.util.Log.w(
+            "ftpmusic-issues",
+            "observeConflicted failed: ${e.message}",
+        )
+        emit(emptyList())
+    }
 
 /**
  * Emit first value immediately; subsequent changes wait [timeoutMs] of quiet.
