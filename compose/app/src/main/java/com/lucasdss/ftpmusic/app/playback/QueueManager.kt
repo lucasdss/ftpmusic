@@ -86,8 +86,11 @@ class QueueManager @Inject constructor(private val authHelper: SubsonicAuthHelpe
      * Replace queue with given tracks and start at [startIndex]/[positionMs].
      * Uses atomic [Player.setMediaItems] (list, index, position) so metadata and
      * the decoder period never briefly bind to index 0 during restore.
+     * When [playWhenReady] is false, prepare only — BT/A17 restore uses this so
+     * [MediaService.applyBtPlayAfterSeat] can pause + WIU without an audible flash
+     * (ADR-0117).
      */
-    fun playAll(items: List<MediaItem>, startIndex: Int = 0, positionMs: Long = 0L) {
+    fun playAll(items: List<MediaItem>, startIndex: Int = 0, positionMs: Long = 0L, playWhenReady: Boolean = true) {
         val p = player ?: run {
             android.util.Log.e("ftpmusic-playback", "[DEBUG-q] playAll: PlayerHolder.player is NULL")
             return
@@ -97,11 +100,15 @@ class QueueManager @Inject constructor(private val authHelper: SubsonicAuthHelpe
         val pos = positionMs.coerceAtLeast(0L)
         android.util.Log.d(
             "ftpmusic-playback",
-            "[DEBUG-q] playAll: ${items.size} items, startIndex=$si pos=$pos",
+            "[DEBUG-q] playAll: ${items.size} items, startIndex=$si pos=$pos playWhenReady=$playWhenReady",
         )
         p.setMediaItems(items, si, pos)
         p.prepare()
-        p.play()
+        if (playWhenReady) {
+            p.play()
+        } else {
+            p.pause()
+        }
     }
 
     fun shuffleAndPlay(items: List<MediaItem>) {

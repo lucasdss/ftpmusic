@@ -81,6 +81,9 @@ class DownloadManager @Inject constructor(
         scope.cancel()
     }
 
+    /** True when the queue row is permanently failed (ADR-0117 mix skip). */
+    suspend fun isTerminalFailed(trackId: String): Boolean = cacheQueueDao.getByTrackId(trackId)?.status == "failed"
+
     /** Enqueue with dedup. Priority: 0=play-queue (urgent), 1=download, 2=cache-warming.
      *
      *  Atomicity: the insert uses INSERT OR IGNORE on the unique track_id index,
@@ -152,14 +155,15 @@ class DownloadManager @Inject constructor(
                 }
                 return
             }
-            // "failed" is terminal (the worker gave up after its retry cap).
+            // "failed" is terminal (retry cap or non-retryable reject — ADR-0117).
             // Do NOT resurrect it: resetting it to pending here turns every
             // re-enqueue (play-queue prefetch, cache warming, playlist sync)
             // into an infinite download-retry loop that pegs CPU/disk and
-            // starves the rest of the app. Only an explicit new request
-            // (enqueue after the row was cleared) re-attempts a download.
+            // starves the rest of the app. Only an explicit clear/retry
+            // re-attempts a download. Debug-level: restore storms must not
+            // flood Share diagnostics with W lines.
             if (existing.status == "failed") {
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                     "ftpmusic-download",
                     "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=failed_terminal",
                 )
@@ -305,15 +309,18 @@ class DownloadManager @Inject constructor(
                 }
                 val contentType = response.header("Content-Type")
                 if (!AudioCacheValidation.isAcceptableStreamContentType(contentType)) {
+                    // ADR-0117: JSON/XML/error CT is sticky server-side — no short retry.
+                    val snippet = peekBodySnippet(body)
                     android.util.Log.w(
                         "ftpmusic-download",
-                        "[worker] reject Content-Type=$contentType for ${item.trackId}",
+                        "[worker] reject Content-Type=$contentType code=${response.code} for ${item.trackId}",
                     )
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-download",
-                        "worker reject trackId=${item.trackId} contentType=$contentType",
+                        "worker reject trackId=${item.trackId} contentType=$contentType " +
+                            "code=${response.code} body=$snippet",
                     )
-                    handleRetry(item)
+                    failTerminal(item)
                     return
                 }
                 val totalLen = body.contentLength()
@@ -372,6 +379,26 @@ class DownloadManager @Inject constructor(
             // left behind here is a failed/partial download
             if (tmpFile.exists()) tmpFile.delete()
         }
+    }
+
+    /** Peek ≤120 ASCII chars for diagnostics (ring truncates to MAX_FIELD_LEN). */
+    internal fun peekBodySnippet(body: okhttp3.ResponseBody): String = try {
+        val peek = body.source().peek()
+        val raw = peek.readByteString(120).utf8()
+            .replace('\n', ' ')
+            .replace('\r', ' ')
+            .trim()
+        if (raw.isEmpty()) "<empty>" else raw
+    } catch (_: Exception) {
+        "<unreadable>"
+    }
+
+    private suspend fun failTerminal(item: CacheQueueItemEntity) {
+        cacheQueueDao.updateStatus(item.id, "failed")
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-download",
+            "worker terminal trackId=${item.trackId} priority=${item.priority} reason=non_audio_content_type",
+        )
     }
 
     private suspend fun handleRetry(item: CacheQueueItemEntity) {

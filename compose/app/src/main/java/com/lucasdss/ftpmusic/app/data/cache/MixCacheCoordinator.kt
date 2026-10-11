@@ -40,12 +40,15 @@ class MixCacheCoordinator @Inject constructor(
         // track this mix still wants.
         customMixDao.upsertCacheTracks(desired.map { CustomMixCacheTrackEntity(customMixId = mix.id, trackId = it) })
         // UNKNOWN magic stays owned (no re-download churn); only missing/POISON enqueue (ADR-0112).
+        // ADR-0117: skip terminal-failed rows — sticky JSON/stream rejects must not thrash.
         val missing = desired.filter { !cacheService.hasMixOwnedSpan(it) }
+        val (toEnqueue, skipTerminal) = partitionSkipTerminal(missing)
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-cache",
-            "mixCache onGenerated mixId=${mix.id} autoCache=true count=${trackIds.size} missing=${missing.size}",
+            "mixCache onGenerated mixId=${mix.id} autoCache=true count=${trackIds.size} " +
+                "missing=${missing.size} skipTerminal=$skipTerminal enqueued=${toEnqueue.size}",
         )
-        enqueue(missing)
+        enqueue(toEnqueue)
     }
 
     /**
@@ -67,7 +70,13 @@ class MixCacheCoordinator @Inject constructor(
         if (desired.isEmpty()) return
         customMixDao.upsertCacheTracks(desired.map { CustomMixCacheTrackEntity(customMixId = mixId, trackId = it) })
         val missing = desired.filter { !cacheService.hasMixOwnedSpan(it) }
-        enqueue(missing)
+        val (toEnqueue, skipTerminal) = partitionSkipTerminal(missing)
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-cache",
+            "mixCache onSourceChanged mixId=$mixId missing=${missing.size} " +
+                "skipTerminal=$skipTerminal enqueued=${toEnqueue.size}",
+        )
+        enqueue(toEnqueue)
     }
 
     /** Auto-cache turned off: drop ownership and evict exclusives. */
@@ -107,6 +116,16 @@ class MixCacheCoordinator @Inject constructor(
             if (trackDao.getTrack(trackId)?.isDownloaded == true) return@forEach
             cacheService.removeCached(trackId)
         }
+    }
+
+    private suspend fun partitionSkipTerminal(missing: List<String>): Pair<List<String>, Int> {
+        if (missing.isEmpty()) return emptyList<String>() to 0
+        val toEnqueue = ArrayList<String>(missing.size)
+        var skip = 0
+        for (id in missing) {
+            if (downloadManager.isTerminalFailed(id)) skip++ else toEnqueue.add(id)
+        }
+        return toEnqueue to skip
     }
 
     private suspend fun enqueue(trackIds: List<String>) {

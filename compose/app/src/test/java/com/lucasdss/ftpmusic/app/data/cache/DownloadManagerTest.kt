@@ -93,6 +93,21 @@ class DownloadManagerTest {
         )
         assertTrue(snap.contains("result=failed_terminal"))
         assertFalse(snap.contains("http://a"))
+        assertTrue(manager.isTerminalFailed("tr-4"))
+    }
+
+    @Test
+    fun `isTerminalFailed false when row missing or pending`() = runTest {
+        coEvery { dao.getByTrackId("gone") } returns null
+        coEvery { dao.getByTrackId("pend") } returns CacheQueueItemEntity(
+            id = 9,
+            trackId = "pend",
+            remoteUrl = "http://x",
+            status = "pending",
+            priority = 2,
+        )
+        assertFalse(manager.isTerminalFailed("gone"))
+        assertFalse(manager.isTerminalFailed("pend"))
     }
 
     @Test

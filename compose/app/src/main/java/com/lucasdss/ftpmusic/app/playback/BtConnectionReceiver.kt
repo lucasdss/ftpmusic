@@ -97,6 +97,10 @@ class BtConnectionReceiver : BroadcastReceiver() {
                     "ftpmusic-bt",
                     "selected_null_mac — Resume notif (no autoplay) enabled=$enabled sdk=$sdkInt",
                 )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-bt",
+                    "policy=selected_null_mac sdk=$sdkInt",
+                )
                 postSelectedNullMacNotif(context)
                 return true
             }
@@ -114,16 +118,28 @@ class BtConnectionReceiver : BroadcastReceiver() {
                     "ftpmusic-bt",
                     "skip connect mac=$deviceMac enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
                 )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-bt",
+                    "policy=skip enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
+                )
                 return false
             }
             android.util.Log.i(
                 "ftpmusic-bt",
                 "BT resume for $deviceMac mode=$mode enabled=$enabled sdk=$sdkInt",
             )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "policy=allow mode=$mode sdk=$sdkInt",
+            )
             val result = starter(context)
             android.util.Log.i(
                 "ftpmusic-bt",
                 "BT resume result=$result mac=$deviceMac mode=$mode sdk=$sdkInt",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "result=$result mode=$mode sdk=$sdkInt",
             )
             return true
         }

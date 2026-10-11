@@ -15,6 +15,8 @@ class QueueManagerTest {
 
     @Before
     fun setup() {
+        PlayerHolder.player = null
+        PlayerHolder.exoPlayer = null
         mockPlayer = mockk(relaxed = true)
         // Android JVM tests: Uri.parse() returns null with returnDefaultValues=true
         mockkStatic(Uri::class)
@@ -29,6 +31,7 @@ class QueueManagerTest {
     fun teardown() {
         unmockkStatic(Uri::class)
         PlayerHolder.player = null
+        PlayerHolder.exoPlayer = null
     }
 
     // ── buildMediaItem: mimeType ────────────────────────────────────────
@@ -397,6 +400,22 @@ class QueueManagerTest {
         verify { mockPlayer.prepare() }
         verify { mockPlayer.play() }
         verify(exactly = 0) { mockPlayer.seekToDefaultPosition(any()) }
+    }
+
+    @Test
+    fun `playAll with playWhenReady false seats without play`() {
+        PlayerHolder.player = mockPlayer
+        val items = listOf(
+            manager.buildMediaItem("t0", "T0", "http://a.com/0"),
+            manager.buildMediaItem("t1", "T1", "http://a.com/1"),
+        )
+
+        manager.playAll(items, startIndex = 1, positionMs = 106679L, playWhenReady = false)
+
+        verify { mockPlayer.setMediaItems(items, 1, 106679L) }
+        verify { mockPlayer.prepare() }
+        verify { mockPlayer.pause() }
+        verify(exactly = 0) { mockPlayer.play() }
     }
 
     @Test

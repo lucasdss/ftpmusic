@@ -268,15 +268,13 @@ class AlbumDetailViewModel @Inject constructor(
         }
     }
 
-    /** Load cached public rating, then lazy-fetch from MusicBrainz if missing. */
     /** Album list order: disc then track ascending; null tags last; stable by title/id. */
-    private fun sortAlbumTracks(tracks: List<Track>): List<Track> =
-        tracks.sortedWith(
-            compareBy<Track> { it.discNumber ?: Int.MAX_VALUE }
-                .thenBy { it.trackNumber ?: Int.MAX_VALUE }
-                .thenBy { it.title.lowercase() }
-                .thenBy { it.id },
-        )
+    private fun sortAlbumTracks(tracks: List<Track>): List<Track> = tracks.sortedWith(
+        compareBy<Track> { it.discNumber ?: Int.MAX_VALUE }
+            .thenBy { it.trackNumber ?: Int.MAX_VALUE }
+            .thenBy { it.title.lowercase() }
+            .thenBy { it.id },
+    )
 
     private fun loadPublicRating(albumId: String, album: com.lucasdss.ftpmusic.app.data.model.Album?) {
         viewModelScope.launch {

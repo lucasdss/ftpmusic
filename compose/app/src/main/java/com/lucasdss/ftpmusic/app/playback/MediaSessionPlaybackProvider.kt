@@ -143,6 +143,31 @@ class MediaSessionPlaybackProvider @Inject constructor(
         _positionMs.value = state.position
     }
 
+    /**
+     * One-shot/paused poll helper (ADR-0117). Emits only when position/duration/
+     * track id drifted — StateFlow equality keeps collectors quiet.
+     */
+    @VisibleForTesting
+    internal fun mirrorPausedPosition(player: Player) {
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        val dur = player.duration
+        val id = player.currentMediaItem?.mediaId
+        val cur = _playbackState.value
+        if (pos == _positionMs.value &&
+            pos == cur.position &&
+            dur == cur.duration &&
+            (id == null || id == cur.currentTrackId)
+        ) {
+            return
+        }
+        if (id != null && id != cur.currentTrackId) {
+            publishFromPlayer(player)
+        } else {
+            _playbackState.update { it.copy(position = pos, duration = dur) }
+            _positionMs.value = pos
+        }
+    }
+
     /** Pending Cast volume expiry — if the device never confirms within this
      *  window (network drop, receiver off, GMS glitch), pendingCastVolume reverts
      *  to null so the UI falls back to the last confirmed castVolume. */
@@ -203,6 +228,11 @@ class MediaSessionPlaybackProvider @Inject constructor(
                         }
                         _positionMs.value = player.currentPosition
                     }
+                } else {
+                    // ADR-0117: after BT/A17 seat-pause or restore seek, Exo holds
+                    // the saved offset while isPlaying=false. Mirror when it
+                    // differs so UI cannot stick at an early 0 snapshot.
+                    mirrorPausedPosition(player)
                 }
                 delay(positionPollMs)
             }

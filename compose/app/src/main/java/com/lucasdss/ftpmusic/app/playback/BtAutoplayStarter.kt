@@ -45,6 +45,10 @@ object BtAutoplayStarter {
                 "ftpmusic-bt",
                 "startForegroundService OK action=${intent.action} sdk=$sdkInt",
             )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "fgsBlocked=false result=Started sdk=$sdkInt",
+            )
             StartResult.Started
         } catch (e: Exception) {
             MediaServiceStartRequest.foregroundRequested = false
@@ -53,6 +57,10 @@ object BtAutoplayStarter {
             android.util.Log.w(
                 "ftpmusic-bt",
                 "startForegroundService failed fgsBlocked=$fgsBlocked sdk=$sdkInt: ${e.message}",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-bt",
+                "fgsBlocked=$fgsBlocked result=NotificationFallback sdk=$sdkInt",
             )
             // ADR-0087: car never sees this; phone tap / MediaButton resumption remains
             // the recovery path when Doze blocks background FGS.
@@ -90,6 +98,10 @@ object BtAutoplayStarter {
                 "ftpmusic-bt",
                 "Resume notif blocked — POST_NOTIFICATIONS / notifications disabled; " +
                     "MediaSession seat / MediaButton resumption still required",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-bt",
+                "result=notif_disabled",
             )
         }
         val launch = Intent(context, MediaService::class.java).apply {

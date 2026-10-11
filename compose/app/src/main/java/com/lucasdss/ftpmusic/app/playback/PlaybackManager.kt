@@ -435,6 +435,7 @@ class PlaybackManager @Inject constructor(
         nextEntryId: Int = 0,
         positionMs: Long = 0L,
         isAutoplayFlags: List<Boolean>? = null,
+        playWhenReady: Boolean = true,
     ): Boolean {
         ensurePlayer()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "restoreQueue")
@@ -468,7 +469,7 @@ class PlaybackManager @Inject constructor(
         if (nextEntryId > 0) dualQueue.adoptNextEntryId(nextEntryId)
         val merged = dualQueue.getMerged()
         val si = startIndex.coerceIn(0, merged.lastIndex.coerceAtLeast(0))
-        queueManager.playAll(merged, si, positionMs)
+        queueManager.playAll(merged, si, positionMs, playWhenReady = playWhenReady)
         enqueuePlayQueue(alignedTracks, alignedUrls, si)
         return true
     }

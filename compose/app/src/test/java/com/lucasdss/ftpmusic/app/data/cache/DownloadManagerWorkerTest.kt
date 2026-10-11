@@ -112,7 +112,7 @@ class DownloadManagerWorkerTest {
     }
 
     @Test
-    fun `http 200 json content type never completes`() {
+    fun `http 200 json content type fails terminal without retry`() {
         val poison = subsonicErrorJsonBytes()
         val server = MockWebServer()
         server.enqueue(
@@ -130,7 +130,9 @@ class DownloadManagerWorkerTest {
             val manager = managerWithPicks(item, null)
             try {
                 manager.start()
-                coVerify(timeout = 5000) { dao.updateRetryCount(item.id, 1) }
+                // ADR-0117: non-audio CT is sticky — mark failed immediately.
+                coVerify(timeout = 5000) { dao.updateStatus(item.id, "failed") }
+                coVerify(exactly = 0) { dao.updateRetryCount(any(), any()) }
                 coVerify(exactly = 0) { dao.updateStatus(item.id, "completed") }
                 coVerify(exactly = 0) {
                     cacheService.writeCachedTrackFromFile(any(), any(), isDownload = any())

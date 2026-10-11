@@ -89,7 +89,30 @@ class MixCacheCoordinatorTest {
         )
         org.junit.Assert.assertTrue(snap.contains("mixCache onGenerated mixId=1"))
         org.junit.Assert.assertTrue(snap.contains("count=2 missing=1"))
+        org.junit.Assert.assertTrue(snap.contains("skipTerminal=0 enqueued=1"))
         org.junit.Assert.assertFalse(snap.contains("http"))
+    }
+
+    @Test
+    fun `onGenerated skips terminal-failed tracks`() = runTest {
+        stubCredentials()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
+        coEvery { cacheService.hasMixOwnedSpan("bad") } returns false
+        coEvery { cacheService.hasMixOwnedSpan("good") } returns false
+        coEvery { downloadManager.isTerminalFailed("bad") } returns true
+        coEvery { downloadManager.isTerminalFailed("good") } returns false
+
+        coordinator.onGenerated(mix(), listOf("bad", "good"))
+
+        coVerify(exactly = 0) { downloadManager.enqueue("bad", any(), any()) }
+        coVerify { downloadManager.enqueue("good", any(), priority = 2) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            mockk(relaxed = true),
+            offline = false,
+            reachable = true,
+        )
+        org.junit.Assert.assertTrue(snap.contains("missing=2 skipTerminal=1 enqueued=1"))
     }
 
     @Test

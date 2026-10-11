@@ -2021,6 +2021,10 @@ class MediaService : MediaLibraryService() {
                     "ftpmusic-bt",
                     "BT seat — empty Room queue; Resume notif posted",
                 )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-bt",
+                    "result=empty_queue",
+                )
                 return
             }
             applyRestoredQueue(saved, userInitiatedPlayback = p?.playWhenReady == true)
@@ -2105,6 +2109,9 @@ class MediaService : MediaLibraryService() {
     private fun applyRestoredQueue(saved: SavedQueueState, userInitiatedPlayback: Boolean) {
         val p = PlayerHolder.player
         val resumeForBt = MediaServiceStartRequest.btAutoplayRequested
+        // ADR-0117: BT owns play/WIU after seat — never eager-play then pause (audible flash).
+        // Non-BT cold restore also seats paused unless the user already asked to play.
+        val seatPlayWhenReady = !resumeForBt && userInitiatedPlayback
         val restored = playbackManager.restoreQueue(
             saved.tracks,
             saved.urls,
@@ -2115,6 +2122,7 @@ class MediaService : MediaLibraryService() {
             saved.nextEntryId,
             saved.positionMs,
             saved.isAutoplayFlags,
+            playWhenReady = seatPlayWhenReady,
         )
         if (restored && saved.isAutoplayFlags?.any { it } == true) {
             hasLoadedContinuation = true
@@ -2133,16 +2141,18 @@ class MediaService : MediaLibraryService() {
                 )
             }
         }
-        if (resumeForBt || userInitiatedPlayback) {
+        if (resumeForBt) {
             MediaServiceStartRequest.btAutoplayRequested = false
-            if (resumeForBt) {
-                applyBtPlayAfterSeat(p)
-            } else {
-                android.util.Log.w(
-                    "ftpmusic",
-                    "[MediaService] User requested playback during restore — leaving playing",
-                )
-            }
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "seat idx=${saved.currentIndex} pos=${saved.positionMs} tracks=${saved.tracks.size}",
+            )
+            applyBtPlayAfterSeat(p)
+        } else if (userInitiatedPlayback) {
+            android.util.Log.w(
+                "ftpmusic",
+                "[MediaService] User requested playback during restore — leaving playing",
+            )
         } else {
             p?.pause()
         }
@@ -2180,6 +2190,10 @@ class MediaService : MediaLibraryService() {
                     "ftpmusic-bt",
                     "BT seat offline — no fully cached track; offline notif posted sdk=$sdkInt",
                 )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-bt",
+                    "result=offline_empty sdk=$sdkInt",
+                )
                 return
             }
             if (cachedIdx != player.currentMediaItemIndex) {
@@ -2188,17 +2202,29 @@ class MediaService : MediaLibraryService() {
                     "ftpmusic-bt",
                     "BT seat offline — seek to cached idx=$cachedIdx sdk=$sdkInt",
                 )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-bt",
+                    "offlineCachedIdx=$cachedIdx sdk=$sdkInt",
+                )
             }
         }
         if (PlaybackResumptionMapper.shouldBackgroundAutoplay(sdkInt)) {
             player?.play()
             android.util.Log.i("ftpmusic", "[MediaService] BT autoplay — play() after restore sdk=$sdkInt")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "result=autoplay sdk=$sdkInt",
+            )
         } else {
             player?.pause()
             postWiuNotif(this)
             android.util.Log.i(
                 "ftpmusic",
                 "[MediaService] BT seat only (A17 WIU) — Resume notif posted sdk=$sdkInt",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "result=wiu sdk=$sdkInt",
             )
         }
     }
