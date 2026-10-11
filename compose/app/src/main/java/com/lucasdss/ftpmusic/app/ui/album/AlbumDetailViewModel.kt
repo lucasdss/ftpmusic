@@ -207,14 +207,17 @@ class AlbumDetailViewModel @Inject constructor(
                 val cachedTracks = metadataDao.getAlbumTracks(albumId)
                 if (cachedTracks.isNotEmpty()) {
                     _state.value = _state.value.copy(
-                        tracks = cachedTracks.map { t ->
-                            Track(
-                                id = t.id, title = t.title, artist = t.artist, albumId = t.albumId,
-                                artistId = t.artistId, duration = t.duration,
-                                trackNumber = t.trackNumber, coverArt = t.coverArt,
-                                suffix = t.suffix, contentType = t.contentType,
-                            )
-                        },
+                        tracks = sortAlbumTracks(
+                            cachedTracks.map { t ->
+                                Track(
+                                    id = t.id, title = t.title, artist = t.artist, albumId = t.albumId,
+                                    artistId = t.artistId, duration = t.duration,
+                                    trackNumber = t.trackNumber, discNumber = t.discNumber,
+                                    coverArt = t.coverArt,
+                                    suffix = t.suffix, contentType = t.contentType,
+                                )
+                            },
+                        ),
                         isLoading = false,
                     )
                 }
@@ -228,7 +231,7 @@ class AlbumDetailViewModel @Inject constructor(
                 }
                 // Fetch from API for fresh data
                 val result = repository.getAlbum(albumId, username, password)
-                val tracks = result?.tracks ?: emptyList()
+                val tracks = sortAlbumTracks(result?.tracks ?: emptyList())
                 _state.value = _state.value.copy(
                     album = result?.album,
                     tracks = tracks,
@@ -249,6 +252,7 @@ class AlbumDetailViewModel @Inject constructor(
                                 artist = t.artist,
                                 duration = t.duration,
                                 trackNumber = t.trackNumber,
+                                discNumber = t.discNumber,
                                 coverArt = t.coverArt,
                                 suffix = t.suffix,
                                 contentType = t.contentType,
@@ -265,6 +269,15 @@ class AlbumDetailViewModel @Inject constructor(
     }
 
     /** Load cached public rating, then lazy-fetch from MusicBrainz if missing. */
+    /** Album list order: disc then track ascending; null tags last; stable by title/id. */
+    private fun sortAlbumTracks(tracks: List<Track>): List<Track> =
+        tracks.sortedWith(
+            compareBy<Track> { it.discNumber ?: Int.MAX_VALUE }
+                .thenBy { it.trackNumber ?: Int.MAX_VALUE }
+                .thenBy { it.title.lowercase() }
+                .thenBy { it.id },
+        )
+
     private fun loadPublicRating(albumId: String, album: com.lucasdss.ftpmusic.app.data.model.Album?) {
         viewModelScope.launch {
             try {

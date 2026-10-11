@@ -17,9 +17,12 @@ duration aligned with the title. Now Playing must keep thumbs always.
    **true**) persisted as `list_show_reactions` / `list_show_duration` via
    SecureStorage; hydrated by SettingsViewModel; provided through
    `LocalListChromePrefs` in `FtpmusicTheme` (same pattern as typography).
-2. **Settings → Appearance** exposes two switches:
+   Leading number columns added later in ADR-0116 (`showAlbumTrackNumbers`,
+   `showListSequence`).
+2. **Settings → Appearance** exposes switches:
    - Like and dislike on track lists
    - Duration on track lists
+   - (ADR-0116) Track numbers on albums / Numbers on playlists and mixes
 3. **`SongListRow`**: duration on the **title line** (end-aligned) when enabled;
    meta row = cache + gated thumbs only. Prefs gate rendering even if callbacks
    are passed.

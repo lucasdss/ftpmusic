@@ -441,6 +441,11 @@ class SettingsViewModel @Inject constructor(
             storage.get(SecureStorage.KEY_LIST_SHOW_REACTIONS)?.toBooleanStrictOrNull() ?: true,
         showListDuration =
             storage.get(SecureStorage.KEY_LIST_SHOW_DURATION)?.toBooleanStrictOrNull() ?: true,
+        showAlbumTrackNumbers =
+            storage.get(SecureStorage.KEY_LIST_SHOW_ALBUM_TRACK_NUMBERS)?.toBooleanStrictOrNull()
+                ?: true,
+        showListSequence =
+            storage.get(SecureStorage.KEY_LIST_SHOW_SEQUENCE)?.toBooleanStrictOrNull() ?: true,
     )
 
     fun setShowListReactions(enabled: Boolean) {
@@ -454,6 +459,20 @@ class SettingsViewModel @Inject constructor(
         storage.put(SecureStorage.KEY_LIST_SHOW_DURATION, enabled.toString())
         _state.value = _state.value.copy(
             listChromePrefs = _state.value.listChromePrefs.copy(showListDuration = enabled),
+        )
+    }
+
+    fun setShowAlbumTrackNumbers(enabled: Boolean) {
+        storage.put(SecureStorage.KEY_LIST_SHOW_ALBUM_TRACK_NUMBERS, enabled.toString())
+        _state.value = _state.value.copy(
+            listChromePrefs = _state.value.listChromePrefs.copy(showAlbumTrackNumbers = enabled),
+        )
+    }
+
+    fun setShowListSequence(enabled: Boolean) {
+        storage.put(SecureStorage.KEY_LIST_SHOW_SEQUENCE, enabled.toString())
+        _state.value = _state.value.copy(
+            listChromePrefs = _state.value.listChromePrefs.copy(showListSequence = enabled),
         )
     }
 

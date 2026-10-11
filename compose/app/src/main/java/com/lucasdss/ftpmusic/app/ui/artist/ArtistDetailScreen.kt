@@ -1,5 +1,11 @@
 package com.lucasdss.ftpmusic.app.ui.artist
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,6 +76,8 @@ fun ArtistDetailScreen(
     onAlbumClick: (String) -> Unit = {},
     onArtistClick: (String) -> Unit = {},
     onBack: () -> Unit = {},
+    currentTrackId: String? = null,
+    isPlaying: Boolean = false,
     viewModel: ArtistDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -307,7 +315,13 @@ fun ArtistDetailScreen(
                     if (selectedTab == 0) {
                         AlbumsTab(state = state, viewModel = viewModel, onAlbumClick = onAlbumClick)
                     } else {
-                        TracksTab(state = state, viewModel = viewModel, onTrackMenu = { showTrackSheet = it })
+                        TracksTab(
+                            state = state,
+                            viewModel = viewModel,
+                            onTrackMenu = { showTrackSheet = it },
+                            currentTrackId = currentTrackId,
+                            isPlaying = isPlaying,
+                        )
                     }
                 }
             }
@@ -488,15 +502,23 @@ fun ArtistDetailScreen(
 }
 
 @Composable
-private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel, onTrackMenu: (Int) -> Unit) {
+private fun TracksTab(
+    state: ArtistDetailState,
+    viewModel: ArtistDetailViewModel,
+    onTrackMenu: (Int) -> Unit,
+    currentTrackId: String? = null,
+    isPlaying: Boolean = false,
+) {
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = spacingXL()),
         contentPadding = PaddingValues(vertical = spacingS()),
     ) {
         itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->
+            val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
             TrackRow(
                 track = track,
                 index = index,
+                isActive = isActive,
                 onClick = { viewModel.playTrack(index) },
                 onLongClick = { onTrackMenu(index) },
                 isLiked = track.id in state.likedTrackIds,
@@ -538,6 +560,7 @@ private fun TracksTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
 private fun TrackRow(
     track: Track,
     index: Int,
+    isActive: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     isLiked: Boolean,
@@ -545,9 +568,11 @@ private fun TrackRow(
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
 ) {
+    val showSequence = LocalListChromePrefs.current.showListSequence
     SongListRow(
         title = track.title,
         subtitle = track.artist,
+        isActive = isActive,
         downloadStatus = "none",
         durationLabel = track.duration?.let { formatSongDuration(it) },
         isLiked = isLiked,
@@ -558,15 +583,69 @@ private fun TrackRow(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = Modifier.padding(vertical = spacingM()),
-        leadingContent = {
-            Text(
-                "${index + 1}",
-                color = Color(0xFF666666),
-                fontSize = textBodyM(),
-                modifier = Modifier.width(28.dp),
-            )
+        leadingContent = when {
+            isActive -> {
+                {
+                    Box(
+                        Modifier.widthIn(min = 16.dp, max = 28.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { AnimatedEqBarsArtist() }
+                }
+            }
+            showSequence -> {
+                {
+                    Box(
+                        Modifier.widthIn(min = 16.dp, max = 28.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "${index + 1}",
+                            color = Color(0xFF666666),
+                            fontSize = textLabelM(),
+                        )
+                    }
+                }
+            }
+            else -> null
         },
     )
+}
+
+@Composable
+private fun AnimatedEqBarsArtist() {
+    val transition = rememberInfiniteTransition(label = "eq")
+    val bars = listOf(
+        transition.animateFloat(
+            0f,
+            1f,
+            infiniteRepeatable(tween(500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            "b1",
+        ),
+        transition.animateFloat(
+            0f,
+            1f,
+            infiniteRepeatable(tween(400, easing = FastOutSlowInEasing, delayMillis = 100), RepeatMode.Reverse),
+            "b2",
+        ),
+        transition.animateFloat(
+            0f,
+            1f,
+            infiniteRepeatable(tween(550, easing = FastOutSlowInEasing, delayMillis = 200), RepeatMode.Reverse),
+            "b3",
+        ),
+    )
+    Row(
+        Modifier.width(12.dp).height(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        bars.forEach { anim ->
+            Box(
+                Modifier.weight(1f).fillMaxHeight(fraction = 0.35f + anim.value * 0.65f)
+                    .clip(RoundedCornerShape(1.dp)).background(BrandTeal),
+            )
+        }
+    }
 }
 
 // ─── Artist Action Sheet ───

@@ -10,6 +10,8 @@
 |---|---|---|---|
 | `showListReactions` | `list_show_reactions` | true | Like and dislike on track lists |
 | `showListDuration` | `list_show_duration` | true | Duration on track lists |
+| `showAlbumTrackNumbers` | `list_show_album_track_numbers` | true | Track numbers on albums (ADR-0116) |
+| `showListSequence` | `list_show_sequence` | true | Numbers on playlists and mixes (ADR-0116) |
 
 SoT: `SettingsViewModel` → `FtpmusicTheme` → `LocalListChromePrefs`.
 

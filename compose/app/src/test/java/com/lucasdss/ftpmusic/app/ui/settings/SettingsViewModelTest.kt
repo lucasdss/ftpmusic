@@ -596,6 +596,8 @@ class SettingsViewModelTest {
         val prefs = viewModel.state.value.listChromePrefs
         assertTrue(prefs.showListReactions)
         assertTrue(prefs.showListDuration)
+        assertTrue(prefs.showAlbumTrackNumbers)
+        assertTrue(prefs.showListSequence)
     }
 
     @Test
@@ -613,12 +615,30 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setShowAlbumTrackNumbers persists to storage`() {
+        viewModel.setShowAlbumTrackNumbers(false)
+        assertFalse(viewModel.state.value.listChromePrefs.showAlbumTrackNumbers)
+        verify { storage.put(SecureStorage.KEY_LIST_SHOW_ALBUM_TRACK_NUMBERS, "false") }
+    }
+
+    @Test
+    fun `setShowListSequence persists to storage`() {
+        viewModel.setShowListSequence(false)
+        assertFalse(viewModel.state.value.listChromePrefs.showListSequence)
+        verify { storage.put(SecureStorage.KEY_LIST_SHOW_SEQUENCE, "false") }
+    }
+
+    @Test
     fun `stored list chrome prefs restored on init`() {
         every { storage.get(SecureStorage.KEY_LIST_SHOW_REACTIONS) } returns "false"
         every { storage.get(SecureStorage.KEY_LIST_SHOW_DURATION) } returns "false"
+        every { storage.get(SecureStorage.KEY_LIST_SHOW_ALBUM_TRACK_NUMBERS) } returns "false"
+        every { storage.get(SecureStorage.KEY_LIST_SHOW_SEQUENCE) } returns "false"
         val vm = createViewModel()
         assertFalse(vm.state.value.listChromePrefs.showListReactions)
         assertFalse(vm.state.value.listChromePrefs.showListDuration)
+        assertFalse(vm.state.value.listChromePrefs.showAlbumTrackNumbers)
+        assertFalse(vm.state.value.listChromePrefs.showListSequence)
     }
 
     // ── ADR-0099: Typography preferences ────────────────────────────────

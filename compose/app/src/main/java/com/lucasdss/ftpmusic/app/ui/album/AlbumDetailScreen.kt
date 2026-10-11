@@ -319,19 +319,31 @@ fun AlbumDetailScreen(
                     onClick = { viewModel.playTrack(index) },
                     onLongClick = { showTrackSheet = index },
                     modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingM()),
-                    leadingContent = {
-                        Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
-                            if (isActive) {
-                                AnimatedEqBars()
-                            } else {
-                                Text(
-                                    "${index + 1}",
-                                    color = Color(0xFF666666),
-                                    fontSize = textLabelM(),
-                                    fontFamily = interFontFamily(),
-                                )
+                    leadingContent = when {
+                        isActive -> {
+                            {
+                                Box(
+                                    Modifier.widthIn(min = 16.dp, max = 28.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) { AnimatedEqBars() }
                             }
                         }
+                        LocalListChromePrefs.current.showAlbumTrackNumbers -> {
+                            {
+                                Box(
+                                    Modifier.widthIn(min = 16.dp, max = 28.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        track.trackNumber?.toString().orEmpty(),
+                                        color = Color(0xFF666666),
+                                        fontSize = textLabelM(),
+                                        fontFamily = interFontFamily(),
+                                    )
+                                }
+                            }
+                        }
+                        else -> null
                     },
                 )
                 HorizontalDivider(

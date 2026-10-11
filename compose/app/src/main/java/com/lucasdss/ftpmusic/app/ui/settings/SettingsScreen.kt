@@ -710,6 +710,20 @@ fun SettingsScreen(
                 )
                 SectionDivider()
                 SectionToggleRow(
+                    label = "Track numbers on albums",
+                    subtitle = "Show album disc/track tags; hide to free title space",
+                    checked = state.listChromePrefs.showAlbumTrackNumbers,
+                    onToggle = { viewModel.setShowAlbumTrackNumbers(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Numbers on playlists and mixes",
+                    subtitle = "Sequence order on playlists, Daily Mix, and artist songs",
+                    checked = state.listChromePrefs.showListSequence,
+                    onToggle = { viewModel.setShowListSequence(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
                     label = "Prefer iTunes album art",
                     subtitle = "Use iTunes artwork instead of Navidrome when available",
                     checked = state.preferItunesArt,

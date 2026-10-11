@@ -51,6 +51,7 @@ class AlbumRepository @Inject constructor(private val api: SubsonicApi) {
                 albumId = s["albumId"] as? String,
                 duration = (s["duration"] as? Number)?.toInt(),
                 trackNumber = (s["track"] as? Number)?.toInt(),
+                discNumber = (s["discNumber"] as? Number)?.toInt(),
                 bitrate = (s["bitrate"] as? Number)?.toInt(),
                 suffix = s["suffix"] as? String,
                 contentType = s["contentType"] as? String,

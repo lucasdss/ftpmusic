@@ -92,6 +92,24 @@ class AlbumDetailViewModelTest {
     }
 
     @Test
+    fun `loadAlbum sorts tracks by disc then track number ascending`() = runTest {
+        val tracks = listOf(
+            Track("t3", "C", duration = 100, trackNumber = 1, discNumber = 2),
+            Track("t1", "A", duration = 100, trackNumber = 2, discNumber = 1),
+            Track("t2", "B", duration = 100, trackNumber = 1, discNumber = 1),
+            Track("t4", "D", duration = 100, trackNumber = null, discNumber = null),
+        )
+        coEvery { repository.getAlbum("al-sort", "user", "pass") } returns
+            AlbumWithTracks(Album("al-sort", "Sorted"), tracks)
+        coEvery { metadataDao.getAlbumTracks("al-sort") } returns emptyList()
+
+        viewModel.loadAlbum("al-sort", "user", "pass")
+        val state = viewModel.state.first { !it.isLoading && it.album != null }
+
+        assertEquals(listOf("t2", "t1", "t3", "t4"), state.tracks.map { it.id })
+    }
+
+    @Test
     fun `loadAlbum sets error on failure`() = runTest {
         coEvery { repository.getAlbum("bad", any(), any()) } throws RuntimeException("fail")
         viewModel.loadAlbum("bad", "user", "pass")

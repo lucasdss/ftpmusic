@@ -705,6 +705,8 @@ fun FtpmusicNavHost() {
                             onAlbumClick = { albumId -> navController.navigate("album/$albumId") },
                             onArtistClick = { id -> navController.navigate("artist/$id") },
                             onBack = { navController.popBackStack() },
+                            currentTrackId = playbackState.currentTrackId,
+                            isPlaying = playbackState.isPlaying,
                         )
                     }
                     composable("settings") {

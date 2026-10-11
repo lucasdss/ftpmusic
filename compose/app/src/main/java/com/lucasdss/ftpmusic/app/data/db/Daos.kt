@@ -80,7 +80,7 @@ interface TrackDao {
      *  tracks-table values when the album source lacks them (defensive; keeps the
      *  two populate* queries idempotent regardless of execution order). */
     @Query(
-        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), COALESCE(ca.name, t.album), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, 1 as disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
+        "INSERT OR REPLACE INTO tracks (id, server_id, title, artist, album, album_id, artist_id, genre, duration_seconds, track_number, disc_number, cover_art_url, play_count, user_rating, starred_at, cached_file_path, is_downloaded, is_auto_cached, cache_size_bytes, cached_at, last_played_at, bitrate, suffix, content_type, path, size_bytes, created_at, is_disliked, disliked_at, pending_unstar_at) SELECT cat.id, '' as server_id, cat.title, COALESCE(cat.artist, t.artist), COALESCE(ca.name, t.album), cat.album_id, COALESCE(cat.artist_id, t.artist_id), COALESCE(ca.genre, ''), cat.duration, cat.track_number, cat.disc_number, cat.cover_art, COALESCE(t.play_count, 0), t.user_rating, t.starred_at, t.cached_file_path, COALESCE(t.is_downloaded, 0), COALESCE(t.is_auto_cached, 0), t.cache_size_bytes, t.cached_at, t.last_played_at, t.bitrate, t.suffix, t.content_type, t.path, t.size_bytes, t.created_at, COALESCE(t.is_disliked, 0), t.disliked_at, t.pending_unstar_at FROM cached_album_tracks cat JOIN cached_albums ca ON cat.album_id = ca.id LEFT JOIN tracks t ON cat.id = t.id",
     )
     suspend fun populateAllTrackGenres()
 
@@ -270,6 +270,7 @@ interface TrackDao {
                             genre = row.genre?.takeIf { it.isNotBlank() } ?: old.genre,
                             durationSeconds = row.durationSeconds ?: old.durationSeconds,
                             trackNumber = row.trackNumber ?: old.trackNumber,
+                            discNumber = row.discNumber ?: old.discNumber,
                             coverArtUrl = row.coverArtUrl ?: old.coverArtUrl,
                             suffix = row.suffix ?: old.suffix,
                             contentType = row.contentType ?: old.contentType,

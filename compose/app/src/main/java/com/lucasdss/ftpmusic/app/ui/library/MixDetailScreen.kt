@@ -362,19 +362,30 @@ fun MixDetailScreen(
                             onClick = { viewModel.playTrack(index) },
                             onLongClick = { showTrackSheet = track },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            leadingContent = {
-                                Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
-                                    if (isActive) {
-                                        AnimatedEqBarsMix()
-                                    } else {
-                                        Text(
-                                            "${track.trackNumber ?: index + 1}",
-                                            color = Color(0xFF666666),
-                                            fontSize = textBodyM(),
-                                            fontWeight = FontWeight.Medium,
-                                        )
+                            leadingContent = when {
+                                isActive -> {
+                                    {
+                                        Box(
+                                            Modifier.widthIn(min = 16.dp, max = 28.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) { AnimatedEqBarsMix() }
                                     }
                                 }
+                                LocalListChromePrefs.current.showListSequence -> {
+                                    {
+                                        Box(
+                                            Modifier.widthIn(min = 16.dp, max = 28.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                "${index + 1}",
+                                                color = Color(0xFF666666),
+                                                fontSize = textLabelM(),
+                                            )
+                                        }
+                                    }
+                                }
+                                else -> null
                             },
                         )
                         HorizontalDivider(

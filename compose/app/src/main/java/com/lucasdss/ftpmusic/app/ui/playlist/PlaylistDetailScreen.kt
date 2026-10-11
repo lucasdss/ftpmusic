@@ -478,18 +478,30 @@ fun PlaylistDetailScreen(
                                 onClick = { viewModel.playTrack(index) },
                                 onLongClick = { menuTrackIndex = index },
                                 modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
-                                leadingContent = {
-                                    Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
-                                        if (isActive) {
-                                            AnimatedEqBars()
-                                        } else {
-                                            Text(
-                                                "${index + 1}",
-                                                color = Color(0xFF666666),
-                                                fontSize = textLabelM(),
-                                            )
+                                leadingContent = when {
+                                    isActive -> {
+                                        {
+                                            Box(
+                                                Modifier.widthIn(min = 16.dp, max = 28.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) { AnimatedEqBars() }
                                         }
                                     }
+                                    LocalListChromePrefs.current.showListSequence -> {
+                                        {
+                                            Box(
+                                                Modifier.widthIn(min = 16.dp, max = 28.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    "${index + 1}",
+                                                    color = Color(0xFF666666),
+                                                    fontSize = textLabelM(),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    else -> null
                                 },
                             )
                         }

@@ -35,7 +35,7 @@ class RepositoriesTest {
                         mapOf<String, Any?>(
                             "id" to "tr-1", "title" to "T1", "artist" to "A",
                             "artistId" to "ar-1", "album" to "Album", "albumId" to "al-1",
-                            "duration" to 200, "track" to 3, "bitrate" to 320,
+                            "duration" to 200, "track" to 3, "discNumber" to 2, "bitrate" to 320,
                             "suffix" to "mp3", "contentType" to "audio/mpeg",
                             "path" to "/x.mp3", "coverArt" to "ca-2", "size" to 12345,
                         ),
@@ -61,6 +61,7 @@ class RepositoriesTest {
         assertEquals("al-1", t.albumId)
         assertEquals(200, t.duration)
         assertEquals(3, t.trackNumber)
+        assertEquals(2, t.discNumber)
         assertEquals(320, t.bitrate)
         assertEquals("mp3", t.suffix)
         assertEquals("audio/mpeg", t.contentType)

@@ -22,6 +22,7 @@ data class Track(
     val albumId: String? = null,
     val duration: Int? = null,
     val trackNumber: Int? = null,
+    val discNumber: Int? = null,
     val bitrate: Int? = null,
     val suffix: String? = null,
     val contentType: String? = null,

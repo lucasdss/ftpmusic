@@ -116,6 +116,7 @@ class PlaylistRepository @Inject constructor(
                     artistId = m["artistId"] as? String,
                     durationSeconds = (m["duration"] as? Number)?.toInt(),
                     trackNumber = (m["track"] as? Number)?.toInt(),
+                    discNumber = (m["discNumber"] as? Number)?.toInt(),
                     bitrate = (m["bitRate"] as? Number)?.toInt(),
                     suffix = m["suffix"] as? String,
                     contentType = m["contentType"] as? String,
