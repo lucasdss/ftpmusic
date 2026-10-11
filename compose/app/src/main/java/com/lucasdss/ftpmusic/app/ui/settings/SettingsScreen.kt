@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
+import com.lucasdss.ftpmusic.app.playback.BatteryOptimizationHelper
 import com.lucasdss.ftpmusic.app.playback.DefaultMusicRoleHelper
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.Background
@@ -840,7 +841,16 @@ fun SettingsScreen(
                 }
                 val notifPermissionLauncher = rememberLauncherForActivityResult(
                     androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-                ) { /* best-effort for FGS fallback notif */ }
+                ) { granted ->
+                    viewModel.refreshBtResumeState()
+                    if (!granted) {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.bt_resume_notif_denied_toast),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
                 SectionToggleRow(
                     label = stringResource(R.string.bt_resume_toggle),
                     subtitle = stringResource(R.string.bt_resume_subtitle),
@@ -849,13 +859,14 @@ fun SettingsScreen(
                         if (enabled) {
                             val needsBt = !state.btHasConnectPermission &&
                                 android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                val nm = androidx.core.app.NotificationManagerCompat.from(context)
-                                if (!nm.areNotificationsEnabled()) {
-                                    notifPermissionLauncher.launch(
-                                        android.Manifest.permission.POST_NOTIFICATIONS,
-                                    )
-                                }
+                            val needsNotif =
+                                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                                    !androidx.core.app.NotificationManagerCompat
+                                        .from(context).areNotificationsEnabled()
+                            if (needsNotif) {
+                                notifPermissionLauncher.launch(
+                                    android.Manifest.permission.POST_NOTIFICATIONS,
+                                )
                             }
                             if (needsBt) {
                                 // Enable only after CONNECT grant (callback).
@@ -871,12 +882,60 @@ fun SettingsScreen(
                         }
                     },
                 )
+                if (state.btResumeEnabled && !state.btNotificationsEnabled) {
+                    Text(
+                        stringResource(R.string.bt_resume_notif_warning),
+                        color = Color(0xFFFFB74D),
+                        fontSize = textLabelS(),
+                        modifier = Modifier
+                            .padding(horizontal = spacingL(), vertical = spacingS())
+                            .testTag("settings_bt_notif_warning"),
+                    )
+                }
                 Text(
                     stringResource(R.string.bt_resume_doze_note),
                     color = Color(0xFF888888),
                     fontSize = textLabelS(),
                     modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                 )
+                val batterySubtitle = if (state.btBatteryUnrestricted) {
+                    stringResource(R.string.bt_resume_battery_cta_ok)
+                } else {
+                    stringResource(R.string.bt_resume_battery_cta_needed)
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            BatteryOptimizationHelper.openBatterySettings(context)
+                            viewModel.refreshBtResumeState()
+                        }
+                        .padding(horizontal = spacingL(), vertical = spacingM())
+                        .testTag("settings_bt_battery_cta"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.bt_resume_battery_cta),
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                        )
+                        Text(
+                            batterySubtitle,
+                            color = if (state.btBatteryUnrestricted) {
+                                Color(0xFF666666)
+                            } else {
+                                Color(0xFFFFB74D)
+                            },
+                            fontSize = textLabelM(),
+                        )
+                    }
+                    Icon(
+                        Icons.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = NavUnselected,
+                    )
+                }
                 if (state.btResumeEnabled) {
                     SectionDivider()
                     OverwriteBehaviorOption(

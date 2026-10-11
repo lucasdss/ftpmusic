@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.data.diagnostics
 import android.content.Context
 import android.os.Build
 import com.lucasdss.ftpmusic.app.BuildConfig
+import com.lucasdss.ftpmusic.app.playback.BtResumeEvents
 import java.time.Instant
 import java.util.ArrayDeque
 
@@ -55,6 +56,7 @@ object DiagnosticLog {
                 appendLine("albums=$albums artists=$artists tracks=$tracks")
             }
             appendLine("capturedAt=${Instant.now()}")
+            append(BtResumeEvents.snapshotSection())
             appendLine("---")
         }
         val bodyLines = synchronized(lock) { lines.toList() }

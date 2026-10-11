@@ -103,6 +103,7 @@ object BtAutoplayStarter {
                 "ftpmusic-bt",
                 "result=notif_disabled",
             )
+            BtResumeEvents.record("notif_disabled")
         }
         val launch = Intent(context, MediaService::class.java).apply {
             action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY

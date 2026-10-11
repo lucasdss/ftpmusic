@@ -16,11 +16,13 @@ class BtConnectionReceiverTest {
     @Before
     fun setUp() {
         BtConnectionReceiver.debounceMap.clear()
+        BtResumeEvents.clear()
     }
 
     @After
     fun tearDown() {
         BtConnectionReceiver.debounceMap.clear()
+        BtResumeEvents.clear()
     }
 
     @Test
@@ -67,6 +69,9 @@ class BtConnectionReceiverTest {
             ),
         )
         verify(exactly = 1) { starter.invoke(any()) }
+        val events = BtResumeEvents.recent().joinToString("\n")
+        assertTrue(events.contains("allow"))
+        assertTrue(events.contains("Started"))
     }
 
     @Test
@@ -89,6 +94,7 @@ class BtConnectionReceiverTest {
             ),
         )
         verify(exactly = 0) { starter.invoke(any()) }
+        assertTrue(BtResumeEvents.recent().any { it.contains("skip") })
     }
 
     @Test
@@ -112,5 +118,6 @@ class BtConnectionReceiverTest {
             ),
         )
         verify(exactly = 1) { starter.invoke(any()) }
+        assertTrue(BtResumeEvents.recent().any { it.contains("NotificationFallback") })
     }
 }

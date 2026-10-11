@@ -101,6 +101,7 @@ class BtConnectionReceiver : BroadcastReceiver() {
                     "ftpmusic-bt",
                     "policy=selected_null_mac sdk=$sdkInt",
                 )
+                BtResumeEvents.record("selected_null_mac", "sdk=$sdkInt")
                 postSelectedNullMacNotif(context)
                 return true
             }
@@ -122,6 +123,10 @@ class BtConnectionReceiver : BroadcastReceiver() {
                     "ftpmusic-bt",
                     "policy=skip enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
                 )
+                BtResumeEvents.record(
+                    "skip",
+                    "enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
+                )
                 return false
             }
             android.util.Log.i(
@@ -132,6 +137,7 @@ class BtConnectionReceiver : BroadcastReceiver() {
                 "ftpmusic-bt",
                 "policy=allow mode=$mode sdk=$sdkInt",
             )
+            BtResumeEvents.record("allow", "mode=$mode sdk=$sdkInt")
             val result = starter(context)
             android.util.Log.i(
                 "ftpmusic-bt",
@@ -141,6 +147,7 @@ class BtConnectionReceiver : BroadcastReceiver() {
                 "ftpmusic-bt",
                 "result=$result mode=$mode sdk=$sdkInt",
             )
+            BtResumeEvents.record(result.name, "mode=$mode sdk=$sdkInt")
             return true
         }
 

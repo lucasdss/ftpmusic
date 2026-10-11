@@ -114,6 +114,10 @@ data class SettingsUiState(
     val btSelectedMacs: Set<String> = emptySet(),
     val btBondedDevices: List<com.lucasdss.ftpmusic.app.playback.BondedBtDevice> = emptyList(),
     val btHasConnectPermission: Boolean = false,
+    /** ADR-0119: PowerManager ignoring battery optimizations. */
+    val btBatteryUnrestricted: Boolean = true,
+    /** ADR-0119: system notifications enabled (POST_NOTIFICATIONS / app setting). */
+    val btNotificationsEnabled: Boolean = true,
     val isDefaultMusicApp: Boolean = false,
     val defaultMusicRoleAvailable: Boolean = false,
     /** Play Store update check (Settings → About; ADR-0113). */
@@ -580,9 +584,21 @@ class SettingsViewModel @Inject constructor(
         } catch (_: Exception) {
             true
         }
+        val batteryOk = try {
+            com.lucasdss.ftpmusic.app.playback.BatteryOptimizationHelper.isUnrestricted(context)
+        } catch (_: Exception) {
+            true
+        }
+        val notifsOk = try {
+            androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+        } catch (_: Exception) {
+            true
+        }
         _state.value = _state.value.copy(
             btHasConnectPermission = hasPerm,
             btBondedDevices = bonded,
+            btBatteryUnrestricted = batteryOk,
+            btNotificationsEnabled = notifsOk,
             isDefaultMusicApp = roleHeld,
             defaultMusicRoleAvailable = roleAvailable,
             btResumeEnabled = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.isEnabled(storage),

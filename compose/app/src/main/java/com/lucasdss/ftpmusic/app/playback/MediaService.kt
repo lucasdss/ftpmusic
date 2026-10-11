@@ -717,6 +717,9 @@ class MediaService : MediaLibraryService() {
     /** True once startForeground succeeded — lets onStartCommand retry it. */
     @Volatile private var foregroundStarted = false
 
+    /** ADR-0119: warm A2DP adds while service alive (complements manifest receiver). */
+    private var btWarmAudioDeviceMonitor: BtWarmAudioDeviceMonitor? = null
+
     /** Last real media notification from Media3's provider callback — used to
      *  re-assert foreground in [onStartCommand] without flashing the
      *  placeholder ("Ready to play") over the actual track. */
@@ -1591,6 +1594,21 @@ class MediaService : MediaLibraryService() {
                 launchQueueRestoreIfNeeded()
             }
 
+            // ADR-0119: warm-path A2DP while MediaService already running.
+            try {
+                val am = getSystemService(android.media.AudioManager::class.java)
+                if (am != null) {
+                    btWarmAudioDeviceMonitor = BtWarmAudioDeviceMonitor(
+                        context = this,
+                        storage = secureStorage,
+                        audioManager = am,
+                        mainHandler = handler,
+                    ).also { it.start() }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-bt", "warm monitor start failed: ${e.message}")
+            }
+
             // Process-death auto-reconnect seeding (Edge-04): the Cast SDK's
             // ReconnectionService can re-establish a session before/without
             // onSessionResumed reaching us. If a session already exists at startup,
@@ -1909,6 +1927,11 @@ class MediaService : MediaLibraryService() {
         CastButtonState.onEndSessionForSwitchRequested = null
         CastButtonState.onConnectRequested = null
         CastButtonState.onConnectCancelled = null
+        try {
+            btWarmAudioDeviceMonitor?.stop()
+        } catch (_: Exception) {
+        }
+        btWarmAudioDeviceMonitor = null
         scrobbleService.dispose()
         playbackManager.destroy()
         playbackProvider.disconnect()
