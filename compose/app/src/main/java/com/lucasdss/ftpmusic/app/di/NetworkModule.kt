@@ -25,8 +25,21 @@ object DynamicBaseUrl {
      * Base URL of the configured Subsonic/Navidrome server. Blank = not
      * configured. The old device-local proxy default ("http://127.0.0.1:9999/")
      * is GONE — requests must never silently target a dead loopback proxy.
+     *
+     * Setter publishes [loopbackFlow] for the AppHeader issue tray (ADR-0120).
      */
-    @Volatile var url: String = ""
+    private val _url = java.util.concurrent.atomic.AtomicReference("")
+    private val _loopbackFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    var url: String
+        get() = _url.get()
+        set(value) {
+            _url.set(value)
+            _loopbackFlow.value = isLoopbackUrl(value)
+        }
+
+    /** Observable loopback flag for [com.lucasdss.ftpmusic.app.ui.issues.AppIssueAggregator]. */
+    val loopbackFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _loopbackFlow
 
     /** True once a server URL has been configured (blank = not configured). */
     fun isConfigured(): Boolean = url.isNotBlank()

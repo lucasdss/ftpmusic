@@ -50,6 +50,7 @@ import com.google.android.gms.cast.framework.CastContext
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
+import com.lucasdss.ftpmusic.app.di.AppIssueEntryPoint
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.LyricsCacheEntryPoint
 import com.lucasdss.ftpmusic.app.di.MetadataEntryPoint
@@ -62,11 +63,14 @@ import com.lucasdss.ftpmusic.app.ui.album.AlbumDetailScreen
 import com.lucasdss.ftpmusic.app.ui.artist.ArtistDetailScreen
 import com.lucasdss.ftpmusic.app.ui.components.AppHeader
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.IssueStatusIcon
+import com.lucasdss.ftpmusic.app.ui.components.IssueStatusSheet
 import com.lucasdss.ftpmusic.app.ui.components.rememberAppHeaderScrollState
 import com.lucasdss.ftpmusic.app.ui.components.rememberMiniPlayerScrollVisibility
 import com.lucasdss.ftpmusic.app.ui.components.withMiniPlayerScrollVisibility
 import com.lucasdss.ftpmusic.app.ui.favorites.FavoritesScreen
 import com.lucasdss.ftpmusic.app.ui.genre.GenreDetailScreen
+import com.lucasdss.ftpmusic.app.ui.issues.AppIssueAction
 import com.lucasdss.ftpmusic.app.ui.library.HomeScreen
 import com.lucasdss.ftpmusic.app.ui.library.LibraryContent
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtColors
@@ -133,6 +137,19 @@ fun FtpmusicNavHost() {
     // Fallback cover art service — races iTunes + MusicBrainz when Navidrome has no art
     val appContext = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(appContext) }
+
+    // AppHeader issue tray (ADR-0120)
+    val issueAggregator = remember {
+        dagger.hilt.android.EntryPointAccessors.fromApplication(
+            appContext.applicationContext,
+            AppIssueEntryPoint::class.java,
+        ).appIssueAggregator()
+    }
+    val issueHeaderState by issueAggregator.headerState.collectAsStateWithLifecycle()
+    var showIssueSheet by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(issueHeaderState.issues.isEmpty()) {
+        if (issueHeaderState.issues.isEmpty()) showIssueSheet = false
+    }
 
     // Auto-heal: if icon is blue but no device name, verify CastPlayer state.
     // With CastPlayer, onDeviceInfoChanged in MediaService drives authoritative state.
@@ -1101,6 +1118,44 @@ fun FtpmusicNavHost() {
                     settingsSelected = currentRoute?.startsWith(SETTINGS_ROUTE) == true,
                     interactive = headerScroll.isExpanded,
                     onSettingsClick = { navController.navigateToSettings() },
+                    issueHeaderState = issueHeaderState,
+                    onIssueStatusClick = { showIssueSheet = true },
+                )
+            } else if (issueHeaderState.visible) {
+                // Header hidden (NP / detail / settings) — keep tray reachable (ADR-0120).
+                IssueStatusIcon(
+                    state = issueHeaderState,
+                    onClick = { showIssueSheet = true },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .zIndex(1f)
+                        .padding(top = spacingL(), end = spacingL()),
+                )
+            }
+
+            if (showIssueSheet && issueHeaderState.issues.isNotEmpty()) {
+                IssueStatusSheet(
+                    issues = issueHeaderState.issues,
+                    onDismiss = { showIssueSheet = false },
+                    onAction = { issue ->
+                        when (val action = issue.action) {
+                            AppIssueAction.OpenSettings -> {
+                                showIssueSheet = false
+                                navController.navigateToSettings()
+                            }
+
+                            AppIssueAction.DismissPlaybackError -> {
+                                playbackViewModel.dismissPlaybackError()
+                            }
+
+                            is AppIssueAction.OpenPlaylist -> {
+                                showIssueSheet = false
+                                navController.navigate("playlist/${action.playlistId}")
+                            }
+
+                            AppIssueAction.None -> Unit
+                        }
+                    },
                 )
             }
         }

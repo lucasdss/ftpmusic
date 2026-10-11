@@ -97,12 +97,7 @@ fun HomeScreen(
     }
 
     Column(Modifier.background(Background)) {
-        // Server config/reachability warning (stale proxy URL, unreachable server)
-        com.lucasdss.ftpmusic.app.ui.components.ServerErrorBanner(
-            configWarning = state.configWarning,
-            isOffline = viewModel.isOffline(),
-            onOpenServerSettings = onOpenServerSettings,
-        )
+        // Server issues: AppHeader IssueStatusIcon + sheet (ADR-0120).
         // Data-first: the full-screen spinner only shows until the first
         // content render; a stalled loader must never leave Home spinning.
         if (state.isLoading && !state.hasLoadedOnce) {

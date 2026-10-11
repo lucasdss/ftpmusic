@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="issue_status_cd_none">No alerts</string>
+    <string name="issue_status_cd_one">Alert: %1$s</string>
+    <string name="issue_status_cd_many">%1$d alerts. Primary: %2$s</string>
+    <string name="issue_status_sheet_title">Alerts</string>
+
+    <string name="issue_no_network_title">No internet</string>
+    <string name="issue_no_network_body">Phone has no network. Cached tracks still play.</string>
+
+    <string name="issue_unreachable_title">Server unreachable</string>
+    <string name="issue_unreachable_body">Phone may have data, but can\'t reach your music server. Cached tracks still play.</string>
+
+    <string name="issue_offline_title">Offline mode</string>
+    <string name="issue_offline_body">Simulate Offline is on. Turn it off in Settings to use the network.</string>
+
+    <string name="issue_config_title">Server URL looks local</string>
+    <string name="issue_config_body">Your server setting points to \"%1$s\" — a device-local address. Enter your real server URL.</string>
+    <string name="issue_config_body_blank">Your server setting points to a device-local address. Enter your real server URL.</string>
+
+    <string name="issue_cellular_local_title">Cellular · local only</string>
+    <string name="issue_cellular_local_body">Cellular media policy is Local only. Library stays on downloads and cache.</string>
+
+    <string name="issue_playback_title">Playback error</string>
+
+    <string name="issue_playlist_conflict_title">Playlist sync conflict</string>
+    <string name="issue_playlist_conflict_body">\"%1$s\" has a sync conflict. Open the playlist to resolve.</string>
+    <string name="issue_playlist_conflict_body_generic">A playlist has a sync conflict. Open it to resolve.</string>
+
+    <string name="issue_action_settings">Settings</string>
+    <string name="issue_action_dismiss">Dismiss</string>
+    <string name="issue_action_open_playlist">Open</string>
+</resources>

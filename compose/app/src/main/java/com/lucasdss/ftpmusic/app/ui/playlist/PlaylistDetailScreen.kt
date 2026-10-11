@@ -185,46 +185,7 @@ fun PlaylistDetailScreen(
                     }
                 }
             } else {
-                // Conflict banner
-                if (state.isConflicted) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        color = Color(0x44FF8C00),
-                        shape = RoundedCornerShape(8.dp),
-                        tonalElevation = 2.dp,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("⚠", fontSize = textHeadingS())
-                            Spacer(Modifier.width(8.dp))
-                            Column(Modifier.weight(1f)) {
-                                FittingText(
-                                    text = "Sync Conflict",
-                                    color = Color(0xFFFF8C00),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = textLabelL(),
-                                    minFontSize = textMicro(),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                state.conflictMessage?.let {
-                                    FittingText(
-                                        text = it,
-                                        color = Color(0x88FFFFFF),
-                                        fontSize = textLabelS(),
-                                        minFontSize = textMicro(),
-                                        maxLines = 3,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                            }
-                            TextButton(onClick = { viewModel.syncToServer() }) {
-                                Text("Retry Sync", color = BrandTeal, fontSize = textLabelM())
-                            }
-                        }
-                    }
-                }
+                // Sync conflicts: AppHeader IssueStatusIcon + sheet (ADR-0120).
                 LazyColumn {
                     // Cover art header — always present (fixed / derived / lettermark).
                     item {

@@ -738,44 +738,7 @@ private fun ColumnScope.PlayerMainBody(
 ) {
     with(state) {
         Column(Modifier.weight(1f).padding(bottom = spacing3XL())) {
-            if (!playbackError.isNullOrBlank()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = spacingXL(), vertical = spacingS())
-                        .clip(RoundedCornerShape(cornerM()))
-                        .background(Color(0xFFFFC800).copy(alpha = 0.12f))
-                        .border(1.dp, Color(0xFFFFC800).copy(alpha = 0.35f), RoundedCornerShape(cornerM()))
-                        .padding(horizontal = spacingM(), vertical = spacingS())
-                        .testTag("np_playback_error_banner"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = Color(0xFFFFC800),
-                        modifier = Modifier.size(adp(16f)),
-                    )
-                    Spacer(Modifier.width(spacingS()))
-                    Text(
-                        playbackError,
-                        color = Color(0xFFE8C766),
-                        fontSize = textLabelM(),
-                        maxLines = 2,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "Dismiss",
-                        tint = NavUnselected,
-                        modifier = Modifier
-                            .size(adp(48f))
-                            .clickable { onDismissPlaybackError() }
-                            .padding(adp(14f))
-                            .testTag("np_playback_error_dismiss"),
-                    )
-                }
-            }
+            // Playback errors: AppHeader IssueStatusIcon + sheet (ADR-0120).
             // Swipeable album art — left = next, right = prev.
             // Flexible area: art shrinks to fit the screen (never scrolls).
             BoxWithConstraints(

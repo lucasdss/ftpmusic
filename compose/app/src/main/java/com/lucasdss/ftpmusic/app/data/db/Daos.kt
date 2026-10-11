@@ -638,6 +638,12 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists ORDER BY name ASC")
     suspend fun getAll(): List<PlaylistEntity>
 
+    /** Active sync conflicts for the AppHeader issue tray (ADR-0120). */
+    @Query(
+        "SELECT * FROM playlists WHERE is_conflicted = 1 ORDER BY name ASC",
+    )
+    fun observeConflicted(): kotlinx.coroutines.flow.Flow<List<PlaylistEntity>>
+
     @Query("SELECT * FROM playlists WHERE id = :id")
     suspend fun getById(id: String): PlaylistEntity?
 

@@ -136,12 +136,7 @@ fun LibraryContent(
                 }
                 .background(Background),
         ) {
-            // Server config/reachability warning (stale proxy URL, unreachable server)
-            com.lucasdss.ftpmusic.app.ui.components.ServerErrorBanner(
-                configWarning = shell.configWarning,
-                isOffline = viewModel.isOffline(),
-                onOpenServerSettings = onOpenServerSettings,
-            )
+            // Server issues: AppHeader IssueStatusIcon + sheet (ADR-0120).
             SegmentedChipRow {
                 LibraryTab.entries.forEach { tab ->
                     SegmentedChip(

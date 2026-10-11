@@ -49,9 +49,11 @@ class PlayerHolderPlaybackErrorTest {
     @Test
     fun `dismiss clears immediately`() {
         PlayerHolder.setPlaybackError("boom", stickyMs = 60_000L)
+        assertEquals("boom", PlayerHolder.playbackErrorFlow.value)
         PlayerHolder.playbackErrorAutoSkipInFlight = true
         PlayerHolder.dismissPlaybackError()
         assertNull(PlayerHolder.lastPlaybackError)
+        assertNull(PlayerHolder.playbackErrorFlow.value)
         assertFalse(PlayerHolder.playbackErrorAutoSkipInFlight)
     }
 

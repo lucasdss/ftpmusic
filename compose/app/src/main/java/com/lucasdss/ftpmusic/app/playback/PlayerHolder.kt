@@ -1,6 +1,9 @@
 package com.lucasdss.ftpmusic.app.playback
 
 import androidx.media3.common.Player
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Holds a reference to the ExoPlayer so UI-layer code (QueueManager,
@@ -22,11 +25,16 @@ object PlayerHolder {
     var castDeviceName: String? = null
 
     /**
-     * Last player error for Now Playing banner (ADR-0094/0095).
+     * Last player error for issue tray / legacy NP sticky (ADR-0094/0095/0120).
      * Sticky across auto-skip until dismiss, expiry, or successful READY after sticky window.
      */
     @Volatile
     var lastPlaybackError: String? = null
+
+    private val _playbackErrorFlow = MutableStateFlow<String?>(null)
+
+    /** Observable mirror of [lastPlaybackError] for [com.lucasdss.ftpmusic.app.ui.issues.AppIssueAggregator]. */
+    val playbackErrorFlow: StateFlow<String?> = _playbackErrorFlow.asStateFlow()
 
     /** Wall-clock ms until which [lastPlaybackError] must not auto-clear (ADR-0095). */
     @Volatile
@@ -53,6 +61,7 @@ object PlayerHolder {
         stickyClearGeneration++
         val generation = stickyClearGeneration
         lastPlaybackError = message
+        _playbackErrorFlow.value = message?.takeIf { it.isNotBlank() }
         playbackErrorStickyUntilMs =
             if (message.isNullOrBlank()) 0L else System.currentTimeMillis() + stickyMs
         if (!message.isNullOrBlank() && stickyMs > 0L) {
@@ -69,6 +78,7 @@ object PlayerHolder {
     fun dismissPlaybackError() {
         stickyClearGeneration++
         lastPlaybackError = null
+        _playbackErrorFlow.value = null
         playbackErrorStickyUntilMs = 0L
         playbackErrorAutoSkipInFlight = false
         onPlaybackErrorCleared?.invoke()
@@ -80,6 +90,7 @@ object PlayerHolder {
         if (playbackErrorAutoSkipInFlight) return false
         if (nowMs < playbackErrorStickyUntilMs) return false
         lastPlaybackError = null
+        _playbackErrorFlow.value = null
         playbackErrorStickyUntilMs = 0L
         return true
     }

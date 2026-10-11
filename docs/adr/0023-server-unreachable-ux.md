@@ -1,8 +1,8 @@
 # ADR 0023 — Server-Unreachable UX & Stale-Proxy Config Handling
 
 Date: 2026-08-25
-Status: Accepted
-Related: ADR 0033 (server config single source of truth)
+Status: Accepted (global chrome superseded by ADR-0120)
+Related: ADR 0033 (server config single source of truth), ADR-0120 (issue status tray)
 
 ## Context
 

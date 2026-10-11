@@ -7,6 +7,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.google.android.gms.cast.CastDevice
+import com.lucasdss.ftpmusic.app.ui.issues.AppIssue
+import com.lucasdss.ftpmusic.app.ui.issues.AppIssueHeaderState
+import com.lucasdss.ftpmusic.app.ui.issues.AppIssueIconKind
+import com.lucasdss.ftpmusic.app.ui.issues.AppIssueKind
 import com.lucasdss.ftpmusic.app.ui.player.CastButtonState
 import io.mockk.mockk
 import org.junit.After
@@ -79,5 +83,54 @@ class AppHeaderComposeTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("Cast to device").performClick()
         assertTrue(CastButtonState.showDialog.value)
+    }
+
+    @Test
+    fun `issue status icon shown left of settings when issues present`() {
+        var opened = false
+        val state = AppIssueHeaderState(
+            issues = listOf(
+                AppIssue(
+                    id = "u",
+                    kind = AppIssueKind.SERVER_UNREACHABLE,
+                    title = "Server unreachable",
+                    body = "body",
+                ),
+            ),
+            iconKind = AppIssueIconKind.CLOUD_OFF,
+            showBadge = false,
+            badgeCount = 1,
+            contentDescription = "Alert: Server unreachable",
+        )
+        composeRule.setContent {
+            AppHeader(
+                onSettingsClick = {},
+                issueHeaderState = state,
+                onIssueStatusClick = { opened = true },
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("app_header_issue_status").assertIsDisplayed().performClick()
+        assertTrue(opened)
+        composeRule.onNodeWithTag("app_header_settings").assertIsDisplayed()
+    }
+
+    @Test
+    fun `issue status icon hidden when no issues`() {
+        composeRule.setContent {
+            AppHeader(
+                onSettingsClick = {},
+                issueHeaderState = AppIssueHeaderState(
+                    issues = emptyList(),
+                    iconKind = AppIssueIconKind.WARNING,
+                    showBadge = false,
+                    badgeCount = 0,
+                    contentDescription = "No alerts",
+                ),
+                onIssueStatusClick = {},
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("app_header_issue_status").assertDoesNotExist()
     }
 }
