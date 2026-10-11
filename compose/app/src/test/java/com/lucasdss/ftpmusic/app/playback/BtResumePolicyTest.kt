@@ -60,6 +60,62 @@ class BtResumePolicyTest {
     }
 
     @Test
+    fun `mode any warm null then ACL real mac share debounce window`() {
+        val debounce = mutableMapOf<String, Long>()
+        assertTrue(
+            BtResumePolicy.shouldResume(
+                enabled = true,
+                mode = BtResumeMode.ANY,
+                allowlistedMacs = emptySet(),
+                deviceMac = null,
+                casting = false,
+                nowMs = 10_000,
+                lastAcceptedAtMsByMac = debounce,
+            ),
+        )
+        assertFalse(
+            "ACL real MAC must not double-fire inside warm null window",
+            BtResumePolicy.shouldResume(
+                enabled = true,
+                mode = BtResumeMode.ANY,
+                allowlistedMacs = emptySet(),
+                deviceMac = "AA:BB:CC:DD:EE:FF",
+                casting = false,
+                nowMs = 11_000,
+                lastAcceptedAtMsByMac = debounce,
+            ),
+        )
+    }
+
+    @Test
+    fun `mode any real mac then warm null share debounce window`() {
+        val debounce = mutableMapOf<String, Long>()
+        assertTrue(
+            BtResumePolicy.shouldResume(
+                enabled = true,
+                mode = BtResumeMode.ANY,
+                allowlistedMacs = emptySet(),
+                deviceMac = "AA:BB:CC:DD:EE:FF",
+                casting = false,
+                nowMs = 10_000,
+                lastAcceptedAtMsByMac = debounce,
+            ),
+        )
+        assertTrue(debounce.containsKey(BtResumePolicy.ANY_UNKNOWN_MAC_KEY))
+        assertFalse(
+            BtResumePolicy.shouldResume(
+                enabled = true,
+                mode = BtResumeMode.ANY,
+                allowlistedMacs = emptySet(),
+                deviceMac = null,
+                casting = false,
+                nowMs = 11_000,
+                lastAcceptedAtMsByMac = debounce,
+            ),
+        )
+    }
+
+    @Test
     fun `mode selected requires allowlist hit`() {
         val debounce = mutableMapOf<String, Long>()
         assertFalse(

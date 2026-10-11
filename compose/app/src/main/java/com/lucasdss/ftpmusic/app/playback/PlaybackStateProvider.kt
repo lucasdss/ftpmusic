@@ -239,9 +239,22 @@ data class PlaybackState(
                 playbackSpeed = playbackSpeed,
                 sleepTimerEndMs = prevState.sleepTimerEndMs,
                 currentTrackId = mediaItem?.mediaId,
-                isStarred = prevState.isStarred,
-                isDisliked = prevState.isDisliked,
-                trackRating = prevState.trackRating,
+                // ADR-0121: do not carry prior track's shade thumbs across transitions.
+                isStarred = if (mediaItem?.mediaId == prevState.currentTrackId) {
+                    prevState.isStarred
+                } else {
+                    false
+                },
+                isDisliked = if (mediaItem?.mediaId == prevState.currentTrackId) {
+                    prevState.isDisliked
+                } else {
+                    false
+                },
+                trackRating = if (mediaItem?.mediaId == prevState.currentTrackId) {
+                    prevState.trackRating
+                } else {
+                    0
+                },
                 mediaType = extras?.getString("type") ?: "music",
                 trackIndex = trackIndex,
                 queueSize = queueSize,

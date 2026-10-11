@@ -93,6 +93,20 @@ class BtConnectionReceiver : BroadcastReceiver() {
                 BtResumePolicy.normalizeMac(deviceMac) == null &&
                 allowlist.isNotEmpty()
             ) {
+                // ADR-0121: warm + ACL can fire selected_null_mac repeatedly.
+                if (!BtResumePolicy.acceptDebounced(
+                        key = BtResumePolicy.SELECTED_NULL_MAC_KEY,
+                        nowMs = nowMs,
+                        lastAcceptedAtMsByMac = debounceMap,
+                    )
+                ) {
+                    android.util.Log.d(
+                        "ftpmusic-bt",
+                        "selected_null_mac debounced — skip Resume notif sdk=$sdkInt",
+                    )
+                    BtResumeEvents.record("selected_null_mac_debounced", "sdk=$sdkInt")
+                    return false
+                }
                 android.util.Log.i(
                     "ftpmusic-bt",
                     "selected_null_mac — Resume notif (no autoplay) enabled=$enabled sdk=$sdkInt",

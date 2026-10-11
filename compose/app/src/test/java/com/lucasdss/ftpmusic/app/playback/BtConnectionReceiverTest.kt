@@ -120,4 +120,33 @@ class BtConnectionReceiverTest {
         verify(exactly = 1) { starter.invoke(any()) }
         assertTrue(BtResumeEvents.recent().any { it.contains("NotificationFallback") })
     }
+
+    @Test
+    fun `selected_null_mac Resume notif debounced to one post`() {
+        val storage = mockk<SecureStorage>()
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "selected"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns
+            """["11:22:33:44:55:66"]"""
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
+        val starter = mockk<(Context) -> BtAutoplayStarter.StartResult>(relaxed = true)
+        val postNotif = mockk<(Context) -> Unit>(relaxed = true)
+        val ctx = mockk<Context>(relaxed = true)
+        repeat(3) {
+            BtConnectionReceiver.dispatchBtConnect(
+                context = ctx,
+                storage = storage,
+                deviceMac = null,
+                casting = false,
+                nowMs = 50_000L + it,
+                starter = starter,
+                postSelectedNullMacNotif = postNotif,
+            )
+        }
+        verify(exactly = 1) { postNotif.invoke(ctx) }
+        verify(exactly = 0) { starter.invoke(any()) }
+        assertTrue(BtResumeEvents.recent().any { it.contains("selected_null_mac") })
+        assertTrue(BtResumeEvents.recent().any { it.contains("selected_null_mac_debounced") })
+    }
 }

@@ -170,4 +170,45 @@ class PlaybackStateTest {
 
         PlayerHolder.queueSaveFailed = false
     }
+
+    @Test
+    fun `fromPlayer clears reaction flags when track id changes`() {
+        val item = androidx.media3.common.MediaItem.Builder().setMediaId("t-new").build()
+        val mockPlayer = io.mockk.mockk<androidx.media3.common.Player>(relaxed = true)
+        io.mockk.every { mockPlayer.currentMediaItem } returns item
+        io.mockk.every { mockPlayer.mediaItemCount } returns 1
+        io.mockk.every { mockPlayer.currentMediaItemIndex } returns 0
+        PlayerHolder.queueSaveFailed = false
+        val prev = PlaybackState(
+            currentTrackId = "t-old",
+            isStarred = true,
+            isDisliked = true,
+            trackRating = 5,
+        )
+        val next = PlaybackState.fromPlayer(mockPlayer, prev)
+        assertEquals("t-new", next.currentTrackId)
+        assertFalse(next.isStarred)
+        assertFalse(next.isDisliked)
+        assertEquals(0, next.trackRating)
+    }
+
+    @Test
+    fun `fromPlayer keeps reaction flags when track id unchanged`() {
+        val item = androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        val mockPlayer = io.mockk.mockk<androidx.media3.common.Player>(relaxed = true)
+        io.mockk.every { mockPlayer.currentMediaItem } returns item
+        io.mockk.every { mockPlayer.mediaItemCount } returns 1
+        io.mockk.every { mockPlayer.currentMediaItemIndex } returns 0
+        PlayerHolder.queueSaveFailed = false
+        val prev = PlaybackState(
+            currentTrackId = "t1",
+            isStarred = true,
+            isDisliked = false,
+            trackRating = 4,
+        )
+        val next = PlaybackState.fromPlayer(mockPlayer, prev)
+        assertTrue(next.isStarred)
+        assertFalse(next.isDisliked)
+        assertEquals(4, next.trackRating)
+    }
 }

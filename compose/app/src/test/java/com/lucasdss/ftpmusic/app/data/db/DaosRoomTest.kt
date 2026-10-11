@@ -1038,6 +1038,40 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `populateAllTrackGenres preserves disc_number when cache disc null`() = runBlocking {
+        val tracks = db.trackDao()
+        val meta = db.cachedMetadataDao()
+        tracks.upsert(
+            TrackEntity(
+                id = "t-disc",
+                title = "Disc Song",
+                albumId = "al-disc",
+                discNumber = 2,
+            ),
+        )
+        meta.upsertAlbums(
+            listOf(CachedAlbumEntity(id = "al-disc", name = "Album", genre = "Jazz")),
+        )
+        meta.upsertAlbumTracks(
+            listOf(
+                CachedAlbumTrackEntity(
+                    id = "t-disc",
+                    albumId = "al-disc",
+                    title = "Disc Song Updated",
+                    artist = "A",
+                    discNumber = null,
+                ),
+            ),
+        )
+
+        tracks.populateAllTrackGenres()
+
+        val row = tracks.getTrack("t-disc")!!
+        assertEquals(2, row.discNumber)
+        assertEquals("Disc Song Updated", row.title)
+    }
+
+    @Test
     fun `clearStarAndMarkPendingUnstar is atomic`() = runBlocking {
         val tracks = db.trackDao()
         tracks.ensureTrackRow("t-atom")

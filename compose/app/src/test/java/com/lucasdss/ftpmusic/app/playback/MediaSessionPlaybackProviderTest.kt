@@ -463,7 +463,12 @@ class MediaSessionPlaybackProviderTest {
                 MediaMetadata.Builder().setTitle("Next").setArtist("NArtist").build(),
             )
             .build()
-        val prev = PlaybackState(isStarred = true, sleepTimerEndMs = 7000L, trackRating = 3)
+        val prev = PlaybackState(
+            currentTrackId = "t42",
+            isStarred = true,
+            sleepTimerEndMs = 7000L,
+            trackRating = 3,
+        )
 
         val state = PlaybackState.fromCastState(
             item,

@@ -31,6 +31,9 @@ object BtResumePolicy {
     /** Debounce key when ANY mode cannot read the device MAC (ADR-0088). */
     const val ANY_UNKNOWN_MAC_KEY = "*"
 
+    /** Debounce key for SELECTED + unreadable MAC Resume notif (ADR-0101 / ADR-0121). */
+    const val SELECTED_NULL_MAC_KEY = "selected_null_mac"
+
     fun shouldResume(
         enabled: Boolean,
         mode: BtResumeMode,
@@ -60,9 +63,52 @@ object BtResumePolicy {
                 if (mac !in allowlistedMacs) return false
             }
         }
-        val last = lastAcceptedAtMsByMac[mac]
-        if (last != null && nowMs - last < debounceMs) return false
+        // ADR-0121: warm path often stamps "*", ACL later has real MAC — collapse
+        // both into one connect window in ANY mode.
+        if (isDebounced(mac, nowMs, lastAcceptedAtMsByMac, debounceMs)) return false
+        if (mode == BtResumeMode.ANY &&
+            mac != ANY_UNKNOWN_MAC_KEY &&
+            isDebounced(ANY_UNKNOWN_MAC_KEY, nowMs, lastAcceptedAtMsByMac, debounceMs)
+        ) {
+            return false
+        }
+        if (mode == BtResumeMode.ANY &&
+            mac == ANY_UNKNOWN_MAC_KEY &&
+            lastAcceptedAtMsByMac.any { (key, at) ->
+                key != ANY_UNKNOWN_MAC_KEY &&
+                    key != SELECTED_NULL_MAC_KEY &&
+                    nowMs - at < debounceMs
+            }
+        ) {
+            return false
+        }
         lastAcceptedAtMsByMac[mac] = nowMs
+        if (mode == BtResumeMode.ANY) {
+            lastAcceptedAtMsByMac[ANY_UNKNOWN_MAC_KEY] = nowMs
+        }
+        return true
+    }
+
+    /** True when [key] was accepted inside the debounce window. */
+    fun isDebounced(
+        key: String,
+        nowMs: Long,
+        lastAcceptedAtMsByMac: MutableMap<String, Long>,
+        debounceMs: Long = DEBOUNCE_MS,
+    ): Boolean {
+        val last = lastAcceptedAtMsByMac[key] ?: return false
+        return nowMs - last < debounceMs
+    }
+
+    /** Stamp [key] if outside window; return true when the stamp succeeded (not debounced). */
+    fun acceptDebounced(
+        key: String,
+        nowMs: Long,
+        lastAcceptedAtMsByMac: MutableMap<String, Long>,
+        debounceMs: Long = DEBOUNCE_MS,
+    ): Boolean {
+        if (isDebounced(key, nowMs, lastAcceptedAtMsByMac, debounceMs)) return false
+        lastAcceptedAtMsByMac[key] = nowMs
         return true
     }
 

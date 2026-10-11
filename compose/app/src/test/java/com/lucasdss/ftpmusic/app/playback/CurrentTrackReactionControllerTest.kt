@@ -137,4 +137,25 @@ class CurrentTrackReactionControllerTest {
         assertTrue(controller.reactions.value!!.isStarred)
         assertEquals("t1", controller.reactions.value!!.trackId)
     }
+
+    @Test
+    fun `clear then load replaces prior track reaction`() = runTest {
+        val trackDao = mockk<TrackDao>()
+        coEvery { trackDao.getTrack("t2") } returns TrackEntity(
+            id = "t2",
+            title = "T2",
+            starredAt = null,
+            isDisliked = true,
+        )
+        val controller = CurrentTrackReactionController(mockk(relaxed = true), trackDao)
+        controller.publish(
+            CurrentTrackReactionController.Snapshot("t1", isStarred = true, isDisliked = false),
+        )
+        controller.clear()
+        assertNull(controller.reactions.value)
+        val snap = controller.load("t2")
+        assertEquals("t2", snap.trackId)
+        assertFalse(snap.isStarred)
+        assertTrue(snap.isDisliked)
+    }
 }

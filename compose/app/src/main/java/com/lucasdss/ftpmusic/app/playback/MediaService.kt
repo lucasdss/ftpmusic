@@ -977,6 +977,21 @@ class MediaService : MediaLibraryService() {
                 // Local-first: persist queue to DB immediately, sync to server async
                 saveQueueState()
             }
+            // ADR-0121: reload Room reactions for shade/lock thumbs when UI dead.
+            val transitionTrackId = mediaItem?.mediaId
+            if (!transitionTrackId.isNullOrBlank()) {
+                reactionController.clear()
+                scope.launch {
+                    try {
+                        reactionController.load(transitionTrackId)
+                    } catch (e: Exception) {
+                        android.util.Log.w(
+                            "ftpmusic",
+                            "[MediaService] reaction load failed: ${e.message}",
+                        )
+                    }
+                }
+            }
             // Rebuild the QS/notification metadata on EVERY track change, including
             // gapless auto-advance (onIsPlayingChanged doesn't fire there, so the
             // notification previously froze on the old track). Deferred via
@@ -3933,6 +3948,10 @@ class MediaService : MediaLibraryService() {
         scope.launch {
             reactionController.reactions.collect { snap ->
                 if (snap == null) return@collect
+                // ADR-0121: ignore late snaps for a track the player already left.
+                val currentId = mediaSession.player.currentMediaItem?.mediaId
+                    ?: playbackProvider.playbackState.value.currentTrackId
+                if (snap.trackId != currentId) return@collect
                 val cur = playbackProvider.playbackState.value
                 playbackProvider.updateExtraState(
                     isStarred = snap.isStarred,

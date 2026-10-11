@@ -94,7 +94,13 @@ class PlaybackNotificationRebuildTest {
         PlayerHolder.player = playerWith("New Track", "New Artist")
 
         val state = resolveNotificationState(
-            PlaybackState(isStarred = true, isDisliked = false, trackRating = 4, sleepTimerEndMs = 1234L),
+            PlaybackState(
+                currentTrackId = "new-id",
+                isStarred = true,
+                isDisliked = false,
+                trackRating = 4,
+                sleepTimerEndMs = 1234L,
+            ),
         )
 
         assertEquals("New Track", state.title)
@@ -102,6 +108,25 @@ class PlaybackNotificationRebuildTest {
         assertFalse(state.isDisliked)
         assertEquals(4, state.trackRating)
         assertEquals(1234L, state.sleepTimerEndMs)
+    }
+
+    @Test
+    fun `resolveNotificationState clears reactions when cached track differs`() {
+        PlayerHolder.player = playerWith("New Track", "New Artist")
+
+        val state = resolveNotificationState(
+            PlaybackState(
+                currentTrackId = "old-id",
+                isStarred = true,
+                isDisliked = true,
+                trackRating = 5,
+            ),
+        )
+
+        assertEquals("New Track", state.title)
+        assertFalse(state.isStarred)
+        assertFalse(state.isDisliked)
+        assertEquals(0, state.trackRating)
     }
 
     @Test
