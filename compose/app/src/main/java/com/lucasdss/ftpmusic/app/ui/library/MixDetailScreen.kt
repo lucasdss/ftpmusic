@@ -371,6 +371,7 @@ fun MixDetailScreen(
                                         ) { AnimatedEqBarsMix() }
                                     }
                                 }
+
                                 LocalListChromePrefs.current.showListSequence -> {
                                     {
                                         Box(
@@ -385,6 +386,7 @@ fun MixDetailScreen(
                                         }
                                     }
                                 }
+
                                 else -> null
                             },
                         )

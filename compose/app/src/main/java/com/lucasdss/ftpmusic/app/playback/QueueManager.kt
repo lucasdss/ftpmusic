@@ -102,6 +102,12 @@ class QueueManager @Inject constructor(private val authHelper: SubsonicAuthHelpe
             "ftpmusic-playback",
             "[DEBUG-q] playAll: ${items.size} items, startIndex=$si pos=$pos playWhenReady=$playWhenReady",
         )
+        // ADR-0117: clear playWhenReady before seat so prepare cannot briefly
+        // resume a prior true flag (BT A17 flash).
+        if (!playWhenReady) {
+            p.playWhenReady = false
+            p.pause()
+        }
         p.setMediaItems(items, si, pos)
         p.prepare()
         if (playWhenReady) {

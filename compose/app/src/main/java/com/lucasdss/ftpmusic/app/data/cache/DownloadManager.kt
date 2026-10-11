@@ -155,14 +155,26 @@ class DownloadManager @Inject constructor(
                 }
                 return
             }
-            // "failed" is terminal (retry cap or non-retryable reject — ADR-0117).
-            // Do NOT resurrect it: resetting it to pending here turns every
-            // re-enqueue (play-queue prefetch, cache warming, playlist sync)
-            // into an infinite download-retry loop that pegs CPU/disk and
-            // starves the rest of the app. Only an explicit clear/retry
-            // re-attempts a download. Debug-level: restore storms must not
-            // flood Share diagnostics with W lines.
+            // "failed" is terminal for prefetch/mix (pri 0/2) — do NOT resurrect
+            // or restore storms re-loop forever (ADR-0117). User Download (pri 1)
+            // is an explicit retry: resurrect so album/mix Download taps work
+            // after sticky CT rejects once the server is fixed.
             if (existing.status == "failed") {
+                if (isDownload) {
+                    cacheQueueDao.updateStatus(existing.id, "pending")
+                    cacheQueueDao.updateRetryCount(existing.id, 0)
+                    if (priority < existing.priority) {
+                        cacheQueueDao.updatePriority(existing.id, priority)
+                    }
+                    if (!existing.isDownload) {
+                        cacheQueueDao.markAsDownload(existing.id)
+                    }
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-download",
+                        "enqueue trackId=$trackId priority=$priority isDownload=true result=retry_user",
+                    )
+                    return
+                }
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                     "ftpmusic-download",
                     "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=failed_terminal",
@@ -310,7 +322,7 @@ class DownloadManager @Inject constructor(
                 val contentType = response.header("Content-Type")
                 if (!AudioCacheValidation.isAcceptableStreamContentType(contentType)) {
                     // ADR-0117: JSON/XML/error CT is sticky server-side — no short retry.
-                    val snippet = peekBodySnippet(body)
+                    val err = summarizeSubsonicError(body)
                     android.util.Log.w(
                         "ftpmusic-download",
                         "[worker] reject Content-Type=$contentType code=${response.code} for ${item.trackId}",
@@ -318,7 +330,7 @@ class DownloadManager @Inject constructor(
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-download",
                         "worker reject trackId=${item.trackId} contentType=$contentType " +
-                            "code=${response.code} body=$snippet",
+                            "code=${response.code} errCode=${err.first} errMsg=${err.second}",
                     )
                     failTerminal(item)
                     return
@@ -381,16 +393,32 @@ class DownloadManager @Inject constructor(
         }
     }
 
-    /** Peek ≤120 ASCII chars for diagnostics (ring truncates to MAX_FIELD_LEN). */
-    internal fun peekBodySnippet(body: okhttp3.ResponseBody): String = try {
+    /**
+     * Peek Subsonic/Navidrome error fields only — no raw JSON paths in Share
+     * diagnostics (ADR-0117 amendment). Returns (errCode, errMsg).
+     */
+    internal fun summarizeSubsonicError(body: okhttp3.ResponseBody): Pair<String, String> = try {
         val peek = body.source().peek()
-        val raw = peek.readByteString(120).utf8()
-            .replace('\n', ' ')
-            .replace('\r', ' ')
-            .trim()
-        if (raw.isEmpty()) "<empty>" else raw
+        val raw = peek.readByteString(512).utf8()
+        summarizeSubsonicErrorText(raw)
     } catch (_: Exception) {
-        "<unreadable>"
+        "unreadable" to "unreadable"
+    }
+
+    /** Pure parser for unit tests. */
+    internal fun summarizeSubsonicErrorText(raw: String): Pair<String, String> {
+        val sample = raw.replace('\n', ' ').replace('\r', ' ').trim()
+        if (sample.isEmpty()) return "empty" to "empty"
+        val code = Regex(""""code"\s*:\s*(\d+)""").find(sample)?.groupValues?.get(1)
+            ?: Regex("""code=["']?(\d+)""").find(sample)?.groupValues?.get(1)
+            ?: "unknown"
+        val msg = Regex(""""message"\s*:\s*"([^"]{1,80})""")
+            .find(sample)?.groupValues?.get(1)
+            ?: Regex("""message=["']([^"']{1,80})""")
+                .find(sample)?.groupValues?.get(1)
+            ?: "non_audio"
+        val scrubbed = msg.replace(Regex("""https?://\S+""", RegexOption.IGNORE_CASE), "<url>")
+        return code to scrubbed
     }
 
     private suspend fun failTerminal(item: CacheQueueItemEntity) {

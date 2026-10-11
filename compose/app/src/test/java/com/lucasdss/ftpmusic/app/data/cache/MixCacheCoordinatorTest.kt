@@ -149,6 +149,7 @@ class MixCacheCoordinatorTest {
         coEvery { trackDao.getTrack("shared") } returns track("shared")
         coEvery { trackDao.getTrack("download") } returns track("download", downloaded = true)
         coEvery { cacheService.hasMixOwnedSpan(any()) } returns false
+        coEvery { downloadManager.isTerminalFailed(any()) } returns false
 
         coordinator.onSourceChanged(1L, listOf("new"))
 
@@ -157,6 +158,30 @@ class MixCacheCoordinatorTest {
         coVerify(exactly = 0) { cacheService.removeCached("download") }
         coVerify { customMixDao.deleteAllCacheTracks(1L) }
         coVerify { downloadManager.enqueue("new", any(), priority = 2) }
+    }
+
+    @Test
+    fun `onSourceChanged skips terminal-failed tracks`() = runTest {
+        stubCredentials()
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        coEvery { customMixDao.getById(1L) } returns mix()
+        coEvery { customMixDao.getOwnedTrackIds(1L) } returns emptyList()
+        coEvery { customMixDao.getTrackIdsOwnedByOtherMixes(1L) } returns emptyList()
+        coEvery { cacheService.hasMixOwnedSpan("bad") } returns false
+        coEvery { cacheService.hasMixOwnedSpan("good") } returns false
+        coEvery { downloadManager.isTerminalFailed("bad") } returns true
+        coEvery { downloadManager.isTerminalFailed("good") } returns false
+
+        coordinator.onSourceChanged(1L, listOf("bad", "good"))
+
+        coVerify(exactly = 0) { downloadManager.enqueue("bad", any(), any()) }
+        coVerify { downloadManager.enqueue("good", any(), priority = 2) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            mockk(relaxed = true),
+            offline = false,
+            reachable = true,
+        )
+        org.junit.Assert.assertTrue(snap.contains("skipTerminal=1 enqueued=1"))
     }
 
     @Test

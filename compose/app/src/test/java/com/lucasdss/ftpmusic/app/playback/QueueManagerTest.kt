@@ -412,9 +412,14 @@ class QueueManagerTest {
 
         manager.playAll(items, startIndex = 1, positionMs = 106679L, playWhenReady = false)
 
-        verify { mockPlayer.setMediaItems(items, 1, 106679L) }
-        verify { mockPlayer.prepare() }
-        verify { mockPlayer.pause() }
+        // ADR-0117: clear playWhenReady before setMediaItems/prepare (no flash).
+        verifyOrder {
+            mockPlayer.playWhenReady = false
+            mockPlayer.pause()
+            mockPlayer.setMediaItems(items, 1, 106679L)
+            mockPlayer.prepare()
+            mockPlayer.pause()
+        }
         verify(exactly = 0) { mockPlayer.play() }
     }
 

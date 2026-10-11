@@ -70,7 +70,7 @@ class DownloadManagerTest {
     }
 
     @Test
-    fun `enqueue does not resurrect failed items`() = runTest {
+    fun `enqueue does not resurrect failed items for mix priority`() = runTest {
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
         coEvery { dao.getByTrackId("tr-4") } returns CacheQueueItemEntity(
             id = 3,
@@ -80,10 +80,9 @@ class DownloadManagerTest {
             priority = 2,
         )
 
-        manager.enqueue("tr-4", "http://a")
+        manager.enqueue("tr-4", "http://a", priority = 2)
 
-        // "failed" is terminal — resurrecting it to pending would create an
-        // infinite download-retry loop (every re-enqueue re-attempts).
+        // Prefetch/mix (pri 0/2): failed stays terminal — no restore thrash.
         coVerify(exactly = 0) { dao.insertIgnore(any()) }
         coVerify(exactly = 0) { dao.updateStatus(3, "pending") }
         val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
@@ -94,6 +93,49 @@ class DownloadManagerTest {
         assertTrue(snap.contains("result=failed_terminal"))
         assertFalse(snap.contains("http://a"))
         assertTrue(manager.isTerminalFailed("tr-4"))
+    }
+
+    @Test
+    fun `enqueue resurrects failed item on user download priority`() = runTest {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        coEvery { dao.getByTrackId("tr-retry") } returns CacheQueueItemEntity(
+            id = 33,
+            trackId = "tr-retry",
+            remoteUrl = "http://a",
+            status = "failed",
+            priority = 2,
+            isDownload = false,
+            retryCount = 3,
+        )
+
+        manager.enqueue("tr-retry", "http://a", priority = 1)
+
+        coVerify { dao.updateStatus(33, "pending") }
+        coVerify { dao.updateRetryCount(33, 0) }
+        coVerify { dao.updatePriority(33, 1) }
+        coVerify { dao.markAsDownload(33) }
+        coVerify(exactly = 0) { dao.insertIgnore(any()) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+        )
+        assertTrue(snap.contains("result=retry_user"))
+    }
+
+    @Test
+    fun `summarizeSubsonicErrorText extracts code and message without paths`() {
+        val (code, msg) = manager.summarizeSubsonicErrorText(
+            """{"subsonic-response":{"status":"failed","error":{"code":70,"message":"Song not found"}}}""",
+        )
+        assertEquals("70", code)
+        assertEquals("Song not found", msg)
+        val (c2, m2) = manager.summarizeSubsonicErrorText(
+            """{"error":{"code":40,"message":"Wrong username or password for http://evil.example/x"}}""",
+        )
+        assertEquals("40", c2)
+        assertTrue(m2.contains("<url>"))
+        assertFalse(m2.contains("evil.example"))
     }
 
     @Test

@@ -592,6 +592,7 @@ private fun TrackRow(
                     ) { AnimatedEqBarsArtist() }
                 }
             }
+
             showSequence -> {
                 {
                     Box(
@@ -606,6 +607,7 @@ private fun TrackRow(
                     }
                 }
             }
+
             else -> null
         },
     )

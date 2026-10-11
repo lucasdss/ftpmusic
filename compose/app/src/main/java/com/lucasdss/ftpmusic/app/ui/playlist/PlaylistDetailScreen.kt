@@ -487,6 +487,7 @@ fun PlaylistDetailScreen(
                                             ) { AnimatedEqBars() }
                                         }
                                     }
+
                                     LocalListChromePrefs.current.showListSequence -> {
                                         {
                                             Box(
@@ -501,6 +502,7 @@ fun PlaylistDetailScreen(
                                             }
                                         }
                                     }
+
                                     else -> null
                                 },
                             )

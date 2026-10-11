@@ -2076,6 +2076,10 @@ class MediaService : MediaLibraryService() {
                             "ftpmusic-bt",
                             "BT async restore — empty Room queue; Resume notif posted",
                         )
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                            "ftpmusic-bt",
+                            "result=empty_queue",
+                        )
                     }
                     return@launch
                 }

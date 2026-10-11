@@ -328,6 +328,7 @@ fun AlbumDetailScreen(
                                 ) { AnimatedEqBars() }
                             }
                         }
+
                         LocalListChromePrefs.current.showAlbumTrackNumbers -> {
                             {
                                 Box(
@@ -343,6 +344,7 @@ fun AlbumDetailScreen(
                                 }
                             }
                         }
+
                         else -> null
                     },
                 )
