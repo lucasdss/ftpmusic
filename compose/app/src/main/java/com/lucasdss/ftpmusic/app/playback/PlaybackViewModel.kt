@@ -13,7 +13,6 @@ import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.ui.player.CastButtonState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,7 +37,28 @@ class PlaybackViewModel @Inject constructor(
     private val trackDao: TrackDao,
     private val queueDao: QueueDao,
     private val playlistRepository: PlaylistRepository,
+    private val reactionController: CurrentTrackReactionController,
 ) : ViewModel() {
+    /** JVM-unit-test convenience: builds a real controller over the same mocks. */
+    constructor(
+        provider: PlaybackStateProvider,
+        playbackManager: PlaybackManager,
+        favoriteRepository: FavoriteRepository,
+        storage: SecureStorage,
+        trackDao: TrackDao,
+        queueDao: QueueDao,
+        playlistRepository: PlaylistRepository,
+    ) : this(
+        provider,
+        playbackManager,
+        favoriteRepository,
+        storage,
+        trackDao,
+        queueDao,
+        playlistRepository,
+        CurrentTrackReactionController(favoriteRepository, trackDao),
+    )
+
     private val authHelper = SubsonicAuthHelper()
 
     // Non-player state fields managed locally. Underscores distinguish mutable
@@ -91,11 +111,6 @@ class PlaybackViewModel @Inject constructor(
     private var mutationTrackId: String? = null
 
     private val mutationGeneration = java.util.concurrent.atomic.AtomicInteger(0)
-
-    /** Serialize like/dislike/rate writes per track so overlapping toggles cannot reorder Room. */
-    private val reactionMutexes = ConcurrentHashMap<String, Mutex>()
-
-    private fun reactionMutex(trackId: String): Mutex = reactionMutexes.getOrPut(trackId) { Mutex() }
 
     private val shareMutex = Mutex()
 
@@ -156,8 +171,32 @@ class PlaybackViewModel @Inject constructor(
                     _isStarred.value = starred
                     _isDisliked.value = disliked
                     _trackRating.value = rating
+                    if (trackId != null) {
+                        reactionController.publish(
+                            CurrentTrackReactionController.Snapshot(
+                                trackId = trackId,
+                                isStarred = starred,
+                                isDisliked = disliked,
+                                trackRating = rating,
+                            ),
+                        )
+                    } else {
+                        reactionController.clear()
+                    }
                     syncExtraState()
                 }
+        }
+        // Session / notification thumbs → keep NP UI in sync.
+        viewModelScope.launch {
+            reactionController.reactions.collect { snap ->
+                if (snap == null) return@collect
+                if (snap.trackId != provider.playbackState.value.currentTrackId) return@collect
+                if (mutationTrackId == snap.trackId && mutationGeneration.get() != 0) return@collect
+                _isStarred.value = snap.isStarred
+                _isDisliked.value = snap.isDisliked
+                _trackRating.value = snap.trackRating
+                syncExtraState()
+            }
         }
     }
 
@@ -280,40 +319,47 @@ class PlaybackViewModel @Inject constructor(
             _isStarred.value = true
             if (isDisliked) _isDisliked.value = false
         }
+        reactionController.publish(
+            CurrentTrackReactionController.Snapshot(
+                trackId = mutationTrackId,
+                isStarred = _isStarred.value,
+                isDisliked = _isDisliked.value,
+                trackRating = _trackRating.value,
+            ),
+        )
         syncExtraState()
         this.mutationTrackId = mutationTrackId
         val myGen = mutationGeneration.incrementAndGet()
         viewModelScope.launch {
-            reactionMutex(mutationTrackId).withLock {
-                try {
-                    if (isStarred) {
-                        favoriteRepository.unlikeTrack(mutationTrackId)
-                    } else {
-                        favoriteRepository.likeTrack(mutationTrackId)
-                    }
-                    if (provider.playbackState.value.currentTrackId == mutationTrackId &&
-                        mutationGeneration.get() == myGen
-                    ) {
-                        if (isStarred) {
-                            _isStarred.value = false
-                        } else {
-                            _isStarred.value = true
-                            if (isDisliked) _isDisliked.value = false
-                        }
-                    }
-                } catch (_: Exception) {
-                    // Only restore if this generation is still current — never undo a newer tap.
-                    if (provider.playbackState.value.currentTrackId == mutationTrackId &&
-                        mutationGeneration.get() == myGen
-                    ) {
-                        _isStarred.value = isStarred
-                        _isDisliked.value = isDisliked
-                    }
-                } finally {
-                    mutationGeneration.compareAndSet(myGen, 0)
-                    if (mutationGeneration.get() == 0) {
-                        this@PlaybackViewModel.mutationTrackId = null
-                    }
+            // Serialize via CurrentTrackReactionController mutex (ADR-0118).
+            try {
+                val snap = reactionController.toggleLike(mutationTrackId, wasStarred = isStarred)
+                if (provider.playbackState.value.currentTrackId == mutationTrackId &&
+                    mutationGeneration.get() == myGen
+                ) {
+                    _isStarred.value = snap.isStarred
+                    _isDisliked.value = snap.isDisliked
+                }
+            } catch (_: Exception) {
+                // Only restore if this generation is still current — never undo a newer tap.
+                if (provider.playbackState.value.currentTrackId == mutationTrackId &&
+                    mutationGeneration.get() == myGen
+                ) {
+                    _isStarred.value = isStarred
+                    _isDisliked.value = isDisliked
+                    reactionController.publish(
+                        CurrentTrackReactionController.Snapshot(
+                            trackId = mutationTrackId,
+                            isStarred = isStarred,
+                            isDisliked = isDisliked,
+                            trackRating = _trackRating.value,
+                        ),
+                    )
+                }
+            } finally {
+                mutationGeneration.compareAndSet(myGen, 0)
+                if (mutationGeneration.get() == 0) {
+                    this@PlaybackViewModel.mutationTrackId = null
                 }
             }
             syncExtraState()
@@ -331,39 +377,45 @@ class PlaybackViewModel @Inject constructor(
             _isDisliked.value = true
             if (isStarred) _isStarred.value = false
         }
+        reactionController.publish(
+            CurrentTrackReactionController.Snapshot(
+                trackId = mutationTrackId,
+                isStarred = _isStarred.value,
+                isDisliked = _isDisliked.value,
+                trackRating = _trackRating.value,
+            ),
+        )
         syncExtraState()
         this.mutationTrackId = mutationTrackId
         val myGen = mutationGeneration.incrementAndGet()
         viewModelScope.launch {
-            reactionMutex(mutationTrackId).withLock {
-                try {
-                    if (isDisliked) {
-                        favoriteRepository.clearDislikeTrack(mutationTrackId)
-                    } else {
-                        favoriteRepository.dislikeTrack(mutationTrackId)
-                    }
-                    if (provider.playbackState.value.currentTrackId == mutationTrackId &&
-                        mutationGeneration.get() == myGen
-                    ) {
-                        if (isDisliked) {
-                            _isDisliked.value = false
-                        } else {
-                            _isDisliked.value = true
-                            if (isStarred) _isStarred.value = false
-                        }
-                    }
-                } catch (_: Exception) {
-                    if (provider.playbackState.value.currentTrackId == mutationTrackId &&
-                        mutationGeneration.get() == myGen
-                    ) {
-                        _isDisliked.value = isDisliked
-                        _isStarred.value = isStarred
-                    }
-                } finally {
-                    mutationGeneration.compareAndSet(myGen, 0)
-                    if (mutationGeneration.get() == 0) {
-                        this@PlaybackViewModel.mutationTrackId = null
-                    }
+            try {
+                val snap = reactionController.toggleDislike(mutationTrackId, wasDisliked = isDisliked)
+                if (provider.playbackState.value.currentTrackId == mutationTrackId &&
+                    mutationGeneration.get() == myGen
+                ) {
+                    _isStarred.value = snap.isStarred
+                    _isDisliked.value = snap.isDisliked
+                }
+            } catch (_: Exception) {
+                if (provider.playbackState.value.currentTrackId == mutationTrackId &&
+                    mutationGeneration.get() == myGen
+                ) {
+                    _isDisliked.value = isDisliked
+                    _isStarred.value = isStarred
+                    reactionController.publish(
+                        CurrentTrackReactionController.Snapshot(
+                            trackId = mutationTrackId,
+                            isStarred = isStarred,
+                            isDisliked = isDisliked,
+                            trackRating = _trackRating.value,
+                        ),
+                    )
+                }
+            } finally {
+                mutationGeneration.compareAndSet(myGen, 0)
+                if (mutationGeneration.get() == 0) {
+                    this@PlaybackViewModel.mutationTrackId = null
                 }
             }
             syncExtraState()

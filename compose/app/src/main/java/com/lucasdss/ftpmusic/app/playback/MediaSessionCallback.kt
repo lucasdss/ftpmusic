@@ -4,10 +4,14 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Rating
+import androidx.media3.common.ThumbRating
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -38,6 +42,9 @@ import kotlinx.coroutines.withContext
  * Android Auto browse tree: [onGetLibraryRoot] / [onGetChildren] / [onGetItem]
  * via [AutoBrowseCatalog] (ADR-0091). Local-first Room only.
  *
+ * Like/dislike custom commands (ADR-0118): [onConnect] / [onCustomCommand] /
+ * [onSetRating] via [CurrentTrackReactionController].
+ *
  * The requested track is placed first in the returned list so playback
  * starts at the correct position. The remaining album tracks follow in
  * their original order.
@@ -54,6 +61,7 @@ class MediaSessionCallback(
     private val localSearch: com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository? = null,
     private val persistenceManager: QueuePersistenceManager? = null,
     private val playlistDao: PlaylistDao? = null,
+    private val reactionController: CurrentTrackReactionController? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MediaLibraryService.MediaLibrarySession.Callback {
@@ -354,6 +362,128 @@ class MediaSessionCallback(
         )
 
         return expandToAlbum(songId, auth) ?: emptyList()
+    }
+
+    override fun onConnect(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+    ): MediaSession.ConnectionResult {
+        val snap = reactionController?.reactions?.value
+        val buttons = MediaSessionReactionCommands.buttons(
+            isStarred = snap?.isStarred == true,
+            isDisliked = snap?.isDisliked == true,
+        )
+        val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+            .buildUpon()
+            .add(MediaSessionReactionCommands.LIKE_COMMAND)
+            .add(MediaSessionReactionCommands.DISLIKE_COMMAND)
+            .add(SessionCommand.COMMAND_CODE_SESSION_SET_RATING)
+            .build()
+        return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            .setAvailableSessionCommands(sessionCommands)
+            .setMediaButtonPreferences(buttons)
+            .setCustomLayout(buttons)
+            .build()
+    }
+
+    override fun onCustomCommand(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        customCommand: SessionCommand,
+        args: Bundle,
+    ): ListenableFuture<SessionResult> {
+        val action = customCommand.customAction
+        if (action != MediaSessionReactionCommands.ACTION_LIKE &&
+            action != MediaSessionReactionCommands.ACTION_DISLIKE
+        ) {
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        }
+        val controllerRef = reactionController
+            ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        return scope.future {
+            val trackId = withContext(mainDispatcher) {
+                session.player.currentMediaItem?.mediaId
+            }
+            if (trackId.isNullOrBlank()) {
+                return@future SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)
+            }
+            try {
+                // Emit via controller — MediaService.wireReactionSurfaceUpdates refreshes
+                // session buttons / ThumbRating / notification (ADR-0118).
+                when (action) {
+                    MediaSessionReactionCommands.ACTION_LIKE -> controllerRef.toggleLike(trackId)
+                    else -> controllerRef.toggleDislike(trackId)
+                }
+                SessionResult(SessionResult.RESULT_SUCCESS)
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaSessionCallback] reaction failed: ${e.message}")
+                SessionResult(SessionResult.RESULT_ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    override fun onSetRating(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        rating: Rating,
+    ): ListenableFuture<SessionResult> {
+        val controllerRef = reactionController
+            ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        if (rating !is ThumbRating) {
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        }
+        return scope.future {
+            val trackId = withContext(mainDispatcher) {
+                session.player.currentMediaItem?.mediaId
+            }
+            if (trackId.isNullOrBlank()) {
+                return@future SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)
+            }
+            try {
+                val current = controllerRef.load(trackId)
+                when {
+                    !rating.isRated -> {
+                        when {
+                            current.isStarred -> controllerRef.toggleLike(trackId, wasStarred = true)
+                            current.isDisliked -> controllerRef.toggleDislike(trackId, wasDisliked = true)
+                            else -> Unit
+                        }
+                    }
+
+                    rating.isThumbsUp -> {
+                        if (!current.isStarred) {
+                            controllerRef.toggleLike(trackId, wasStarred = false)
+                        }
+                    }
+
+                    else -> {
+                        if (!current.isDisliked) {
+                            controllerRef.toggleDislike(trackId, wasDisliked = false)
+                        }
+                    }
+                }
+                SessionResult(SessionResult.RESULT_SUCCESS)
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaSessionCallback] onSetRating failed: ${e.message}")
+                SessionResult(SessionResult.RESULT_ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    /** Refresh overflow buttons + ThumbRating metadata after a reaction change. */
+    fun refreshReactionSurfaces(session: MediaSession, snap: CurrentTrackReactionController.Snapshot) {
+        val buttons = MediaSessionReactionCommands.buttons(snap.isStarred, snap.isDisliked)
+        try {
+            session.setMediaButtonPreferences(buttons)
+            session.setCustomLayout(buttons)
+        } catch (_: Exception) {
+            // Session may be released during teardown.
+        }
+        MediaSessionReactionCommands.applyThumbRatingToCurrentItem(
+            session.player,
+            snap.isStarred,
+            snap.isDisliked,
+        )
     }
 
     /**

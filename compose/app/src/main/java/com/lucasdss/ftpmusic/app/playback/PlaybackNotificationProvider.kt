@@ -71,7 +71,12 @@ class PlaybackNotificationProvider(
     private var lastSession: MediaSession? = null
     private var lastActionFactory: MediaNotification.ActionFactory? = null
     private var lastCallback: MediaNotification.Provider.Callback? = null
+    private var lastCustomLayout: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton> =
+        com.google.common.collect.ImmutableList.of()
     private var lastCoverArtId: String? = null
+
+    /** Optional bridge for notification custom-action taps (app-driven ActionFactory path). */
+    var onCustomAction: ((String) -> Unit)? = null
 
     @Volatile
     private var coverArtBitmap: Bitmap? = null
@@ -114,13 +119,15 @@ class PlaybackNotificationProvider(
         lastSession = session
         lastActionFactory = actionFactory
         lastCallback = onNotificationChangedCallback
+        lastCustomLayout = customLayout
         return buildNotification(session, actionFactory)
     }
 
     /** Everything that renders in the notification — the memoization key. */
     private fun buildKey(state: PlaybackState): String =
         "${state.title}|${state.artist}|${state.isPlaying}|${state.coverArtId}|" +
-            "${state.castDeviceName}|${state.volume}|${notificationsEnabled()}"
+            "${state.castDeviceName}|${state.volume}|${notificationsEnabled()}|" +
+            "${state.isStarred}|${state.isDisliked}"
 
     internal fun buildNotification(
         session: MediaSession,
@@ -256,6 +263,27 @@ class PlaybackNotificationProvider(
         )
         builder.addAction(android.R.drawable.ic_media_previous, "Previous", prevAction.actionIntent)
 
+        // Thumbs in expanded row (compact stays 0,1,2 = play/pause/next).
+        val reactionButtons = if (lastCustomLayout.isEmpty()) {
+            MediaSessionReactionCommands.buttons(state.isStarred, state.isDisliked)
+        } else {
+            lastCustomLayout
+        }
+        for (button in reactionButtons) {
+            val custom = actionFactory.createCustomActionFromCustomCommandButton(session, button)
+            val iconRes = when (button.sessionCommand?.customAction) {
+                MediaSessionReactionCommands.ACTION_LIKE ->
+                    com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_up
+
+                MediaSessionReactionCommands.ACTION_DISLIKE ->
+                    com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_down
+
+                else ->
+                    if (button.iconResId != 0) button.iconResId else android.R.drawable.ic_media_play
+            }
+            builder.addAction(iconRes, button.displayName, custom.actionIntent)
+        }
+
         return MediaNotification(NOTIFICATION_ID, builder.build()).also { lastBuiltNotification = it }
     }
 
@@ -282,7 +310,15 @@ class PlaybackNotificationProvider(
     override fun getNotificationChannelInfo(): MediaNotification.Provider.NotificationChannelInfo =
         MediaNotification.Provider.NotificationChannelInfo(CHANNEL_ID, "Playback")
 
-    override fun handleCustomCommand(session: MediaSession, action: String, extras: android.os.Bundle): Boolean = false
+    override fun handleCustomCommand(session: MediaSession, action: String, extras: android.os.Bundle): Boolean {
+        if (action == MediaSessionReactionCommands.ACTION_LIKE ||
+            action == MediaSessionReactionCommands.ACTION_DISLIKE
+        ) {
+            onCustomAction?.invoke(action)
+            return true
+        }
+        return false
+    }
 
     private fun loadCoverArtAsync(coverArtId: String?) {
         coverArtJob?.cancel()

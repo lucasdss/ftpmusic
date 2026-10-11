@@ -16,6 +16,7 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.playback.CurrentTrackReactionController
 import com.lucasdss.ftpmusic.app.playback.MediaSessionCallback
 import dagger.Module
 import dagger.Provides
@@ -40,6 +41,7 @@ object MediaModule {
         localSearch: LocalSearchRepository,
         persistenceManager: com.lucasdss.ftpmusic.app.playback.QueuePersistenceManager,
         playlistDao: PlaylistDao,
+        reactionController: CurrentTrackReactionController,
     ): MediaSessionCallback = MediaSessionCallback(
         trackDao,
         metadataDao,
@@ -48,6 +50,7 @@ object MediaModule {
         localSearch,
         persistenceManager,
         playlistDao,
+        reactionController,
     )
 
     @Provides

@@ -89,19 +89,29 @@ class PlaybackNotificationProviderRobolectricTest {
             name: CharSequence,
             action: String,
             extras: android.os.Bundle,
-        ) = NotificationCompat.Action.Builder(icon, name, createMediaActionPendingIntent(s, 1)).build()
+        ) = NotificationCompat.Action.Builder(icon, name, customPendingIntent(action)).build()
         override fun createCustomActionFromCustomCommandButton(
             s: MediaSession,
             button: androidx.media3.session.CommandButton,
-        ) = NotificationCompat.Action.Builder(
-            IconCompat.createWithResource(context, android.R.drawable.ic_media_play),
-            "Play",
-            createMediaActionPendingIntent(s, 1),
-        ).build()
+        ): NotificationCompat.Action {
+            val action = button.sessionCommand?.customAction
+                ?: MediaSessionReactionCommands.ACTION_LIKE
+            return NotificationCompat.Action.Builder(
+                IconCompat.createWithResource(context, com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_up),
+                button.displayName,
+                customPendingIntent(action),
+            ).build()
+        }
         override fun createMediaActionPendingIntent(s: MediaSession, commandCode: Int) = PendingIntent.getBroadcast(
             context,
             commandCode,
-            Intent("com.lucasdss.ftpmusic.app.MEDIA_ACTION").putExtra("command", commandCode.toLong()),
+            Intent(MediaActionReceiver.ACTION).putExtra(MediaActionReceiver.EXTRA_COMMAND, commandCode.toLong()),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        private fun customPendingIntent(action: String) = PendingIntent.getBroadcast(
+            context,
+            action.hashCode(),
+            Intent(MediaActionReceiver.ACTION).putExtra(MediaActionReceiver.EXTRA_CUSTOM_ACTION, action),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
     }
@@ -112,10 +122,19 @@ class PlaybackNotificationProviderRobolectricTest {
     fun `all media actions carry live pending intents`() {
         val notif = build().notification
         assertNotNull(notif.actions)
-        assertEquals(3, notif.actions.size)
+        // Play/Pause + Next + Previous + Like + Dislike
+        assertEquals(5, notif.actions.size)
         notif.actions.forEach { action ->
             assertNotNull("action '${action.title}' must have a non-null actionIntent (E9)", action.actionIntent)
         }
+    }
+
+    @Test
+    fun `memoization rebuilds when reaction state changes`() {
+        val first = build()
+        state = state.copy(isStarred = true)
+        val second = provider.buildNotification(session, liveFactory())
+        assertNotEquals(first, second)
     }
 
     @Test

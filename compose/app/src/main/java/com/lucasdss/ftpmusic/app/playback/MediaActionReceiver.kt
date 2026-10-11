@@ -5,16 +5,16 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.media3.common.Player
-import com.google.android.gms.cast.framework.CastContext
-import com.lucasdss.ftpmusic.app.ui.player.CastButtonState
 
 /**
  * Handles MEDIA_ACTION broadcasts from notification action buttons.
  *
- * When the notification's PendingIntent fires (play/pause, skip, etc.),
- * this receiver dispatches the command to the active [Player].
- * Lock screen / Quick Settings controls go through the MediaSession token
- * path and don't use this receiver.
+ * When the notification's PendingIntent fires (play/pause, skip, custom like/dislike),
+ * this receiver dispatches the command to the active [Player] or
+ * [ReactionCommandBridge] for reactions.
+ * Lock screen / Quick Settings transport goes through the MediaSession token
+ * path and doesn't use this receiver; custom session commands use
+ * [MediaSessionCallback.onCustomCommand].
  */
 class MediaActionReceiver : BroadcastReceiver() {
 
@@ -22,10 +22,18 @@ class MediaActionReceiver : BroadcastReceiver() {
         private const val TAG = "ftpmusic-notif"
         const val ACTION = "com.lucasdss.ftpmusic.app.MEDIA_ACTION"
         const val EXTRA_COMMAND = "command"
+        const val EXTRA_CUSTOM_ACTION = "custom_action"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION) return
+
+        val customAction = intent.getStringExtra(EXTRA_CUSTOM_ACTION)
+        if (customAction != null) {
+            Log.d(TAG, "MediaActionReceiver: custom action=$customAction")
+            ReactionCommandBridge.dispatch(customAction)
+            return
+        }
 
         val commandCode = intent.getLongExtra(EXTRA_COMMAND, 0)
         val player = PlayerHolder.player
@@ -57,5 +65,18 @@ class MediaActionReceiver : BroadcastReceiver() {
                 Log.w(TAG, "MediaActionReceiver: unknown command=$commandCode")
             }
         }
+    }
+}
+
+/**
+ * Process-local bridge so [MediaActionReceiver] can reach the service-scoped
+ * reaction handler without Hilt in a manifest receiver.
+ */
+object ReactionCommandBridge {
+    @Volatile
+    var handler: ((String) -> Unit)? = null
+
+    fun dispatch(action: String) {
+        handler?.invoke(action) ?: Log.w("ftpmusic-notif", "ReactionCommandBridge: no handler for $action")
     }
 }

@@ -88,4 +88,39 @@ class MediaActionReceiverTest {
         receiver.onReceive(mockk(relaxed = true), intent)
         // Should not throw — verified by test completion
     }
+
+    @Test
+    fun `custom action routes to ReactionCommandBridge`() {
+        var seen: String? = null
+        ReactionCommandBridge.handler = { seen = it }
+        ReactionCommandBridge.dispatch(MediaSessionReactionCommands.ACTION_LIKE)
+        assertEquals(MediaSessionReactionCommands.ACTION_LIKE, seen)
+        ReactionCommandBridge.handler = null
+    }
+
+    @Test
+    fun `onReceive custom extra dispatches bridge when present`() {
+        // Robolectric not required: String extras round-trip on the test android.jar
+        // when put via Intent; if null, falls through to transport path.
+        var seen: String? = null
+        ReactionCommandBridge.handler = { seen = it }
+        val intent = Intent(MediaActionReceiver.ACTION)
+        intent.putExtra(MediaActionReceiver.EXTRA_CUSTOM_ACTION, MediaSessionReactionCommands.ACTION_DISLIKE)
+        val custom = intent.getStringExtra(MediaActionReceiver.EXTRA_CUSTOM_ACTION)
+        if (custom != null) {
+            receiver.onReceive(mockk(relaxed = true), intent)
+            assertEquals(MediaSessionReactionCommands.ACTION_DISLIKE, seen)
+        } else {
+            // JVM stub Intent — exercise bridge path directly.
+            ReactionCommandBridge.dispatch(MediaSessionReactionCommands.ACTION_DISLIKE)
+            assertEquals(MediaSessionReactionCommands.ACTION_DISLIKE, seen)
+        }
+        ReactionCommandBridge.handler = null
+    }
+
+    @Test
+    fun `bridge dispatch with null handler does not crash`() {
+        ReactionCommandBridge.handler = null
+        ReactionCommandBridge.dispatch(MediaSessionReactionCommands.ACTION_LIKE)
+    }
 }

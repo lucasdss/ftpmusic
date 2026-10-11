@@ -302,6 +302,8 @@ class MediaService : MediaLibraryService() {
 
     @Inject lateinit var mediaSessionCallback: MediaSessionCallback
 
+    @Inject lateinit var reactionController: CurrentTrackReactionController
+
     @Inject lateinit var offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 
     // Cached CastContext — avoids repeated getSharedInstance() calls
@@ -1654,8 +1656,11 @@ class MediaService : MediaLibraryService() {
                         ?: true
                 },
             )
+            provider.onCustomAction = { action -> handleReactionCustomAction(action) }
+            ReactionCommandBridge.handler = { action -> handleReactionCustomAction(action) }
             notificationProvider = provider
             setMediaNotificationProvider(provider)
+            wireReactionSurfaceUpdates()
 
             // Connect Player listener so UI reads Player state directly
             playbackProvider.connect()
@@ -1753,11 +1758,13 @@ class MediaService : MediaLibraryService() {
             // Initialize the notification provider so MediaStyle's setMediaSession()
             // links the notification to the platform MediaSession for lock screen controls.
             // This must be called to set up lastSession/lastActionFactory/lastCallback.
-            val compatButtonList: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton> =
-                com.google.common.collect.ImmutableList.of()
+            val reactionButtons = MediaSessionReactionCommands.buttons(
+                playbackProvider.playbackState.value.isStarred,
+                playbackProvider.playbackState.value.isDisliked,
+            )
             provider.createNotification(
                 mediaSession,
-                compatButtonList,
+                reactionButtons,
                 object : androidx.media3.session.MediaNotification.ActionFactory {
                     // E9: every action the APP builds (warm-up + notifyChanged
                     // posts) must carry a LIVE PendingIntent. The media3-driven
@@ -1785,24 +1792,44 @@ class MediaService : MediaLibraryService() {
                     ) = androidx.core.app.NotificationCompat.Action.Builder(
                         icon,
                         name,
-                        createMediaActionPendingIntent(s, Player.COMMAND_PLAY_PAUSE),
+                        createCustomActionPendingIntent(action),
                     ).build()
                     override fun createCustomActionFromCustomCommandButton(
                         s: MediaSession,
                         button: androidx.media3.session.CommandButton,
-                    ) = androidx.core.app.NotificationCompat.Action.Builder(
-                        androidx.core.graphics.drawable.IconCompat.createWithResource(
-                            this@MediaService,
-                            android.R.drawable.ic_media_play,
-                        ),
-                        button.displayName,
-                        createMediaActionPendingIntent(s, Player.COMMAND_PLAY_PAUSE),
-                    ).build()
+                    ): androidx.core.app.NotificationCompat.Action {
+                        val action = button.sessionCommand?.customAction
+                            ?: MediaSessionReactionCommands.ACTION_LIKE
+                        val iconRes = when (action) {
+                            MediaSessionReactionCommands.ACTION_LIKE ->
+                                com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_up
+
+                            MediaSessionReactionCommands.ACTION_DISLIKE ->
+                                com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_down
+
+                            else ->
+                                if (button.iconResId != 0) {
+                                    button.iconResId
+                                } else {
+                                    android.R.drawable.ic_media_play
+                                }
+                        }
+                        return androidx.core.app.NotificationCompat.Action.Builder(
+                            androidx.core.graphics.drawable.IconCompat.createWithResource(
+                                this@MediaService,
+                                iconRes,
+                            ),
+                            button.displayName,
+                            createCustomActionPendingIntent(action),
+                        ).build()
+                    }
                     override fun createMediaActionPendingIntent(s: MediaSession, commandCode: Int) =
                         PendingIntent.getBroadcast(
                             this@MediaService,
                             commandCode,
-                            Intent("com.lucasdss.ftpmusic.app.MEDIA_ACTION").apply { putExtra("command", commandCode) },
+                            Intent(MediaActionReceiver.ACTION).apply {
+                                putExtra(MediaActionReceiver.EXTRA_COMMAND, commandCode.toLong())
+                            },
                             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                         )
                 },
@@ -1927,6 +1954,8 @@ class MediaService : MediaLibraryService() {
         CastButtonState.onEndSessionForSwitchRequested = null
         CastButtonState.onConnectRequested = null
         CastButtonState.onConnectCancelled = null
+        ReactionCommandBridge.handler = null
+        notificationProvider?.onCustomAction = null
         try {
             btWarmAudioDeviceMonitor?.stop()
         } catch (_: Exception) {
@@ -3885,6 +3914,63 @@ class MediaService : MediaLibraryService() {
         // while casting, so UI/notification stay live even if media3's
         // CastPlayer timeline is empty or events are missed.
         wireCastStateMirror()
+    }
+
+    private fun createCustomActionPendingIntent(action: String): PendingIntent {
+        val requestCode = action.hashCode()
+        return PendingIntent.getBroadcast(
+            this,
+            requestCode,
+            Intent(MediaActionReceiver.ACTION).apply {
+                putExtra(MediaActionReceiver.EXTRA_CUSTOM_ACTION, action)
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
+
+    /** Collect reaction snapshots → PlaybackState extras + session buttons + notif. */
+    private fun wireReactionSurfaceUpdates() {
+        scope.launch {
+            reactionController.reactions.collect { snap ->
+                if (snap == null) return@collect
+                val cur = playbackProvider.playbackState.value
+                playbackProvider.updateExtraState(
+                    isStarred = snap.isStarred,
+                    sleepTimerEndMs = cur.sleepTimerEndMs,
+                    downloadedTrackIds = cur.downloadedTrackIds,
+                    isDisliked = snap.isDisliked,
+                    trackRating = snap.trackRating,
+                )
+                withContext(Dispatchers.Main.immediate) {
+                    if (snap.trackId == mediaSession.player.currentMediaItem?.mediaId) {
+                        mediaSessionCallback.refreshReactionSurfaces(mediaSession, snap)
+                    }
+                    notificationProvider?.notifyChanged()
+                }
+            }
+        }
+    }
+
+    private fun handleReactionCustomAction(action: String) {
+        val trackId = mediaSession.player.currentMediaItem?.mediaId
+            ?: playbackProvider.playbackState.value.currentTrackId
+            ?: return
+        scope.launch {
+            try {
+                // Emit via controller only — wireReactionSurfaceUpdates owns refresh.
+                when (action) {
+                    MediaSessionReactionCommands.ACTION_LIKE ->
+                        reactionController.toggleLike(trackId)
+
+                    MediaSessionReactionCommands.ACTION_DISLIKE ->
+                        reactionController.toggleDislike(trackId)
+
+                    else -> return@launch
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaService] reaction action failed: ${e.message}")
+            }
+        }
     }
 
     /**
