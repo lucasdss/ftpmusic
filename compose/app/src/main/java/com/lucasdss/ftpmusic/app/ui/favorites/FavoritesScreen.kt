@@ -123,6 +123,10 @@ class FavoritesViewModel @Inject constructor(
     private var desiredFilterJob: kotlinx.coroutines.Job? = null
     private var catalogJob: kotlinx.coroutines.Job? = null
 
+    companion object {
+        private const val CATALOG_DEBOUNCE_MS = 300L
+    }
+
     fun setMode(mode: FavoritesMode) {
         _state.value = _state.value.copy(mode = mode)
         if (mode == FavoritesMode.DESIRED) {
@@ -292,41 +296,59 @@ class FavoritesViewModel @Inject constructor(
     private fun maybeLaunchCatalogAdd(query: String) {
         catalogJob?.cancel()
         val q = query.trim()
-        if (q.length < 2 || isLocalOnly()) {
+        if (q.length < 2) {
             _state.value = _state.value.copy(
                 catalogArtists = emptyList(),
                 catalogAlbums = emptyList(),
                 catalogTracks = emptyList(),
                 isCatalogLoading = false,
+                catalogOfflineTip = false,
+            )
+            return
+        }
+        if (isLocalOnly()) {
+            _state.value = _state.value.copy(
+                catalogArtists = emptyList(),
+                catalogAlbums = emptyList(),
+                catalogTracks = emptyList(),
+                isCatalogLoading = false,
+                catalogOfflineTip = true,
             )
             return
         }
         catalogJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isCatalogLoading = true)
+            kotlinx.coroutines.delay(CATALOG_DEBOUNCE_MS)
+            if (_state.value.filterQuery.trim() != q) return@launch
+            _state.value = _state.value.copy(isCatalogLoading = true, catalogOfflineTip = false)
             try {
                 val mbArtists = try {
                     musicBrainzService.searchArtists(q, 6)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     emptyList()
                 }
                 val lastFm = try {
                     lastFmService.searchArtists(q, 6)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     emptyList()
                 }
                 val dzArtists = try {
                     deezerService.searchArtists(q, 6)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     emptyList()
                 }
                 val dzAlbums = try {
                     deezerService.searchAlbums(q, 6)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     emptyList()
                 }
                 val dzTracks = try {
                     deezerService.searchTracks(q, 6)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     emptyList()
                 }
                 val artists = LinkedHashMap<String, DiscoverArtistHit>()
@@ -811,6 +833,8 @@ data class FavoritesState(
     val catalogAlbums: List<DiscoverAlbumHit> = emptyList(),
     val catalogTracks: List<DiscoverTrackHit> = emptyList(),
     val isCatalogLoading: Boolean = false,
+    /** Offline tip when Desired filter would hit catalog but local-only blocks it. */
+    val catalogOfflineTip: Boolean = false,
     val hasMoreLikedTracks: Boolean = false,
     val hasMoreLikedAlbums: Boolean = false,
     val hasMoreLikedArtists: Boolean = false,
@@ -908,12 +932,15 @@ fun FavoritesScreen(
                 onSelect = viewModel::setMode,
             )
 
-            FavoritesFilterRow(
-                query = state.filterQuery,
-                onQueryChange = viewModel::setFilterQuery,
-                showShare = state.mode == FavoritesMode.DESIRED,
-                onShare = viewModel::shareDesired,
-            )
+            // Filter + share only apply to Desired (Liked/Disliked ignore filterQuery).
+            if (state.mode == FavoritesMode.DESIRED) {
+                FavoritesFilterRow(
+                    query = state.filterQuery,
+                    onQueryChange = viewModel::setFilterQuery,
+                    showShare = true,
+                    onShare = viewModel::shareDesired,
+                )
+            }
 
             if (!hasAnything) {
                 Box(Modifier.fillMaxSize().testTag("favorites_empty"), contentAlignment = Alignment.Center) {
@@ -1077,6 +1104,16 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
                 DesiredItemRow(item = item, onRemove = { viewModel.removeDesired(item.id) })
             }
         }
+        if (state.catalogOfflineTip && state.filterQuery.trim().length >= 2) {
+            item {
+                Text(
+                    "Offline — catalog add needs a connection",
+                    color = Color(0xFF666666),
+                    fontSize = textLabelM(),
+                    modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                )
+            }
+        }
         val showCatalog = state.filterQuery.trim().length >= 2 &&
             (
                 state.isCatalogLoading || state.catalogArtists.isNotEmpty() ||
@@ -1101,14 +1138,20 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
                     onAdd = { viewModel.addCatalogArtistDesired(hit) },
                 )
             }
-            items(state.catalogAlbums, key = { "cat-al-${it.deezerId ?: it.title}" }) { hit ->
+            items(
+                state.catalogAlbums,
+                key = { "cat-al-${it.deezerId ?: it.title}|${it.artistName.orEmpty()}" },
+            ) { hit ->
                 CatalogAddRow(
                     title = hit.title,
                     subtitle = listOfNotNull(hit.artistName, "Album · ${hit.source}").joinToString(" · "),
                     onAdd = { viewModel.addCatalogAlbumDesired(hit) },
                 )
             }
-            items(state.catalogTracks, key = { "cat-tr-${it.deezerId ?: it.title}" }) { hit ->
+            items(
+                state.catalogTracks,
+                key = { "cat-tr-${it.deezerId ?: it.mbid ?: it.title}|${it.artistName.orEmpty()}" },
+            ) { hit ->
                 CatalogAddRow(
                     title = hit.title,
                     subtitle = listOfNotNull(hit.artistName, "Track").joinToString(" · "),

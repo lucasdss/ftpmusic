@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.data.network
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -26,7 +27,7 @@ class DeezerService @Inject constructor() {
         private const val BASE = "https://api.deezer.com"
         private const val WINDOW_MS = 5_000L
         private const val MAX_IN_WINDOW = 40
-        private const val QUOTA_BACKOFF_MS = 2_000L
+        internal const val QUOTA_BACKOFF_MS = 2_000L
     }
 
     data class ArtistHit(val id: String, val name: String)
@@ -34,6 +35,11 @@ class DeezerService @Inject constructor() {
     data class TrackHit(val id: String, val title: String, val artistName: String?, val albumName: String?)
 
     class QuotaException(message: String) : Exception(message)
+
+    /** Test-visible: incremented each time quota backoff delay runs. */
+    @Volatile
+    internal var quotaBackoffInvocations: Int = 0
+        private set
 
     private val rateMutex = Mutex()
     private val requestTimestamps = ArrayDeque<Long>()
@@ -91,7 +97,6 @@ class DeezerService @Inject constructor() {
                 val body = client.newCall(request).execute().use { resp ->
                     if (!resp.isSuccessful) {
                         if (resp.code == 429) {
-                            delay(QUOTA_BACKOFF_MS)
                             throw QuotaException("HTTP 429")
                         }
                         return@withContext emptyList()
@@ -99,12 +104,22 @@ class DeezerService @Inject constructor() {
                     resp.body?.string() ?: return@withContext emptyList()
                 }
                 parseHits(body, map)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: QuotaException) {
+                // Body quota (code 4) or HTTP 429 — backoff then degrade empty.
+                applyQuotaBackoff()
                 emptyList()
             } catch (_: Exception) {
                 emptyList()
             }
         }
+
+    /** Package-visible for unit tests (runTest + advanceTimeBy). */
+    internal suspend fun applyQuotaBackoff() {
+        quotaBackoffInvocations++
+        delay(QUOTA_BACKOFF_MS)
+    }
 
     internal fun <T> parseHits(body: String, map: (JSONObject) -> T?): List<T> {
         val root = JSONObject(body)

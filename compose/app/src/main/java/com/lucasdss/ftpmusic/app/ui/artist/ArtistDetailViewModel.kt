@@ -155,15 +155,12 @@ class ArtistDetailViewModel @Inject constructor(
                 if (localAlbums.isNotEmpty() || cachedArtist != null || localTracks.isNotEmpty()) {
                     val name = cachedArtist?.name ?: localAlbums.firstOrNull()?.artist ?: "Unknown"
                     val emptyCatalog = localAlbums.isEmpty() && localTracks.isEmpty()
-                    val desiredKey = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
-                        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
-                        name,
-                        null,
-                        cachedArtist?.musicbrainzId,
-                        null,
-                    )
                     val isDesired = try {
-                        desiredRepository.getAll().any { it.identityKey == desiredKey }
+                        desiredRepository.findMatchingDesired(
+                            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                            title = name,
+                            musicbrainzId = cachedArtist?.musicbrainzId,
+                        ) != null
                     } catch (_: Exception) {
                         false
                     }
@@ -672,21 +669,19 @@ class ArtistDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val cached = metadataDao.getArtistById(s.artistId)
-                val key = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
-                    com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
-                    s.name,
-                    null,
-                    cached?.musicbrainzId,
-                    null,
-                )
+                val mbid = cached?.musicbrainzId
                 if (s.isDesired) {
-                    desiredRepository.removeByIdentityKey(key)
+                    desiredRepository.removeMatching(
+                        entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                        title = s.name,
+                        musicbrainzId = mbid,
+                    )
                     _state.value = _state.value.copy(isDesired = false)
                 } else {
                     desiredRepository.addDesired(
                         entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
                         title = s.name,
-                        musicbrainzId = cached?.musicbrainzId,
+                        musicbrainzId = mbid,
                         source = if (s.artistId.startsWith("mb:")) "musicbrainz" else "manual",
                     )
                     _state.value = _state.value.copy(isDesired = true)

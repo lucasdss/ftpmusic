@@ -60,6 +60,7 @@ class MetadataSyncWorkerTest {
                 coverArtFallback,
                 mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
                 dailyMixRepository,
+                desiredRepository = mockk(relaxed = true),
             )
     }
 
@@ -774,6 +775,7 @@ class MetadataSyncWorkerTest {
         mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
         dailyMixRepository,
         metadataEnrichRunner = enrich,
+        desiredRepository = mockk(relaxed = true),
         ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
     )
 
@@ -892,6 +894,7 @@ class MetadataSyncWorkerTest {
             context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
             mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
             dailyMixRepository,
+            desiredRepository = mockk(relaxed = true),
             ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
         )
         val albums = (1..5).map { i -> CachedAlbumEntity(id = "al-$i", name = "A$i") }
@@ -994,6 +997,7 @@ class MetadataSyncWorkerTest {
             context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
             mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
             dailyMixRepository,
+            desiredRepository = mockk(relaxed = true),
             ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
         )
         val page1 = mapOf(

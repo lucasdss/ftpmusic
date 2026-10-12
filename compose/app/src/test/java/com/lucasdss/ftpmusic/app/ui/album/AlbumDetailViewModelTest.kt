@@ -916,4 +916,83 @@ class AlbumDetailViewModelTest {
         assertEquals(0, viewModel.state.value.albumRating)
         assertNull(viewModel.state.value.album?.rating)
     }
+
+    @Test
+    fun `offline empty tracks sets showAddDesired`() = runTest {
+        every { offlineModeManager.isOffline } returns kotlinx.coroutines.flow.MutableStateFlow(true)
+        val desired = mockk<com.lucasdss.ftpmusic.app.data.repository.DesiredRepository>(relaxed = true)
+        coEvery {
+            desired.findMatchingDesired(any(), any(), any(), any(), any())
+        } returns null
+        viewModel = AlbumDetailViewModel(
+            repository, storage, playbackManager, cacheService, downloadManager,
+            cacheQueueDao, playlistDao, pendingChangeDao, syncWorker, playlistRepo,
+            metadataDao, favoriteRepository, api,
+            musicBrainzService = musicBrainzService,
+            offlineModeManager = offlineModeManager,
+            trackDao = trackDao,
+            desiredRepository = desired,
+        )
+        coEvery { metadataDao.getAlbumById("al-off") } returns
+            com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity(
+                id = "al-off",
+                name = "Discovery",
+                artist = "Daft Punk",
+            )
+        coEvery { metadataDao.getAlbumTracks("al-off") } returns emptyList()
+
+        viewModel.loadAlbum("al-off", "user", "pass")
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.showAddDesired)
+        assertEquals("Album not cached offline", viewModel.state.value.error)
+    }
+
+    @Test
+    fun `toggleDesired removes deezer-keyed match`() = runTest {
+        val desired = mockk<com.lucasdss.ftpmusic.app.data.repository.DesiredRepository>(relaxed = true)
+        val dzRow = com.lucasdss.ftpmusic.app.data.db.DesiredItemEntity(
+            id = "dz-1",
+            identityKey = "dz:ALBUM:5",
+            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+            title = "Discovery",
+            artistName = "Daft Punk",
+            deezerId = "5",
+            source = "deezer",
+        )
+        coEvery { desired.findMatchingDesired(any(), any(), any(), any(), any()) } returns dzRow
+        viewModel = AlbumDetailViewModel(
+            repository, storage, playbackManager, cacheService, downloadManager,
+            cacheQueueDao, playlistDao, pendingChangeDao, syncWorker, playlistRepo,
+            metadataDao, favoriteRepository, api,
+            musicBrainzService = musicBrainzService,
+            offlineModeManager = offlineModeManager,
+            trackDao = trackDao,
+            desiredRepository = desired,
+        )
+        coEvery { repository.getAlbum("al-1", any(), any()) } returns
+            AlbumWithTracks(Album("al-1", "Discovery", artist = "Daft Punk"), emptyList())
+        coEvery { cacheService.getTracksByIds(any()) } returns emptyList()
+        coEvery { trackDao.watchTracksByIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { cacheQueueDao.watchByTrackIds(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { metadataDao.getAlbumById("al-1") } returns null
+
+        viewModel.loadAlbum("al-1", "user", "pass")
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.showAddDesired)
+        assertTrue(viewModel.state.value.isDesired)
+
+        viewModel.toggleDesired()
+        advanceUntilIdle()
+
+        coVerify {
+            desired.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                title = "Discovery",
+                artistName = "Daft Punk",
+                musicbrainzId = null,
+            )
+        }
+        assertFalse(viewModel.state.value.isDesired)
+    }
 }

@@ -1,9 +1,14 @@
 package com.lucasdss.ftpmusic.app.data.network
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DeezerServiceTest {
 
     private val service = DeezerService()
@@ -37,5 +42,14 @@ class DeezerServiceTest {
             DeezerService.ArtistHit(obj.optLong("id").toString(), obj.optString("name"))
         }
         assertTrue(hits.isEmpty())
+    }
+
+    @Test
+    fun `applyQuotaBackoff increments counter and delays`() = runTest {
+        val before = service.quotaBackoffInvocations
+        val job = backgroundScope.launch { service.applyQuotaBackoff() }
+        advanceTimeBy(DeezerService.QUOTA_BACKOFF_MS)
+        job.join()
+        assertEquals(before + 1, service.quotaBackoffInvocations)
     }
 }

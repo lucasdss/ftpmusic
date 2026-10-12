@@ -83,6 +83,7 @@ class MetadataSyncWorkerBranchTest {
     private fun TestScope.makeWorker() = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager, dailyMixRepository,
+        desiredRepository = mockk(relaxed = true),
         ioDispatcher = UnconfinedTestDispatcher(testScheduler),
     )
 
@@ -90,6 +91,7 @@ class MetadataSyncWorkerBranchTest {
     private fun makeLifecycleWorker() = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager, dailyMixRepository,
+        desiredRepository = mockk(relaxed = true),
         ioDispatcher = UnconfinedTestDispatcher(lifecycleScheduler),
     )
 

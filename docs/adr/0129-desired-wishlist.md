@@ -1,7 +1,8 @@
 # ADR 0129 — Desired wishlist (local wantlist)
 
 Date: 2026-10-12
-Status: Accepted
+Status: Accepted (hardened 2026-10-12: cross-key merge, Discover cancel
+semantics, Desired-only Favorites filter chrome)
 Related: ADR 0020, ADR 0048, docs/DESIRED_WISHLIST_BEHAVIOR_REPORT.md
 
 ## Context
@@ -19,11 +20,15 @@ search-to-add and export/share — not star semantics on library rows.
    Favorites tab gains third chip **Desired**; UI peer of Liked/Disliked,
    separate data path from `FavoriteRepository`.
 3. Identity: MBID canonical, then Deezer id, then normalized title+artist.
+   Cross-key merge upgrades name/Deezer rows to MBID without wiping
+   `matched_local_id`; detail surfaces resolve via `findMatchingDesired`.
 4. Fulfillment v1: reconcile sets `matched_local_id`; keep row with badge;
-   user clears manually.
-5. Share via `ACTION_SEND` plain text from Desired mode (diagnostics pattern).
-6. In-page filter on Desired queries Room; Add-from-catalog is a separate
-   subsection when query ≥2 and online.
+   user clears manually. Track reconcile falls back to exact title+artist;
+   album name match skips blank artist.
+5. Share via `ACTION_SEND` plain text from Desired mode (diagnostics pattern);
+   only the suspend `snapshotShareText()` path (no empty-default overload).
+6. Filter + share chrome only on Desired mode; Add-from-catalog debounced
+   when query ≥2 and online.
 
 ## Consequences
 

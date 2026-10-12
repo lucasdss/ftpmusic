@@ -1281,4 +1281,56 @@ class SearchViewModelTest {
         assertEquals(listOf("b1"), viewModel.state.value.tracks.map { it.id })
         assertFalse(viewModel.state.value.tracks.any { it.id == "a2" })
     }
+
+    @Test
+    fun `local-only search clears discoverAlbums`() = runTest(testDispatcher) {
+        val offlineFlow = MutableStateFlow(true)
+        val offlineManager = mockk<OfflineModeManager>()
+        every { offlineManager.isOffline } returns offlineFlow
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        val localSearch = mockk<LocalSearchRepository>()
+        coEvery { localSearch.search(any(), any(), playableOnly = true) } returns LocalSearchHit(
+            tracks = listOf(TrackEntity(id = "t1", title = "Song", artist = "A")),
+        )
+        viewModel = SearchViewModel(
+            repository, storage, genreDao,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            localSearch, mockk(relaxed = true), mockk(relaxed = true), api, offlineManager,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), desiredRepo, mockk(relaxed = true), mockk(relaxed = true),
+        )
+        NetworkAvailabilityHolder.resetForTests(false)
+        viewModel.onQueryChanged("so")
+        viewModel.search(commitRecent = false)
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.discoverAlbums.isEmpty())
+        assertTrue(viewModel.state.value.discoverArtists.isEmpty())
+        assertFalse(viewModel.state.value.isDiscoverLoading)
+        NetworkAvailabilityHolder.resetForTests(true)
+    }
+
+    @Test
+    fun `empty query clears discoverAlbums`() = runTest(testDispatcher) {
+        viewModel.onQueryChanged("")
+        assertTrue(viewModel.state.value.discoverAlbums.isEmpty())
+        assertTrue(viewModel.state.value.discoverArtists.isEmpty())
+        assertFalse(viewModel.state.value.isDiscoverLoading)
+    }
+
+    @Test
+    fun `addDiscoverArtistDesired delegates identity to repository`() = runTest(testDispatcher) {
+        viewModel.addDiscoverArtistDesired(
+            DiscoverArtistHit(name = "Daft Punk", deezerId = "27", source = "deezer"),
+        )
+        advanceUntilIdle()
+        coVerify {
+            desiredRepo.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                title = "Daft Punk",
+                deezerId = "27",
+                source = "deezer",
+            )
+        }
+    }
 }

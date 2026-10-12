@@ -1579,7 +1579,7 @@ fun SearchScreen(
                     }
                     items(
                         state.discoverAlbums,
-                        key = { "disc-al-${it.deezerId ?: it.mbid ?: it.title}" },
+                        key = { "disc-al-${it.deezerId ?: it.mbid ?: it.title}|${it.artistName.orEmpty()}" },
                     ) { hit ->
                         val desiredKey = viewModel.desiredIdentityKeyForAlbum(hit)
                         val isDesired = desiredKey in state.desiredIdentityKeys
@@ -1647,7 +1647,9 @@ fun SearchScreen(
                     }
                     items(
                         state.discoverTracks,
-                        key = { "disc-tr-${it.mbid ?: it.deezerId ?: it.title}" },
+                        key = {
+                            "disc-tr-${it.mbid ?: it.deezerId ?: it.title}|${it.artistName.orEmpty()}"
+                        },
                     ) { hit ->
                         val localId = hit.localTrackId
                         val desiredKey = viewModel.desiredIdentityKeyForTrack(hit)
@@ -1725,7 +1727,7 @@ fun SearchScreen(
                 }
 
                 // ── No results ──
-                if (state.resultCount == 0 && !state.isLoading &&
+                if (state.resultCount == 0 && !state.isLoading && !state.isDiscoverLoading &&
                     state.discoverArtists.isEmpty() &&
                     state.discoverAlbums.isEmpty() &&
                     state.discoverTracks.isEmpty()

@@ -441,6 +441,7 @@ class SearchViewModel @Inject constructor(
             filterType = if (trimmed.isEmpty()) SearchFilterType.ALL else _state.value.filterType,
             matchedTags = if (trimmed.isEmpty()) emptyList() else _state.value.matchedTags,
             discoverArtists = if (trimmed.isEmpty()) emptyList() else _state.value.discoverArtists,
+            discoverAlbums = if (trimmed.isEmpty()) emptyList() else _state.value.discoverAlbums,
             discoverTracks = if (trimmed.isEmpty()) emptyList() else _state.value.discoverTracks,
             lyricsMatches = if (trimmed.isEmpty()) emptyList() else _state.value.lyricsMatches,
             ftsRanks = emptyMap(),
@@ -554,6 +555,7 @@ class SearchViewModel @Inject constructor(
                         matchedTags = matchedTags,
                         lyricsMatches = split.lyricsMatches,
                         discoverArtists = emptyList(),
+                        discoverAlbums = emptyList(),
                         discoverTracks = emptyList(),
                         isDiscoverLoading = false,
                         ftsRanks = ranks,
@@ -950,11 +952,15 @@ class SearchViewModel @Inject constructor(
                 val tagBoost = lastTagChipQuery
                 val mbArtists = try {
                     musicBrainzService.searchArtists(query, DISCOVER_LIMIT)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     emptyList()
                 }
                 val mbTracks = try {
                     musicBrainzService.searchRecordings(query, DISCOVER_LIMIT)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     emptyList()
                 }
@@ -964,34 +970,49 @@ class SearchViewModel @Inject constructor(
                     } else {
                         lastFmService.searchArtists(query, DISCOVER_LIMIT)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     emptyList()
                 }
                 val deezerArtists = try {
                     deezerService.searchArtists(query, DISCOVER_LIMIT)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     emptyList()
                 }
                 val deezerAlbums = try {
                     deezerService.searchAlbums(query, DISCOVER_LIMIT)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     emptyList()
                 }
                 val deezerTracks = try {
                     deezerService.searchTracks(query, DISCOVER_LIMIT)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     emptyList()
                 }
 
                 val artistHits = LinkedHashMap<String, DiscoverArtistHit>()
+                var artistListenBudget =
+                    com.lucasdss.ftpmusic.app.data.network.ListenBrainzService.DISCOVER_FANOUT
                 for (a in mbArtists) {
                     val local = resolveLocalArtist(a.mbid, a.name)
-                    val listens = a.mbid?.let { mbid ->
+                    val listens = if (artistListenBudget > 0 && !a.mbid.isNullOrBlank()) {
+                        artistListenBudget--
                         try {
-                            listenBrainzService.artistListenCount(mbid)
+                            listenBrainzService.artistListenCount(a.mbid)
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                             null
                         }
+                    } else {
+                        null
                     }
                     artistHits[a.name.lowercase()] = DiscoverArtistHit(
                         name = a.name,
@@ -1047,6 +1068,8 @@ class SearchViewModel @Inject constructor(
                 }
 
                 val trackHits = LinkedHashMap<String, DiscoverTrackHit>()
+                var recordingListenBudget =
+                    com.lucasdss.ftpmusic.app.data.network.ListenBrainzService.DISCOVER_FANOUT
                 for (t in mbTracks) {
                     val local = if (!t.mbid.isNullOrBlank()) {
                         try {
@@ -1057,12 +1080,17 @@ class SearchViewModel @Inject constructor(
                     } else {
                         null
                     }
-                    val listens = t.mbid?.let { mbid ->
+                    val listens = if (recordingListenBudget > 0 && !t.mbid.isNullOrBlank()) {
+                        recordingListenBudget--
                         try {
-                            listenBrainzService.recordingListenCount(mbid)
+                            listenBrainzService.recordingListenCount(t.mbid)
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                             null
                         }
+                    } else {
+                        null
                     }
                     val key = "${t.name.lowercase()}|${t.artistName.orEmpty().lowercase()}"
                     trackHits[key] = DiscoverTrackHit(
@@ -1108,6 +1136,8 @@ class SearchViewModel @Inject constructor(
                     discoverTracks = rankedTracks,
                     isDiscoverLoading = false,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 _state.value = _state.value.copy(isDiscoverLoading = false)
             }

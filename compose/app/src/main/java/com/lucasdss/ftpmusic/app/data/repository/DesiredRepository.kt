@@ -12,8 +12,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * Local Desired wishlist (ADR-0129). Idempotent upsert by identity key:
- * MBID → Deezer id → normalized title+artist.
+ * Local Desired wishlist (ADR-0129). Cross-key merge: resolve by MBID, then
+ * Deezer id, then normalized title+artist; persist strongest identity_key.
  */
 @Singleton
 class DesiredRepository @Inject constructor(
@@ -34,7 +34,7 @@ class DesiredRepository @Inject constructor(
             deezerId: String?,
         ): String {
             val type = entityType.uppercase()
-            // Entity type is always in the key (mb:ARTIST:… / dz:ALBUM:…) — avoids
+            // Entity type always in key (mb:ARTIST:… / dz:ALBUM:…) — avoids
             // Deezer numeric id collisions across artist/album/track namespaces.
             val mbid = musicbrainzId?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
             if (mbid != null) return "mb:$type:$mbid"
@@ -63,8 +63,44 @@ class DesiredRepository @Inject constructor(
     suspend fun getAll(): List<DesiredItemEntity> = desiredItemDao.getAll()
 
     /**
-     * Idempotent add. Merges external ids into existing row when identity matches.
-     * @return persisted entity (existing or new).
+     * Find an existing Desired row matching any known identity (MBID / Deezer / name).
+     * Used by Discover + Artist/Album detail so Deezer-added rows resolve correctly.
+     */
+    suspend fun findMatchingDesired(
+        entityType: String,
+        title: String,
+        artistName: String? = null,
+        musicbrainzId: String? = null,
+        deezerId: String? = null,
+    ): DesiredItemEntity? {
+        val type = entityType.uppercase()
+        val mbid = musicbrainzId?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        val dz = deezerId?.trim()?.takeIf { it.isNotEmpty() }
+        val candidates = LinkedHashSet<DesiredItemEntity>()
+        if (mbid != null) {
+            desiredItemDao.getByMusicbrainzId(type, mbid)?.let { candidates.add(it) }
+            desiredItemDao.getByIdentityKey("mb:$type:$mbid")?.let { candidates.add(it) }
+        }
+        if (dz != null) {
+            desiredItemDao.getByDeezerId(type, dz)?.let { candidates.add(it) }
+            desiredItemDao.getByIdentityKey("dz:$type:$dz")?.let { candidates.add(it) }
+        }
+        val nmKey = identityKey(type, title, artistName, null, null)
+        desiredItemDao.getByIdentityKey(nmKey)?.let { candidates.add(it) }
+        // Title bridge: Deezer/MB rows may not share nm: identity_key with detail.
+        if (title.isNotBlank()) {
+            desiredItemDao.getByNormalizedTitleArtist(
+                type,
+                title.trim(),
+                artistName?.trim().orEmpty(),
+            ).forEach { candidates.add(it) }
+        }
+        return candidates.minByOrNull { strengthRank(it.identityKey) }
+    }
+
+    /**
+     * Idempotent add with cross-key merge (name/Deezer → MBID upgrades to one row).
+     * Preserves matched_local_id. Deletes weaker duplicate rows in one transaction.
      */
     suspend fun addDesired(
         entityType: String,
@@ -77,50 +113,62 @@ class DesiredRepository @Inject constructor(
         note: String? = null,
     ): DesiredItemEntity {
         val type = entityType.uppercase()
-        val key = identityKey(type, title, artistName, musicbrainzId, deezerId)
-        val existing = desiredItemDao.getByIdentityKey(key)
-        if (existing != null) {
-            val merged = existing.copy(
-                title = title.ifBlank { existing.title },
-                artistName = artistName?.takeIf { it.isNotBlank() } ?: existing.artistName,
-                albumName = albumName?.takeIf { it.isNotBlank() } ?: existing.albumName,
-                musicbrainzId = musicbrainzId?.takeIf { it.isNotBlank() } ?: existing.musicbrainzId,
-                deezerId = deezerId?.takeIf { it.isNotBlank() } ?: existing.deezerId,
-                source = if (existing.source == "manual") source else existing.source,
-                note = note ?: existing.note,
+        val cleanTitle = title.trim()
+        val cleanArtist = artistName?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanAlbum = albumName?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanMbid = musicbrainzId?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        val cleanDz = deezerId?.trim()?.takeIf { it.isNotEmpty() }
+
+        val matches = collectMatches(type, cleanTitle, cleanArtist, cleanMbid, cleanDz)
+        val strongestKey = identityKey(type, cleanTitle, cleanArtist, cleanMbid, cleanDz)
+
+        if (matches.isEmpty()) {
+            val entity = DesiredItemEntity(
+                id = UUID.randomUUID().toString(),
+                identityKey = strongestKey,
+                entityType = type,
+                title = cleanTitle,
+                artistName = cleanArtist,
+                albumName = cleanAlbum,
+                musicbrainzId = cleanMbid,
+                deezerId = cleanDz,
+                source = source,
+                desiredAt = System.currentTimeMillis(),
+                note = note,
             )
-            // Prefer stronger identity if we gained an MBID after a name-key insert.
-            val strongerKey = identityKey(
-                type,
-                merged.title,
-                merged.artistName,
-                merged.musicbrainzId,
-                merged.deezerId,
-            )
-            if (strongerKey != existing.identityKey) {
-                desiredItemDao.deleteById(existing.id)
-                val upgraded = merged.copy(id = existing.id, identityKey = strongerKey)
-                desiredItemDao.upsert(upgraded)
-                return upgraded
-            }
-            desiredItemDao.upsert(merged)
-            return merged
+            desiredItemDao.mergeReplace(entity, emptyList())
+            return entity
         }
-        val entity = DesiredItemEntity(
-            id = UUID.randomUUID().toString(),
-            identityKey = key,
-            entityType = type,
-            title = title.trim(),
-            artistName = artistName?.trim()?.takeIf { it.isNotEmpty() },
-            albumName = albumName?.trim()?.takeIf { it.isNotEmpty() },
-            musicbrainzId = musicbrainzId?.trim()?.takeIf { it.isNotEmpty() },
-            deezerId = deezerId?.trim()?.takeIf { it.isNotEmpty() },
-            source = source,
-            desiredAt = System.currentTimeMillis(),
-            note = note,
+
+        val keepId = matches.minBy { it.desiredAt }.id
+        val mergedMbid = cleanMbid ?: matches.firstNotNullOfOrNull { it.musicbrainzId }
+        val mergedDz = cleanDz ?: matches.firstNotNullOfOrNull { it.deezerId }
+        val finalKey = identityKey(
+            type,
+            cleanTitle.ifBlank { matches.first().title },
+            cleanArtist ?: matches.firstNotNullOfOrNull { it.artistName },
+            mergedMbid,
+            mergedDz,
         )
-        desiredItemDao.upsert(entity)
-        return entity
+        val winner = DesiredItemEntity(
+            id = keepId,
+            identityKey = finalKey,
+            entityType = type,
+            title = cleanTitle.ifBlank { matches.first().title },
+            artistName = cleanArtist ?: matches.firstNotNullOfOrNull { it.artistName },
+            albumName = cleanAlbum ?: matches.firstNotNullOfOrNull { it.albumName },
+            musicbrainzId = mergedMbid,
+            deezerId = mergedDz,
+            source = matches.firstOrNull { it.source != "manual" }?.source ?: source,
+            desiredAt = matches.minOf { it.desiredAt },
+            matchedLocalId = matches.firstNotNullOfOrNull { it.matchedLocalId },
+            note = note ?: matches.firstNotNullOfOrNull { it.note },
+        )
+        val losers = matches.map { it.id }.filter { it != keepId }
+        desiredItemDao.mergeReplace(winner, losers)
+        return desiredItemDao.getById(keepId)
+            ?: desiredItemDao.getByIdentityKey(finalKey)
+            ?: winner
     }
 
     suspend fun removeDesired(id: String) {
@@ -129,6 +177,20 @@ class DesiredRepository @Inject constructor(
 
     suspend fun removeByIdentityKey(identityKey: String) {
         desiredItemDao.deleteByIdentityKey(identityKey)
+    }
+
+    /** Remove any row matching the given identity facets (detail / Discover toggle). */
+    suspend fun removeMatching(
+        entityType: String,
+        title: String,
+        artistName: String? = null,
+        musicbrainzId: String? = null,
+        deezerId: String? = null,
+    ) {
+        val match = findMatchingDesired(entityType, title, artistName, musicbrainzId, deezerId)
+        if (match != null) {
+            desiredItemDao.deleteById(match.id)
+        }
     }
 
     /** Match Desired rows to local library; set matched_local_id (keep row). */
@@ -150,14 +212,9 @@ class DesiredRepository @Inject constructor(
     fun observeDesiredIdentityKeys(): Flow<Set<String>> =
         desiredItemDao.observeAll().map { list -> list.map { it.identityKey }.toSet() }
 
-    fun snapshotShareText(items: List<DesiredItemEntity> = emptyList()): String {
-        // Caller may pass preloaded list; empty → sync load happens in suspend wrapper.
-        return buildShareText(items)
-    }
-
     suspend fun snapshotShareText(): String = buildShareText(desiredItemDao.getAll())
 
-    private fun buildShareText(items: List<DesiredItemEntity>): String {
+    fun buildShareText(items: List<DesiredItemEntity>): String {
         val sb = StringBuilder()
         sb.appendLine("ftpmusic desired list")
         sb.appendLine("count=${items.size}")
@@ -176,6 +233,44 @@ class DesiredRepository @Inject constructor(
             sb.appendLine("[${item.entityType}] $title$artist ($ids)")
         }
         return sb.toString().trimEnd()
+    }
+
+    private suspend fun collectMatches(
+        type: String,
+        title: String,
+        artistName: String?,
+        mbid: String?,
+        deezerId: String?,
+    ): List<DesiredItemEntity> {
+        val found = LinkedHashMap<String, DesiredItemEntity>()
+        fun add(item: DesiredItemEntity?) {
+            if (item != null) found[item.id] = item
+        }
+        if (mbid != null) {
+            add(desiredItemDao.getByMusicbrainzId(type, mbid))
+            add(desiredItemDao.getByIdentityKey("mb:$type:$mbid"))
+        }
+        if (deezerId != null) {
+            add(desiredItemDao.getByDeezerId(type, deezerId))
+            add(desiredItemDao.getByIdentityKey("dz:$type:$deezerId"))
+        }
+        add(desiredItemDao.getByIdentityKey(identityKey(type, title, artistName, null, null)))
+        // Also catch incoming strongest key if already present.
+        add(desiredItemDao.getByIdentityKey(identityKey(type, title, artistName, mbid, deezerId)))
+        if (title.isNotBlank()) {
+            desiredItemDao.getByNormalizedTitleArtist(
+                type,
+                title.trim(),
+                artistName?.trim().orEmpty(),
+            ).forEach { add(it) }
+        }
+        return found.values.toList()
+    }
+
+    private fun strengthRank(identityKey: String): Int = when {
+        identityKey.startsWith("mb:") -> 0
+        identityKey.startsWith("dz:") -> 1
+        else -> 2
     }
 
     private suspend fun matchArtist(item: DesiredItemEntity): String? {
@@ -199,8 +294,9 @@ class DesiredRepository @Inject constructor(
             } catch (_: Exception) {
             }
         }
+        val artist = item.artistName?.takeIf { it.isNotBlank() } ?: return null
         return try {
-            metadataDao.getAlbumByExactName(item.title, item.artistName)?.id
+            metadataDao.getAlbumByExactName(item.title, artist)?.id
         } catch (_: Exception) {
             null
         }
@@ -213,7 +309,12 @@ class DesiredRepository @Inject constructor(
             } catch (_: Exception) {
             }
         }
-        return null
+        val artist = item.artistName?.takeIf { it.isNotBlank() } ?: return null
+        return try {
+            trackDao.getTrackByExactTitleArtist(item.title, artist)?.id
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun escapeLike(raw: String): String {

@@ -670,12 +670,58 @@ class ArtistDetailViewModelTest {
     // NOTE: the VM's init collector captures the reaction flows at construction,
     // so these tests build a fresh VM AFTER stubbing the flows.
 
-    private fun freshViewModel(): ArtistDetailViewModel = ArtistDetailViewModel(
+    private fun freshViewModel(
+        desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository = mockk(relaxed = true),
+    ): ArtistDetailViewModel = ArtistDetailViewModel(
         api, storage, playbackManager, metadataDao, trackDao, offlineModeManager,
         musicBrainzService, lastFmService, cacheService, downloadManager,
         playlistDao, playlistRepo, favoriteRepository,
-        mockk(relaxed = true), // desiredRepository
+        desiredRepository,
     )
+
+    @Test
+    fun `toggleDesired removes deezer-keyed row via removeMatching`() = runTest(testDispatcher) {
+        val desired = mockk<com.lucasdss.ftpmusic.app.data.repository.DesiredRepository>(relaxed = true)
+        val dzRow = com.lucasdss.ftpmusic.app.data.db.DesiredItemEntity(
+            id = "dz-1",
+            identityKey = "dz:ARTIST:27",
+            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+            title = "Daft Punk",
+            deezerId = "27",
+            source = "deezer",
+        )
+        coEvery {
+            desired.findMatchingDesired(
+                entityType = any(),
+                title = any(),
+                artistName = any(),
+                musicbrainzId = any(),
+                deezerId = any(),
+            )
+        } returns dzRow
+        viewModel = freshViewModel(desired)
+        coEvery { metadataDao.getArtistById("ar-1") } returns
+            CachedArtistEntity(id = "ar-1", name = "Daft Punk")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { trackDao.getTracksByArtistId("ar-1", any()) } returns emptyList()
+
+        viewModel.loadArtist("ar-1")
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.showAddDesired)
+        assertTrue(viewModel.state.value.isDesired)
+
+        viewModel.toggleDesired()
+        advanceUntilIdle()
+
+        coVerify {
+            desired.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                title = "Daft Punk",
+                musicbrainzId = null,
+            )
+        }
+        assertFalse(viewModel.state.value.isDesired)
+    }
 
     @Test
     fun `album reactions populate from room flows`() = runTest(testDispatcher) {

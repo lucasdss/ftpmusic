@@ -36,13 +36,18 @@ Favorites tab chips: **Liked | Disliked | Desired**.
 - `source` musicbrainz | lastfm | deezer | manual | library
 - `desired_at`, `matched_local_id?`, `note?`
 
-### Identity / upsert
+### Identity / upsert (cross-key merge)
 
-1. `(entity_type, musicbrainz_id)` when MBID present
-2. else `(entity_type, deezer_id)`
-3. else normalized `(entity_type, title, artist_name)` display key
+Resolve existing rows in order: MBID → Deezer id → normalized name key
+(`mb:TYPE:…` / `dz:TYPE:…` / `nm:TYPE:title|artist`). On add, merge into the
+oldest match: coalesce external ids / title / note; keep
+`matched_local_id = COALESCE(existing)`; rewrite to the strongest
+`identity_key`; delete weaker duplicate rows in one `@Transaction`.
+Never blind `DELETE` + `REPLACE` that can clobber another row’s unique key.
 
-Idempotent add. Store both external ids when known. No cross-provider dupes.
+Artist/Album detail and Discover use `findMatchingDesired` /
+`removeMatching` so a Deezer-added `dz:…` row toggles correctly when the
+detail surface only knows MBID or name.
 
 ### Fulfillment (v1)
 
@@ -60,8 +65,10 @@ User removes manually — no auto-delete.
 
 ### Manage (Favorites Desired)
 
-- Filter search over full local Desired set (Room LIKE)
-- Liked/Disliked filter = loaded window only (documented)
+- Filter + share chrome **only on Desired mode** (Liked/Disliked ignore
+  `filterQuery` — hide the field so it is not a fake filter)
+- Desired filter searches the full local set (Room LIKE via `search`)
+- Catalog add debounced ≥300ms; offline → short tip, no network calls
 - Sections: Tracks → Artists → Albums
 - Remove clears row
 - Empty: “Nothing desired yet”
@@ -90,16 +97,23 @@ After local paint, online + not local-only:
 
 1. MusicBrainz artists/recordings
 2. Last.fm artists (or tag tops)
-3. Deezer artists/albums/tracks (token-bucket; body quota code 4 → backoff)
-4. ListenBrainz: popularity boost for rows with MBID only (lazy cache; hide if missing)
+3. Deezer artists/albums/tracks (token-bucket; body quota code 4 **and**
+   HTTP 429 → backoff delay, then empty — not silent empty success)
+4. ListenBrainz: popularity for first `DISCOVER_FANOUT` (3) MBID hits only;
+   cancel/transport failure are **not** cached as definitive null for 30m
+
+Cancel (`CancellationException`) is rethrown in Discover / Deezer search —
+never treated as empty success. Clearing local results also clears
+`discoverAlbums`. “No results” waits until `!isDiscoverLoading`.
 
 ## Edge cases
 
 - Offline: Desired list + filter work; Add from catalog / Discover add skip with explained empty
 - Process death: Room truth
-- Double-tap add: upsert, one row
+- Double-tap / name→MBID / Deezer→MBID: transactional merge, one row
 - Deezer without MBID: library match fuzzy name — false “not in library” possible
 - Device loss: list local-only; share text is backup path
+- Album offline with empty tracks: `showAddDesired` still offered
 
 ## Non-goals
 

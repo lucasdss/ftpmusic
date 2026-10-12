@@ -149,7 +149,7 @@ class MetadataSyncWorker(
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder? = null,
     private val metadataEnrichRunner: MetadataEnrichRunner? = null,
-    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository? = null,
+    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
@@ -481,7 +481,7 @@ class MetadataSyncWorker(
                 }
                 // ADR-0129: mark Desired rows that now exist in library (keep rows).
                 try {
-                    desiredRepository?.reconcileAgainstLibrary()
+                    desiredRepository.reconcileAgainstLibrary()
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     Log.w(TAG, "desired reconcile: ${e.message}")

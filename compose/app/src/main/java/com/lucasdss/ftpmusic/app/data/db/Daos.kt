@@ -288,6 +288,16 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE musicbrainz_id = :mbid LIMIT 1")
     suspend fun getTrackByMbid(mbid: String): TrackEntity?
 
+    @Query(
+        """
+        SELECT * FROM tracks
+        WHERE LOWER(title) = LOWER(:title)
+          AND LOWER(IFNULL(artist, '')) = LOWER(:artist)
+        LIMIT 1
+        """,
+    )
+    suspend fun getTrackByExactTitleArtist(title: String, artist: String): TrackEntity?
+
     /** Full scan for FTS rebuild only — not for UI. Joins album year for decade search. */
     @Query(
         """
@@ -1928,6 +1938,12 @@ interface ListenEventDao {
 
 @Dao
 interface DesiredItemDao {
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(item: DesiredItemEntity)
+
+    @Update
+    suspend fun update(item: DesiredItemEntity)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: DesiredItemEntity)
 
@@ -1942,6 +1958,45 @@ interface DesiredItemDao {
 
     @Query("SELECT * FROM desired_items WHERE identity_key = :identityKey LIMIT 1")
     suspend fun getByIdentityKey(identityKey: String): DesiredItemEntity?
+
+    @Query(
+        """
+        SELECT * FROM desired_items
+        WHERE entity_type = :entityType
+          AND musicbrainz_id IS NOT NULL
+          AND LOWER(musicbrainz_id) = LOWER(:mbid)
+        LIMIT 1
+        """,
+    )
+    suspend fun getByMusicbrainzId(entityType: String, mbid: String): DesiredItemEntity?
+
+    @Query(
+        """
+        SELECT * FROM desired_items
+        WHERE entity_type = :entityType AND deezer_id = :deezerId
+        LIMIT 1
+        """,
+    )
+    suspend fun getByDeezerId(entityType: String, deezerId: String): DesiredItemEntity?
+
+    /**
+     * Cross-key bridge: find rows that share display title/artist even when
+     * identity_key is dz:/mb: (detail surfaces often lack the external id).
+     */
+    @Query(
+        """
+        SELECT * FROM desired_items
+        WHERE entity_type = :entityType
+          AND LOWER(TRIM(title)) = LOWER(TRIM(:title))
+          AND IFNULL(LOWER(TRIM(artist_name)), '') = LOWER(TRIM(:artistName))
+        LIMIT 8
+        """,
+    )
+    suspend fun getByNormalizedTitleArtist(
+        entityType: String,
+        title: String,
+        artistName: String,
+    ): List<DesiredItemEntity>
 
     @Query("SELECT * FROM desired_items WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): DesiredItemEntity?
@@ -1989,4 +2044,42 @@ interface DesiredItemDao {
 
     @Query("SELECT COUNT(*) FROM desired_items")
     suspend fun count(): Int
+
+    /**
+     * Persist [winner] and delete [loserIds] (other rows that matched the same
+     * logical entity under a weaker identity). Single transaction for upgrade safety.
+     */
+    @Transaction
+    suspend fun mergeReplace(winner: DesiredItemEntity, loserIds: List<String>) {
+        val existingStrong = getByIdentityKey(winner.identityKey)
+        if (existingStrong != null && existingStrong.id != winner.id) {
+            // Target key already owned — fold into that row, drop winner id + losers.
+            val folded = existingStrong.copy(
+                title = winner.title.ifBlank { existingStrong.title },
+                artistName = winner.artistName ?: existingStrong.artistName,
+                albumName = winner.albumName ?: existingStrong.albumName,
+                musicbrainzId = winner.musicbrainzId ?: existingStrong.musicbrainzId,
+                deezerId = winner.deezerId ?: existingStrong.deezerId,
+                source = if (existingStrong.source == "manual") winner.source else existingStrong.source,
+                desiredAt = minOf(existingStrong.desiredAt, winner.desiredAt),
+                matchedLocalId = existingStrong.matchedLocalId ?: winner.matchedLocalId,
+                note = winner.note ?: existingStrong.note,
+            )
+            update(folded)
+            if (winner.id != folded.id) deleteById(winner.id)
+            for (id in loserIds) {
+                if (id != folded.id) deleteById(id)
+            }
+            return
+        }
+        val prior = getById(winner.id)
+        if (prior == null) {
+            insert(winner)
+        } else {
+            update(winner)
+        }
+        for (id in loserIds) {
+            if (id != winner.id) deleteById(id)
+        }
+    }
 }

@@ -54,6 +54,7 @@ class MetadataSyncCellularPolicyTest {
         mockk<CoverArtFallbackService>(relaxed = true),
         offline,
         mockk(relaxed = true),
+        desiredRepository = mockk(relaxed = true),
     )
 
     @Test

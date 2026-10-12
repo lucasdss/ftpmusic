@@ -226,10 +226,14 @@ class AlbumDetailViewModel @Inject constructor(
                 }
                 // Offline: show cached data only, no API call
                 if (offlineModeManager.isOffline.value) {
-                    _state.value = _state.value.copy(isLoading = false)
-                    if (cachedTracks.isEmpty()) {
-                        _state.value = _state.value.copy(error = "Album not cached offline")
-                    }
+                    val offlineAlbum = _state.value.album
+                    val desiredMeta = resolveDesiredFlag(albumId, offlineAlbum)
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        showAddDesired = cachedTracks.isEmpty(),
+                        isDesired = desiredMeta,
+                        error = if (cachedTracks.isEmpty()) "Album not cached offline" else null,
+                    )
                     return@launch
                 }
                 // Fetch from API for fresh data
@@ -293,15 +297,13 @@ class AlbumDetailViewModel @Inject constructor(
         } catch (_: Exception) {
             null
         }
-        val key = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
-            com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
-            title,
-            album.artist,
-            cached?.musicbrainzId,
-            null,
-        )
         return try {
-            desiredRepository.getAll().any { it.identityKey == key }
+            desiredRepository.findMatchingDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                title = title,
+                artistName = album.artist,
+                musicbrainzId = cached?.musicbrainzId,
+            ) != null
         } catch (_: Exception) {
             false
         }
@@ -314,22 +316,21 @@ class AlbumDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val cached = metadataDao.getAlbumById(album.id)
-                val key = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
-                    com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
-                    album.name,
-                    album.artist,
-                    cached?.musicbrainzId,
-                    null,
-                )
+                val mbid = cached?.musicbrainzId
                 if (s.isDesired) {
-                    desiredRepository.removeByIdentityKey(key)
+                    desiredRepository.removeMatching(
+                        entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                        title = album.name,
+                        artistName = album.artist,
+                        musicbrainzId = mbid,
+                    )
                     _state.value = _state.value.copy(isDesired = false)
                 } else {
                     desiredRepository.addDesired(
                         entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
                         title = album.name,
                         artistName = album.artist,
-                        musicbrainzId = cached?.musicbrainzId,
+                        musicbrainzId = mbid,
                         source = "manual",
                     )
                     _state.value = _state.value.copy(isDesired = true)

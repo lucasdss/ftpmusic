@@ -636,4 +636,51 @@ class FavoritesViewModelTest {
         assertTrue(events[0].contains("ftpmusic desired list"))
         job.cancel()
     }
+
+    @Test
+    fun `Desired filter uses search when query non-blank`() = runTest {
+        val item = com.lucasdss.ftpmusic.app.data.db.DesiredItemEntity(
+            id = "des-1",
+            identityKey = "nm:ARTIST:daft|",
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Daft Punk",
+            source = "manual",
+        )
+        coEvery { desiredRepository.search("daft") } returns listOf(item)
+        viewModel.setMode(FavoritesMode.DESIRED)
+        advanceUntilIdle()
+        viewModel.setFilterQuery("daft")
+        advanceUntilIdle()
+        coVerify { desiredRepository.search("daft") }
+        assertEquals(1, viewModel.state.value.desiredArtists.size)
+    }
+
+    @Test
+    fun `catalog add skipped offline shows tip without network calls`() = runTest {
+        every { offlineModeManager.isOffline } returns kotlinx.coroutines.flow.MutableStateFlow(true)
+        com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.resetForTests(false)
+        val deezer = mockk<com.lucasdss.ftpmusic.app.data.network.DeezerService>(relaxed = true)
+        viewModel = FavoritesViewModel(
+            trackDao,
+            favoriteRepository,
+            metadataDao,
+            radioFavoriteDao,
+            desiredRepository,
+            deezer,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            offlineModeManager,
+            storage,
+            playbackManager,
+            authHelper,
+        )
+        viewModel.setMode(FavoritesMode.DESIRED)
+        advanceUntilIdle()
+        viewModel.setFilterQuery("daft")
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.catalogOfflineTip)
+        assertTrue(viewModel.state.value.catalogArtists.isEmpty())
+        coVerify(exactly = 0) { deezer.searchArtists(any(), any()) }
+        com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.resetForTests(true)
+    }
 }
