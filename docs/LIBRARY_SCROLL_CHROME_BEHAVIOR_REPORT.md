@@ -9,6 +9,8 @@ Market: `docs/SCROLL_FLUIDITY_MARKET_RESEARCH.md`
 
 `4aed74f` pad Column → chips stuck under empty header band.  
 Fix: fixed inset stay; chrome `graphicsLayer` ride `-offsetPx`.  
+Chrome-only ride left Background gap between chrome and Lazy.  
+Amend: chrome **+ list** one `graphicsLayer` — mid black row gone.  
 Mini: hide on vertical scroll; show after 200ms idle. Nav fixed.  
 Spotify/YTM keep mini — we diverge on purpose (more list space).
 
@@ -17,9 +19,11 @@ Spotify/YTM keep mini — we diverge on purpose (more list space).
 ### Library / Favorites chrome
 
 - Outer `Column` keeps full `LocalAppHeaderContentPadding` (no Lazy remeasure).
-- Chips + search (Library) / mode chips (Favorites) translate with
-  `LocalAppHeaderOffsetPx` inside `graphicsLayer` only.
-- List viewport size stable during fling (ADR-0107).
+- Chips + search (Library) / mode chips (Favorites) **and** list body share
+  one `graphicsLayer` via `LocalAppHeaderOffsetPx` (paint translate only).
+- No Background gap between chrome and Lazy when header collapses.
+- List viewport layout size stable during fling (ADR-0107); bottom paint strip
+  ≈ `offsetPx` acceptable (mini hide often clears that band).
 
 ### Mini hide-on-scroll
 
@@ -39,9 +43,9 @@ Spotify/YTM keep mini — we diverge on purpose (more list space).
 
 ## Manual
 
-- Library Albums fling → chips/search enter header band; Settings not tappable collapsed.
+- Library Albums fling → chips/search enter header band; **no mid black row** under chrome; Settings not tappable collapsed.
 - Mini gone mid-fling; back ~200ms after stop; nav stays.
-- Favorites mode chips same ride as Library.
+- Favorites mode chips + list same ride as Library.
 
 ## Design review (interface-review / better-interface)
 

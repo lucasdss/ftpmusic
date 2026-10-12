@@ -38,5 +38,8 @@ fun resolveAppHeaderContentPadding(showHeader: Boolean, headerHeight: Dp, lastKn
     }
 }
 
-/** Chrome translate Y for fixed-inset tabs (Library / Favorites). Pure for tests. */
+/**
+ * Translate Y for fixed-inset tabs (Library / Favorites): chrome **and** list
+ * share one `graphicsLayer` (ADR-0114). Pure for tests.
+ */
 fun appHeaderChromeTranslationY(offsetPx: Float): Float = -offsetPx

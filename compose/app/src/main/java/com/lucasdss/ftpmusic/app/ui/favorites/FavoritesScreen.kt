@@ -618,7 +618,8 @@ fun FavoritesScreen(
     val hasAnything = if (state.mode == FavoritesMode.LIKED) likedHasAnything else dislikedHasAnything
 
     // Mode chips sit above Lazy — pad Column so chrome clears overlay AppHeader.
-    // ADR-0114: chips ride -offsetPx into collapsed header band (graphicsLayer only).
+    // ADR-0114: chips + list ride -offsetPx together (one graphicsLayer) so collapse
+    // leaves no Background gap between chrome and Lazy.
     val headerPad = LocalAppHeaderContentPadding.current
     val headerOffset = LocalAppHeaderOffsetPx.current
     Column(
@@ -627,9 +628,9 @@ fun FavoritesScreen(
             .background(Background)
             .padding(top = headerPad),
     ) {
-        Box(
+        Column(
             Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .graphicsLayer {
                     translationY = appHeaderChromeTranslationY(headerOffset.offsetPx())
                 }
@@ -639,62 +640,62 @@ fun FavoritesScreen(
                 selected = state.mode,
                 onSelect = viewModel::setMode,
             )
-        }
 
-        if (!hasAnything) {
-            Box(Modifier.fillMaxSize().testTag("favorites_empty"), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        if (state.mode == FavoritesMode.LIKED) {
-                            Icons.Outlined.ThumbUp
-                        } else {
-                            Icons.Outlined.ThumbDown
-                        },
-                        null,
-                        tint = Color(0xFF2A2A3E),
-                        modifier = Modifier.size(44.dp),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        if (state.mode == FavoritesMode.LIKED) "No favorites yet" else "No dislikes yet",
-                        color = Color(0xFF888888),
-                        fontSize = textBodyM(),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        if (state.mode == FavoritesMode.LIKED) {
-                            "Like any track, album, or artist, or bookmark a radio station to add it here"
-                        } else {
-                            "Thumbs-down any track, album, or artist to keep it out of Daily Mixes"
-                        },
-                        color = Color(0xFF666666),
-                        fontSize = textLabelM(),
-                        modifier = Modifier.padding(horizontal = spacingXL()),
-                        textAlign = TextAlign.Center,
-                    )
+            if (!hasAnything) {
+                Box(Modifier.fillMaxSize().testTag("favorites_empty"), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            if (state.mode == FavoritesMode.LIKED) {
+                                Icons.Outlined.ThumbUp
+                            } else {
+                                Icons.Outlined.ThumbDown
+                            },
+                            null,
+                            tint = Color(0xFF2A2A3E),
+                            modifier = Modifier.size(44.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            if (state.mode == FavoritesMode.LIKED) "No favorites yet" else "No dislikes yet",
+                            color = Color(0xFF888888),
+                            fontSize = textBodyM(),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            if (state.mode == FavoritesMode.LIKED) {
+                                "Like any track, album, or artist, or bookmark a radio station to add it here"
+                            } else {
+                                "Thumbs-down any track, album, or artist to keep it out of Daily Mixes"
+                            },
+                            color = Color(0xFF666666),
+                            fontSize = textLabelM(),
+                            modifier = Modifier.padding(horizontal = spacingXL()),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
+            } else if (state.mode == FavoritesMode.LIKED) {
+                LikedFavoritesList(
+                    state = state,
+                    viewModel = viewModel,
+                    onAlbumClick = onAlbumClick,
+                    onArtistClick = onArtistClick,
+                    onRadioStationClick = onRadioStationClick,
+                    currentTrackId = currentTrackId,
+                    currentAlbumId = currentAlbumId,
+                    isPlaying = isPlaying,
+                )
+            } else {
+                DislikedFavoritesList(
+                    state = state,
+                    viewModel = viewModel,
+                    onAlbumClick = onAlbumClick,
+                    onArtistClick = onArtistClick,
+                    currentTrackId = currentTrackId,
+                    currentAlbumId = currentAlbumId,
+                    isPlaying = isPlaying,
+                )
             }
-        } else if (state.mode == FavoritesMode.LIKED) {
-            LikedFavoritesList(
-                state = state,
-                viewModel = viewModel,
-                onAlbumClick = onAlbumClick,
-                onArtistClick = onArtistClick,
-                onRadioStationClick = onRadioStationClick,
-                currentTrackId = currentTrackId,
-                currentAlbumId = currentAlbumId,
-                isPlaying = isPlaying,
-            )
-        } else {
-            DislikedFavoritesList(
-                state = state,
-                viewModel = viewModel,
-                onAlbumClick = onAlbumClick,
-                onArtistClick = onArtistClick,
-                currentTrackId = currentTrackId,
-                currentAlbumId = currentAlbumId,
-                isPlaying = isPlaying,
-            )
         }
     }
 }

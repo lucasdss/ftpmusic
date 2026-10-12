@@ -113,11 +113,13 @@ fun LibraryContent(
 
     // Chrome (chips + search) sits above Lazy — pad Column, not only list content
     // (ADR-0107 / post-1.8.0 hard-fix). Lazy top pad is local spacing only.
-    // ADR-0114: chrome rides -offsetPx into collapsed header band (graphicsLayer only).
+    // ADR-0114: chrome + list ride -offsetPx together (one graphicsLayer) so collapse
+    // leaves no Background gap between chrome and Lazy.
     val headerPad = LocalAppHeaderContentPadding.current
     val headerOffset = LocalAppHeaderOffsetPx.current
     Column(
         Modifier
+            .fillMaxSize()
             .background(Background)
             .padding(top = headerPad),
     ) {
@@ -130,7 +132,7 @@ fun LibraryContent(
         }
         Column(
             Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .graphicsLayer {
                     translationY = appHeaderChromeTranslationY(headerOffset.offsetPx())
                 }
@@ -179,15 +181,14 @@ fun LibraryContent(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingXS()),
                 shape = RoundedCornerShape(cornerM()), singleLine = true,
             )
-        }
-        // Data-first: spinner only until the first content render — a stalled
-        // loader must never leave the screen spinning forever.
-        if (shell.isLoading && !shell.hasLoadedOnce) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = BrandTeal)
-            }
-        } else {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            // Data-first: spinner only until the first content render — a stalled
+            // loader must never leave the screen spinning forever.
+            if (shell.isLoading && !shell.hasLoadedOnce) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = BrandTeal)
+                }
+            } else {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (selectedTab) {
                     LibraryTab.ALBUMS -> {
                         val albumTab by viewModel.albumTabUi.collectAsStateWithLifecycle()
@@ -713,8 +714,9 @@ fun LibraryContent(
                         }
                     }
                 }
-            } // close Box(Modifier.weight(1f))
-        }
+                } // close Box(Modifier.weight(1f))
+            }
+        } // chrome + list graphicsLayer wrap
     }
 
     // ── Remove from device confirmation ──

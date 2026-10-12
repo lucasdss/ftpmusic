@@ -42,6 +42,6 @@ header space mid-drag.
 
 ### Amendment (ADR-0114)
 
-Library/Favorites chrome above Lazy rides `-offsetPx` via `graphicsLayer` so
+Library/Favorites chrome + list ride `-offsetPx` via one `graphicsLayer` so
 chips reclaim the collapsed header band without resizing the Lazy viewport.
 Mini player hide-on-scroll is discrete (200ms idle reveal); nav remains fixed.

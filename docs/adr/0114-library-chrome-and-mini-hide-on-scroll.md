@@ -15,11 +15,12 @@ fling; this ADR records an intentional product divergence for mini only.
 
 ## Decision
 
-1. **Chrome translate** — Keep fixed `LocalAppHeaderContentPadding`. Expose
+1. **Chrome + list translate** — Keep fixed `LocalAppHeaderContentPadding`. Expose
    `LocalAppHeaderOffsetPx` (stable reader over `AppHeaderScrollState.offsetPx`).
-   Library chips/search and Favorites mode chips apply
-   `graphicsLayer { translationY = -offset }` so chrome occupies the collapsed
-   header band without Lazy remeasure.
+   Library chips/search and Favorites mode chips **plus** the list body share one
+   `graphicsLayer { translationY = -offset }` so content occupies the collapsed
+   header band without Lazy remeasure and without a Background gap between
+   chrome and Lazy (chrome-only ride left that mid strip).
 2. **Mini hide-on-scroll** — Shell `MiniPlayerScrollVisibility`: any vertical
    nested-scroll activity hides the mini slot (discrete height animation);
    **200ms** idle debounce reveals it. Route change forces visible. Bottom nav
@@ -31,5 +32,6 @@ fling; this ADR records an intentional product divergence for mini only.
 ## Consequences
 
 - Library/Favorites regain YTM-like chrome reclaim without Pass-4 hitch.
+- Mid-row Background gap under translated chrome is avoided by riding list with chrome.
 - Scaffold bottom padding changes only on discrete mini show/hide (not per frame).
 - Horizontal nested scroll ignored for mini (same rule as header).
