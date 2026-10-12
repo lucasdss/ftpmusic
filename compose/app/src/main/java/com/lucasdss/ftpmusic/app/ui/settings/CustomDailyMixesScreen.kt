@@ -876,7 +876,8 @@ private fun SuggestionChip(text: String, selected: Boolean, onClick: () -> Unit)
 private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDailyMixesViewModel) {
     var showAlbumPicker by remember { mutableStateOf(false) }
     var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
-    val coverStore = rememberCollectionCoverStore()
+    // Resolve Hilt cover store only when crop dialog opens — Robolectric
+    // compose tests have no GeneratedComponent on Application.
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
@@ -941,6 +942,7 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
         )
     }
     pendingCropUri?.let { cropUri ->
+        val coverStore = rememberCollectionCoverStore()
         CoverCropDialog(
             uri = cropUri,
             coverStore = coverStore,
@@ -952,6 +954,10 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
             onLoadFailed = {
                 pendingCropUri = null
                 viewModel.notifyCoverCropLoadFailed()
+            },
+            onExportFailed = {
+                pendingCropUri = null
+                viewModel.notifyCoverCropExportFailed()
             },
         )
     }

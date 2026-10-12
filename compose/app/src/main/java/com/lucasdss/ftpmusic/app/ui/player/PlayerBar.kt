@@ -83,6 +83,7 @@ import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
+import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -1451,6 +1452,17 @@ private fun BoxScope.PlayerQueuePanel(
                     val autoplayTracks = nextTracks.filter { !it.isPriority && it.isAutoplay && !it.isCurrent }
                     val reorderableTracks = priorityTracks + continueTracks + autoplayTracks
                     val queueListState = rememberLazyListState()
+                    val autoCenterQueue = LocalListChromePrefs.current.autoCenterNowPlaying
+                    // cast-notice (always present) then now-playing-anchor
+                    val nowPlayingAnchorIndex = 1
+                    ScrollToNowPlayingEffect(
+                        enabled = autoCenterQueue && showQueue,
+                        listState = queueListState,
+                        targetLazyIndex = nowPlayingAnchorIndex,
+                        scrollKey = trackId,
+                        // ADR-0126: re-center only if user left the anchor area.
+                        onlyIfNotVisible = true,
+                    )
                     val reorderableState = rememberReorderableLazyListState(
                         lazyListState = queueListState,
                         onMove = { from, to ->

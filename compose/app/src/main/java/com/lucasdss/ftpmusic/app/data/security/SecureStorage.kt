@@ -209,5 +209,8 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_LIST_SHOW_DURATION = "list_show_duration"
         const val KEY_LIST_SHOW_ALBUM_TRACK_NUMBERS = "list_show_album_track_numbers"
         const val KEY_LIST_SHOW_SEQUENCE = "list_show_sequence"
+
+        // ADR-0126: Settings → Appearance — auto-scroll lists to now playing (default ON)
+        const val KEY_LIST_AUTO_CENTER_NOW_PLAYING = "list_auto_center_now_playing"
     }
 }

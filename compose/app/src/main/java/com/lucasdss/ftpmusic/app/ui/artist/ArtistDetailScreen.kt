@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -64,9 +65,12 @@ import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
+import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
+import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -509,8 +513,22 @@ private fun TracksTab(
     currentTrackId: String? = null,
     isPlaying: Boolean = false,
 ) {
+    val listState = rememberLazyListState()
+    val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
+    val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
+    val nowPlayingLazyIndex = remember(trackIds, currentTrackId) {
+        resolveLazyIndex(headerCount = 0, trackIndex = indexOfTrackId(trackIds, currentTrackId))
+    }
+    ScrollToNowPlayingEffect(
+        enabled = autoCenter && state.tracks.isNotEmpty(),
+        listState = listState,
+        targetLazyIndex = nowPlayingLazyIndex,
+        scrollKey = currentTrackId,
+        onlyIfNotVisible = true,
+    )
     LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = spacingXL()),
+        state = listState,
+        modifier = Modifier.fillMaxSize().padding(horizontal = spacingXL()),
         contentPadding = PaddingValues(vertical = spacingS()),
     ) {
         itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->

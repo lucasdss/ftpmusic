@@ -189,213 +189,154 @@ fun LibraryContent(
                 }
             } else {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (selectedTab) {
-                    LibraryTab.ALBUMS -> {
-                        val albumTab by viewModel.albumTabUi.collectAsStateWithLifecycle()
-                        LaunchedEffect(selectedTab) { viewModel.loadAlphaAlbums() }
-                        LaunchedEffect(searchQuery) {
-                            if (searchQuery.length >= 2) {
-                                kotlinx.coroutines.delay(300)
-                                viewModel.searchAlbums(searchQuery)
-                            } else {
-                                viewModel.clearAlbumSearch()
-                            }
-                        }
-                        val displayedAlbums = albumTab.albumSearchResults ?: albumTab.albums
-                        if (displayedAlbums.isEmpty()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No albums found", color = Color(0xFF666666), fontSize = textBodyM())
-                            }
-                        } else {
-                            val gridState = rememberLazyGridState(
-                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
-                                    aheadFraction = 0.5f,
-                                    behindFraction = 0.2f,
-                                ),
-                            )
-                            val scrollInProgress = gridState.isScrollInProgress
-                            // Windowed alpha browse — near-end append (ADR-0107 Pass 6).
-                            val searching = albumTab.albumSearchResults != null
-                            LaunchedEffect(gridState, searching) {
-                                if (searching) return@LaunchedEffect
-                                snapshotFlow {
-                                    val info = gridState.layoutInfo
-                                    val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                                    val total = info.totalItemsCount
-                                    total > 0 && last >= total - 4
+                    when (selectedTab) {
+                        LibraryTab.ALBUMS -> {
+                            val albumTab by viewModel.albumTabUi.collectAsStateWithLifecycle()
+                            LaunchedEffect(selectedTab) { viewModel.loadAlphaAlbums() }
+                            LaunchedEffect(searchQuery) {
+                                if (searchQuery.length >= 2) {
+                                    kotlinx.coroutines.delay(300)
+                                    viewModel.searchAlbums(searchQuery)
+                                } else {
+                                    viewModel.clearAlbumSearch()
                                 }
-                                    .distinctUntilChanged()
-                                    .collect { nearEnd ->
-                                        if (nearEnd) viewModel.loadMoreAlphaAlbums()
-                                    }
                             }
-                            LazyVerticalGrid(
-                                state = gridState,
-                                columns = GridCells.Fixed(2),
-                                modifier = Modifier
-                                    .padding(horizontal = spacingM())
-                                    .testTag("library_albums_grid"),
-                                contentPadding = PaddingValues(
-                                    top = spacingS(),
-                                    bottom = spacingS(),
-                                ),
-                                horizontalArrangement = Arrangement.spacedBy(gridGapH()),
-                                verticalArrangement = Arrangement.spacedBy(gridGapV()),
-                            ) {
-                                items(displayedAlbums, key = { it.id }, contentType = { "album" }) { album ->
-                                    val isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying
-                                    Column(Modifier.clickable { onAlbumClick(album.id) }) {
-                                        Box(
-                                            Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(cornerM())),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            val url =
-                                                rememberPreferredCoverArt(
-                                                    album.coverArt,
-                                                    album.artist,
-                                                    album.name,
-                                                    size = 160,
-                                                    fallbackService = coverArtFallback,
-                                                )
-                                            if (url != null) {
-                                                CoverArtImage(
-                                                    url = url,
-                                                    contentDescription = album.name,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    fallbackArtist = album.artist,
-                                                    fallbackAlbum = album.name,
-                                                    fallbackService = coverArtFallback,
-                                                    decodeSize = 160.dp,
-                                                    allowFallbackFetch = !scrollInProgress,
-                                                )
-                                            } else {
-                                                Box(
-                                                    Modifier.fillMaxSize().background(Color(0xFF1E1E1E)),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.Album,
-                                                        null,
-                                                        tint = Color(0xFF444444),
-                                                        modifier = Modifier.size(40.dp),
+                            val displayedAlbums = albumTab.albumSearchResults ?: albumTab.albums
+                            if (displayedAlbums.isEmpty()) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("No albums found", color = Color(0xFF666666), fontSize = textBodyM())
+                                }
+                            } else {
+                                val gridState = rememberLazyGridState(
+                                    cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                        aheadFraction = 0.5f,
+                                        behindFraction = 0.2f,
+                                    ),
+                                )
+                                val scrollInProgress = gridState.isScrollInProgress
+                                // Windowed alpha browse — near-end append (ADR-0107 Pass 6).
+                                val searching = albumTab.albumSearchResults != null
+                                LaunchedEffect(gridState, searching) {
+                                    if (searching) return@LaunchedEffect
+                                    snapshotFlow {
+                                        val info = gridState.layoutInfo
+                                        val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                                        val total = info.totalItemsCount
+                                        total > 0 && last >= total - 4
+                                    }
+                                        .distinctUntilChanged()
+                                        .collect { nearEnd ->
+                                            if (nearEnd) viewModel.loadMoreAlphaAlbums()
+                                        }
+                                }
+                                LazyVerticalGrid(
+                                    state = gridState,
+                                    columns = GridCells.Fixed(2),
+                                    modifier = Modifier
+                                        .padding(horizontal = spacingM())
+                                        .testTag("library_albums_grid"),
+                                    contentPadding = PaddingValues(
+                                        top = spacingS(),
+                                        bottom = spacingS(),
+                                    ),
+                                    horizontalArrangement = Arrangement.spacedBy(gridGapH()),
+                                    verticalArrangement = Arrangement.spacedBy(gridGapV()),
+                                ) {
+                                    items(displayedAlbums, key = { it.id }, contentType = { "album" }) { album ->
+                                        val isActive = currentAlbumId != null && album.id == currentAlbumId && isPlaying
+                                        Column(Modifier.clickable { onAlbumClick(album.id) }) {
+                                            Box(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(1f)
+                                                    .clip(RoundedCornerShape(cornerM())),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                val url =
+                                                    rememberPreferredCoverArt(
+                                                        album.coverArt,
+                                                        album.artist,
+                                                        album.name,
+                                                        size = 160,
+                                                        fallbackService = coverArtFallback,
                                                     )
-                                                }
-                                            }
-                                            if (isActive) {
-                                                Box(
-                                                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    ScrollAwareEqBars(scrollInProgress = scrollInProgress)
-                                                }
-                                            }
-                                            AlbumDownloadBadge(
-                                                "none",
-                                                Modifier.align(Alignment.BottomEnd).padding(4.dp),
-                                            )
-                                        }
-                                        Spacer(Modifier.height(spacingBelowArt()))
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        ) {
-                                            FavoriteThumbButton(
-                                                icon = Icons.Filled.ThumbUp,
-                                                active = album.id in albumTab.likedAlbumIds,
-                                                contentDescription = if (album.id in albumTab.likedAlbumIds) {
-                                                    "Unlike album"
+                                                if (url != null) {
+                                                    CoverArtImage(
+                                                        url = url,
+                                                        contentDescription = album.name,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        fallbackArtist = album.artist,
+                                                        fallbackAlbum = album.name,
+                                                        fallbackService = coverArtFallback,
+                                                        decodeSize = 160.dp,
+                                                        allowFallbackFetch = !scrollInProgress,
+                                                    )
                                                 } else {
-                                                    "Like album"
-                                                },
-                                                onClick = { viewModel.toggleAlbumLike(album.id) },
-                                            )
-                                            FavoriteThumbButton(
-                                                icon = Icons.Filled.ThumbDown,
-                                                active = album.id in albumTab.dislikedAlbumIds,
-                                                activeTint = Color(0xFFE84040),
-                                                contentDescription = if (album.id in albumTab.dislikedAlbumIds) {
-                                                    "Remove dislike"
-                                                } else {
-                                                    "Dislike album"
-                                                },
-                                                onClick = { viewModel.toggleAlbumDislike(album.id) },
-                                            )
-                                        }
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            album.name,
-                                            color = Color.White,
-                                            fontSize = textBodyM(),
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        album.artist?.let {
+                                                    Box(
+                                                        Modifier.fillMaxSize().background(Color(0xFF1E1E1E)),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.Album,
+                                                            null,
+                                                            tint = Color(0xFF444444),
+                                                            modifier = Modifier.size(40.dp),
+                                                        )
+                                                    }
+                                                }
+                                                if (isActive) {
+                                                    Box(
+                                                        Modifier
+                                                            .fillMaxSize()
+                                                            .background(Color.Black.copy(alpha = 0.45f)),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        ScrollAwareEqBars(scrollInProgress = scrollInProgress)
+                                                    }
+                                                }
+                                                AlbumDownloadBadge(
+                                                    "none",
+                                                    Modifier.align(Alignment.BottomEnd).padding(4.dp),
+                                                )
+                                            }
+                                            Spacer(Modifier.height(spacingBelowArt()))
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            ) {
+                                                FavoriteThumbButton(
+                                                    icon = Icons.Filled.ThumbUp,
+                                                    active = album.id in albumTab.likedAlbumIds,
+                                                    contentDescription = if (album.id in albumTab.likedAlbumIds) {
+                                                        "Unlike album"
+                                                    } else {
+                                                        "Like album"
+                                                    },
+                                                    onClick = { viewModel.toggleAlbumLike(album.id) },
+                                                )
+                                                FavoriteThumbButton(
+                                                    icon = Icons.Filled.ThumbDown,
+                                                    active = album.id in albumTab.dislikedAlbumIds,
+                                                    activeTint = Color(0xFFE84040),
+                                                    contentDescription = if (album.id in albumTab.dislikedAlbumIds) {
+                                                        "Remove dislike"
+                                                    } else {
+                                                        "Dislike album"
+                                                    },
+                                                    onClick = { viewModel.toggleAlbumDislike(album.id) },
+                                                )
+                                            }
+                                            Spacer(Modifier.height(4.dp))
                                             Text(
-                                                it,
-                                                color = Color(0xFF888888),
-                                                fontSize = textLabelM(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    LibraryTab.ARTISTS -> {
-                        val artistTab by viewModel.artistTabUi.collectAsStateWithLifecycle()
-                        LaunchedEffect(selectedTab) { viewModel.loadArtists() }
-                        LaunchedEffect(searchQuery) {
-                            if (searchQuery.length >= 2) {
-                                kotlinx.coroutines.delay(300)
-                                viewModel.searchArtists(searchQuery)
-                            } else {
-                                viewModel.clearArtistSearch()
-                            }
-                        }
-                        val displayedArtists = artistTab.artistSearchResults ?: artistTab.artists
-                        if (displayedArtists.isEmpty()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No artists found", color = Color(0xFF666666), fontSize = textBodyM())
-                            }
-                        } else {
-                            val artistListState = rememberLazyListState(
-                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
-                                    aheadFraction = 0.5f,
-                                    behindFraction = 0.2f,
-                                ),
-                            )
-                            LazyColumn(
-                                state = artistListState,
-                                contentPadding = PaddingValues(top = spacingS()),
-                            ) {
-                                items(displayedArtists, key = { it.id }, contentType = { "artist" }) { artist ->
-                                    Row(
-                                        Modifier.fillMaxWidth().clickable {
-                                            onArtistClick(artist.id)
-                                        }.padding(horizontal = spacingL(), vertical = spacingM()),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        ArtistAvatar(
-                                            artistName = artist.name,
-                                            coverArtId = artist.coverArt,
-                                            size = 52.dp,
-                                        )
-                                        Spacer(Modifier.width(12.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                artist.name,
+                                                album.name,
                                                 color = Color.White,
-                                                fontSize = textHeadingS(),
-                                                fontWeight = FontWeight.Medium,
+                                                fontSize = textBodyM(),
+                                                fontWeight = FontWeight.SemiBold,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
-                                            artist.albumCount?.let {
+                                            album.artist?.let {
                                                 Text(
-                                                    "$it albums",
+                                                    it,
                                                     color = Color(0xFF888888),
                                                     fontSize = textLabelM(),
                                                     maxLines = 1,
@@ -403,317 +344,385 @@ fun LibraryContent(
                                                 )
                                             }
                                         }
-                                        FavoriteThumbButton(
-                                            icon = Icons.Filled.ThumbUp,
-                                            active = artist.id in artistTab.likedArtistIds,
-                                            contentDescription = if (artist.id in artistTab.likedArtistIds) {
-                                                "Unlike artist"
-                                            } else {
-                                                "Like artist"
-                                            },
-                                            onClick = { viewModel.toggleArtistLike(artist.id) },
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        FavoriteThumbButton(
-                                            icon = Icons.Filled.ThumbDown,
-                                            active = artist.id in artistTab.dislikedArtistIds,
-                                            activeTint = Color(0xFFE84040),
-                                            contentDescription = if (artist.id in artistTab.dislikedArtistIds) {
-                                                "Remove dislike"
-                                            } else {
-                                                "Dislike artist"
-                                            },
-                                            onClick = { viewModel.toggleArtistDislike(artist.id) },
-                                        )
                                     }
                                 }
                             }
                         }
-                    }
 
-                    LibraryTab.PLAYLISTS -> {
-                        val state by viewModel.state.collectAsStateWithLifecycle()
-                        LaunchedEffect(selectedTab) { viewModel.loadPlaylists() }
-                        val filteredPlaylists = if (searchQuery.isEmpty()) {
-                            state.playlists
-                        } else {
-                            state.playlists.filter { it.name.contains(searchQuery, ignoreCase = true) }
-                        }
-                        if (filteredPlaylists.isEmpty() && !state.isLoading) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        Icons.Outlined.QueueMusic,
-                                        null,
-                                        tint = Color(0xFF333333),
-                                        modifier = Modifier.size(iconLarge()),
-                                    )
-                                    Spacer(Modifier.height(12.dp))
-                                    Text("No playlists yet", color = Color(0xFF888888), fontSize = textBodyM())
+                        LibraryTab.ARTISTS -> {
+                            val artistTab by viewModel.artistTabUi.collectAsStateWithLifecycle()
+                            LaunchedEffect(selectedTab) { viewModel.loadArtists() }
+                            LaunchedEffect(searchQuery) {
+                                if (searchQuery.length >= 2) {
+                                    kotlinx.coroutines.delay(300)
+                                    viewModel.searchArtists(searchQuery)
+                                } else {
+                                    viewModel.clearArtistSearch()
                                 }
                             }
-                        } else {
-                            val playlistListState = rememberLazyListState(
-                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
-                                    aheadFraction = 0.5f,
-                                    behindFraction = 0.2f,
-                                ),
-                            )
-                            LazyColumn(
-                                state = playlistListState,
-                                contentPadding = PaddingValues(top = spacingS()),
-                            ) {
-                                items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
-                                    Box {
+                            val displayedArtists = artistTab.artistSearchResults ?: artistTab.artists
+                            if (displayedArtists.isEmpty()) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("No artists found", color = Color(0xFF666666), fontSize = textBodyM())
+                                }
+                            } else {
+                                val artistListState = rememberLazyListState(
+                                    cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                        aheadFraction = 0.5f,
+                                        behindFraction = 0.2f,
+                                    ),
+                                )
+                                LazyColumn(
+                                    state = artistListState,
+                                    contentPadding = PaddingValues(top = spacingS()),
+                                ) {
+                                    items(displayedArtists, key = { it.id }, contentType = { "artist" }) { artist ->
                                         Row(
-                                            Modifier.fillMaxWidth()
-                                                .combinedClickable(
-                                                    onClick = { onPlaylistClick(pl.id) },
-                                                    onLongClick = { menuPlaylist = pl },
-                                                )
-                                                .padding(horizontal = spacingL(), vertical = spacingM()),
+                                            Modifier.fillMaxWidth().clickable {
+                                                onArtistClick(artist.id)
+                                            }.padding(horizontal = spacingL(), vertical = spacingM()),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            CollectionCoverArt(
-                                                name = pl.name,
-                                                fixedCoverKind = pl.fixedCoverKind,
-                                                fixedCoverValue = pl.fixedCoverValue,
-                                                derivedCoverArtIds = listOfNotNull(pl.coverArt),
-                                                serverCoverArtId = pl.coverArt,
-                                                primaryArtist = pl.primaryArtist,
-                                                primaryAlbum = pl.primaryAlbum,
-                                                decodeSize = 52.dp,
-                                                modifier = Modifier
-                                                    .size(52.dp)
-                                                    .clip(RoundedCornerShape(cornerM())),
+                                            ArtistAvatar(
+                                                artistName = artist.name,
+                                                coverArtId = artist.coverArt,
+                                                size = 52.dp,
                                             )
                                             Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
                                                 Text(
-                                                    pl.name,
+                                                    artist.name,
                                                     color = Color.White,
                                                     fontSize = textHeadingS(),
                                                     fontWeight = FontWeight.Medium,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                artist.albumCount?.let {
                                                     Text(
-                                                        "${pl.trackCount} tracks",
+                                                        "$it albums",
                                                         color = Color(0xFF888888),
                                                         fontSize = textLabelM(),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
                                                     )
-                                                    if (pl.isSynced) {
-                                                        Spacer(Modifier.width(8.dp))
-                                                        Surface(
-                                                            color = BrandTeal.copy(alpha = 0.12f),
-                                                            shape = RoundedCornerShape(4.dp),
-                                                        ) {
-                                                            Text(
-                                                                "Synced",
-                                                                modifier = Modifier.padding(
-                                                                    horizontal = 5.dp,
-                                                                    vertical = 1.dp,
-                                                                ),
-                                                                color = BrandTeal,
-                                                                fontSize = textMicro(),
-                                                                fontWeight = FontWeight.SemiBold,
-                                                            )
+                                                }
+                                            }
+                                            FavoriteThumbButton(
+                                                icon = Icons.Filled.ThumbUp,
+                                                active = artist.id in artistTab.likedArtistIds,
+                                                contentDescription = if (artist.id in artistTab.likedArtistIds) {
+                                                    "Unlike artist"
+                                                } else {
+                                                    "Like artist"
+                                                },
+                                                onClick = { viewModel.toggleArtistLike(artist.id) },
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                            FavoriteThumbButton(
+                                                icon = Icons.Filled.ThumbDown,
+                                                active = artist.id in artistTab.dislikedArtistIds,
+                                                activeTint = Color(0xFFE84040),
+                                                contentDescription = if (artist.id in artistTab.dislikedArtistIds) {
+                                                    "Remove dislike"
+                                                } else {
+                                                    "Dislike artist"
+                                                },
+                                                onClick = { viewModel.toggleArtistDislike(artist.id) },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        LibraryTab.PLAYLISTS -> {
+                            val state by viewModel.state.collectAsStateWithLifecycle()
+                            LaunchedEffect(selectedTab) { viewModel.loadPlaylists() }
+                            val filteredPlaylists = if (searchQuery.isEmpty()) {
+                                state.playlists
+                            } else {
+                                state.playlists.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                            }
+                            if (filteredPlaylists.isEmpty() && !state.isLoading) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.Outlined.QueueMusic,
+                                            null,
+                                            tint = Color(0xFF333333),
+                                            modifier = Modifier.size(iconLarge()),
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                        Text("No playlists yet", color = Color(0xFF888888), fontSize = textBodyM())
+                                    }
+                                }
+                            } else {
+                                val playlistListState = rememberLazyListState(
+                                    cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                        aheadFraction = 0.5f,
+                                        behindFraction = 0.2f,
+                                    ),
+                                )
+                                LazyColumn(
+                                    state = playlistListState,
+                                    contentPadding = PaddingValues(top = spacingS()),
+                                ) {
+                                    items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
+                                        Box {
+                                            Row(
+                                                Modifier.fillMaxWidth()
+                                                    .combinedClickable(
+                                                        onClick = { onPlaylistClick(pl.id) },
+                                                        onLongClick = { menuPlaylist = pl },
+                                                    )
+                                                    .padding(horizontal = spacingL(), vertical = spacingM()),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                CollectionCoverArt(
+                                                    name = pl.name,
+                                                    fixedCoverKind = pl.fixedCoverKind,
+                                                    fixedCoverValue = pl.fixedCoverValue,
+                                                    derivedCoverArtIds = listOfNotNull(pl.coverArt),
+                                                    serverCoverArtId = pl.coverArt,
+                                                    primaryArtist = pl.primaryArtist,
+                                                    primaryAlbum = pl.primaryAlbum,
+                                                    decodeSize = 52.dp,
+                                                    modifier = Modifier
+                                                        .size(52.dp)
+                                                        .clip(RoundedCornerShape(cornerM())),
+                                                )
+                                                Spacer(Modifier.width(12.dp))
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(
+                                                        pl.name,
+                                                        color = Color.White,
+                                                        fontSize = textHeadingS(),
+                                                        fontWeight = FontWeight.Medium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            "${pl.trackCount} tracks",
+                                                            color = Color(0xFF888888),
+                                                            fontSize = textLabelM(),
+                                                        )
+                                                        if (pl.isSynced) {
+                                                            Spacer(Modifier.width(8.dp))
+                                                            Surface(
+                                                                color = BrandTeal.copy(alpha = 0.12f),
+                                                                shape = RoundedCornerShape(4.dp),
+                                                            ) {
+                                                                Text(
+                                                                    "Synced",
+                                                                    modifier = Modifier.padding(
+                                                                        horizontal = 5.dp,
+                                                                        vertical = 1.dp,
+                                                                    ),
+                                                                    color = BrandTeal,
+                                                                    fontSize = textMicro(),
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                )
+                                                            }
                                                         }
-                                                    }
-                                                    if (pl.isDownloaded) {
-                                                        Spacer(Modifier.width(8.dp))
-                                                        Surface(
-                                                            color = BrandPurple.copy(alpha = 0.12f),
-                                                            shape = RoundedCornerShape(4.dp),
-                                                        ) {
-                                                            Text(
-                                                                "Downloaded",
-                                                                modifier = Modifier.padding(
-                                                                    horizontal = 5.dp,
-                                                                    vertical = 1.dp,
-                                                                ),
-                                                                color = BrandPurple,
-                                                                fontSize = textMicro(),
-                                                                fontWeight = FontWeight.SemiBold,
-                                                            )
+                                                        if (pl.isDownloaded) {
+                                                            Spacer(Modifier.width(8.dp))
+                                                            Surface(
+                                                                color = BrandPurple.copy(alpha = 0.12f),
+                                                                shape = RoundedCornerShape(4.dp),
+                                                            ) {
+                                                                Text(
+                                                                    "Downloaded",
+                                                                    modifier = Modifier.padding(
+                                                                        horizontal = 5.dp,
+                                                                        vertical = 1.dp,
+                                                                    ),
+                                                                    color = BrandPurple,
+                                                                    fontSize = textMicro(),
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
+                                                Icon(
+                                                    Icons.Default.ChevronRight,
+                                                    null,
+                                                    tint = Color(0xFF444444),
+                                                    modifier = Modifier.size(18.dp),
+                                                )
                                             }
-                                            Icon(
-                                                Icons.Default.ChevronRight,
-                                                null,
-                                                tint = Color(0xFF444444),
-                                                modifier = Modifier.size(18.dp),
-                                            )
+                                            // Long-press menu
+                                            DropdownMenu(
+                                                expanded = menuPlaylist?.id == pl.id,
+                                                onDismissRequest = { menuPlaylist = null },
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Remove Locally") },
+                                                    onClick = {
+                                                        pendingRemovePlaylist = pl
+                                                        menuPlaylist = null
+                                                        showRemovePlaylistConfirm = true
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.Delete, null, tint = Color(0xFFE84040))
+                                                    },
+                                                )
+                                            }
                                         }
-                                        // Long-press menu
-                                        DropdownMenu(
-                                            expanded = menuPlaylist?.id == pl.id,
-                                            onDismissRequest = { menuPlaylist = null },
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("Remove Locally") },
-                                                onClick = {
-                                                    pendingRemovePlaylist = pl
-                                                    menuPlaylist = null
-                                                    showRemovePlaylistConfirm = true
-                                                },
-                                                leadingIcon = {
-                                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFE84040))
-                                                },
-                                            )
-                                        }
+                                        HorizontalDivider(
+                                            color = Surface,
+                                            modifier = Modifier.padding(horizontal = spacingL()),
+                                        )
                                     }
-                                    HorizontalDivider(
-                                        color = Surface,
-                                        modifier = Modifier.padding(horizontal = spacingL()),
-                                    )
+                                }
+                            }
+                            // Create playlist FAB
+                            Box(Modifier.fillMaxSize()) {
+                                FloatingActionButton(
+                                    onClick = {
+                                        viewModel.clearCreatedPlaylist()
+                                        createStep = CreateSheetStep.NAME
+                                        showCreatePlaylistSheet = true
+                                    },
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                                    containerColor = BrandTeal,
+                                ) {
+                                    Icon(Icons.Default.Add, null, tint = Color.White)
                                 }
                             }
                         }
-                        // Create playlist FAB
-                        Box(Modifier.fillMaxSize()) {
-                            FloatingActionButton(
-                                onClick = {
-                                    viewModel.clearCreatedPlaylist()
-                                    createStep = CreateSheetStep.NAME
-                                    showCreatePlaylistSheet = true
-                                },
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                                containerColor = BrandTeal,
-                            ) {
-                                Icon(Icons.Default.Add, null, tint = Color.White)
-                            }
-                        }
-                    }
 
-                    LibraryTab.RADIO -> {
-                        val state by viewModel.state.collectAsStateWithLifecycle()
-                        LaunchedEffect(selectedTab) { viewModel.loadRadioStations() }
-                        val filteredRadio = if (searchQuery.isEmpty()) {
-                            state.radioStations
-                        } else {
-                            state.radioStations.filter { it.name.contains(searchQuery, ignoreCase = true) }
-                        }
-                        if (filteredRadio.isEmpty()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        Icons.Default.SettingsInputAntenna,
-                                        null,
-                                        tint = Color(0xFF333333),
-                                        modifier = Modifier.size(iconLarge()),
-                                    )
-                                    Spacer(Modifier.height(12.dp))
-                                    Text("No radio stations found", color = Color(0xFF888888), fontSize = textBodyM())
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        "via getInternetRadioStations",
-                                        color = Color(0xFF666666),
-                                        fontSize = textLabelM(),
-                                    )
-                                }
+                        LibraryTab.RADIO -> {
+                            val state by viewModel.state.collectAsStateWithLifecycle()
+                            LaunchedEffect(selectedTab) { viewModel.loadRadioStations() }
+                            val filteredRadio = if (searchQuery.isEmpty()) {
+                                state.radioStations
+                            } else {
+                                state.radioStations.filter { it.name.contains(searchQuery, ignoreCase = true) }
                             }
-                        } else {
-                            val radioListState = rememberLazyListState(
-                                cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
-                                    aheadFraction = 0.5f,
-                                    behindFraction = 0.2f,
-                                ),
-                            )
-                            LazyColumn(
-                                state = radioListState,
-                                contentPadding = PaddingValues(top = spacingS()),
-                            ) {
-                                item {
-                                    Row(
-                                        Modifier.padding(horizontal = spacingL(), vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
+                            if (filteredRadio.isEmpty()) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Icon(
                                             Icons.Default.SettingsInputAntenna,
                                             null,
-                                            tint = BrandTeal,
-                                            modifier = Modifier.size(iconMicro()),
+                                            tint = Color(0xFF333333),
+                                            modifier = Modifier.size(iconLarge()),
                                         )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Internet Radio", color = Color(0xFF888888), fontSize = textLabelM())
+                                        Spacer(Modifier.height(12.dp))
+                                        Text(
+                                            "No radio stations found",
+                                            color = Color(0xFF888888),
+                                            fontSize = textBodyM(),
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            "via getInternetRadioStations",
+                                            color = Color(0xFF666666),
+                                            fontSize = textLabelM(),
+                                        )
                                     }
-                                    HorizontalDivider(
-                                        color = Surface,
-                                        modifier = Modifier.padding(horizontal = spacingL()),
-                                    )
                                 }
-                                items(filteredRadio, key = { it.id }, contentType = { "radio" }) { station ->
-                                    Row(
-                                        Modifier.fillMaxWidth().clickable {
-                                            onRadioStationClick(station)
-                                        }.padding(horizontal = spacingL(), vertical = spacingM()),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Box(
-                                            Modifier.size(
-                                                iconLarge(),
-                                            ).clip(RoundedCornerShape(cornerM())).background(Color(0xFF1E1E1E)),
-                                            contentAlignment = Alignment.Center,
+                            } else {
+                                val radioListState = rememberLazyListState(
+                                    cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                        aheadFraction = 0.5f,
+                                        behindFraction = 0.2f,
+                                    ),
+                                )
+                                LazyColumn(
+                                    state = radioListState,
+                                    contentPadding = PaddingValues(top = spacingS()),
+                                ) {
+                                    item {
+                                        Row(
+                                            Modifier.padding(horizontal = spacingL(), vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
                                         ) {
                                             Icon(
                                                 Icons.Default.SettingsInputAntenna,
                                                 null,
                                                 tint = BrandTeal,
-                                                modifier = Modifier.size(24.dp),
+                                                modifier = Modifier.size(iconMicro()),
                                             )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Internet Radio", color = Color(0xFF888888), fontSize = textLabelM())
                                         }
-                                        Spacer(Modifier.width(12.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                station.name,
-                                                color = Color.White,
-                                                fontSize = textHeadingS(),
-                                                fontWeight = FontWeight.Medium,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Text(
-                                                station.streamUrl,
-                                                color = Color(0xFF888888),
-                                                fontSize = textLabelM(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                        // v43: Bookmark ribbon (local-only favorite)
-                                        RadioBookmarkIcon(
-                                            bookmarked = station.id in state.bookmarkedStationIds,
-                                            onClick = { viewModel.toggleRadioBookmark(station) },
-                                            inactiveTint = NavUnselected,
+                                        HorizontalDivider(
+                                            color = Surface,
+                                            modifier = Modifier.padding(horizontal = spacingL()),
                                         )
-                                        Spacer(Modifier.width(10.dp))
-                                        Box(
-                                            Modifier.size(
-                                                36.dp,
-                                            ).clip(CircleShape).background(BrandTeal.copy(alpha = 0.15f)),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.PlayArrow,
-                                                null,
-                                                tint = BrandTeal,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        }
                                     }
-                                    HorizontalDivider(
-                                        color = Surface,
-                                        modifier = Modifier.padding(horizontal = spacingL()),
-                                    )
+                                    items(filteredRadio, key = { it.id }, contentType = { "radio" }) { station ->
+                                        Row(
+                                            Modifier.fillMaxWidth().clickable {
+                                                onRadioStationClick(station)
+                                            }.padding(horizontal = spacingL(), vertical = spacingM()),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Box(
+                                                Modifier.size(
+                                                    iconLarge(),
+                                                ).clip(RoundedCornerShape(cornerM())).background(Color(0xFF1E1E1E)),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.SettingsInputAntenna,
+                                                    null,
+                                                    tint = BrandTeal,
+                                                    modifier = Modifier.size(24.dp),
+                                                )
+                                            }
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(
+                                                    station.name,
+                                                    color = Color.White,
+                                                    fontSize = textHeadingS(),
+                                                    fontWeight = FontWeight.Medium,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                Text(
+                                                    station.streamUrl,
+                                                    color = Color(0xFF888888),
+                                                    fontSize = textLabelM(),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                            // v43: Bookmark ribbon (local-only favorite)
+                                            RadioBookmarkIcon(
+                                                bookmarked = station.id in state.bookmarkedStationIds,
+                                                onClick = { viewModel.toggleRadioBookmark(station) },
+                                                inactiveTint = NavUnselected,
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                            Box(
+                                                Modifier.size(
+                                                    36.dp,
+                                                ).clip(CircleShape).background(BrandTeal.copy(alpha = 0.15f)),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.PlayArrow,
+                                                    null,
+                                                    tint = BrandTeal,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                        }
+                                        HorizontalDivider(
+                                            color = Surface,
+                                            modifier = Modifier.padding(horizontal = spacingL()),
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
                 } // close Box(Modifier.weight(1f))
             }
         } // chrome + list graphicsLayer wrap

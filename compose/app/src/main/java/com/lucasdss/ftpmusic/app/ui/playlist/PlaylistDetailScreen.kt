@@ -21,6 +21,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -58,10 +59,13 @@ import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.CoverCropDialog
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
+import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
 import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverStore
+import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -95,13 +99,28 @@ fun PlaylistDetailScreen(
     var showAddSongsSheet by remember { mutableStateOf(false) }
     var showAlbumCoverPicker by remember { mutableStateOf(false) }
     var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
-    val coverStore = rememberCollectionCoverStore()
     val playlistPhotoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
         if (uri != null) pendingCropUri = uri
     }
     val availablePlaylists by viewModel.availablePlaylists.collectAsStateWithLifecycle()
+
+    val listState = rememberLazyListState()
+    val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
+    val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
+    // cover + optional actions + divider before track rows
+    val headerCount = if (state.tracks.isNotEmpty()) 3 else 2
+    val nowPlayingLazyIndex = remember(trackIds, currentTrackId, headerCount) {
+        resolveLazyIndex(headerCount = headerCount, trackIndex = indexOfTrackId(trackIds, currentTrackId))
+    }
+    ScrollToNowPlayingEffect(
+        enabled = autoCenter && state.tracks.isNotEmpty(),
+        listState = listState,
+        targetLazyIndex = nowPlayingLazyIndex,
+        scrollKey = currentTrackId,
+        onlyIfNotVisible = true,
+    )
 
     val bgBrush = Brush.verticalGradient(
         listOf(Color(0xFF0D0D0D), Color(0xFF1A1A2E)),
@@ -199,7 +218,7 @@ fun PlaylistDetailScreen(
                 }
             } else {
                 // Sync conflicts: AppHeader IssueStatusIcon + sheet (ADR-0120).
-                LazyColumn {
+                LazyColumn(state = listState) {
                     // Cover art header — always present (fixed / derived / lettermark).
                     item {
                         val pl = state.playlist
@@ -646,6 +665,7 @@ fun PlaylistDetailScreen(
         )
     }
     pendingCropUri?.let { cropUri ->
+        val coverStore = rememberCollectionCoverStore()
         CoverCropDialog(
             uri = cropUri,
             coverStore = coverStore,
@@ -657,6 +677,10 @@ fun PlaylistDetailScreen(
             onLoadFailed = {
                 pendingCropUri = null
                 viewModel.notifyCoverCropLoadFailed()
+            },
+            onExportFailed = {
+                pendingCropUri = null
+                viewModel.notifyCoverCropExportFailed()
             },
         )
     }

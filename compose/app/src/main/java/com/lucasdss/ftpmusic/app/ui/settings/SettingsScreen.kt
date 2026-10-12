@@ -725,6 +725,13 @@ fun SettingsScreen(
                 )
                 SectionDivider()
                 SectionToggleRow(
+                    label = "Scroll lists to now playing",
+                    subtitle = "Center the playing track in playlists, albums, mixes, and queue",
+                    checked = state.listChromePrefs.autoCenterNowPlaying,
+                    onToggle = { viewModel.setAutoCenterNowPlaying(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
                     label = "Prefer iTunes album art",
                     subtitle = "Use iTunes artwork instead of Navidrome when available",
                     checked = state.preferItunesArt,

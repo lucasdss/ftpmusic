@@ -863,6 +863,10 @@ class PlaylistDetailViewModel @Inject constructor(
         _toast.value = "Could not load image for crop"
     }
 
+    fun notifyCoverCropExportFailed() {
+        _toast.value = "Could not save cropped cover"
+    }
+
     fun clearFixedCover() {
         val playlist = _state.value.playlist ?: return
         viewModelScope.launch {

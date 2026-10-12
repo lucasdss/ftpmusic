@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -61,8 +62,11 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
+import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
+import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +101,19 @@ fun MixDetailScreen(
     var showMixSheet by remember { mutableStateOf(false) }
     var showTrackSheet by remember { mutableStateOf<GenreMixTrack?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val listState = rememberLazyListState()
+    val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
+    val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
+    val nowPlayingLazyIndex = remember(trackIds, currentTrackId) {
+        resolveLazyIndex(headerCount = 1, trackIndex = indexOfTrackId(trackIds, currentTrackId))
+    }
+    ScrollToNowPlayingEffect(
+        enabled = autoCenter && state.tracks.isNotEmpty(),
+        listState = listState,
+        targetLazyIndex = nowPlayingLazyIndex,
+        scrollKey = currentTrackId,
+        onlyIfNotVisible = true,
+    )
 
     Box(Modifier.fillMaxSize().background(Color(0xFF0D0D14))) {
         Column(Modifier.fillMaxSize()) {
@@ -173,6 +190,7 @@ fun MixDetailScreen(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     contentPadding = PaddingValues(bottom = 100.dp),
                 ) {
                     // Header: art + play/shuffle

@@ -292,8 +292,9 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
                 val out = compressJpeg(working, q) ?: continue
                 if (out.size <= MAX_OUTPUT_BYTES) return out
             }
-            // Last resort: return lowest-quality encode even if slightly over budget.
-            return compressJpeg(working, 65)
+            // Hard cap (ADR-0125): never ship oversize; reject if still over budget.
+            val last = compressJpeg(working, 65) ?: return null
+            return last.takeIf { it.size <= MAX_OUTPUT_BYTES }
         } finally {
             if (ownedWorking) working.recycle()
         }

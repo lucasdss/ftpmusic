@@ -515,6 +515,25 @@ class MediaService : MediaLibraryService() {
                 endCurrentCastSession()
                 return
             }
+            // Supersede / retarget: reject late handshake for a device that is
+            // no longer the active connect target (A still finishing after B tap).
+            // Mark switch-pending so onSessionEnded of the rejected session does
+            // not clearCastConnectAttempt() and kill the in-flight B connect.
+            val targetId = castConnectTargetDeviceId
+            val startedId = session.castDevice?.deviceId
+            if (targetId != null && startedId != null && targetId != startedId) {
+                android.util.Log.w(
+                    "ftpmusic-cast",
+                    "[SessionManager] rejecting late onSessionStarted for $startedId (target=$targetId)",
+                )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-cast",
+                    "session started rejected wrong-device started=$startedId target=$targetId",
+                )
+                castSwitchInProgress = true
+                endCurrentCastSession()
+                return
+            }
             // A NEW session starts a fresh context — the previous resume flag is
             // stale. Without this reset, isReconnectingToExistingSession() stays
             // true forever after the first resume and every later session skips
@@ -585,7 +604,10 @@ class MediaService : MediaLibraryService() {
             val switchPending = castSwitchInProgress
             if (!switchPending) {
                 // A session end terminates any in-flight manual connect (Bug B).
-                clearCastConnectAttempt()
+                // Preserve connectUserAborted: cancel → endCurrentCastSession →
+                // onSessionEnded must not wipe the abort flag before a late
+                // onSessionStarted (ADR-0124).
+                clearCastConnectAttempt(clearUserAbort = false)
                 // Cache the device for the reconnect retry before it's gone.
                 if (session.castDevice != null) castLastDevice = session.castDevice
             }
@@ -1085,6 +1107,17 @@ class MediaService : MediaLibraryService() {
                         "ftpmusic-cast",
                         "[CastPlayer] rejecting remote=true after user abort",
                     )
+                    endCurrentCastSession()
+                    return
+                }
+                val remoteTargetId = castConnectTargetDeviceId
+                val remoteStartedId = castCtx?.sessionManager?.currentCastSession?.castDevice?.deviceId
+                if (remoteTargetId != null && remoteStartedId != null && remoteTargetId != remoteStartedId) {
+                    android.util.Log.w(
+                        "ftpmusic-cast",
+                        "[CastPlayer] rejecting remote=true for $remoteStartedId (target=$remoteTargetId)",
+                    )
+                    castSwitchInProgress = true
                     endCurrentCastSession()
                     return
                 }
@@ -3016,14 +3049,20 @@ class MediaService : MediaLibraryService() {
 
     /** Connect completed or session ended — release the in-flight lock + timeout.
      *  Also clears any stale error dialog (Edge-03): a success after a previous
-     *  failure must not leave "Couldn't connect" over a working session. */
+     *  failure must not leave "Couldn't connect" over a working session.
+     *
+     *  @param clearUserAbort when false (session-ended after cancel), keep
+     *  [CastButtonState.connectUserAborted] so late SDK callbacks still reject.
+     *  New [connectToCastDevice] / success paths clear the flag themselves. */
     @VisibleForTesting
-    internal fun clearCastConnectAttempt() {
+    internal fun clearCastConnectAttempt(clearUserAbort: Boolean = true) {
         castConnectInFlight = false
         castSwitchInProgress = false
         castConnectDeadlineMs = 0L
         castConnectSeq++
-        CastButtonState.connectUserAborted = false
+        if (clearUserAbort) {
+            CastButtonState.connectUserAborted = false
+        }
         CastButtonState.castErrorMessage.value = null
     }
 

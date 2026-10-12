@@ -51,6 +51,7 @@ No DataStore. No ThemeMode. No download-quality pref.
 |---------|---------|----------|
 | Prefer iTunes album art | `KEY_PREFER_ITUNES_ART` | CoverArtResolver |
 | Hide navigation labels | `KEY_NAV_HIDE_LABELS` (default OFF) | FtpmusicNavHost (activity-scoped SettingsVM) |
+| Scroll lists to now playing | `KEY_LIST_AUTO_CENTER_NOW_PLAYING` (default ON) | `LocalListChromePrefs` → Mix/Playlist/Album/Artist/Queue (ADR-0126) |
 
 Dark Mode / Accent Color stubs **removed**.
 

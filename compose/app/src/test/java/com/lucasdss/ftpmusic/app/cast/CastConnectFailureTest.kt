@@ -278,6 +278,71 @@ class CastConnectFailureTest {
         verify(atLeast = 2) { mockSessionManager.endCurrentSession(true) }
     }
 
+    @Test
+    fun `abort flag survives onSessionEnded so late start still rejects`() {
+        // ADR-0124 race: cancel → endCurrentCastSession → onSessionEnded used to
+        // clearCastConnectAttempt() and wipe connectUserAborted before a late
+        // onSessionStarted arrived. Abort must stick until a new connect.
+        PlayerHolder.isCasting = false
+        every { mockSessionManager.currentCastSession } returns null
+        every { mockRouter.routes } returns listOf(mockRoute)
+        every { CastDevice.getFromBundle(any()) } returns deviceA
+        every { mockRoute.name } returns "Soundbar"
+
+        service.connectToCastDevice(deviceA)
+        service.cancelCastConnect()
+        assertTrue(CastButtonState.connectUserAborted)
+
+        every { mockCastSession.castDevice } returns deviceA
+        val listener = core.javaClass.getDeclaredField("sessionManagerListener").apply {
+            isAccessible = true
+        }.get(core) as SessionManagerListener<CastSession>
+        listener.onSessionEnded(mockCastSession, 0)
+        assertTrue(
+            "connectUserAborted must survive onSessionEnded after cancel",
+            CastButtonState.connectUserAborted,
+        )
+
+        listener.onSessionStarted(mockCastSession, "late-after-ended")
+        assertFalse("late start after ended must not promote casting", PlayerHolder.isCasting)
+        assertFalse(CastButtonState.isCasting.value)
+    }
+
+    @Test
+    fun `supersede A to B rejects late onSessionStarted for A`() {
+        // Mid-connect tap B: abort-then-connect clears user-abort but retargets
+        // to B. Late handshake for A must not promote casting.
+        PlayerHolder.isCasting = false
+        every { mockSessionManager.currentCastSession } returns null
+        every { mockRouter.routes } returns listOf(mockRoute)
+        every { CastDevice.getFromBundle(any()) } returns deviceA
+        every { mockRoute.name } returns "Soundbar"
+
+        service.connectToCastDevice(deviceA)
+        assertEquals("Soundbar", CastButtonState.connectingDeviceName.value)
+
+        // Supersede while A is still in flight.
+        every { CastDevice.getFromBundle(any()) } returns deviceB
+        every { mockRoute.name } returns "Mini Speaker"
+        service.connectToCastDevice(deviceB)
+        assertEquals("Mini Speaker", CastButtonState.connectingDeviceName.value)
+        assertFalse(CastButtonState.connectUserAborted)
+
+        every { mockCastSession.castDevice } returns deviceA
+        val listener = core.javaClass.getDeclaredField("sessionManagerListener").apply {
+            isAccessible = true
+        }.get(core) as SessionManagerListener<CastSession>
+        listener.onSessionStarted(mockCastSession, "late-A")
+
+        assertFalse("late A must not promote casting after supersede to B", PlayerHolder.isCasting)
+        assertFalse(CastButtonState.isCasting.value)
+        assertEquals(
+            "connecting UI must still show B",
+            "Mini Speaker",
+            CastButtonState.connectingDeviceName.value,
+        )
+    }
+
     // ── M5: start-failed during a switch cleans up ──────────────────────
 
     @Test

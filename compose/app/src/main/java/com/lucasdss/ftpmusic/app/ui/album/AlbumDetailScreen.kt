@@ -9,6 +9,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,8 +50,11 @@ import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
+import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
+import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
+import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
@@ -78,6 +82,21 @@ fun AlbumDetailScreen(
     LaunchedEffect(albumId) { viewModel.loadAlbum(albumId) }
 
     val context = LocalContext.current
+    val listState = rememberLazyListState()
+    val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
+    val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
+    // hero + rating + publicRating + optional action row
+    val headerCount = if (state.tracks.isNotEmpty()) 4 else 3
+    val nowPlayingLazyIndex = remember(trackIds, currentTrackId, headerCount) {
+        resolveLazyIndex(headerCount = headerCount, trackIndex = indexOfTrackId(trackIds, currentTrackId))
+    }
+    ScrollToNowPlayingEffect(
+        enabled = autoCenter && state.tracks.isNotEmpty() && !state.isLoading && state.error == null,
+        listState = listState,
+        targetLazyIndex = nowPlayingLazyIndex,
+        scrollKey = currentTrackId,
+        onlyIfNotVisible = true,
+    )
     val fallbackService = remember { CoverArtFallbackService.getInstance(context) }
     val artUrl = rememberPreferredCoverArt(
         coverArtId = state.album?.coverArt,
@@ -102,7 +121,7 @@ fun AlbumDetailScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Background)) {
-        LazyColumn {
+        LazyColumn(state = listState) {
             // ═══ Hero section — full-width art with gradient overlay ═══
             item {
                 Box(Modifier.fillMaxWidth().height(heroHeaderHeight())) {

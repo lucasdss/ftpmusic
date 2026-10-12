@@ -227,6 +227,7 @@ class CustomDailyMixesViewModel @Inject constructor(
             bitmap.recycle()
             return
         }
+        val previousRelative = editor.fixedCoverValue
         val idKey = editor.mixId?.toString() ?: "new_${System.currentTimeMillis()}"
         viewModelScope.launch {
             try {
@@ -237,6 +238,13 @@ class CustomDailyMixesViewModel @Inject constructor(
                 ) ?: run {
                     _toast.value = "Could not import image"
                     return@launch
+                }
+                // Unsaved mixes stage under mix_new_<ts> — drop prior staged file.
+                if (previousRelative != null &&
+                    previousRelative != relative &&
+                    previousRelative.startsWith("${DailyMixRepository.COVER_PREFIX}_new_")
+                ) {
+                    coverStore.deleteRelative(previousRelative)
                 }
                 updateEditor {
                     it.copy(
@@ -253,6 +261,10 @@ class CustomDailyMixesViewModel @Inject constructor(
 
     fun notifyCoverCropLoadFailed() {
         _toast.value = "Could not load image for crop"
+    }
+
+    fun notifyCoverCropExportFailed() {
+        _toast.value = "Could not save cropped cover"
     }
 
     fun clearFixedCoverInEditor() = updateEditor {

@@ -598,6 +598,7 @@ class SettingsViewModelTest {
         assertTrue(prefs.showListDuration)
         assertTrue(prefs.showAlbumTrackNumbers)
         assertTrue(prefs.showListSequence)
+        assertTrue(prefs.autoCenterNowPlaying)
     }
 
     @Test
@@ -629,16 +630,25 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setAutoCenterNowPlaying persists to storage`() {
+        viewModel.setAutoCenterNowPlaying(false)
+        assertFalse(viewModel.state.value.listChromePrefs.autoCenterNowPlaying)
+        verify { storage.put(SecureStorage.KEY_LIST_AUTO_CENTER_NOW_PLAYING, "false") }
+    }
+
+    @Test
     fun `stored list chrome prefs restored on init`() {
         every { storage.get(SecureStorage.KEY_LIST_SHOW_REACTIONS) } returns "false"
         every { storage.get(SecureStorage.KEY_LIST_SHOW_DURATION) } returns "false"
         every { storage.get(SecureStorage.KEY_LIST_SHOW_ALBUM_TRACK_NUMBERS) } returns "false"
         every { storage.get(SecureStorage.KEY_LIST_SHOW_SEQUENCE) } returns "false"
+        every { storage.get(SecureStorage.KEY_LIST_AUTO_CENTER_NOW_PLAYING) } returns "false"
         val vm = createViewModel()
         assertFalse(vm.state.value.listChromePrefs.showListReactions)
         assertFalse(vm.state.value.listChromePrefs.showListDuration)
         assertFalse(vm.state.value.listChromePrefs.showAlbumTrackNumbers)
         assertFalse(vm.state.value.listChromePrefs.showListSequence)
+        assertFalse(vm.state.value.listChromePrefs.autoCenterNowPlaying)
     }
 
     // ── ADR-0099: Typography preferences ────────────────────────────────

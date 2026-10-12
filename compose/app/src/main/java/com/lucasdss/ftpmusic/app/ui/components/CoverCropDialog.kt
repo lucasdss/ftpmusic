@@ -92,6 +92,7 @@ fun CoverCropDialog(
     onConfirm: (Bitmap) -> Unit,
     onDismiss: () -> Unit,
     onLoadFailed: () -> Unit = {},
+    onExportFailed: () -> Unit = onLoadFailed,
 ) {
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -302,7 +303,7 @@ fun CoverCropDialog(
                                 bitmap = null
                                 onConfirm(cropped)
                             } else {
-                                onLoadFailed()
+                                onExportFailed()
                                 src.recycle()
                                 bitmap = null
                                 onDismiss()
