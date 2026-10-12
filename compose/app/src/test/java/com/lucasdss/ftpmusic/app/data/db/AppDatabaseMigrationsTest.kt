@@ -580,6 +580,19 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 62 to 63 backfills listen album_name`() {
+        run(AppDatabase.MIGRATION_62_63)
+        verify { db.execSQL(match { it.contains("listen_events") && it.contains("album_name") }) }
+    }
+
+    @Test
+    fun `migration 63 to 64 creates desired_items`() {
+        run(AppDatabase.MIGRATION_63_64)
+        verify { db.execSQL(match { it.contains("desired_items") && it.contains("identity_key") }) }
+        verify { db.execSQL(match { it.contains("index_desired_items_identity_key") }) }
+    }
+
+    @Test
     fun `FTS5 callback creates table on create and open`() {
         AppDatabase.FTS5_CALLBACK.onCreate(db)
         AppDatabase.FTS5_CALLBACK.onOpen(db)
@@ -599,6 +612,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(61, AppDatabase.ALL_MIGRATIONS_61.last().endVersion)
         assertEquals(62, AppDatabase.ALL_MIGRATIONS_62.last().endVersion)
         assertEquals(63, AppDatabase.ALL_MIGRATIONS_63.last().endVersion)
+        assertEquals(64, AppDatabase.ALL_MIGRATIONS_64.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -628,8 +642,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_58, AppDatabase.ALL_MIGRATIONS_59,
             AppDatabase.ALL_MIGRATIONS_60, AppDatabase.ALL_MIGRATIONS_61,
             AppDatabase.ALL_MIGRATIONS_62, AppDatabase.ALL_MIGRATIONS_63,
+            AppDatabase.ALL_MIGRATIONS_64,
         )
-        assertEquals(54, all.size)
+        assertEquals(55, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

@@ -310,6 +310,20 @@ fun AlbumDetailScreen(
                     )
                 }
             }
+            if (state.showAddDesired) {
+                item {
+                    TextButton(
+                        onClick = { viewModel.toggleDesired() },
+                        modifier = Modifier.padding(horizontal = spacingL()),
+                    ) {
+                        Text(
+                            if (state.isDesired) "Remove from Desired" else "Add to Desired",
+                            color = BrandTeal,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
 
             // ═══ Track list ═══
             itemsIndexed(

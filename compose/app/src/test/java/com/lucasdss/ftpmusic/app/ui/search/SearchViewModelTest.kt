@@ -41,12 +41,14 @@ class SearchViewModelTest {
     private val offlineFlow = MutableStateFlow(false)
     private val offlineManager: OfflineModeManager = mockk(relaxed = true)
     private lateinit var viewModel: SearchViewModel
+    private val desiredRepo: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository = mockk(relaxed = true)
 
     @Before
     fun setUp() {
         NetworkAvailabilityHolder.resetForTests(true)
         offlineFlow.value = false
         every { offlineManager.isOffline } returns offlineFlow
+        every { desiredRepo.observeDesiredIdentityKeys() } returns kotlinx.coroutines.flow.flowOf(emptySet())
         Dispatchers.setMain(testDispatcher)
         viewModel =
             SearchViewModel(
@@ -63,6 +65,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                desiredRepo,
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -108,6 +113,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -338,6 +346,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -390,6 +401,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -431,6 +445,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -485,6 +502,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -520,6 +540,9 @@ class SearchViewModelTest {
                 broken,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -545,6 +568,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -575,6 +601,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -605,6 +634,9 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -668,6 +700,9 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -701,6 +736,9 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -743,6 +781,9 @@ class SearchViewModelTest {
                 mockk<OfflineModeManager>(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -774,6 +815,9 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -820,6 +864,9 @@ class SearchViewModelTest {
                 offlineManager,
                 mockk(relaxed = true), // musicBrainz
                 mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
@@ -849,9 +896,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         val navigated = mutableListOf<String>()
@@ -902,9 +952,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("strong")
@@ -951,9 +1004,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
@@ -990,9 +1046,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
@@ -1027,9 +1086,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
@@ -1070,9 +1132,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
@@ -1112,9 +1177,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("so")
@@ -1193,9 +1261,12 @@ class SearchViewModelTest {
                 mockk(relaxed = true),
                 api,
                 offlineManager,
-                mockk(relaxed = true),
-                mockk(relaxed = true),
-                mockk(relaxed = true),
+                mockk(relaxed = true), // musicBrainz
+                mockk(relaxed = true), // lastFm
+                mockk(relaxed = true), // deezer
+                mockk(relaxed = true), // listenBrainz
+                mockk(relaxed = true), // desiredRepository
+                mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository
             )
         viewModel.onQueryChanged("aa")

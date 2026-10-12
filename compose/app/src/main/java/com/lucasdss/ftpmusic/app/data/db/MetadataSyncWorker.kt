@@ -149,6 +149,7 @@ class MetadataSyncWorker(
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder? = null,
     private val metadataEnrichRunner: MetadataEnrichRunner? = null,
+    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository? = null,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
@@ -477,6 +478,13 @@ class MetadataSyncWorker(
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     Log.w(TAG, "enrich enqueue: ${e.message}")
+                }
+                // ADR-0129: mark Desired rows that now exist in library (keep rows).
+                try {
+                    desiredRepository?.reconcileAgainstLibrary()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "desired reconcile: ${e.message}")
                 }
                 val current = _status.value
                 // ADR-0068: watermarks only on success — track-phase error must

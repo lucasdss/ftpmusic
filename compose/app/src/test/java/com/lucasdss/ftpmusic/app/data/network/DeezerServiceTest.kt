@@ -1,0 +1,41 @@
+package com.lucasdss.ftpmusic.app.data.network
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class DeezerServiceTest {
+
+    private val service = DeezerService()
+
+    @Test
+    fun `parseHits maps artist data`() {
+        val body = """
+            {"data":[{"id":27,"name":"Daft Punk","type":"artist"}],"total":1}
+        """.trimIndent()
+        val hits = service.parseHits(body) { obj ->
+            DeezerService.ArtistHit(
+                id = obj.optLong("id").toString(),
+                name = obj.optString("name"),
+            ).takeIf { it.name.isNotBlank() }
+        }
+        assertEquals(1, hits.size)
+        assertEquals("27", hits[0].id)
+        assertEquals("Daft Punk", hits[0].name)
+    }
+
+    @Test(expected = DeezerService.QuotaException::class)
+    fun `parseHits throws on body quota code 4`() {
+        val body = """{"error":{"type":"QuotaException","message":"Quota","code":4}}"""
+        service.parseHits(body) { null }
+    }
+
+    @Test
+    fun `parseHits returns empty on other body error`() {
+        val body = """{"error":{"type":"DataException","message":"x","code":1}}"""
+        val hits = service.parseHits(body) { obj ->
+            DeezerService.ArtistHit(obj.optLong("id").toString(), obj.optString("name"))
+        }
+        assertTrue(hits.isEmpty())
+    }
+}

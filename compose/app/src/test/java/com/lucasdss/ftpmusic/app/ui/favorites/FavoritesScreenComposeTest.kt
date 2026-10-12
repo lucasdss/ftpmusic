@@ -28,6 +28,7 @@ class FavoritesScreenComposeTest {
     private fun mockViewModel(state: FavoritesState): FavoritesViewModel {
         val vm = mockk<FavoritesViewModel>(relaxed = true)
         every { vm.state } returns MutableStateFlow(state)
+        every { vm.shareDesiredEvents } returns kotlinx.coroutines.flow.emptyFlow()
         return vm
     }
 
@@ -45,6 +46,7 @@ class FavoritesScreenComposeTest {
 
         composeRule.onNodeWithText("Liked").assertIsDisplayed()
         composeRule.onNodeWithText("Disliked").assertIsDisplayed()
+        composeRule.onNodeWithText("Desired").assertIsDisplayed()
         composeRule.onNodeWithText("No favorites yet").assertIsDisplayed()
         composeRule.onNodeWithText(
             "Like any track, album, or artist, or bookmark a radio station to add it here",
@@ -59,6 +61,17 @@ class FavoritesScreenComposeTest {
         composeRule.onNodeWithText("No dislikes yet").assertIsDisplayed()
         composeRule.onNodeWithText(
             "Thumbs-down any track, album, or artist to keep it out of Daily Mixes",
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `desired empty state shows wishlist copy`() {
+        val vm = mockViewModel(FavoritesState(mode = FavoritesMode.DESIRED))
+        render(vm)
+
+        composeRule.onNodeWithText("Nothing desired yet").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Search above or add from Discover to track music you want in your library",
         ).assertIsDisplayed()
     }
 

@@ -36,8 +36,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
+import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
 import com.lucasdss.ftpmusic.app.data.db.AlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
+import com.lucasdss.ftpmusic.app.data.db.DesiredItemEntity
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
@@ -66,17 +68,21 @@ import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
+import com.lucasdss.ftpmusic.app.ui.search.DiscoverAlbumHit
+import com.lucasdss.ftpmusic.app.ui.search.DiscoverArtistHit
+import com.lucasdss.ftpmusic.app.ui.search.DiscoverTrackHit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-enum class FavoritesMode { LIKED, DISLIKED }
+enum class FavoritesMode { LIKED, DISLIKED, DESIRED }
 
 @HiltViewModel
 class FavoritesViewModel @Inject constructor(
@@ -84,12 +90,23 @@ class FavoritesViewModel @Inject constructor(
     private val favoriteRepository: FavoriteRepository,
     private val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao,
     private val radioFavoriteDao: com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao,
+    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
+    private val deezerService: com.lucasdss.ftpmusic.app.data.network.DeezerService,
+    private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
+    private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
+    private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
     private val storage: SecureStorage,
     private val playbackManager: PlaybackManager,
     private val authHelper: SubsonicAuthHelper,
 ) : ViewModel() {
     private val _state = MutableStateFlow(FavoritesState())
     val state: StateFlow<FavoritesState> = _state.asStateFlow()
+
+    /** One-shot share payloads — UI starts ACTION_SEND chooser. */
+    private val _shareDesiredEvents = kotlinx.coroutines.channels.Channel<String>(
+        kotlinx.coroutines.channels.Channel.BUFFERED,
+    )
+    val shareDesiredEvents = _shareDesiredEvents.receiveAsFlow()
 
     /** How many rows currently held per entity (liked / disliked). */
     private var loadedLikedTracks = FavoritesPaging.PAGE_SIZE
@@ -103,9 +120,22 @@ class FavoritesViewModel @Inject constructor(
     private val trackPending = FavoritePendingStore()
     private val albumPending = FavoritePendingStore()
     private val artistPending = FavoritePendingStore()
+    private var desiredFilterJob: kotlinx.coroutines.Job? = null
+    private var catalogJob: kotlinx.coroutines.Job? = null
 
     fun setMode(mode: FavoritesMode) {
         _state.value = _state.value.copy(mode = mode)
+        if (mode == FavoritesMode.DESIRED) {
+            refreshDesiredList()
+        }
+    }
+
+    fun setFilterQuery(query: String) {
+        _state.value = _state.value.copy(filterQuery = query)
+        if (_state.value.mode == FavoritesMode.DESIRED) {
+            refreshDesiredList()
+            maybeLaunchCatalogAdd(query)
+        }
     }
 
     /**
@@ -116,6 +146,7 @@ class FavoritesViewModel @Inject constructor(
         val entities = when (_state.value.mode) {
             FavoritesMode.LIKED -> _state.value.tracks
             FavoritesMode.DISLIKED -> _state.value.dislikedTracks
+            FavoritesMode.DESIRED -> emptyList()
         }
         if (index < 0 || index >= entities.size) return
         val tracks = entities.map { e ->
@@ -157,6 +188,7 @@ class FavoritesViewModel @Inject constructor(
                             storage.get(SecureStorage.KEY_HOME_SHOW_FAV_RADIO)?.toBooleanStrictOrNull() ?: true,
                     )
                 }
+                refreshDesiredList()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-fav", "load failed", e)
@@ -199,14 +231,215 @@ class FavoritesViewModel @Inject constructor(
                 android.util.Log.w("ftpmusic-fav", "observe stopped", e)
             }
         }
+        viewModelScope.launch {
+            try {
+                desiredRepository.observeAll().collect {
+                    if (_state.value.mode == FavoritesMode.DESIRED) {
+                        refreshDesiredList()
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-fav", "desired observe stopped", e)
+            }
+        }
     }
 
-    /** Append next page for the active mode (Liked or Disliked). */
+    /** Append next page for the active mode (Liked or Disliked). Desired is full-list. */
     fun loadMore() {
-        if (_state.value.mode == FavoritesMode.LIKED) {
-            loadMoreLiked()
-        } else {
-            loadMoreDisliked()
+        when (_state.value.mode) {
+            FavoritesMode.LIKED -> loadMoreLiked()
+            FavoritesMode.DISLIKED -> loadMoreDisliked()
+            FavoritesMode.DESIRED -> Unit
+        }
+    }
+
+    private fun refreshDesiredList() {
+        desiredFilterJob?.cancel()
+        desiredFilterJob = viewModelScope.launch {
+            try {
+                val q = _state.value.filterQuery.trim()
+                val items = if (q.isEmpty()) {
+                    desiredRepository.getAll()
+                } else {
+                    desiredRepository.search(q)
+                }
+                _state.value = _state.value.copy(
+                    desiredItems = items,
+                    desiredTracks = items.filter {
+                        it.entityType == com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK
+                    },
+                    desiredArtists = items.filter {
+                        it.entityType == com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST
+                    },
+                    desiredAlbums = items.filter {
+                        it.entityType == com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM
+                    },
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-fav", "desired refresh failed", e)
+            }
+        }
+    }
+
+    private fun isLocalOnly(): Boolean = try {
+        LocalOnlyPolicy.isLocalOnly(offlineModeManager.isOffline.value)
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun maybeLaunchCatalogAdd(query: String) {
+        catalogJob?.cancel()
+        val q = query.trim()
+        if (q.length < 2 || isLocalOnly()) {
+            _state.value = _state.value.copy(
+                catalogArtists = emptyList(),
+                catalogAlbums = emptyList(),
+                catalogTracks = emptyList(),
+                isCatalogLoading = false,
+            )
+            return
+        }
+        catalogJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isCatalogLoading = true)
+            try {
+                val mbArtists = try {
+                    musicBrainzService.searchArtists(q, 6)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val lastFm = try {
+                    lastFmService.searchArtists(q, 6)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val dzArtists = try {
+                    deezerService.searchArtists(q, 6)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val dzAlbums = try {
+                    deezerService.searchAlbums(q, 6)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val dzTracks = try {
+                    deezerService.searchTracks(q, 6)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val artists = LinkedHashMap<String, DiscoverArtistHit>()
+                for (a in mbArtists) {
+                    artists[a.name.lowercase()] = DiscoverArtistHit(
+                        name = a.name,
+                        mbid = a.mbid,
+                        source = "musicbrainz",
+                    )
+                }
+                for (a in lastFm) {
+                    artists.putIfAbsent(
+                        a.name.lowercase(),
+                        DiscoverArtistHit(name = a.name, mbid = a.mbid, source = "lastfm"),
+                    )
+                }
+                for (a in dzArtists) {
+                    val key = a.name.lowercase()
+                    val existing = artists[key]
+                    if (existing != null) {
+                        artists[key] = existing.copy(deezerId = a.id)
+                    } else {
+                        artists[key] = DiscoverArtistHit(name = a.name, deezerId = a.id, source = "deezer")
+                    }
+                }
+                if (_state.value.filterQuery.trim() != q) return@launch
+                _state.value = _state.value.copy(
+                    catalogArtists = artists.values.take(6).toList(),
+                    catalogAlbums = dzAlbums.map {
+                        DiscoverAlbumHit(
+                            title = it.title,
+                            artistName = it.artistName,
+                            deezerId = it.id,
+                            source = "deezer",
+                        )
+                    },
+                    catalogTracks = dzTracks.map {
+                        DiscoverTrackHit(
+                            title = it.title,
+                            artistName = it.artistName,
+                            deezerId = it.id,
+                        )
+                    },
+                    isCatalogLoading = false,
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _state.value = _state.value.copy(isCatalogLoading = false)
+            }
+        }
+    }
+
+    fun addCatalogArtistDesired(hit: DiscoverArtistHit) {
+        viewModelScope.launch {
+            desiredRepository.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                title = hit.name,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+                source = hit.source,
+            )
+            refreshDesiredList()
+        }
+    }
+
+    fun addCatalogAlbumDesired(hit: DiscoverAlbumHit) {
+        viewModelScope.launch {
+            desiredRepository.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                title = hit.title,
+                artistName = hit.artistName,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+                source = hit.source,
+            )
+            refreshDesiredList()
+        }
+    }
+
+    fun addCatalogTrackDesired(hit: DiscoverTrackHit) {
+        viewModelScope.launch {
+            desiredRepository.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK,
+                title = hit.title,
+                artistName = hit.artistName,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+                source = when {
+                    !hit.mbid.isNullOrBlank() -> "musicbrainz"
+                    !hit.deezerId.isNullOrBlank() -> "deezer"
+                    else -> "manual"
+                },
+            )
+            refreshDesiredList()
+        }
+    }
+
+    fun removeDesired(id: String) {
+        viewModelScope.launch {
+            desiredRepository.removeDesired(id)
+            refreshDesiredList()
+        }
+    }
+
+    fun shareDesired() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            try {
+                val text = desiredRepository.snapshotShareText()
+                _shareDesiredEvents.send(text)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-fav", "shareDesired failed", e)
+            }
         }
     }
 
@@ -569,6 +802,15 @@ data class FavoritesState(
     val dislikedTracks: List<TrackEntity> = emptyList(),
     val dislikedAlbums: List<AlbumEntity> = emptyList(),
     val dislikedArtists: List<ArtistEntity> = emptyList(),
+    val desiredItems: List<DesiredItemEntity> = emptyList(),
+    val desiredTracks: List<DesiredItemEntity> = emptyList(),
+    val desiredAlbums: List<DesiredItemEntity> = emptyList(),
+    val desiredArtists: List<DesiredItemEntity> = emptyList(),
+    val filterQuery: String = "",
+    val catalogArtists: List<DiscoverArtistHit> = emptyList(),
+    val catalogAlbums: List<DiscoverAlbumHit> = emptyList(),
+    val catalogTracks: List<DiscoverTrackHit> = emptyList(),
+    val isCatalogLoading: Boolean = false,
     val hasMoreLikedTracks: Boolean = false,
     val hasMoreLikedAlbums: Boolean = false,
     val hasMoreLikedArtists: Boolean = false,
@@ -598,11 +840,25 @@ fun FavoritesScreen(
     isPlaying: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.load()
+        }
+    }
+    LaunchedEffect(Unit) {
+        viewModel.shareDesiredEvents.collect { text ->
+            try {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "ftpmusic desired list")
+                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                }
+                context.startActivity(android.content.Intent.createChooser(send, "Share desired list"))
+            } catch (_: android.content.ActivityNotFoundException) {
+            }
         }
     }
 
@@ -615,7 +871,18 @@ fun FavoritesScreen(
         (state.showFavAlbumsSection && state.albums.isNotEmpty()) ||
         (state.showFavRadioSection && state.radio.isNotEmpty())
 
-    val hasAnything = if (state.mode == FavoritesMode.LIKED) likedHasAnything else dislikedHasAnything
+    val desiredHasAnything = state.desiredItems.isNotEmpty() ||
+        state.catalogArtists.isNotEmpty() ||
+        state.catalogAlbums.isNotEmpty() ||
+        state.catalogTracks.isNotEmpty() ||
+        state.isCatalogLoading ||
+        state.filterQuery.isNotBlank()
+
+    val hasAnything = when (state.mode) {
+        FavoritesMode.LIKED -> likedHasAnything
+        FavoritesMode.DISLIKED -> dislikedHasAnything
+        FavoritesMode.DESIRED -> desiredHasAnything
+    }
 
     // Mode chips sit above Lazy — pad Column so chrome clears overlay AppHeader.
     // ADR-0114: chips + list ride -offsetPx together (one graphicsLayer) so collapse
@@ -641,14 +908,21 @@ fun FavoritesScreen(
                 onSelect = viewModel::setMode,
             )
 
+            FavoritesFilterRow(
+                query = state.filterQuery,
+                onQueryChange = viewModel::setFilterQuery,
+                showShare = state.mode == FavoritesMode.DESIRED,
+                onShare = viewModel::shareDesired,
+            )
+
             if (!hasAnything) {
                 Box(Modifier.fillMaxSize().testTag("favorites_empty"), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            if (state.mode == FavoritesMode.LIKED) {
-                                Icons.Outlined.ThumbUp
-                            } else {
-                                Icons.Outlined.ThumbDown
+                            when (state.mode) {
+                                FavoritesMode.LIKED -> Icons.Outlined.ThumbUp
+                                FavoritesMode.DISLIKED -> Icons.Outlined.ThumbDown
+                                FavoritesMode.DESIRED -> Icons.Outlined.BookmarkBorder
                             },
                             null,
                             tint = Color(0xFF2A2A3E),
@@ -656,16 +930,25 @@ fun FavoritesScreen(
                         )
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            if (state.mode == FavoritesMode.LIKED) "No favorites yet" else "No dislikes yet",
+                            when (state.mode) {
+                                FavoritesMode.LIKED -> "No favorites yet"
+                                FavoritesMode.DISLIKED -> "No dislikes yet"
+                                FavoritesMode.DESIRED -> "Nothing desired yet"
+                            },
                             color = Color(0xFF888888),
                             fontSize = textBodyM(),
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (state.mode == FavoritesMode.LIKED) {
-                                "Like any track, album, or artist, or bookmark a radio station to add it here"
-                            } else {
-                                "Thumbs-down any track, album, or artist to keep it out of Daily Mixes"
+                            when (state.mode) {
+                                FavoritesMode.LIKED ->
+                                    "Like any track, album, or artist, or bookmark a radio station to add it here"
+
+                                FavoritesMode.DISLIKED ->
+                                    "Thumbs-down any track, album, or artist to keep it out of Daily Mixes"
+
+                                FavoritesMode.DESIRED ->
+                                    "Search above or add from Discover to track music you want in your library"
                             },
                             color = Color(0xFF666666),
                             fontSize = textLabelM(),
@@ -674,27 +957,71 @@ fun FavoritesScreen(
                         )
                     }
                 }
-            } else if (state.mode == FavoritesMode.LIKED) {
-                LikedFavoritesList(
-                    state = state,
-                    viewModel = viewModel,
-                    onAlbumClick = onAlbumClick,
-                    onArtistClick = onArtistClick,
-                    onRadioStationClick = onRadioStationClick,
-                    currentTrackId = currentTrackId,
-                    currentAlbumId = currentAlbumId,
-                    isPlaying = isPlaying,
-                )
             } else {
-                DislikedFavoritesList(
-                    state = state,
-                    viewModel = viewModel,
-                    onAlbumClick = onAlbumClick,
-                    onArtistClick = onArtistClick,
-                    currentTrackId = currentTrackId,
-                    currentAlbumId = currentAlbumId,
-                    isPlaying = isPlaying,
-                )
+                when (state.mode) {
+                    FavoritesMode.LIKED -> LikedFavoritesList(
+                        state = state,
+                        viewModel = viewModel,
+                        onAlbumClick = onAlbumClick,
+                        onArtistClick = onArtistClick,
+                        onRadioStationClick = onRadioStationClick,
+                        currentTrackId = currentTrackId,
+                        currentAlbumId = currentAlbumId,
+                        isPlaying = isPlaying,
+                    )
+
+                    FavoritesMode.DISLIKED -> DislikedFavoritesList(
+                        state = state,
+                        viewModel = viewModel,
+                        onAlbumClick = onAlbumClick,
+                        onArtistClick = onArtistClick,
+                        currentTrackId = currentTrackId,
+                        currentAlbumId = currentAlbumId,
+                        isPlaying = isPlaying,
+                    )
+
+                    FavoritesMode.DESIRED -> DesiredFavoritesList(state = state, viewModel = viewModel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoritesFilterRow(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    showShare: Boolean,
+    onShare: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacingL(), vertical = spacingS()),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .weight(1f)
+                .testTag("favorites_filter_query"),
+            singleLine = true,
+            placeholder = { Text("Filter…", color = Color(0xFF666666)) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = BrandTeal,
+                unfocusedBorderColor = Color(0xFF333348),
+                cursorColor = BrandTeal,
+            ),
+        )
+        if (showShare) {
+            IconButton(
+                onClick = onShare,
+                modifier = Modifier.testTag("favorites_share_desired"),
+            ) {
+                Icon(Icons.Filled.Share, contentDescription = "Share desired list", tint = Color.White)
             }
         }
     }
@@ -715,7 +1042,154 @@ private fun FavoritesModeChips(selected: FavoritesMode, onSelect: (FavoritesMode
             onClick = { onSelect(FavoritesMode.DISLIKED) },
             modifier = Modifier.weight(1f).testTag("favorites_mode_disliked"),
         )
+        SegmentedChip(
+            label = "Desired",
+            selected = selected == FavoritesMode.DESIRED,
+            onClick = { onSelect(FavoritesMode.DESIRED) },
+            modifier = Modifier.weight(1f).testTag("favorites_mode_desired"),
+        )
     }
+}
+
+@Composable
+private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesViewModel) {
+    val listState = rememberLazyListState()
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().testTag("favorites_desired_list"),
+        contentPadding = PaddingValues(bottom = 96.dp),
+    ) {
+        if (state.desiredTracks.isNotEmpty()) {
+            item { FavoriteSectionHeader("Tracks", Icons.Outlined.BookmarkBorder) }
+            items(state.desiredTracks, key = { it.id }) { item ->
+                DesiredItemRow(item = item, onRemove = { viewModel.removeDesired(item.id) })
+            }
+        }
+        if (state.desiredArtists.isNotEmpty()) {
+            item { FavoriteSectionHeader("Artists", Icons.Outlined.BookmarkBorder) }
+            items(state.desiredArtists, key = { it.id }) { item ->
+                DesiredItemRow(item = item, onRemove = { viewModel.removeDesired(item.id) })
+            }
+        }
+        if (state.desiredAlbums.isNotEmpty()) {
+            item { FavoriteSectionHeader("Albums", Icons.Outlined.BookmarkBorder) }
+            items(state.desiredAlbums, key = { it.id }) { item ->
+                DesiredItemRow(item = item, onRemove = { viewModel.removeDesired(item.id) })
+            }
+        }
+        val showCatalog = state.filterQuery.trim().length >= 2 &&
+            (
+                state.isCatalogLoading || state.catalogArtists.isNotEmpty() ||
+                    state.catalogAlbums.isNotEmpty() || state.catalogTracks.isNotEmpty()
+                )
+        if (showCatalog) {
+            item { FavoriteSectionHeader("Add from catalog", Icons.Filled.Add) }
+            if (state.isCatalogLoading) {
+                item {
+                    Text(
+                        "Searching catalog…",
+                        color = Color(0xFF666666),
+                        fontSize = textLabelM(),
+                        modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                    )
+                }
+            }
+            items(state.catalogArtists, key = { "cat-ar-${it.mbid ?: it.deezerId ?: it.name}" }) { hit ->
+                CatalogAddRow(
+                    title = hit.name,
+                    subtitle = "Artist · ${hit.source}",
+                    onAdd = { viewModel.addCatalogArtistDesired(hit) },
+                )
+            }
+            items(state.catalogAlbums, key = { "cat-al-${it.deezerId ?: it.title}" }) { hit ->
+                CatalogAddRow(
+                    title = hit.title,
+                    subtitle = listOfNotNull(hit.artistName, "Album · ${hit.source}").joinToString(" · "),
+                    onAdd = { viewModel.addCatalogAlbumDesired(hit) },
+                )
+            }
+            items(state.catalogTracks, key = { "cat-tr-${it.deezerId ?: it.title}" }) { hit ->
+                CatalogAddRow(
+                    title = hit.title,
+                    subtitle = listOfNotNull(hit.artistName, "Track").joinToString(" · "),
+                    onAdd = { viewModel.addCatalogTrackDesired(hit) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacingL(), vertical = spacingM())
+            .heightIn(min = 48.dp)
+            .testTag("desired_item_${item.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                item.title,
+                color = Color.White,
+                fontSize = textHeadingS(),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                buildString {
+                    item.artistName?.let {
+                        append(it)
+                        append(" · ")
+                    }
+                    append(item.source)
+                    if (!item.matchedLocalId.isNullOrBlank()) append(" · In library")
+                },
+                color = Color(0xFF888888),
+                fontSize = textLabelM(),
+                maxLines = 1,
+            )
+        }
+        IconButton(onClick = onRemove) {
+            Icon(Icons.Filled.Close, contentDescription = "Remove desired", tint = Color(0xFF888888))
+        }
+    }
+    HorizontalDivider(
+        color = Color.White.copy(alpha = 0.04f),
+        modifier = Modifier.padding(horizontal = spacingL()),
+    )
+}
+
+@Composable
+private fun CatalogAddRow(title: String, subtitle: String, onAdd: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacingL(), vertical = spacingM())
+            .heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                color = Color.White,
+                fontSize = textHeadingS(),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(subtitle, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
+        }
+        TextButton(onClick = onAdd) {
+            Text("Add", color = BrandTeal, fontWeight = FontWeight.SemiBold)
+        }
+    }
+    HorizontalDivider(
+        color = Color.White.copy(alpha = 0.04f),
+        modifier = Modifier.padding(horizontal = spacingL()),
+    )
 }
 
 @Composable

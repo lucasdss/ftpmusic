@@ -58,6 +58,7 @@ class ArtistDetailViewModelTest {
             api, storage, playbackManager, metadataDao, trackDao, offlineModeManager,
             musicBrainzService, lastFmService, cacheService, downloadManager,
             playlistDao, playlistRepo, favoriteRepository,
+            mockk(relaxed = true), // desiredRepository
         )
     }
 
@@ -673,6 +674,7 @@ class ArtistDetailViewModelTest {
         api, storage, playbackManager, metadataDao, trackDao, offlineModeManager,
         musicBrainzService, lastFmService, cacheService, downloadManager,
         playlistDao, playlistRepo, favoriteRepository,
+        mockk(relaxed = true), // desiredRepository
     )
 
     @Test

@@ -34,9 +34,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrackWaveformEntity::class,
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
+        DesiredItemEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 63,
+    version = 64,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -56,6 +57,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun trackWaveformDao(): TrackWaveformDao
     abstract fun radioFavoriteDao(): RadioFavoriteDao
     abstract fun listenEventDao(): ListenEventDao
+    abstract fun desiredItemDao(): DesiredItemDao
     // search_fts via SearchFtsDao @Singleton (not Room @Dao) — ADR 0084
 
     companion object {
@@ -1129,6 +1131,44 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_63 = ALL_MIGRATIONS_62 + MIGRATION_62_63
+
+        /** ADR-0129: local Desired wishlist table. */
+        val MIGRATION_63_64 = object : Migration(63, 64) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `desired_items` (
+                        `id` TEXT NOT NULL,
+                        `identity_key` TEXT NOT NULL,
+                        `entity_type` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `artist_name` TEXT,
+                        `album_name` TEXT,
+                        `musicbrainz_id` TEXT,
+                        `deezer_id` TEXT,
+                        `source` TEXT NOT NULL,
+                        `desired_at` INTEGER NOT NULL,
+                        `matched_local_id` TEXT,
+                        `note` TEXT,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_desired_items_identity_key` ON `desired_items` (`identity_key`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_desired_items_entity_type_desired_at` ON `desired_items` (`entity_type`, `desired_at`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_desired_items_musicbrainz_id` ON `desired_items` (`musicbrainz_id`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_desired_items_deezer_id` ON `desired_items` (`deezer_id`)",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_64 = ALL_MIGRATIONS_63 + MIGRATION_63_64
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

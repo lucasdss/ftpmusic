@@ -46,6 +46,9 @@ data class ArtistDetailState(
     val publicRatingVotes: Int? = null,
     val similarArtists: List<com.lucasdss.ftpmusic.app.data.network.LastFmService.SimilarArtist> = emptyList(),
     val error: String? = null,
+    /** Stub / empty catalog — show Add Desired (ADR-0129). */
+    val showAddDesired: Boolean = false,
+    val isDesired: Boolean = false,
 )
 
 @HiltViewModel
@@ -63,6 +66,7 @@ class ArtistDetailViewModel @Inject constructor(
     private val playlistDao: com.lucasdss.ftpmusic.app.data.db.PlaylistDao,
     private val playlistRepo: com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository,
     private val favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository,
+    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ArtistDetailState())
     val state: StateFlow<ArtistDetailState> = _state.asStateFlow()
@@ -149,9 +153,23 @@ class ArtistDetailViewModel @Inject constructor(
                 val localTracks = firstPage.map { it.toTrack() }
 
                 if (localAlbums.isNotEmpty() || cachedArtist != null || localTracks.isNotEmpty()) {
+                    val name = cachedArtist?.name ?: localAlbums.firstOrNull()?.artist ?: "Unknown"
+                    val emptyCatalog = localAlbums.isEmpty() && localTracks.isEmpty()
+                    val desiredKey = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
+                        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                        name,
+                        null,
+                        cachedArtist?.musicbrainzId,
+                        null,
+                    )
+                    val isDesired = try {
+                        desiredRepository.getAll().any { it.identityKey == desiredKey }
+                    } catch (_: Exception) {
+                        false
+                    }
                     _state.value = _state.value.copy(
                         artistId = artistId,
-                        name = cachedArtist?.name ?: localAlbums.firstOrNull()?.artist ?: "Unknown",
+                        name = name,
                         albums = localAlbums,
                         tracks = localTracks,
                         hasMoreTracks = firstPage.size >= TRACKS_PAGE_SIZE,
@@ -159,6 +177,8 @@ class ArtistDetailViewModel @Inject constructor(
                         publicRatingVotes = cachedArtist?.publicRatingVotes,
                         similarArtists = lastFmService.parseStoredJson(cachedArtist?.similarArtistsJson),
                         isLoading = false,
+                        showAddDesired = emptyCatalog,
+                        isDesired = isDesired,
                     )
                     loadReactions(firstPage.map { it.id })
                     // Lazy: fetch public rating from MusicBrainz if not yet cached
@@ -642,6 +662,38 @@ class ArtistDetailViewModel @Inject constructor(
                 android.util.Log.w("ftpmusic-artist", "toggleArtistDislike failed — rolled back", e)
                 artistPending.clear(artistId)
                 _state.value = previous
+            }
+        }
+    }
+
+    fun toggleDesired() {
+        val s = _state.value
+        if (!s.showAddDesired || s.name.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val cached = metadataDao.getArtistById(s.artistId)
+                val key = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
+                    com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                    s.name,
+                    null,
+                    cached?.musicbrainzId,
+                    null,
+                )
+                if (s.isDesired) {
+                    desiredRepository.removeByIdentityKey(key)
+                    _state.value = _state.value.copy(isDesired = false)
+                } else {
+                    desiredRepository.addDesired(
+                        entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                        title = s.name,
+                        musicbrainzId = cached?.musicbrainzId,
+                        source = if (s.artistId.startsWith("mb:")) "musicbrainz" else "manual",
+                    )
+                    _state.value = _state.value.copy(isDesired = true)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-artist", "toggleDesired failed", e)
             }
         }
     }

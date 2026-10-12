@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -226,6 +227,20 @@ fun ArtistDetailScreen(
                     onMore = { showArtistSheet = true },
                     enabled = state.tracks.isNotEmpty(),
                 )
+                if (state.showAddDesired) {
+                    TextButton(
+                        onClick = { viewModel.toggleDesired() },
+                        modifier = Modifier
+                            .padding(horizontal = spacingL())
+                            .testTag("artist_add_desired"),
+                    ) {
+                        Text(
+                            if (state.isDesired) "Remove from Desired" else "Add to Desired",
+                            color = BrandTeal,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
                 // Similar artists (last.fm)
                 if (state.similarArtists.isNotEmpty()) {
                     Text(

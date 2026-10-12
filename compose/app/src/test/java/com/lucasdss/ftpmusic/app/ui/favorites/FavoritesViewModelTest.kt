@@ -3,11 +3,13 @@ package com.lucasdss.ftpmusic.app.ui.favorites
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.DesiredRepository
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
@@ -22,6 +24,8 @@ class FavoritesViewModelTest {
     private val favoriteRepository: FavoriteRepository = mockk(relaxed = true)
     private val metadataDao: com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao = mockk(relaxed = true)
     private val radioFavoriteDao: com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao = mockk(relaxed = true)
+    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository = mockk(relaxed = true)
+    private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager = mockk(relaxed = true)
     private val storage: com.lucasdss.ftpmusic.app.data.security.SecureStorage = mockk(relaxed = true)
     private val playbackManager: PlaybackManager = mockk(relaxed = true)
     private val authHelper: SubsonicAuthHelper = mockk(relaxed = true)
@@ -53,12 +57,23 @@ class FavoritesViewModelTest {
         coEvery { metadataDao.getDislikedAlbums(any(), any()) } returns emptyList()
         coEvery { metadataDao.getDislikedArtists(any(), any()) } returns emptyList()
         coEvery { radioFavoriteDao.getAll() } returns emptyList()
+        every { desiredRepository.observeAll() } returns
+            kotlinx.coroutines.flow.MutableSharedFlow(extraBufferCapacity = 1)
+        every { offlineModeManager.isOffline } returns kotlinx.coroutines.flow.MutableStateFlow(false)
+        coEvery { desiredRepository.getAll() } returns emptyList()
+        coEvery { desiredRepository.search(any()) } returns emptyList()
+        coEvery { desiredRepository.snapshotShareText() } returns "ftpmusic desired list\ncount=0"
         every { authHelper.buildStreamUrl(any(), any(), any(), any()) } returns "http://stream"
         viewModel = FavoritesViewModel(
             trackDao,
             favoriteRepository,
             metadataDao,
             radioFavoriteDao,
+            desiredRepository,
+            mockk(relaxed = true), // deezer
+            mockk(relaxed = true), // musicBrainz
+            mockk(relaxed = true), // lastFm
+            offlineModeManager,
             storage,
             playbackManager,
             authHelper,
@@ -330,6 +345,11 @@ class FavoritesViewModelTest {
             favoriteRepository,
             metadataDao,
             radioFavoriteDao,
+            desiredRepository,
+            mockk(relaxed = true), // deezer
+            mockk(relaxed = true), // musicBrainz
+            mockk(relaxed = true), // lastFm
+            offlineModeManager,
             storage,
             playbackManager,
             authHelper,
@@ -456,6 +476,11 @@ class FavoritesViewModelTest {
             favoriteRepository,
             metadataDao,
             radioFavoriteDao,
+            desiredRepository,
+            mockk(relaxed = true), // deezer
+            mockk(relaxed = true), // musicBrainz
+            mockk(relaxed = true), // lastFm
+            offlineModeManager,
             storage,
             playbackManager,
             authHelper,
@@ -580,5 +605,35 @@ class FavoritesViewModelTest {
         advanceUntilIdle()
         assertEquals(51, viewModel.state.value.dislikedTracks.size)
         assertFalse(viewModel.state.value.hasMoreDislikedTracks)
+    }
+
+    @Test
+    fun `setMode DESIRED loads desired items`() = runTest {
+        val item = com.lucasdss.ftpmusic.app.data.db.DesiredItemEntity(
+            id = "des-1",
+            identityKey = "mb:ARTIST:x",
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Wanted Artist",
+            source = "musicbrainz",
+        )
+        coEvery { desiredRepository.getAll() } returns listOf(item)
+        viewModel.setMode(FavoritesMode.DESIRED)
+        advanceUntilIdle()
+        assertEquals(FavoritesMode.DESIRED, viewModel.state.value.mode)
+        assertEquals(1, viewModel.state.value.desiredArtists.size)
+        assertEquals("Wanted Artist", viewModel.state.value.desiredArtists[0].title)
+    }
+
+    @Test
+    fun `shareDesired emits snapshot text`() = runTest {
+        val events = mutableListOf<String>()
+        val job = launch {
+            viewModel.shareDesiredEvents.collect { events.add(it) }
+        }
+        viewModel.shareDesired()
+        advanceUntilIdle()
+        assertEquals(1, events.size)
+        assertTrue(events[0].contains("ftpmusic desired list"))
+        job.cancel()
     }
 }

@@ -1094,6 +1094,19 @@ interface CachedMetadataDao {
     @Query("SELECT * FROM cached_artists WHERE LOWER(name) = LOWER(:name) LIMIT 1")
     suspend fun getArtistByExactName(name: String): CachedArtistEntity?
 
+    @Query("SELECT * FROM cached_albums WHERE musicbrainz_id = :mbid LIMIT 1")
+    suspend fun getAlbumByMbid(mbid: String): CachedAlbumEntity?
+
+    @Query(
+        """
+        SELECT * FROM cached_albums
+        WHERE LOWER(name) = LOWER(:name)
+          AND (:artist IS NULL OR LOWER(IFNULL(artist, '')) = LOWER(:artist))
+        LIMIT 1
+        """,
+    )
+    suspend fun getAlbumByExactName(name: String, artist: String?): CachedAlbumEntity?
+
     @Query(
         "SELECT * FROM cached_albums WHERE notes IS NULL OR notes = '' " +
             "ORDER BY song_count DESC LIMIT :limit",
@@ -1909,4 +1922,71 @@ interface ListenEventDao {
         """,
     )
     suspend fun sumListenedSecondsByMonth(startMs: Long?, endMs: Long?): List<ListenBucketRow>
+}
+
+// ── Desired wishlist DAO (ADR-0129) ──────────────────────────────────────────
+
+@Dao
+interface DesiredItemDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: DesiredItemEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(items: List<DesiredItemEntity>)
+
+    @Query("DELETE FROM desired_items WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM desired_items WHERE identity_key = :identityKey")
+    suspend fun deleteByIdentityKey(identityKey: String)
+
+    @Query("SELECT * FROM desired_items WHERE identity_key = :identityKey LIMIT 1")
+    suspend fun getByIdentityKey(identityKey: String): DesiredItemEntity?
+
+    @Query("SELECT * FROM desired_items WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): DesiredItemEntity?
+
+    @Query("SELECT * FROM desired_items ORDER BY desired_at DESC")
+    fun observeAll(): Flow<List<DesiredItemEntity>>
+
+    @Query("SELECT * FROM desired_items ORDER BY desired_at DESC")
+    suspend fun getAll(): List<DesiredItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM desired_items
+        WHERE entity_type = :entityType
+        ORDER BY desired_at DESC
+        LIMIT :limit OFFSET :offset
+        """,
+    )
+    suspend fun getByType(entityType: String, limit: Int, offset: Int): List<DesiredItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM desired_items
+        WHERE (:query = '' OR title LIKE '%' || :query || '%' ESCAPE '\'
+            OR IFNULL(artist_name, '') LIKE '%' || :query || '%' ESCAPE '\'
+            OR IFNULL(album_name, '') LIKE '%' || :query || '%' ESCAPE '\')
+        ORDER BY desired_at DESC
+        """,
+    )
+    suspend fun search(query: String): List<DesiredItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM desired_items
+        WHERE (:query = '' OR title LIKE '%' || :query || '%' ESCAPE '\'
+            OR IFNULL(artist_name, '') LIKE '%' || :query || '%' ESCAPE '\'
+            OR IFNULL(album_name, '') LIKE '%' || :query || '%' ESCAPE '\')
+        ORDER BY desired_at DESC
+        """,
+    )
+    fun observeSearch(query: String): Flow<List<DesiredItemEntity>>
+
+    @Query("UPDATE desired_items SET matched_local_id = :localId WHERE id = :id")
+    suspend fun setMatchedLocalId(id: String, localId: String?)
+
+    @Query("SELECT COUNT(*) FROM desired_items")
+    suspend fun count(): Int
 }

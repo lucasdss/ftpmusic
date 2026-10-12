@@ -51,6 +51,8 @@ data class AlbumDetailState(
     val trackRatings: Map<String, Int> = emptyMap(),
     val publicRating: Double? = null,
     val publicRatingVotes: Int? = null,
+    val showAddDesired: Boolean = false,
+    val isDesired: Boolean = false,
 )
 
 @HiltViewModel
@@ -72,6 +74,7 @@ class AlbumDetailViewModel @Inject constructor(
     private val musicBrainzService: MusicBrainzService,
     private val offlineModeManager: OfflineModeManager,
     private val trackDao: TrackDao,
+    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AlbumDetailState())
@@ -232,10 +235,14 @@ class AlbumDetailViewModel @Inject constructor(
                 // Fetch from API for fresh data
                 val result = repository.getAlbum(albumId, username, password)
                 val tracks = sortAlbumTracks(result?.tracks ?: emptyList())
+                val album = result?.album
+                val desiredMeta = resolveDesiredFlag(albumId, album)
                 _state.value = _state.value.copy(
-                    album = result?.album,
+                    album = album,
                     tracks = tracks,
                     isLoading = false,
+                    showAddDesired = tracks.isEmpty(),
+                    isDesired = desiredMeta,
                 )
                 // Lazy: load cached public rating, then fetch from MusicBrainz if missing
                 loadPublicRating(albumId, result?.album)
@@ -275,6 +282,64 @@ class AlbumDetailViewModel @Inject constructor(
             .thenBy { it.title.lowercase() }
             .thenBy { it.id },
     )
+
+    private suspend fun resolveDesiredFlag(
+        albumId: String,
+        album: com.lucasdss.ftpmusic.app.data.model.Album?,
+    ): Boolean {
+        val title = album?.name ?: return false
+        val cached = try {
+            metadataDao.getAlbumById(albumId)
+        } catch (_: Exception) {
+            null
+        }
+        val key = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
+            com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+            title,
+            album.artist,
+            cached?.musicbrainzId,
+            null,
+        )
+        return try {
+            desiredRepository.getAll().any { it.identityKey == key }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun toggleDesired() {
+        val s = _state.value
+        val album = s.album ?: return
+        if (!s.showAddDesired) return
+        viewModelScope.launch {
+            try {
+                val cached = metadataDao.getAlbumById(album.id)
+                val key = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
+                    com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                    album.name,
+                    album.artist,
+                    cached?.musicbrainzId,
+                    null,
+                )
+                if (s.isDesired) {
+                    desiredRepository.removeByIdentityKey(key)
+                    _state.value = _state.value.copy(isDesired = false)
+                } else {
+                    desiredRepository.addDesired(
+                        entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                        title = album.name,
+                        artistName = album.artist,
+                        musicbrainzId = cached?.musicbrainzId,
+                        source = "manual",
+                    )
+                    _state.value = _state.value.copy(isDesired = true)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ftpmusic-album", "toggleDesired failed", e)
+            }
+        }
+    }
 
     private fun loadPublicRating(albumId: String, album: com.lucasdss.ftpmusic.app.data.model.Album?) {
         viewModelScope.launch {

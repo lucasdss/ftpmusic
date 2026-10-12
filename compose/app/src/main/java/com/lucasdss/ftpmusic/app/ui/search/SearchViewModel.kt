@@ -46,22 +46,36 @@ sealed class SearchTopHit {
     data class AlbumHit(val album: Album) : SearchTopHit()
 }
 
-/** External Discover row (MusicBrainz / Last.fm) — Phase-5. */
+/** External Discover row (MusicBrainz / Last.fm / Deezer) — Phase-5 + ADR-0130. */
 data class DiscoverArtistHit(
     val name: String,
     val mbid: String? = null,
+    val deezerId: String? = null,
     val disambiguation: String? = null,
     val source: String = "musicbrainz",
     val inLibrary: Boolean = false,
     val localArtistId: String? = null,
+    val listenCount: Long? = null,
 )
 
 data class DiscoverTrackHit(
     val title: String,
     val artistName: String? = null,
     val mbid: String? = null,
+    val deezerId: String? = null,
     val inLibrary: Boolean = false,
     val localTrackId: String? = null,
+    val listenCount: Long? = null,
+)
+
+data class DiscoverAlbumHit(
+    val title: String,
+    val artistName: String? = null,
+    val mbid: String? = null,
+    val deezerId: String? = null,
+    val source: String = "deezer",
+    val inLibrary: Boolean = false,
+    val localAlbumId: String? = null,
 )
 
 /** Lyrics FTS hit shown in “From lyrics” section (Phase-6). */
@@ -98,8 +112,11 @@ data class SearchState(
     /** Result-header tag chips overlapping query. */
     val matchedTags: List<String> = emptyList(),
     val discoverArtists: List<DiscoverArtistHit> = emptyList(),
+    val discoverAlbums: List<DiscoverAlbumHit> = emptyList(),
     val discoverTracks: List<DiscoverTrackHit> = emptyList(),
     val isDiscoverLoading: Boolean = false,
+    /** identity_key set for Desired badges on Discover rows. */
+    val desiredIdentityKeys: Set<String> = emptySet(),
     val lyricsMatches: List<LyricSearchHit> = emptyList(),
     val searchLyricsEnabled: Boolean = false,
     /** Local FTS bm25 ranks (entity id → score); kept across loadMore. */
@@ -128,6 +145,9 @@ class SearchViewModel @Inject constructor(
     private val offlineModeManager: OfflineModeManager,
     private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
     private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
+    private val deezerService: com.lucasdss.ftpmusic.app.data.network.DeezerService,
+    private val listenBrainzService: com.lucasdss.ftpmusic.app.data.network.ListenBrainzService,
+    private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
     private val lyricsCacheDao: com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao,
     private val favoriteRepository: FavoriteRepository,
 ) : ViewModel() {
@@ -188,6 +208,19 @@ class SearchViewModel @Inject constructor(
         observeIndexing()
         ensureSearchIndex()
         observeTrackReactionIds()
+        observeDesiredKeys()
+    }
+
+    private fun observeDesiredKeys() {
+        viewModelScope.launch {
+            try {
+                desiredRepository.observeDesiredIdentityKeys().collect { keys ->
+                    _state.value = _state.value.copy(desiredIdentityKeys = keys)
+                }
+            } catch (_: Exception) {
+                // Tests / missing Flow — leave empty set.
+            }
+        }
     }
 
     private fun observeTrackReactionIds() {
@@ -905,6 +938,7 @@ class SearchViewModel @Inject constructor(
         if (isLocalOnly() || query.length < MIN_QUERY_LEN) {
             _state.value = _state.value.copy(
                 discoverArtists = emptyList(),
+                discoverAlbums = emptyList(),
                 discoverTracks = emptyList(),
                 isDiscoverLoading = false,
             )
@@ -933,10 +967,32 @@ class SearchViewModel @Inject constructor(
                 } catch (_: Exception) {
                     emptyList()
                 }
+                val deezerArtists = try {
+                    deezerService.searchArtists(query, DISCOVER_LIMIT)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val deezerAlbums = try {
+                    deezerService.searchAlbums(query, DISCOVER_LIMIT)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val deezerTracks = try {
+                    deezerService.searchTracks(query, DISCOVER_LIMIT)
+                } catch (_: Exception) {
+                    emptyList()
+                }
 
                 val artistHits = LinkedHashMap<String, DiscoverArtistHit>()
                 for (a in mbArtists) {
                     val local = resolveLocalArtist(a.mbid, a.name)
+                    val listens = a.mbid?.let { mbid ->
+                        try {
+                            listenBrainzService.artistListenCount(mbid)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
                     artistHits[a.name.lowercase()] = DiscoverArtistHit(
                         name = a.name,
                         mbid = a.mbid,
@@ -944,6 +1000,7 @@ class SearchViewModel @Inject constructor(
                         source = "musicbrainz",
                         inLibrary = local != null,
                         localArtistId = local?.id,
+                        listenCount = listens,
                     )
                 }
                 for (a in lastFmArtists) {
@@ -958,8 +1015,39 @@ class SearchViewModel @Inject constructor(
                         localArtistId = local?.id,
                     )
                 }
+                for (a in deezerArtists) {
+                    val key = a.name.lowercase()
+                    val existing = artistHits[key]
+                    if (existing != null) {
+                        if (existing.deezerId.isNullOrBlank()) {
+                            artistHits[key] = existing.copy(deezerId = a.id)
+                        }
+                        continue
+                    }
+                    val local = resolveLocalArtist(null, a.name)
+                    artistHits[key] = DiscoverArtistHit(
+                        name = a.name,
+                        deezerId = a.id,
+                        source = "deezer",
+                        inLibrary = local != null,
+                        localArtistId = local?.id,
+                    )
+                }
 
-                val trackHits = mbTracks.map { t ->
+                val albumHits = deezerAlbums.map { al ->
+                    val local = resolveLocalAlbum(al.title, al.artistName)
+                    DiscoverAlbumHit(
+                        title = al.title,
+                        artistName = al.artistName,
+                        deezerId = al.id,
+                        source = "deezer",
+                        inLibrary = local != null,
+                        localAlbumId = local?.id,
+                    )
+                }
+
+                val trackHits = LinkedHashMap<String, DiscoverTrackHit>()
+                for (t in mbTracks) {
                     val local = if (!t.mbid.isNullOrBlank()) {
                         try {
                             trackDao.getTrackByMbid(t.mbid)
@@ -969,19 +1057,55 @@ class SearchViewModel @Inject constructor(
                     } else {
                         null
                     }
-                    DiscoverTrackHit(
+                    val listens = t.mbid?.let { mbid ->
+                        try {
+                            listenBrainzService.recordingListenCount(mbid)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    val key = "${t.name.lowercase()}|${t.artistName.orEmpty().lowercase()}"
+                    trackHits[key] = DiscoverTrackHit(
                         title = t.name,
                         artistName = t.artistName,
                         mbid = t.mbid,
                         inLibrary = local != null,
                         localTrackId = local?.id,
+                        listenCount = listens,
+                    )
+                }
+                for (t in deezerTracks) {
+                    val key = "${t.title.lowercase()}|${t.artistName.orEmpty().lowercase()}"
+                    val existing = trackHits[key]
+                    if (existing != null) {
+                        if (existing.deezerId.isNullOrBlank()) {
+                            trackHits[key] = existing.copy(deezerId = t.id)
+                        }
+                        continue
+                    }
+                    trackHits[key] = DiscoverTrackHit(
+                        title = t.title,
+                        artistName = t.artistName,
+                        deezerId = t.id,
+                        inLibrary = false,
+                        localTrackId = null,
                     )
                 }
 
+                val rankedArtists = artistHits.values
+                    .sortedByDescending { it.listenCount ?: -1L }
+                    .take(DISCOVER_LIMIT)
+                    .toList()
+                val rankedTracks = trackHits.values
+                    .sortedByDescending { it.listenCount ?: -1L }
+                    .take(DISCOVER_LIMIT)
+                    .toList()
+
                 if (_state.value.query.trim() != query) return@launch
                 _state.value = _state.value.copy(
-                    discoverArtists = artistHits.values.take(DISCOVER_LIMIT).toList(),
-                    discoverTracks = trackHits.take(DISCOVER_LIMIT),
+                    discoverArtists = rankedArtists,
+                    discoverAlbums = albumHits.take(DISCOVER_LIMIT),
+                    discoverTracks = rankedTracks,
                     isDiscoverLoading = false,
                 )
             } catch (_: Exception) {
@@ -1001,6 +1125,87 @@ class SearchViewModel @Inject constructor(
             metadataDao.getArtistByExactName(name)
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private suspend fun resolveLocalAlbum(title: String, artistName: String?): CachedAlbumEntity? = try {
+        metadataDao.getAlbumByExactName(title, artistName)
+    } catch (_: Exception) {
+        null
+    }
+
+    fun desiredIdentityKeyForArtist(hit: DiscoverArtistHit): String =
+        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
+            com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+            hit.name,
+            null,
+            hit.mbid,
+            hit.deezerId,
+        )
+
+    fun desiredIdentityKeyForAlbum(hit: DiscoverAlbumHit): String =
+        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
+            com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+            hit.title,
+            hit.artistName,
+            hit.mbid,
+            hit.deezerId,
+        )
+
+    fun desiredIdentityKeyForTrack(hit: DiscoverTrackHit): String =
+        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.identityKey(
+            com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK,
+            hit.title,
+            hit.artistName,
+            hit.mbid,
+            hit.deezerId,
+        )
+
+    fun addDiscoverArtistDesired(hit: DiscoverArtistHit) {
+        viewModelScope.launch {
+            desiredRepository.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                title = hit.name,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+                source = hit.source,
+            )
+        }
+    }
+
+    fun addDiscoverAlbumDesired(hit: DiscoverAlbumHit) {
+        viewModelScope.launch {
+            desiredRepository.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                title = hit.title,
+                artistName = hit.artistName,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+                source = hit.source,
+            )
+        }
+    }
+
+    fun addDiscoverTrackDesired(hit: DiscoverTrackHit) {
+        viewModelScope.launch {
+            desiredRepository.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK,
+                title = hit.title,
+                artistName = hit.artistName,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+                source = when {
+                    !hit.mbid.isNullOrBlank() -> "musicbrainz"
+                    !hit.deezerId.isNullOrBlank() -> "deezer"
+                    else -> "manual"
+                },
+            )
+        }
+    }
+
+    fun removeDesiredByIdentityKey(identityKey: String) {
+        viewModelScope.launch {
+            desiredRepository.removeByIdentityKey(identityKey)
         }
     }
 

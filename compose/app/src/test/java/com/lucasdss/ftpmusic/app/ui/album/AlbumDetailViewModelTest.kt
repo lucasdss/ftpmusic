@@ -70,6 +70,7 @@ class AlbumDetailViewModelTest {
                 musicBrainzService = musicBrainzService,
                 offlineModeManager = offlineModeManager,
                 trackDao = trackDao,
+                desiredRepository = mockk(relaxed = true),
             )
     }
 
@@ -768,6 +769,7 @@ class AlbumDetailViewModelTest {
                 musicBrainzService = musicBrainzService,
                 offlineModeManager = offlineModeManager,
                 trackDao = trackDao,
+                desiredRepository = mockk(relaxed = true),
             )
         advanceUntilIdle()
 
@@ -813,6 +815,7 @@ class AlbumDetailViewModelTest {
                 musicBrainzService = musicBrainzService,
                 offlineModeManager = offlineModeManager,
                 trackDao = trackDao,
+                desiredRepository = mockk(relaxed = true),
             )
         advanceUntilIdle()
         viewModel.toggleAlbumLike("al-x")
@@ -832,6 +835,7 @@ class AlbumDetailViewModelTest {
                 musicBrainzService = musicBrainzService,
                 offlineModeManager = offlineModeManager,
                 trackDao = trackDao,
+                desiredRepository = mockk(relaxed = true),
             )
         advanceUntilIdle()
         assertTrue("al-1" in viewModel.state.value.likedAlbumIds)
@@ -859,6 +863,7 @@ class AlbumDetailViewModelTest {
                 musicBrainzService = musicBrainzService,
                 offlineModeManager = offlineModeManager,
                 trackDao = trackDao,
+                desiredRepository = mockk(relaxed = true),
             )
         advanceUntilIdle()
         viewModel.toggleAlbumDislike("al-y")
@@ -880,6 +885,7 @@ class AlbumDetailViewModelTest {
                 musicBrainzService = musicBrainzService,
                 offlineModeManager = offlineModeManager,
                 trackDao = trackDao,
+                desiredRepository = mockk(relaxed = true),
             )
         advanceUntilIdle()
         assertTrue("al-keep" in viewModel.state.value.likedAlbumIds)

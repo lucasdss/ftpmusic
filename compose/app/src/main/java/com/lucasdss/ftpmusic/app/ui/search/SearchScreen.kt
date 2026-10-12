@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -1490,22 +1492,34 @@ fun SearchScreen(
                     }
                 }
 
-                // Discover (MusicBrainz / Last.fm) — Phase-5
+                // Discover (MusicBrainz / Last.fm / Deezer) — Phase-5 + ADR-0130
                 if (state.filterType == SearchFilterType.ALL &&
-                    (state.discoverArtists.isNotEmpty() || state.discoverTracks.isNotEmpty() || state.isDiscoverLoading)
+                    (
+                        state.discoverArtists.isNotEmpty() || state.discoverAlbums.isNotEmpty() ||
+                            state.discoverTracks.isNotEmpty() || state.isDiscoverLoading
+                        )
                 ) {
                     item { SectionHeader("Discover") }
-                    if (state.isDiscoverLoading && state.discoverArtists.isEmpty() && state.discoverTracks.isEmpty()) {
+                    if (state.isDiscoverLoading &&
+                        state.discoverArtists.isEmpty() &&
+                        state.discoverAlbums.isEmpty() &&
+                        state.discoverTracks.isEmpty()
+                    ) {
                         item {
                             Text(
-                                "Searching MusicBrainz…",
+                                "Searching catalog…",
                                 color = Color(0xFF666666),
                                 fontSize = textLabelM(),
                                 modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                             )
                         }
                     }
-                    items(state.discoverArtists, key = { "disc-ar-${it.mbid ?: it.name}" }) { hit ->
+                    items(
+                        state.discoverArtists,
+                        key = { "disc-ar-${it.mbid ?: it.deezerId ?: it.name}" },
+                    ) { hit ->
+                        val desiredKey = viewModel.desiredIdentityKeyForArtist(hit)
+                        val isDesired = desiredKey in state.desiredIdentityKeys
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -1534,6 +1548,28 @@ fun SearchScreen(
                                 }
                                 Text(sub, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
                             }
+                            if (!hit.inLibrary) {
+                                IconButton(
+                                    onClick = {
+                                        if (isDesired) {
+                                            viewModel.removeDesiredByIdentityKey(desiredKey)
+                                        } else {
+                                            viewModel.addDiscoverArtistDesired(hit)
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("discover_desire_artist"),
+                                ) {
+                                    Icon(
+                                        if (isDesired) {
+                                            Icons.Filled.Bookmark
+                                        } else {
+                                            Icons.Outlined.BookmarkBorder
+                                        },
+                                        contentDescription = if (isDesired) "Remove desired" else "Add desired",
+                                        tint = if (isDesired) BrandTeal else Color(0xFF888888),
+                                    )
+                                }
+                            }
                             TypeBadge("artist")
                         }
                         HorizontalDivider(
@@ -1541,8 +1577,81 @@ fun SearchScreen(
                             modifier = Modifier.padding(horizontal = spacingL()),
                         )
                     }
-                    items(state.discoverTracks, key = { "disc-tr-${it.mbid ?: it.title}" }) { hit ->
+                    items(
+                        state.discoverAlbums,
+                        key = { "disc-al-${it.deezerId ?: it.mbid ?: it.title}" },
+                    ) { hit ->
+                        val desiredKey = viewModel.desiredIdentityKeyForAlbum(hit)
+                        val isDesired = desiredKey in state.desiredIdentityKeys
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (hit.localAlbumId != null) {
+                                        Modifier.clickable { onAlbumClick(hit.localAlbumId) }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .padding(horizontal = spacingL(), vertical = spacingM())
+                                .heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            SearchCoverThumb(null, hit.title, circle = false)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    hit.title,
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    buildString {
+                                        hit.artistName?.let {
+                                            append(it)
+                                            append(" · ")
+                                        }
+                                        append(if (hit.inLibrary) "In library" else "Not in library · ${hit.source}")
+                                    },
+                                    color = Color(0xFF888888),
+                                    fontSize = textLabelM(),
+                                    maxLines = 1,
+                                )
+                            }
+                            if (!hit.inLibrary) {
+                                IconButton(
+                                    onClick = {
+                                        if (isDesired) {
+                                            viewModel.removeDesiredByIdentityKey(desiredKey)
+                                        } else {
+                                            viewModel.addDiscoverAlbumDesired(hit)
+                                        }
+                                    },
+                                ) {
+                                    Icon(
+                                        if (isDesired) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                        contentDescription = if (isDesired) "Remove desired" else "Add desired",
+                                        tint = if (isDesired) BrandTeal else Color(0xFF888888),
+                                    )
+                                }
+                            }
+                            TypeBadge("album")
+                        }
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.04f),
+                            modifier = Modifier.padding(horizontal = spacingL()),
+                        )
+                    }
+                    items(
+                        state.discoverTracks,
+                        key = { "disc-tr-${it.mbid ?: it.deezerId ?: it.title}" },
+                    ) { hit ->
                         val localId = hit.localTrackId
+                        val desiredKey = viewModel.desiredIdentityKeyForTrack(hit)
+                        val isDesired = desiredKey in state.desiredIdentityKeys
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -1589,6 +1698,23 @@ fun SearchScreen(
                                     maxLines = 1,
                                 )
                             }
+                            if (!hit.inLibrary) {
+                                IconButton(
+                                    onClick = {
+                                        if (isDesired) {
+                                            viewModel.removeDesiredByIdentityKey(desiredKey)
+                                        } else {
+                                            viewModel.addDiscoverTrackDesired(hit)
+                                        }
+                                    },
+                                ) {
+                                    Icon(
+                                        if (isDesired) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                        contentDescription = if (isDesired) "Remove desired" else "Add desired",
+                                        tint = if (isDesired) BrandTeal else Color(0xFF888888),
+                                    )
+                                }
+                            }
                             TypeBadge("song")
                         }
                         HorizontalDivider(
@@ -1600,7 +1726,9 @@ fun SearchScreen(
 
                 // ── No results ──
                 if (state.resultCount == 0 && !state.isLoading &&
-                    state.discoverArtists.isEmpty() && state.discoverTracks.isEmpty()
+                    state.discoverArtists.isEmpty() &&
+                    state.discoverAlbums.isEmpty() &&
+                    state.discoverTracks.isEmpty()
                 ) {
                     item {
                         Column(

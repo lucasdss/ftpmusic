@@ -21,9 +21,13 @@ are heavy; MusicBrainz + Last.fm already ship in-app.
 4. Tap external artist → soft-upsert stub (`mb:{mbid}` or hash id) +
    `scheduleRebuild`. Never invent playable tracks.
 5. Discogs / Spotify Web API remain out of scope.
+6. **Amendment (ADR 0130):** Discover also calls Deezer Search (artists/albums/
+   tracks) and ListenBrainz popularity enrichment for MBID-bearing hits.
+   Discogs / Spotify remain out of scope.
 
 ## Consequences
 
 - MB 1 req/s mutex still applies; Discover may lag slightly behind local.
 - Without Last.fm key: tags tip shown; Discover still uses MusicBrainz.
 - Soft stubs improve future FTS but do not enable playback.
+- Deezer token-bucket + in-body quota handling; LB missing stats hide badge.

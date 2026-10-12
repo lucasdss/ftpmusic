@@ -556,6 +556,37 @@ data class TrackWaveformEntity(
     @ColumnInfo(name = "cached_at") val cachedAt: Long = System.currentTimeMillis(),
 )
 
+// ── v64: Desired wishlist (ADR-0129) ─────────────────────────────────────────
+
+/** Local wantlist row — artists/albums/tracks often not in Navidrome library. */
+@Entity(
+    tableName = "desired_items",
+    indices = [
+        Index(value = ["identity_key"], unique = true),
+        Index(value = ["entity_type", "desired_at"]),
+        Index(value = ["musicbrainz_id"]),
+        Index(value = ["deezer_id"]),
+    ],
+)
+data class DesiredItemEntity(
+    @PrimaryKey val id: String,
+    /** Stable upsert key: mb:|dz:|nm: prefix (ADR 0129). */
+    @ColumnInfo(name = "identity_key") val identityKey: String,
+    /** ARTIST | ALBUM | TRACK */
+    @ColumnInfo(name = "entity_type") val entityType: String,
+    val title: String,
+    @ColumnInfo(name = "artist_name") val artistName: String? = null,
+    @ColumnInfo(name = "album_name") val albumName: String? = null,
+    @ColumnInfo(name = "musicbrainz_id") val musicbrainzId: String? = null,
+    @ColumnInfo(name = "deezer_id") val deezerId: String? = null,
+    /** musicbrainz | lastfm | deezer | manual | library */
+    val source: String = "manual",
+    @ColumnInfo(name = "desired_at") val desiredAt: Long = System.currentTimeMillis(),
+    /** Set when reconcile finds a library match; keep row (Bandcamp-style). */
+    @ColumnInfo(name = "matched_local_id") val matchedLocalId: String? = null,
+    val note: String? = null,
+)
+
 // ── v53: Listen events (Profile period metrics — ADR-0046) ───────────────────
 
 @Entity(

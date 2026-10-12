@@ -18,6 +18,11 @@ Related: ADR 0009 (pending scrobbles removal),
 > Process death → Room truth. See `docs/FAVORITES_PAGING_BEHAVIOR_REPORT.md` and
 > `docs/FAVORITES_CORRECTNESS_BEHAVIOR_REPORT.md`.
 > Local-first repo/sync contract in this ADR is unchanged.
+>
+> **Status note (2026-10-12):** Favorites hub chips become **Liked | Disliked |
+> Desired**. Desired is a peer UI mode only — data lives in `desired_items` +
+> `DesiredRepository` (ADR 0129), not star/dislike ledger columns. Like⊥Dislike
+> mutual exclusion unchanged.
 
 ## Context
 
