@@ -47,6 +47,13 @@ fun CollectionCoverArt(
             null
         }
     }
+    // Bust Coil memory/disk cache when same relative path is overwritten (ADR 0125).
+    // Use mtime+length — second-resolution mtime alone can collide on fast re-crops.
+    val localModelUrl = remember(localPath) {
+        val path = localPath ?: return@remember null
+        val file = File(path)
+        "file://$path?t=${file.lastModified()}&s=${file.length()}"
+    }
     val resolved = remember(
         name,
         fixedCoverKind,
@@ -75,7 +82,7 @@ fun CollectionCoverArt(
         when (val r = resolved) {
             is CollectionCoverResolver.Resolved.LocalFile -> {
                 CoverArtImage(
-                    url = r.absolutePath,
+                    url = localModelUrl ?: r.absolutePath,
                     contentDescription = contentDescription,
                     modifier = Modifier.fillMaxSize(),
                     decodeSize = decodeSize,

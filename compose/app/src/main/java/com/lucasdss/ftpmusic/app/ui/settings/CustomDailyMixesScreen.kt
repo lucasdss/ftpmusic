@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -76,8 +77,10 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumCoverPickerSheet
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
+import com.lucasdss.ftpmusic.app.ui.components.CoverCropDialog
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverStore
 import com.lucasdss.ftpmusic.app.ui.textBodyM
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
@@ -872,10 +875,12 @@ private fun SuggestionChip(text: String, selected: Boolean, onClick: () -> Unit)
 @Composable
 private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDailyMixesViewModel) {
     var showAlbumPicker by remember { mutableStateOf(false) }
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+    val coverStore = rememberCollectionCoverStore()
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
-        if (uri != null) viewModel.setFixedCoverFromDevice(uri)
+        if (uri != null) pendingCropUri = uri
     }
     Column(Modifier.semantics { testTag = "mix_cover_section" }) {
         Text("COVER IMAGE", color = MUTED, fontSize = textLabelS(), fontWeight = FontWeight.Bold)
@@ -933,6 +938,21 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
                 showAlbumPicker = false
             },
             onDismiss = { showAlbumPicker = false },
+        )
+    }
+    pendingCropUri?.let { cropUri ->
+        CoverCropDialog(
+            uri = cropUri,
+            coverStore = coverStore,
+            onConfirm = { cropped ->
+                pendingCropUri = null
+                viewModel.setFixedCoverFromCroppedBitmap(cropped)
+            },
+            onDismiss = { pendingCropUri = null },
+            onLoadFailed = {
+                pendingCropUri = null
+                viewModel.notifyCoverCropLoadFailed()
+            },
         )
     }
 }

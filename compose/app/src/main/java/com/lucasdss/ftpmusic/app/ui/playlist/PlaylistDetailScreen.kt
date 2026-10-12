@@ -2,6 +2,8 @@
 
 package com.lucasdss.ftpmusic.app.ui.playlist
 
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,11 +55,13 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumCoverPickerSheet
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
+import com.lucasdss.ftpmusic.app.ui.components.CoverCropDialog
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
+import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverStore
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -72,8 +76,15 @@ fun PlaylistDetailScreen(
     viewModel: PlaylistDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val toast by viewModel.toast.collectAsStateWithLifecycle()
     LaunchedEffect(playlistId) { viewModel.loadPlaylist(playlistId) }
     val context = LocalContext.current
+    LaunchedEffect(toast) {
+        toast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearToast()
+        }
+    }
 
     var menuTrackIndex by remember { mutableIntStateOf(-1) }
     var showPlaylistMenu by remember { mutableStateOf(false) }
@@ -83,10 +94,12 @@ fun PlaylistDetailScreen(
     var showAddToPlaylistPicker by remember { mutableStateOf(false) }
     var showAddSongsSheet by remember { mutableStateOf(false) }
     var showAlbumCoverPicker by remember { mutableStateOf(false) }
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+    val coverStore = rememberCollectionCoverStore()
     val playlistPhotoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
-        if (uri != null) viewModel.setFixedCoverFromDevice(uri)
+        if (uri != null) pendingCropUri = uri
     }
     val availablePlaylists by viewModel.availablePlaylists.collectAsStateWithLifecycle()
 
@@ -630,6 +643,21 @@ fun PlaylistDetailScreen(
                 showAlbumCoverPicker = false
             },
             onDismiss = { showAlbumCoverPicker = false },
+        )
+    }
+    pendingCropUri?.let { cropUri ->
+        CoverCropDialog(
+            uri = cropUri,
+            coverStore = coverStore,
+            onConfirm = { cropped ->
+                pendingCropUri = null
+                viewModel.setFixedCoverFromCroppedBitmap(cropped)
+            },
+            onDismiss = { pendingCropUri = null },
+            onLoadFailed = {
+                pendingCropUri = null
+                viewModel.notifyCoverCropLoadFailed()
+            },
         )
     }
 

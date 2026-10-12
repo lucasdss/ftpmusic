@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
@@ -218,6 +219,40 @@ class CustomDailyMixesViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /** Persist square crop from [CoverCropDialog] (ADR 0125). Recycles [bitmap]. */
+    fun setFixedCoverFromCroppedBitmap(bitmap: Bitmap) {
+        val editor = _state.value.editor ?: run {
+            bitmap.recycle()
+            return
+        }
+        val idKey = editor.mixId?.toString() ?: "new_${System.currentTimeMillis()}"
+        viewModelScope.launch {
+            try {
+                val relative = coverStore.importCroppedBitmap(
+                    bitmap,
+                    DailyMixRepository.COVER_PREFIX,
+                    idKey,
+                ) ?: run {
+                    _toast.value = "Could not import image"
+                    return@launch
+                }
+                updateEditor {
+                    it.copy(
+                        fixedCoverKind = CollectionCoverKind.LOCAL,
+                        fixedCoverValue = relative,
+                        clearFixedCover = false,
+                    )
+                }
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    fun notifyCoverCropLoadFailed() {
+        _toast.value = "Could not load image for crop"
     }
 
     fun clearFixedCoverInEditor() = updateEditor {

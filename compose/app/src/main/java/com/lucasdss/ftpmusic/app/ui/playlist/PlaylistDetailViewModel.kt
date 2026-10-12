@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.playlist
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
@@ -63,6 +64,13 @@ class PlaylistDetailViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(PlaylistDetailState())
     val state: StateFlow<PlaylistDetailState> = _state.asStateFlow()
+
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast.asStateFlow()
+
+    fun clearToast() {
+        _toast.value = null
+    }
 
     private val trackReactions =
         com.lucasdss.ftpmusic.app.data.favorites.TrackListReactionCoordinator(favoriteRepository)
@@ -800,7 +808,10 @@ class PlaylistDetailViewModel @Inject constructor(
                 uri,
                 PlaylistRepository.COVER_PREFIX,
                 playlist.id,
-            ) ?: return@launch
+            ) ?: run {
+                _toast.value = "Could not import image"
+                return@launch
+            }
             playlistRepository.setFixedCover(
                 playlist.id,
                 CollectionCoverKind.LOCAL,
@@ -813,6 +824,43 @@ class PlaylistDetailViewModel @Inject constructor(
                 ),
             )
         }
+    }
+
+    /** Persist square crop from [CoverCropDialog] (ADR 0125). Recycles [bitmap]. */
+    fun setFixedCoverFromCroppedBitmap(bitmap: Bitmap) {
+        val playlist = _state.value.playlist ?: run {
+            bitmap.recycle()
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val relative = coverStore.importCroppedBitmap(
+                    bitmap,
+                    PlaylistRepository.COVER_PREFIX,
+                    playlist.id,
+                ) ?: run {
+                    _toast.value = "Could not import image"
+                    return@launch
+                }
+                playlistRepository.setFixedCover(
+                    playlist.id,
+                    CollectionCoverKind.LOCAL,
+                    relative,
+                )
+                _state.value = _state.value.copy(
+                    playlist = playlist.copy(
+                        fixedCoverKind = CollectionCoverKind.LOCAL,
+                        fixedCoverValue = relative,
+                    ),
+                )
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    fun notifyCoverCropLoadFailed() {
+        _toast.value = "Could not load image for crop"
     }
 
     fun clearFixedCover() {
