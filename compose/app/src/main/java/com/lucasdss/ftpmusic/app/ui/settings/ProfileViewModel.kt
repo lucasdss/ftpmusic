@@ -25,6 +25,7 @@ data class ProfileSummary(
 data class ProfileState(
     val period: StatsPeriod = StatsPeriod.WEEK,
     val summary: ProfileSummary = ProfileSummary(),
+    val activity: List<ProfileStatsMath.ActivityPoint> = emptyList(),
     val topTracks: List<TopCountRow> = emptyList(),
     val topArtists: List<TopCountRow> = emptyList(),
     val topAlbums: List<TopCountRow> = emptyList(),
@@ -53,18 +54,20 @@ class ProfileViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true)
             try {
                 val period = _state.value.period
+                val includeBackfill = period == StatsPeriod.ALL_TIME
                 val (startMs, endMs) = ProfileStatsMath.periodBounds(period)
                 val seconds = listenEventDao.sumListenedSeconds(startMs, endMs)
-                val plays = listenEventDao.countPlays(startMs, endMs)
-                val songs = listenEventDao.countDistinctTracks(startMs, endMs)
-                val artists = listenEventDao.countDistinctArtists(startMs, endMs)
+                val plays = listenEventDao.countPlays(startMs, endMs, includeBackfill)
+                val songs = listenEventDao.countDistinctTracks(startMs, endMs, includeBackfill)
+                val artists = listenEventDao.countDistinctArtists(startMs, endMs, includeBackfill)
                 val streak = ProfileStatsMath.computeStreakDays(listenEventDao.distinctListenDays())
-                val tops = listenEventDao.topTracks(startMs, endMs)
-                val topArtists = listenEventDao.topArtists(startMs, endMs)
-                val topAlbums = listenEventDao.topAlbums(startMs, endMs)
-                val topGenres = listenEventDao.topGenres(startMs, endMs)
-                val recentRows = listenEventDao.recentlyPlayed(startMs, endMs, 20)
+                val tops = listenEventDao.topTracks(startMs, endMs, includeBackfill)
+                val topArtists = listenEventDao.topArtists(startMs, endMs, includeBackfill)
+                val topAlbums = listenEventDao.topAlbums(startMs, endMs, includeBackfill)
+                val topGenres = listenEventDao.topGenres(startMs, endMs, includeBackfill)
+                val recentRows = listenEventDao.recentlyPlayed(startMs, endMs, includeBackfill, 20)
                 val recentTracks = resolveRecentTracks(recentRows)
+                val activity = loadActivity(period, startMs, endMs)
                 _state.value = _state.value.copy(
                     summary = ProfileSummary(
                         listeningMinutes = (seconds / 60L).toInt(),
@@ -73,6 +76,7 @@ class ProfileViewModel @Inject constructor(
                         artistCount = artists,
                         streakDays = streak,
                     ),
+                    activity = activity,
                     topTracks = tops,
                     topArtists = topArtists,
                     topAlbums = topAlbums,
@@ -87,6 +91,33 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    private suspend fun loadActivity(
+        period: StatsPeriod,
+        startMs: Long?,
+        endMs: Long?,
+    ): List<ProfileStatsMath.ActivityPoint> = when (period) {
+        StatsPeriod.WEEK, StatsPeriod.MONTH -> {
+            val raw = listenEventDao.sumListenedSecondsByDay(startMs, endMs)
+                .associate { it.bucket to it.seconds }
+            ProfileStatsMath.fillDailySeries(period, raw)
+        }
+
+        StatsPeriod.YEAR, StatsPeriod.ALL_TIME -> {
+            // ALL_TIME chart = last 12 months (summary remains unbounded).
+            val chartStart = if (period == StatsPeriod.ALL_TIME) {
+                val zone = java.time.ZoneId.systemDefault()
+                java.time.LocalDate.now(zone).withDayOfMonth(1)
+                    .minusMonths(11)
+                    .atStartOfDay(zone).toInstant().toEpochMilli()
+            } else {
+                startMs
+            }
+            val raw = listenEventDao.sumListenedSecondsByMonth(chartStart, endMs)
+                .associate { it.bucket to it.seconds }
+            ProfileStatsMath.fillMonthlySeries(period, raw)
+        }
+    }
+
     private suspend fun resolveRecentTracks(rows: List<RecentListenRow>): List<TrackEntity> {
         if (rows.isEmpty()) return emptyList()
         val ids = rows.map { it.trackId }
@@ -96,7 +127,7 @@ class ProfileViewModel @Inject constructor(
                 id = row.trackId,
                 title = row.trackTitle ?: row.trackId,
                 artist = row.artistName,
-                durationSeconds = row.listenedSeconds,
+                durationSeconds = null,
                 lastPlayedAt = row.listenedAt,
             )
         }

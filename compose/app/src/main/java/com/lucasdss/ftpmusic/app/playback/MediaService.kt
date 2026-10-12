@@ -762,9 +762,14 @@ class MediaService : MediaLibraryService() {
      *  deadline-capture equivalent for the deferred select (M7). */
     @Volatile private var castConnectSeq = 0
 
-    /** True when the current track has played past 60% of its duration.
-     *  Set by positionPoller, consumed by onMediaItemTransition. */
-    @Volatile private var hasPassed60Percent = false
+    /** True when Last.fm scrobble threshold met for current track (ADR-0128). */
+    @Volatile private var hasMetScrobbleThreshold = false
+
+    /** Accumulated heard playtime while [Player.isPlaying] (pause-aware). */
+    @Volatile private var accumulatedHeardMs = 0L
+
+    /** Wall clock of last poll tick while playing; 0 when paused. */
+    @Volatile private var lastPollWallMs = 0L
 
     @Volatile private var lastTrackedPositionMs = 0L
 
@@ -888,7 +893,7 @@ class MediaService : MediaLibraryService() {
             }
             if (playbackState == Player.STATE_ENDED) {
                 val trackId = lastTrackId ?: return
-                if (hasPassed60Percent) {
+                if (hasMetScrobbleThreshold) {
                     scrobbleTrackIfNeeded(
                         trackId,
                         PlayerHolder.player?.currentMediaItem?.mediaMetadata,
@@ -928,10 +933,8 @@ class MediaService : MediaLibraryService() {
             // CastPlayer handles Cast track loading automatically via RemoteCastPlayer
             // Capture previous track metadata NOW — currentMediaItem is still the old track at this point
             val previousMeta = PlayerHolder.player?.currentMediaItem?.mediaMetadata
-            // Scrobble the previous track when playback reaches ≥60% duration.
-            // Auto-advance naturally exceeds this threshold; manual skip after
-            // 60% is also captured via the hasPassed60Percent flag set by the
-            // position poller.
+            // Scrobble previous track when Last.fm threshold met (ADR-0128).
+            // No AUTO shortcut under threshold — pause-aware accumulated heard time.
             val previousTrackId = lastTrackId
             val newMediaId = mediaItem?.mediaId
             if (!newMediaId.isNullOrBlank()) {
@@ -945,8 +948,8 @@ class MediaService : MediaLibraryService() {
                 PlayerHolder.playbackErrorAutoSkipInFlight = false
             }
             if (previousTrackId != null &&
-                (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || hasPassed60Percent) &&
-                shouldScrobbleAfterListen(lastTrackedPositionMs)
+                hasMetScrobbleThreshold &&
+                shouldScrobbleAfterListen(accumulatedHeardMs)
             ) {
                 scrobbleTrackIfNeeded(previousTrackId, previousMeta)
             }
@@ -954,7 +957,9 @@ class MediaService : MediaLibraryService() {
             if (mediaItem?.mediaId != null && mediaItem.mediaId == lastScrobbledTrackId) {
                 lastScrobbledTrackId = null
             }
-            hasPassed60Percent = false // reset for the new track
+            hasMetScrobbleThreshold = false
+            accumulatedHeardMs = 0L
+            lastPollWallMs = 0L
             lastTrackedPositionMs = 0L
 
             // Persist queue + enqueue upcoming tracks for download (local-first:
@@ -1458,13 +1463,13 @@ class MediaService : MediaLibraryService() {
         val computed = computeScrobbleListenedSeconds(
             trackId = trackId,
             durationMs = extras?.getLong("duration") ?: 0L,
-            lastTrackedPositionMs = lastTrackedPositionMs,
+            accumulatedHeardMs = accumulatedHeardMs,
         ) ?: return
         val (durationSec, listenedSec) = computed
         lastScrobbledTrackId = trackId
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
-            "scrobble track=$trackId secs=$listenedSec",
+            "scrobble track=$trackId secs=$listenedSec heardMs=$accumulatedHeardMs",
         )
         scope.launch {
             scrobbleService.scrobble(
@@ -1491,9 +1496,15 @@ class MediaService : MediaLibraryService() {
                 return
             }
             if (player.isPlaying) {
-                // Track 60% playback threshold for scrobble eligibility.
-                // Position is read every 200ms; once crossed, the flag persists
-                // until the next track transition.
+                // Accumulate content-heard time (Last.fm pause-aware): wall delta
+                // × playback speed. Seek does not inflate (no position jumps).
+                val nowWall = android.os.SystemClock.elapsedRealtime()
+                if (lastPollWallMs > 0L) {
+                    val delta = (nowWall - lastPollWallMs).coerceIn(0L, 1_000L)
+                    val speed = player.playbackParameters.speed.coerceIn(0.25f, 3f)
+                    accumulatedHeardMs += (delta * speed).toLong()
+                }
+                lastPollWallMs = nowWall
                 lastTrackedPositionMs = player.currentPosition
                 if (player.playerError == null &&
                     lastTrackedPositionMs >= SOURCE_ERROR_CIRCUIT_SUCCESS_PLAY_MS &&
@@ -1501,10 +1512,10 @@ class MediaService : MediaLibraryService() {
                 ) {
                     sourceErrorCircuit = sourceErrorCircuit.onSuccessfulPlay()
                 }
-                if (!hasPassed60Percent && player.duration > 0 &&
-                    player.currentPosition >= player.duration * 0.6f
+                if (!hasMetScrobbleThreshold &&
+                    hasMetScrobbleThreshold(player.duration, accumulatedHeardMs)
                 ) {
-                    hasPassed60Percent = true
+                    hasMetScrobbleThreshold = true
                 }
                 pollCount++
                 // Sender-driven advance (timer path, <=800ms tail cut): check every
@@ -1530,6 +1541,9 @@ class MediaService : MediaLibraryService() {
                         persistenceManager.savePositionOnly(idx ?: 0, pos)
                     }
                 }
+            } else {
+                // Pause — stop wall accumulation without clearing heard total.
+                lastPollWallMs = 0L
             }
             handler.postDelayed(this, 200L)
         }

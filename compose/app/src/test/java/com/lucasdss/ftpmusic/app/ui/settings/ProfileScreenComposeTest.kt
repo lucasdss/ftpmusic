@@ -39,7 +39,11 @@ class ProfileScreenComposeTest {
                     artistCount = 3,
                     streakDays = 2,
                 ),
-                topTracks = listOf(TopCountRow("t1", "Hit", 4)),
+                activity = listOf(
+                    ProfileStatsMath.ActivityPoint("Mon", 60),
+                    ProfileStatsMath.ActivityPoint("Tue", 120),
+                ),
+                topTracks = listOf(TopCountRow("t1", "Hit", 4, honestSeconds = 600)),
                 isLoading = false,
             ),
         )
@@ -48,12 +52,16 @@ class ProfileScreenComposeTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("My Listening").assertIsDisplayed()
+        composeRule.onNodeWithText("Activity").assertIsDisplayed()
         composeRule.onNodeWithText("songs").assertIsDisplayed()
-        composeRule.onNodeWithText("2-day streak").assertIsDisplayed()
-        composeRule.onAllNodesWithText("All time").assertCountEquals(2)
+        // Below the fold once Activity chart is present — existence is enough.
+        composeRule.onNodeWithText("2-day streak").assertExists()
         composeRule.onNodeWithText("Week").assertIsDisplayed()
+        // Chip + streak subtitle both say "All time".
+        composeRule.onAllNodesWithText("All time").assertCountEquals(2)
         composeRule.onNodeWithText("Top Songs").assertExists()
         composeRule.onNodeWithText("Hit").assertExists()
+        composeRule.onNodeWithText("4 · 10m").assertExists()
         verify { vm.refresh() }
     }
 

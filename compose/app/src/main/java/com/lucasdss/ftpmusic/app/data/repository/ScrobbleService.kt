@@ -59,13 +59,16 @@ class ScrobbleService @Inject constructor(
                     android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
                 }
             }
-            ensureTrackRow(trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre)
+            ensureTrackRow(
+                trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre,
+                album = null,
+            )
         }
     }
 
     /**
      * Report a completed listen: Subsonic scrobble (if online), increment play_count,
-     * and insert a [ListenEventEntity] with honest [listenedSeconds] (ADR-0047).
+     * and insert a [ListenEventEntity] with honest [listenedSeconds] (ADR-0047 / 0128).
      */
     fun scrobble(
         trackId: String,
@@ -93,7 +96,10 @@ class ScrobbleService @Inject constructor(
             } else {
                 DiagnosticLog.d("ftpmusic-scrobble", "API skip — offline id=$trackId")
             }
-            ensureTrackRow(trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre)
+            ensureTrackRow(
+                trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre,
+                album = albumName,
+            )
             trackDao.incrementPlayCount(trackId)
             val row = trackDao.getTrack(trackId)
             val resolvedDuration = durationSeconds ?: row?.durationSeconds
@@ -111,7 +117,7 @@ class ScrobbleService @Inject constructor(
                     artistId = artistId ?: row?.artistId,
                     artistName = artist ?: row?.artist,
                     albumId = albumId ?: row?.albumId,
-                    albumName = albumName,
+                    albumName = albumName ?: row?.album,
                     genre = genre ?: row?.genre,
                     trackTitle = title ?: row?.title ?: trackId,
                     isBackfill = false,
@@ -133,21 +139,24 @@ class ScrobbleService @Inject constructor(
         durationSeconds: Int?,
         coverArtUrl: String?,
         genre: String? = null,
+        album: String? = null,
     ) {
         // Always upsert — CacheService may have created a stub row with title=trackId
-        // PlaybackState metadata from the server is authoritative
-        // CRITICAL: read existing play_count to avoid erasing cumulative plays.
+        // PlaybackState metadata from the server is authoritative when present.
+        // CRITICAL: null-preserving coalesce — REPLACE must not wipe denorm fields
+        // (album/genre/artist) when extras are sparse (ADR-0128).
         val existing = trackDao.getTrack(trackId)
         trackDao.upsert(
             TrackEntity(
                 id = trackId,
-                title = title ?: trackId,
-                artist = artist,
-                genre = genre,
-                albumId = albumId,
-                artistId = artistId,
-                durationSeconds = durationSeconds,
-                coverArtUrl = coverArtUrl,
+                title = title ?: existing?.title ?: trackId,
+                artist = artist ?: existing?.artist,
+                album = album ?: existing?.album,
+                genre = genre ?: existing?.genre,
+                albumId = albumId ?: existing?.albumId,
+                artistId = artistId ?: existing?.artistId,
+                durationSeconds = durationSeconds ?: existing?.durationSeconds,
+                coverArtUrl = coverArtUrl ?: existing?.coverArtUrl,
                 playCount = existing?.playCount ?: 0,
             ),
         )

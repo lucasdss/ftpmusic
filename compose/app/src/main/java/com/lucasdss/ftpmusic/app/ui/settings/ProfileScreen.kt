@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,14 +13,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -30,14 +26,14 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.lucasdss.ftpmusic.app.data.db.TopCountRow
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.ui.*
-import com.lucasdss.ftpmusic.app.ui.BrandTeal
-import com.lucasdss.ftpmusic.app.ui.NavUnselected
-import com.lucasdss.ftpmusic.app.ui.Surface
-import com.lucasdss.ftpmusic.app.ui.SurfaceChip
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.GenreMixStrip
+import com.lucasdss.ftpmusic.app.ui.components.ListeningActivityChart
+import com.lucasdss.ftpmusic.app.ui.components.RankShareBar
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
+import com.lucasdss.ftpmusic.app.ui.components.TopMetricCaption
 
 @Composable
 fun ProfileScreen(
@@ -54,13 +50,13 @@ fun ProfileScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF0D0D14))) {
+    Column(Modifier.fillMaxSize().background(Background)) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             DetailBackButton(onBack = onBack, inset = false)
-            Text("Profile", color = Color.White, fontSize = textHeadingL(), fontWeight = FontWeight.Bold)
+            Text("Profile", color = Foreground, fontSize = textHeadingL(), fontWeight = FontWeight.Bold)
         }
 
         Column(
@@ -77,7 +73,7 @@ fun ProfileScreen(
 
             Text(
                 "My Listening",
-                color = Color.White,
+                color = Foreground,
                 fontSize = textHeadingM(),
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -104,11 +100,22 @@ fun ProfileScreen(
                 }
             }
 
+            if (state.activity.isNotEmpty()) {
+                Text(
+                    "Activity",
+                    color = Foreground,
+                    fontSize = textHeadingM(),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                ListeningActivityChart(points = state.activity)
+            }
+
             val streak = state.summary.streakDays
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Text(
                     if (streak <= 0) "No streak yet" else "$streak-day streak",
-                    color = if (streak <= 0) Color(0xFF666666) else BrandTeal,
+                    color = if (streak <= 0) Dimmed else BrandTeal,
                     fontSize = textBodyM(),
                     fontWeight = FontWeight.Medium,
                 )
@@ -122,11 +129,11 @@ fun ProfileScreen(
             TopSection("Top Songs", state.topTracks)
             TopSection("Top Artists", state.topArtists)
             TopSection("Top Albums", state.topAlbums)
-            TopSection("Top Genres", state.topGenres)
+            TopSection("Top Genres", state.topGenres, showGenreMix = true)
 
             Text(
                 "Recently Played",
-                color = Color.White,
+                color = Foreground,
                 fontSize = textHeadingM(),
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -134,7 +141,7 @@ fun ProfileScreen(
             if (state.recentlyPlayed.isEmpty() && !state.isLoading) {
                 Text(
                     "Nothing played yet",
-                    color = Color(0xFF666666),
+                    color = Dimmed,
                     fontSize = textBodyM(),
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
@@ -158,7 +165,7 @@ fun ProfileScreen(
                     Column(Modifier.weight(1f)) {
                         FittingText(
                             text = track.title,
-                            color = Color.White,
+                            color = Foreground,
                             fontSize = textHeadingS(),
                             minFontSize = textMicro(),
                             fontWeight = FontWeight.Medium,
@@ -166,17 +173,19 @@ fun ProfileScreen(
                         )
                         FittingText(
                             text = track.artist ?: "Unknown",
-                            color = Color(0xFF888888),
+                            color = Muted,
                             fontSize = textLabelM(),
                             minFontSize = textMicro(),
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    Text(
-                        formatDuration(track.durationSeconds ?: 0),
-                        color = NavUnselected,
-                        fontSize = textLabelL(),
-                    )
+                    track.durationSeconds?.let { secs ->
+                        Text(
+                            formatDuration(secs),
+                            color = NavUnselected,
+                            fontSize = textLabelL(),
+                        )
+                    }
                 }
             }
         }
@@ -214,36 +223,42 @@ private fun PeriodChips(selected: StatsPeriod, onSelect: (StatsPeriod) -> Unit) 
 }
 
 @Composable
-private fun TopSection(title: String, rows: List<TopCountRow>) {
+private fun TopSection(title: String, rows: List<TopCountRow>, showGenreMix: Boolean = false) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(title, color = Color.White, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
+        Text(title, color = Foreground, fontSize = textHeadingM(), fontWeight = FontWeight.Bold)
         if (rows.isEmpty()) {
             Text("—", color = NavUnselected, fontSize = textLabelL(), modifier = Modifier.padding(top = 6.dp))
         } else {
+            if (showGenreMix) {
+                Spacer(Modifier.height(8.dp))
+                GenreMixStrip(genres = rows)
+                Spacer(Modifier.height(8.dp))
+            }
+            val maxPlays = rows.maxOf { it.playCount }.coerceAtLeast(1)
             rows.forEachIndexed { index, row ->
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "${index + 1}",
-                        color = BrandTeal,
-                        fontSize = textBodyM(),
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.width(24.dp),
-                    )
-                    FittingText(
-                        text = row.label?.takeIf { it.isNotBlank() } ?: row.itemKey,
-                        color = Color.White,
-                        fontSize = textBodyM(),
-                        minFontSize = textMicro(),
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        "${row.playCount}",
-                        color = Color(0xFF888888),
-                        fontSize = textLabelL(),
-                    )
+                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${index + 1}",
+                            color = BrandTeal,
+                            fontSize = textBodyM(),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(24.dp),
+                        )
+                        FittingText(
+                            text = row.label?.takeIf { it.isNotBlank() } ?: row.itemKey,
+                            color = Foreground,
+                            fontSize = textBodyM(),
+                            minFontSize = textMicro(),
+                            modifier = Modifier.weight(1f),
+                        )
+                        TopMetricCaption(playCount = row.playCount, honestSeconds = row.honestSeconds)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    RankShareBar(playCount = row.playCount, maxPlayCount = maxPlays)
                 }
             }
         }
@@ -252,8 +267,6 @@ private fun TopSection(title: String, rows: List<TopCountRow>) {
 
 @Composable
 private fun RowScope.StatCard(icon: ImageVector, value: String, label: String) {
-    // weight(1f) bounds width so FittingText never measures against Infinity
-    // (unbounded fillMaxWidth in a Row collapses sibling labels in Robolectric).
     Column(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -267,14 +280,14 @@ private fun RowScope.StatCard(icon: ImageVector, value: String, label: String) {
         Spacer(Modifier.height(6.dp))
         FittingText(
             text = value,
-            color = Color.White,
+            color = Foreground,
             fontSize = textHeadingS(),
             minFontSize = textMicro(),
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Text(label, color = Color(0xFF888888), fontSize = textLabelM())
+        Text(label, color = Muted, fontSize = textLabelM())
     }
 }
 

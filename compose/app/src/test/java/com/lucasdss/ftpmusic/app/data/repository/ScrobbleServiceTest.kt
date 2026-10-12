@@ -35,6 +35,9 @@ class ScrobbleServiceTest {
         Dispatchers.setMain(testDispatcher)
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        // Default: no existing row (relaxed mock would invent one and break
+        // null-preserving coalesce assertions).
+        coEvery { trackDao.getTrack(any()) } returns null
         service =
             ScrobbleService(
                 trackDao,
@@ -135,6 +138,7 @@ class ScrobbleServiceTest {
             artist = "DB Artist",
             artistId = "ar-db",
             albumId = "al-db",
+            album = "DB Album",
             genre = "Jazz",
             durationSeconds = 100,
             playCount = 2,
@@ -158,8 +162,28 @@ class ScrobbleServiceTest {
         assertEquals("ar-db", slot.captured.artistId)
         assertEquals("DB Artist", slot.captured.artistName)
         assertEquals("al-db", slot.captured.albumId)
+        assertEquals("DB Album", slot.captured.albumName)
         assertEquals("DB Title", slot.captured.trackTitle)
         assertFalse(slot.captured.isBackfill)
+    }
+
+    @Test
+    fun `ensureTrackRow preserves album and genre when metadata null`() = runTest(testDispatcher) {
+        coEvery { trackDao.getTrack("t-keep") } returns TrackEntity(
+            id = "t-keep",
+            title = "Keep",
+            artist = "Art",
+            album = "Kept Album",
+            genre = "Metal",
+            playCount = 3,
+        )
+        service.nowPlaying("t-keep", "Keep", null, null, null, null, null, null)
+        val slot = slot<TrackEntity>()
+        coVerify(timeout = 2000) { trackDao.upsert(capture(slot)) }
+        assertEquals("Kept Album", slot.captured.album)
+        assertEquals("Metal", slot.captured.genre)
+        assertEquals("Art", slot.captured.artist)
+        assertEquals(3, slot.captured.playCount)
     }
 
     // ── Play count preservation (RED: fails until ensureTrackRow fix) ───────

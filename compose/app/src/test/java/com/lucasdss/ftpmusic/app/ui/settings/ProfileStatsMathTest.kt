@@ -70,4 +70,35 @@ class ProfileStatsMathTest {
         assertEquals("2h", ProfileStatsMath.formatListeningMinutes(120))
         assertEquals("1h 30m", ProfileStatsMath.formatListeningMinutes(90))
     }
+
+    @Test
+    fun `fillDailySeries zero fills week`() {
+        // Wednesday 2023-11-15 → Mon–Wed with one day having data
+        val now = LocalDate.of(2023, 11, 15).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val series = ProfileStatsMath.fillDailySeries(
+            StatsPeriod.WEEK,
+            mapOf("2023-11-14" to 120L),
+            nowMs = now,
+            zone = ZoneOffset.UTC,
+        )
+        assertEquals(3, series.size)
+        assertEquals(0L, series[0].seconds) // Mon
+        assertEquals(120L, series[1].seconds) // Tue
+        assertEquals(0L, series[2].seconds) // Wed
+    }
+
+    @Test
+    fun `fillMonthlySeries year has months through now`() {
+        val now = LocalDate.of(2024, 3, 15).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val series = ProfileStatsMath.fillMonthlySeries(
+            StatsPeriod.YEAR,
+            mapOf("2024-02" to 600L),
+            nowMs = now,
+            zone = ZoneOffset.UTC,
+        )
+        assertEquals(3, series.size) // Jan–Mar
+        assertEquals(0L, series[0].seconds)
+        assertEquals(600L, series[1].seconds)
+        assertEquals(0L, series[2].seconds)
+    }
 }

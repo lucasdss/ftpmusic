@@ -1,7 +1,7 @@
 # Profile Listening — Behavior Report
 
-Date: 2026-09-28
-ADR: 0046, 0047
+Date: 2026-10-12
+ADR: 0046, 0047, 0128
 
 ## Surface
 
@@ -14,43 +14,55 @@ Settings → Profile. Dedicated `ProfileViewModel`.
 | Week | calendar ISO week Mon 00:00 (device TZ) → now |
 | Month | calendar month start → now |
 | Year | calendar year start → now |
-| All time | unbounded |
+| All time | unbounded (chart = last 12 months) |
 
 ## Metrics (per period)
 
 | Metric | Source |
 |--------|--------|
 | Minutes | `SUM(listened_seconds) WHERE is_backfill=0` / 60 |
-| Plays | `COUNT(*)` (includes backfill) |
-| Songs | `COUNT(DISTINCT track_id)` |
-| Artists | `COUNT(DISTINCT COALESCE(artist_id, artist_name))` |
+| Plays / songs / artists | COUNT / DISTINCT; **backfill excluded** for Week/Month/Year; included for All time |
 | Day streak | all-time consecutive local days (UI: "All time") |
-| Tops | GROUP BY; rank `SUM(honest seconds) DESC, COUNT(*) DESC` LIMIT 5 |
-| Recently played | distinct tracks in **period** by max(`listened_at`) LIMIT 20 |
+| Tops | GROUP BY; rank `playCount DESC, honestSeconds DESC` LIMIT 5; UI shows plays + minutes |
+| Activity chart | honest seconds by day (W/M) or month (Y / All-time 12m) |
+| Genre mix | Top Genres share strip + share bars |
+| Recently played | distinct tracks in period by max(`listened_at`); seconds from that row |
 
-## Write path
+## Write path (Last.fm — ADR-0128)
 
-MediaService (≥60% transition **or** `STATE_ENDED`) → `ScrobbleService.scrobble` →
+MediaService accumulates heard ms while playing (pause-aware; wall × playback
+speed). Scrobble when:
 
-1. Subsonic API if not software-offline
-2. `ensureTrackRow` + enrich missing genre/artist/album from Room
-3. `incrementPlayCount`
-4. insert `listen_events` (`is_backfill=0`, seconds clamped `[1, duration]`)
+1. Track duration **> 30s**
+2. Heard ≥ **half duration** OR **≥ 4 minutes**
+3. Ghost floor (`shouldScrobbleAfterListen`) passes
 
-One-shot guard avoids double scrobble transition + ENDED.
+Then `ScrobbleService.scrobble` → Subsonic API (if online) → null-preserving
+`ensureTrackRow` → `incrementPlayCount` → insert `listen_events` (`is_backfill=0`).
 
 ## Backfill
 
 v53: expand `play_count` into N events (approximate).
-v54: all existing rows marked `is_backfill=1` — excluded from minutes only.
+v54: all existing rows marked `is_backfill=1` — excluded from minutes.
+v63: repair null `album_name` from `tracks.album`.
+
+## Market note
+
+| Product | Play gate | Minutes | Tops |
+|---------|-----------|---------|------|
+| Spotify Wrapped | >30s | actual heard | songs by play count |
+| Last.fm | >30s + 50%/4min | scrobble history | charts |
+| Apple Replay | plays + time | both | songs by plays |
+| FTPMusic | Last.fm gate | accumulated heard | plays then minutes |
 
 ## Edges
 
 - Offline: event still written
 - Empty period: zeros / empty lists
 - Process death mid-track: no event until scrobble
-- Seek past duration: seconds capped
+- Tracks ≤30s: never scrobble
+- Seek: does not inflate (wall deltas while playing)
 
 ## Out of scope
 
-Wrapped/share, discovery %, prune, product analytics.
+Wrapped/share, discovery %, prune, fan percentiles, listening clock, product analytics.

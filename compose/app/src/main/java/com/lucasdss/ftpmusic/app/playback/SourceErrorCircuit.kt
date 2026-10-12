@@ -42,9 +42,10 @@ internal fun SourceErrorCircuitState.onSuccessfulPlay(): SourceErrorCircuitState
 internal fun SourceErrorCircuitState.onUserSeek(): SourceErrorCircuitState = SourceErrorCircuitState()
 
 /**
- * Ghost Cast AUTO transitions leave [lastTrackedPositionMs] near zero.
- * Skip scrobble only for those ghosts — short real listens (e.g. 3s track at
- * 60%) must still scrobble (ADR-0112).
+ * Ghost Cast AUTO transitions leave accumulated heard time near zero.
+ * Skip scrobble only for those ghosts. Last.fm rules separately require
+ * track >30s and half-duration / 4min (ADR-0128); this gate only blocks
+ * sub-[SCROBBLE_STORM_MAX_GHOST_MS] ghosts.
  */
-internal fun shouldScrobbleAfterListen(lastTrackedPositionMs: Long): Boolean =
-    lastTrackedPositionMs > SCROBBLE_STORM_MAX_GHOST_MS
+internal fun shouldScrobbleAfterListen(accumulatedHeardMs: Long): Boolean =
+    accumulatedHeardMs > SCROBBLE_STORM_MAX_GHOST_MS

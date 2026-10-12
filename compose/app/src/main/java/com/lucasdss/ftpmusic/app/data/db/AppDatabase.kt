@@ -36,7 +36,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ListenEventEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 62,
+    version = 63,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1107,6 +1107,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_62 = ALL_MIGRATIONS_61 + MIGRATION_61_62
+
+        // Migration 62→63: repair null listen_events.album_name from tracks (ADR-0128).
+        val MIGRATION_62_63 = object : Migration(62, 63) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    UPDATE listen_events
+                    SET album_name = (
+                        SELECT album FROM tracks WHERE tracks.id = listen_events.track_id
+                    )
+                    WHERE album_name IS NULL
+                      AND EXISTS (
+                        SELECT 1 FROM tracks
+                        WHERE tracks.id = listen_events.track_id
+                          AND tracks.album IS NOT NULL
+                          AND tracks.album != ''
+                      )
+                    """.trimIndent(),
+                )
+            }
+        }
+        val ALL_MIGRATIONS_63 = ALL_MIGRATIONS_62 + MIGRATION_62_63
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

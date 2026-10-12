@@ -583,7 +583,16 @@ data class ListenEventEntity(
     @ColumnInfo(name = "is_backfill", defaultValue = "0") val isBackfill: Boolean = false,
 )
 
-data class TopCountRow(val itemKey: String, val label: String?, val playCount: Int)
+data class TopCountRow(
+    val itemKey: String,
+    val label: String?,
+    val playCount: Int,
+    /** Honest (non-backfill) listened seconds for period; used for UI minutes. */
+    val honestSeconds: Long = 0L,
+)
+
+/** Day (yyyy-MM-dd) or month (yyyy-MM) bucket of honest listen seconds. */
+data class ListenBucketRow(val bucket: String, val seconds: Long)
 
 data class RecentListenRow(
     @ColumnInfo(name = "track_id") val trackId: String,

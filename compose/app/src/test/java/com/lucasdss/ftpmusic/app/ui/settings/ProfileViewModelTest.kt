@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -33,21 +34,23 @@ class ProfileViewModelTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         coEvery { listenEventDao.sumListenedSeconds(any(), any()) } returns 3600L
-        coEvery { listenEventDao.countPlays(any(), any()) } returns 10
-        coEvery { listenEventDao.countDistinctTracks(any(), any()) } returns 4
-        coEvery { listenEventDao.countDistinctArtists(any(), any()) } returns 2
+        coEvery { listenEventDao.countPlays(any(), any(), any()) } returns 10
+        coEvery { listenEventDao.countDistinctTracks(any(), any(), any()) } returns 4
+        coEvery { listenEventDao.countDistinctArtists(any(), any(), any()) } returns 2
         coEvery { listenEventDao.distinctListenDays(any()) } returns listOf(
             java.time.LocalDate.now().toString(),
         )
-        coEvery { listenEventDao.topTracks(any(), any(), any()) } returns listOf(
-            TopCountRow("t1", "Song", 5),
+        coEvery { listenEventDao.topTracks(any(), any(), any(), any()) } returns listOf(
+            TopCountRow("t1", "Song", 5, honestSeconds = 600),
         )
-        coEvery { listenEventDao.topArtists(any(), any(), any()) } returns emptyList()
-        coEvery { listenEventDao.topAlbums(any(), any(), any()) } returns emptyList()
-        coEvery { listenEventDao.topGenres(any(), any(), any()) } returns emptyList()
-        coEvery { listenEventDao.recentlyPlayed(any(), any(), any()) } returns listOf(
+        coEvery { listenEventDao.topArtists(any(), any(), any(), any()) } returns emptyList()
+        coEvery { listenEventDao.topAlbums(any(), any(), any(), any()) } returns emptyList()
+        coEvery { listenEventDao.topGenres(any(), any(), any(), any()) } returns emptyList()
+        coEvery { listenEventDao.recentlyPlayed(any(), any(), any(), any()) } returns listOf(
             RecentListenRow("t1", "Song", "Artist", 1000L, 180),
         )
+        coEvery { listenEventDao.sumListenedSecondsByDay(any(), any()) } returns emptyList()
+        coEvery { listenEventDao.sumListenedSecondsByMonth(any(), any()) } returns emptyList()
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(
             TrackEntity(id = "t1", title = "Song", artist = "Artist", durationSeconds = 200),
         )
@@ -71,6 +74,7 @@ class ProfileViewModelTest {
         assertEquals(1, s.summary.streakDays)
         assertEquals(1, s.topTracks.size)
         assertEquals("t1", s.recentlyPlayed.first().id)
+        assertTrue(s.activity.isNotEmpty())
         assertFalse(s.isLoading)
     }
 
@@ -79,7 +83,22 @@ class ProfileViewModelTest {
         vm.setPeriod(StatsPeriod.YEAR)
         advanceUntilIdle()
         assertEquals(StatsPeriod.YEAR, vm.state.value.period)
-        coVerify(atLeast = 1) { listenEventDao.countPlays(any(), any()) }
+        coVerify(atLeast = 1) { listenEventDao.countPlays(any(), any(), any()) }
+    }
+
+    @Test
+    fun `week excludes backfill in DAO calls`() = runTest(dispatcher) {
+        vm.refresh()
+        advanceUntilIdle()
+        coVerify { listenEventDao.countPlays(any(), any(), includeBackfill = false) }
+        coVerify { listenEventDao.topTracks(any(), any(), includeBackfill = false, limit = any()) }
+    }
+
+    @Test
+    fun `all time includes backfill in DAO calls`() = runTest(dispatcher) {
+        vm.setPeriod(StatsPeriod.ALL_TIME)
+        advanceUntilIdle()
+        coVerify { listenEventDao.countPlays(any(), any(), includeBackfill = true) }
     }
 
     @Test
@@ -88,23 +107,24 @@ class ProfileViewModelTest {
         advanceUntilIdle()
         vm.setPeriod(StatsPeriod.WEEK)
         advanceUntilIdle()
-        // still week; only one refresh from above + no extra from setPeriod
         assertEquals(StatsPeriod.WEEK, vm.state.value.period)
     }
 
     @Test
     fun `empty recent stays empty`() = runTest(dispatcher) {
-        coEvery { listenEventDao.recentlyPlayed(any(), any(), any()) } returns emptyList()
+        coEvery { listenEventDao.recentlyPlayed(any(), any(), any(), any()) } returns emptyList()
         vm.refresh()
         advanceUntilIdle()
         assertEquals(0, vm.state.value.recentlyPlayed.size)
     }
 
     @Test
-    fun `missing track row falls back to event fields`() = runTest(dispatcher) {
+    fun `missing track row falls back to event fields without fake duration`() = runTest(dispatcher) {
         coEvery { trackDao.getTracksByIds(any()) } returns emptyList()
         vm.refresh()
         advanceUntilIdle()
-        assertEquals("Song", vm.state.value.recentlyPlayed.first().title)
+        val track = vm.state.value.recentlyPlayed.first()
+        assertEquals("Song", track.title)
+        assertEquals(null, track.durationSeconds)
     }
 }

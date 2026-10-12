@@ -93,4 +93,70 @@ object ProfileStatsMath {
     }
 
     fun daysBetween(a: LocalDate, b: LocalDate): Long = ChronoUnit.DAYS.between(a, b)
+
+    data class ActivityPoint(val label: String, val seconds: Long)
+
+    /**
+     * Zero-fill daily buckets from period start (or [fallbackStart]) through today.
+     * [raw] keys are yyyy-MM-dd.
+     */
+    fun fillDailySeries(
+        period: StatsPeriod,
+        raw: Map<String, Long>,
+        nowMs: Long = System.currentTimeMillis(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): List<ActivityPoint> {
+        val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        val start = when (period) {
+            StatsPeriod.WEEK -> today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            StatsPeriod.MONTH -> today.withDayOfMonth(1)
+            StatsPeriod.YEAR, StatsPeriod.ALL_TIME -> today.minusDays(29)
+        }
+        val points = mutableListOf<ActivityPoint>()
+        var cursor = start
+        while (!cursor.isAfter(today)) {
+            val key = cursor.format(dayFmt)
+            val label = when (period) {
+                StatsPeriod.WEEK -> cursor.dayOfWeek.name.take(3).lowercase()
+                    .replaceFirstChar { it.uppercase() }
+
+                else -> cursor.dayOfMonth.toString()
+            }
+            points += ActivityPoint(label = label, seconds = raw[key] ?: 0L)
+            cursor = cursor.plusDays(1)
+        }
+        return points
+    }
+
+    /**
+     * Zero-fill monthly buckets for calendar year (or last 12 months for All time).
+     * [raw] keys are yyyy-MM.
+     */
+    fun fillMonthlySeries(
+        period: StatsPeriod,
+        raw: Map<String, Long>,
+        nowMs: Long = System.currentTimeMillis(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): List<ActivityPoint> {
+        val zdt = Instant.ofEpochMilli(nowMs).atZone(zone)
+        val endMonth = zdt.toLocalDate().withDayOfMonth(1)
+        val startMonth = when (period) {
+            StatsPeriod.YEAR -> endMonth.withDayOfYear(1)
+            StatsPeriod.ALL_TIME -> endMonth.minusMonths(11)
+            else -> endMonth
+        }
+        val monthFmt = DateTimeFormatter.ofPattern("yyyy-MM")
+        val labelFmt = DateTimeFormatter.ofPattern("MMM")
+        val points = mutableListOf<ActivityPoint>()
+        var cursor = startMonth
+        while (!cursor.isAfter(endMonth)) {
+            val key = cursor.format(monthFmt)
+            points += ActivityPoint(
+                label = cursor.format(labelFmt),
+                seconds = raw[key] ?: 0L,
+            )
+            cursor = cursor.plusMonths(1)
+        }
+        return points
+    }
 }

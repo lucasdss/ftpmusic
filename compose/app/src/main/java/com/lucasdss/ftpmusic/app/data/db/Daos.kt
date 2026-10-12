@@ -1723,7 +1723,7 @@ interface TrackWaveformDao {
     suspend fun deleteByTrackIds(trackIds: List<String>)
 }
 
-// ── Listen events (Profile metrics — ADR-0046 / 0047) ───────────────────────
+// ── Listen events (Profile metrics — ADR-0046 / 0047 / 0128) ─────────────────
 
 @Dao
 interface ListenEventDao {
@@ -1743,108 +1743,131 @@ interface ListenEventDao {
     @Query(
         """
         SELECT COUNT(*) FROM listen_events
-        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+        WHERE (:includeBackfill = 1 OR is_backfill = 0)
+          AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         """,
     )
-    suspend fun countPlays(startMs: Long?, endMs: Long?): Int
+    suspend fun countPlays(startMs: Long?, endMs: Long?, includeBackfill: Boolean): Int
 
     @Query(
         """
         SELECT COUNT(DISTINCT track_id) FROM listen_events
-        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+        WHERE (:includeBackfill = 1 OR is_backfill = 0)
+          AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         """,
     )
-    suspend fun countDistinctTracks(startMs: Long?, endMs: Long?): Int
+    suspend fun countDistinctTracks(startMs: Long?, endMs: Long?, includeBackfill: Boolean): Int
 
     @Query(
         """
         SELECT COUNT(DISTINCT COALESCE(artist_id, artist_name)) FROM listen_events
         WHERE (artist_id IS NOT NULL OR artist_name IS NOT NULL)
+          AND (:includeBackfill = 1 OR is_backfill = 0)
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         """,
     )
-    suspend fun countDistinctArtists(startMs: Long?, endMs: Long?): Int
+    suspend fun countDistinctArtists(startMs: Long?, endMs: Long?, includeBackfill: Boolean): Int
 
     @Query(
         """
-        SELECT track_id AS itemKey, track_title AS label, COUNT(*) AS playCount
+        SELECT track_id AS itemKey, track_title AS label, COUNT(*) AS playCount,
+               COALESCE(SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END), 0) AS honestSeconds
         FROM listen_events
-        WHERE (:startMs IS NULL OR listened_at >= :startMs)
+        WHERE (:includeBackfill = 1 OR is_backfill = 0)
+          AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY track_id
-        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
-                 playCount DESC
+        ORDER BY playCount DESC, honestSeconds DESC
         LIMIT :limit
         """,
     )
-    suspend fun topTracks(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+    suspend fun topTracks(startMs: Long?, endMs: Long?, includeBackfill: Boolean, limit: Int = 5): List<TopCountRow>
 
     @Query(
         """
         SELECT COALESCE(artist_id, artist_name, '') AS itemKey,
                artist_name AS label,
-               COUNT(*) AS playCount
+               COUNT(*) AS playCount,
+               COALESCE(SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END), 0) AS honestSeconds
         FROM listen_events
         WHERE (artist_id IS NOT NULL OR artist_name IS NOT NULL)
+          AND (:includeBackfill = 1 OR is_backfill = 0)
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY COALESCE(artist_id, artist_name)
-        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
-                 playCount DESC
+        ORDER BY playCount DESC, honestSeconds DESC
         LIMIT :limit
         """,
     )
-    suspend fun topArtists(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+    suspend fun topArtists(startMs: Long?, endMs: Long?, includeBackfill: Boolean, limit: Int = 5): List<TopCountRow>
 
     @Query(
         """
         SELECT COALESCE(album_id, album_name, '') AS itemKey,
                album_name AS label,
-               COUNT(*) AS playCount
+               COUNT(*) AS playCount,
+               COALESCE(SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END), 0) AS honestSeconds
         FROM listen_events
         WHERE (album_id IS NOT NULL OR album_name IS NOT NULL)
+          AND (:includeBackfill = 1 OR is_backfill = 0)
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY COALESCE(album_id, album_name)
-        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
-                 playCount DESC
+        ORDER BY playCount DESC, honestSeconds DESC
         LIMIT :limit
         """,
     )
-    suspend fun topAlbums(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+    suspend fun topAlbums(startMs: Long?, endMs: Long?, includeBackfill: Boolean, limit: Int = 5): List<TopCountRow>
 
     @Query(
         """
-        SELECT genre AS itemKey, genre AS label, COUNT(*) AS playCount
+        SELECT genre AS itemKey, genre AS label, COUNT(*) AS playCount,
+               COALESCE(SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END), 0) AS honestSeconds
         FROM listen_events
         WHERE genre IS NOT NULL AND genre != ''
+          AND (:includeBackfill = 1 OR is_backfill = 0)
           AND (:startMs IS NULL OR listened_at >= :startMs)
           AND (:endMs IS NULL OR listened_at < :endMs)
         GROUP BY genre
-        ORDER BY SUM(CASE WHEN is_backfill = 0 THEN listened_seconds ELSE 0 END) DESC,
-                 playCount DESC
+        ORDER BY playCount DESC, honestSeconds DESC
         LIMIT :limit
         """,
     )
-    suspend fun topGenres(startMs: Long?, endMs: Long?, limit: Int = 5): List<TopCountRow>
+    suspend fun topGenres(startMs: Long?, endMs: Long?, includeBackfill: Boolean, limit: Int = 5): List<TopCountRow>
 
     @Query(
         """
-        SELECT track_id, track_title, artist_name,
-               MAX(listened_at) AS listened_at,
-               MAX(listened_seconds) AS listened_seconds
-        FROM listen_events
-        WHERE (:startMs IS NULL OR listened_at >= :startMs)
-          AND (:endMs IS NULL OR listened_at < :endMs)
-        GROUP BY track_id
-        ORDER BY listened_at DESC
+        SELECT e.track_id AS track_id,
+               e.track_title AS track_title,
+               e.artist_name AS artist_name,
+               e.listened_at AS listened_at,
+               e.listened_seconds AS listened_seconds
+        FROM listen_events e
+        INNER JOIN (
+            SELECT track_id, MAX(listened_at) AS max_at
+            FROM listen_events
+            WHERE (:includeBackfill = 1 OR is_backfill = 0)
+              AND (:startMs IS NULL OR listened_at >= :startMs)
+              AND (:endMs IS NULL OR listened_at < :endMs)
+            GROUP BY track_id
+        ) latest ON e.track_id = latest.track_id AND e.listened_at = latest.max_at
+        WHERE (:includeBackfill = 1 OR e.is_backfill = 0)
+          AND (:startMs IS NULL OR e.listened_at >= :startMs)
+          AND (:endMs IS NULL OR e.listened_at < :endMs)
+        GROUP BY e.track_id
+        ORDER BY e.listened_at DESC
         LIMIT :limit
         """,
     )
-    suspend fun recentlyPlayed(startMs: Long?, endMs: Long?, limit: Int = 20): List<RecentListenRow>
+    suspend fun recentlyPlayed(
+        startMs: Long?,
+        endMs: Long?,
+        includeBackfill: Boolean,
+        limit: Int = 20,
+    ): List<RecentListenRow>
 
     /** Distinct local calendar days (yyyy-MM-dd) that have ≥1 listen, newest first. */
     @Query(
@@ -1856,4 +1879,34 @@ interface ListenEventDao {
         """,
     )
     suspend fun distinctListenDays(limit: Int = 400): List<String>
+
+    /** Honest minutes by local calendar day (yyyy-MM-dd). */
+    @Query(
+        """
+        SELECT date(listened_at / 1000, 'unixepoch', 'localtime') AS bucket,
+               COALESCE(SUM(listened_seconds), 0) AS seconds
+        FROM listen_events
+        WHERE is_backfill = 0
+          AND (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        GROUP BY bucket
+        ORDER BY bucket ASC
+        """,
+    )
+    suspend fun sumListenedSecondsByDay(startMs: Long?, endMs: Long?): List<ListenBucketRow>
+
+    /** Honest minutes by local calendar month (yyyy-MM). */
+    @Query(
+        """
+        SELECT strftime('%Y-%m', listened_at / 1000, 'unixepoch', 'localtime') AS bucket,
+               COALESCE(SUM(listened_seconds), 0) AS seconds
+        FROM listen_events
+        WHERE is_backfill = 0
+          AND (:startMs IS NULL OR listened_at >= :startMs)
+          AND (:endMs IS NULL OR listened_at < :endMs)
+        GROUP BY bucket
+        ORDER BY bucket ASC
+        """,
+    )
+    suspend fun sumListenedSecondsByMonth(startMs: Long?, endMs: Long?): List<ListenBucketRow>
 }

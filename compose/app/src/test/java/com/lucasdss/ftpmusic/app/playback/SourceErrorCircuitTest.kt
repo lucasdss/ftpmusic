@@ -51,7 +51,7 @@ class SourceErrorCircuitTest {
     fun `scrobble storm guard skips only ghost near-zero listens`() {
         assertFalse(shouldScrobbleAfterListen(0L))
         assertFalse(shouldScrobbleAfterListen(SCROBBLE_STORM_MAX_GHOST_MS))
-        // Short real listens (e.g. 3s track past 60%) must still scrobble.
+        // Non-ghost heard time clears the storm gate (Last.fm threshold is separate).
         assertTrue(shouldScrobbleAfterListen(SCROBBLE_STORM_MAX_GHOST_MS + 1))
         assertTrue(shouldScrobbleAfterListen(1_000L))
         assertTrue(shouldScrobbleAfterListen(4_999L))
