@@ -1228,12 +1228,22 @@ fun FtpmusicNavHost() {
             isScanning = dialogIsScanning,
             connectionWeak = dialogConnectionWeak,
             onDismiss = {
-                // Cancel any pending connect (timeout + connecting state) — the
-                // reconnect-hang fix: Cancel must always un-stick the picker.
+                // ADR-0124: Cancel / swipe = hard abort + close sheet.
                 CastButtonState.onConnectCancelled?.invoke()
                 CastButtonState.showDialog.value = false
             },
             onForceScan = { CastButtonState.requestForceScan() },
+            onStopConnecting = {
+                // Hard abort; keep sheet open so user can pick This phone / another device.
+                CastButtonState.onConnectCancelled?.invoke()
+            },
+            onThisPhone = {
+                CastButtonState.onConnectCancelled?.invoke()
+                if (CastButtonState.isCasting.value) {
+                    CastButtonState.disconnect()
+                }
+                CastButtonState.showDialog.value = false
+            },
             onDeviceSelected = { device ->
                 try {
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(

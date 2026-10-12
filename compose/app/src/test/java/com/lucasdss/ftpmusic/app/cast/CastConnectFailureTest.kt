@@ -105,6 +105,8 @@ class CastConnectFailureTest {
         CastButtonState.connectedDeviceName.value = null
         CastButtonState.connectingDeviceName.value = null
         CastButtonState.castErrorMessage.value = null
+        CastButtonState.connectUserAborted = false
+        every { mockRouter.defaultRoute } returns mockk(relaxed = true)
     }
 
     private fun injectAll(target: Any) {
@@ -136,6 +138,7 @@ class CastConnectFailureTest {
         CastButtonState.onConnectCancelled = null
         CastButtonState.onEndSessionForSwitchRequested = null
         CastButtonState.onDisconnectRequested = null
+        CastButtonState.connectUserAborted = false
     }
 
     private fun injectField(target: Any, fieldName: String, value: Any?) {
@@ -232,17 +235,47 @@ class CastConnectFailureTest {
     }
 
     @Test
-    fun `cancelCastConnect without a switch does not touch cast state`() {
-        // Fresh-connect cancel (never casting): nothing to tear down.
+    fun `cancelCastConnect fresh connect hard-aborts SDK session`() {
+        // ADR-0124: Cancel must endCurrentSession + defaultRoute, not flags-only.
         PlayerHolder.isCasting = false
         every { mockSessionManager.currentCastSession } returns null
-        service.connectToCastDevice(deviceA) // no session → immediate select path
-        // connectToCastDevice with no route match calls failCastConnect → force-local no-op (not casting)
+        every { mockRouter.routes } returns listOf(mockRoute)
+        every { CastDevice.getFromBundle(any()) } returns deviceA
+        every { mockRoute.name } returns "Soundbar"
+
+        service.connectToCastDevice(deviceA)
+        assertEquals("Soundbar", CastButtonState.connectingDeviceName.value)
 
         service.cancelCastConnect()
 
+        assertTrue("user-abort flag must be set", CastButtonState.connectUserAborted)
         assertFalse("isCasting must stay false", PlayerHolder.isCasting)
         assertNull("connectingDeviceName must be null", CastButtonState.connectingDeviceName.value)
+        verify(atLeast = 1) { mockSessionManager.endCurrentSession(true) }
+        verify(atLeast = 1) { mockRouter.selectRoute(any()) }
+    }
+
+    @Test
+    fun `late onSessionStarted after user abort rejects and stays local`() {
+        PlayerHolder.isCasting = false
+        every { mockSessionManager.currentCastSession } returns null
+        every { mockRouter.routes } returns listOf(mockRoute)
+        every { CastDevice.getFromBundle(any()) } returns deviceA
+        every { mockRoute.name } returns "Soundbar"
+
+        service.connectToCastDevice(deviceA)
+        service.cancelCastConnect()
+        assertTrue(CastButtonState.connectUserAborted)
+
+        every { mockCastSession.castDevice } returns deviceA
+        val listener = core.javaClass.getDeclaredField("sessionManagerListener").apply {
+            isAccessible = true
+        }.get(core) as SessionManagerListener<CastSession>
+        listener.onSessionStarted(mockCastSession, "late-sid")
+
+        assertFalse("late start must not promote casting", PlayerHolder.isCasting)
+        assertFalse(CastButtonState.isCasting.value)
+        verify(atLeast = 2) { mockSessionManager.endCurrentSession(true) }
     }
 
     // ── M5: start-failed during a switch cleans up ──────────────────────

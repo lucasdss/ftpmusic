@@ -34,6 +34,13 @@ object CastButtonState {
     /** Soft signal: live-session requestStatus heartbeat missed (not a hard disconnect). */
     val connectionWeak = mutableStateOf(false)
 
+    /**
+     * ADR-0124: user aborted an in-flight connect. MediaService session callbacks
+     * reject late onSessionStarted / remote=true while this is true.
+     */
+    @Volatile
+    var connectUserAborted: Boolean = false
+
     /** Whether the Cast button should be visible (devices found OR already casting). */
     val isButtonVisible: Boolean
         get() = discoveredDevices.value.isNotEmpty() || isCasting.value
@@ -93,6 +100,7 @@ object CastButtonState {
             connectedDeviceName.value = null
             connectingDeviceName.value = null
             connectionWeak.value = false
+            connectUserAborted = false
 
             // 4. MediaService handles switch to ExoPlayer, Cast SDK handles session
             onDisconnectRequested?.invoke()

@@ -156,4 +156,38 @@ class CastDevicePickerComposeTest {
         }
         composeRule.onNodeWithText("Connection weak — playback may stall").assertExists()
     }
+
+    @Test
+    fun `Stop connecting visible and invokes onStopConnecting`() {
+        var stopped = false
+        composeRule.setContent {
+            CastDevicePickerDialog(
+                devices = listOf(mockDevice("Mini Speaker", "Google Home Mini")),
+                connectingDeviceName = "Mini Speaker",
+                onDismiss = {},
+                onDeviceSelected = {},
+                onStopConnecting = { stopped = true },
+            )
+        }
+        composeRule.onNodeWithText("Stop connecting").assertExists()
+        composeRule.onNodeWithText("Stop connecting").performClick()
+        assertTrue(stopped)
+    }
+
+    @Test
+    fun `This phone row invokes onThisPhone`() {
+        var phone = false
+        composeRule.setContent {
+            CastDevicePickerDialog(
+                devices = listOf(mockDevice("Mini Speaker", "Google Home Mini")),
+                connectingDeviceName = "Mini Speaker",
+                onDismiss = {},
+                onDeviceSelected = {},
+                onThisPhone = { phone = true },
+            )
+        }
+        composeRule.onNodeWithText("This phone").assertExists()
+        composeRule.onNodeWithText("This phone").performClick()
+        assertTrue(phone)
+    }
 }

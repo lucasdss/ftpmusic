@@ -502,6 +502,19 @@ class MediaService : MediaLibraryService() {
                 "session started sessionId=$sessionId",
             )
             castSessionStartingDeviceId = null
+            // ADR-0124: user already aborted — reject late SDK success.
+            if (CastButtonState.connectUserAborted) {
+                android.util.Log.w(
+                    "ftpmusic-cast",
+                    "[SessionManager] rejecting late onSessionStarted after user abort",
+                )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-cast",
+                    "session started rejected user-abort sessionId=$sessionId",
+                )
+                endCurrentCastSession()
+                return
+            }
             // A NEW session starts a fresh context — the previous resume flag is
             // stale. Without this reset, isReconnectingToExistingSession() stays
             // true forever after the first resume and every later session skips
@@ -1065,6 +1078,16 @@ class MediaService : MediaLibraryService() {
             android.util.Log.w("ftpmusic-cast", "[CastPlayer] onDeviceInfoChanged: remote=$isRemote")
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-cast", "remote=$isRemote")
             if (isRemote) {
+                // ADR-0124: user aborted connect — do not promote casting from a
+                // late route.select() handshake.
+                if (CastButtonState.connectUserAborted) {
+                    android.util.Log.w(
+                        "ftpmusic-cast",
+                        "[CastPlayer] rejecting remote=true after user abort",
+                    )
+                    endCurrentCastSession()
+                    return
+                }
                 // Successful (re)connect — stop the reconnect retry loop and cache the device.
                 castReconnectAttempts = 0
                 val sessionDevice = castCtx?.sessionManager?.currentCastSession?.castDevice
@@ -2749,10 +2772,8 @@ class MediaService : MediaLibraryService() {
     @VisibleForTesting
     internal fun connectToCastDevice(device: CastDevice) {
         if (shouldIgnoreConnectRequest(castConnectInFlight)) {
-            // M3 supersede: a second tap re-targets the pending attempt to the
-            // NEWEST device (name, timeout target, deferred select) instead of
-            // just renaming the picker — otherwise the first device gets
-            // selected while the picker shows the second.
+            // M3 + ADR-0124: abort-then-connect — kill prior SDK handshake, then
+            // re-target to the NEWEST device (name, timeout, deferred select).
             android.util.Log.w(
                 "ftpmusic-cast",
                 "[Cast] connect in flight — superseding target to ${device.friendlyName}",
@@ -2761,11 +2782,14 @@ class MediaService : MediaLibraryService() {
                 "ftpmusic-cast",
                 "connect supersede deviceId=${device.deviceId}",
             )
+            CastButtonState.connectUserAborted = false
             castConnectTargetDeviceId = device.deviceId
             CastButtonState.connectingDeviceName.value = device.friendlyName
             // Invalidate the previous attempt's deferred select + timeout chain.
             val attemptSeq = ++castConnectSeq
             castConnectDeadlineMs = 0L
+            // Tear down any session/route started by the superseded attempt.
+            endCurrentCastSession()
             startCastConnectTimeout(device.friendlyName)
             handler.postDelayed({
                 if (castConnectSeq != attemptSeq || !castConnectInFlight) return@postDelayed
@@ -2775,6 +2799,7 @@ class MediaService : MediaLibraryService() {
             }, 800L)
             return
         }
+        CastButtonState.connectUserAborted = false
         castConnectInFlight = true
         castConnectTargetDeviceId = device.deviceId
         val attemptSeq = castConnectSeq
@@ -2974,11 +2999,16 @@ class MediaService : MediaLibraryService() {
             "connect cancelled deviceId=$castConnectTargetDeviceId",
         )
         val wasSwitch = castSwitchInProgress
+        // ADR-0124: mark abort BEFORE tearing down so late session callbacks
+        // see the flag and refuse to promote casting.
+        CastButtonState.connectUserAborted = true
         castConnectInFlight = false
         castSwitchInProgress = false
         castConnectDeadlineMs = 0L
         castConnectSeq++
         CastButtonState.connectingDeviceName.value = null
+        // Hard abort: end SDK session + deselect route (not flags-only).
+        endCurrentCastSession()
         if (wasSwitch) {
             forceLocalPlaybackAfterCastFailure()
         }
@@ -2993,6 +3023,7 @@ class MediaService : MediaLibraryService() {
         castSwitchInProgress = false
         castConnectDeadlineMs = 0L
         castConnectSeq++
+        CastButtonState.connectUserAborted = false
         CastButtonState.castErrorMessage.value = null
     }
 

@@ -33,6 +33,7 @@ import com.lucasdss.ftpmusic.app.ui.Surface
  * - Device rows: 36dp teal circle + Cast icon + name + Wifi icon
  * - Connected device first with "connected" label
  * - Disconnect + Cancel buttons at bottom when casting
+ * - ADR-0124: Stop connecting + This phone while connect in flight
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,8 +48,13 @@ fun CastDevicePickerDialog(
     onDeviceSelected: (CastDevice) -> Unit,
     onDisconnect: () -> Unit = {},
     onForceScan: () -> Unit = {},
+    /** Hard-abort in-flight connect; sheet stays open (Stop connecting). */
+    onStopConnecting: () -> Unit = {},
+    /** Abort connect + return to phone speakers (This phone). */
+    onThisPhone: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isConnecting = connectingDeviceName != null
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -120,8 +126,8 @@ fun CastDevicePickerDialog(
 
             Spacer(Modifier.height(spacingL()))
 
-            // ── Connecting state ──
-            if (connectingDeviceName != null) {
+            // ── Connecting state (ADR-0124) ──
+            if (isConnecting) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacingM()),
                     verticalAlignment = Alignment.CenterVertically,
@@ -136,10 +142,34 @@ fun CastDevicePickerDialog(
                         "Connecting to $connectingDeviceName\u2026",
                         color = Color(0xFFCCCCCC),
                         fontSize = textBodyM(),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                OutlinedButton(
+                    onClick = onStopConnecting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacingXL())
+                        .height(adp(48f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandTeal),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(
+                        brush = SolidColor(BrandTeal.copy(alpha = 0.4f)),
+                    ),
+                ) {
+                    Text(
+                        "Stop connecting",
+                        fontSize = textBodyM(),
+                        fontWeight = FontWeight.Medium,
                     )
                 }
                 Spacer(Modifier.height(spacingS()))
             }
+
+            // Sticky This phone (Symfonium / Apple / YT Music pattern)
+            ThisPhoneRow(
+                isSelected = !isCasting && !isConnecting,
+                onClick = onThisPhone,
+            )
 
             // ── Device list ──
             if (devices.isEmpty()) {
@@ -192,7 +222,8 @@ fun CastDevicePickerDialog(
                                     onDisconnect()
                                     onDismiss()
                                 } else {
-                                    onDeviceSelected(device) /* don't dismiss — wait for success/failure */
+                                    // Mid-connect: MediaService abort-then-connect (ADR-0124)
+                                    onDeviceSelected(device)
                                 }
                             },
                         )
@@ -230,6 +261,57 @@ fun CastDevicePickerDialog(
                     Text("Cancel", color = Color(0xFFCCCCCC), fontSize = textBodyM(), fontWeight = FontWeight.Medium)
                 }
             }
+        }
+    }
+}
+
+/** Local / This phone row — market abort destination (ADR-0124). */
+@Composable
+private fun ThisPhoneRow(isSelected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = spacingXL(), vertical = spacingM()),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(adp(36f)).clip(CircleShape)
+                .background(BrandTeal.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Smartphone,
+                contentDescription = null,
+                modifier = Modifier.size(adp(16f)),
+                tint = BrandTeal,
+            )
+        }
+        Spacer(Modifier.width(spacingM()))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = "This phone",
+                color = Color.White,
+                fontSize = textBodyM(),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "Play on this device",
+                color = Color(0xFF666666),
+                fontSize = textLabelM(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (isSelected) {
+            Text(
+                "selected",
+                color = BrandTeal,
+                fontSize = textLabelM(),
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }
