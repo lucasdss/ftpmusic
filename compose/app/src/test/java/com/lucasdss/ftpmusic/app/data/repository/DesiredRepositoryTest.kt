@@ -8,8 +8,11 @@ import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -319,5 +322,92 @@ class DesiredRepositoryTest {
         )
 
         coVerify { desiredItemDao.deleteById("dz-row") }
+    }
+
+    @Test
+    fun `aliasKeys includes mb dz nm after mb upgrade`() {
+        val row = DesiredItemEntity(
+            id = "1",
+            identityKey = "mb:ARTIST:mbid-1",
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Ext Artist",
+            musicbrainzId = "mbid-1",
+            deezerId = "99",
+            source = "musicbrainz",
+        )
+        val aliases = DesiredRepository.aliasKeys(row)
+        assertTrue(aliases.contains("mb:ARTIST:mbid-1"))
+        assertTrue(aliases.contains("dz:ARTIST:99"))
+        assertTrue(aliases.contains("nm:ARTIST:ext artist|"))
+    }
+
+    @Test
+    fun `matchesDesired true for mb hit against dz-only stored aliases`() {
+        val dzOnly = DesiredItemEntity(
+            id = "1",
+            identityKey = "dz:ARTIST:99",
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Ext Artist",
+            deezerId = "99",
+            source = "deezer",
+        )
+        val desiredKeys = DesiredRepository.aliasKeys(dzOnly)
+        // Hit carries both MBID and Deezer — strongest key is mb:, but dz alias intersects.
+        assertTrue(
+            DesiredRepository.matchesDesired(
+                desiredKeys = desiredKeys,
+                entityType = DesiredRepository.TYPE_ARTIST,
+                title = "Ext Artist",
+                musicbrainzId = "mbid-1",
+                deezerId = "99",
+            ),
+        )
+    }
+
+    @Test
+    fun `observeDesiredIdentityKeys emits aliases so deezer hit matches mb row`() = runTest {
+        val upgraded = DesiredItemEntity(
+            id = "1",
+            identityKey = "mb:ARTIST:mbid-1",
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Ext Artist",
+            musicbrainzId = "mbid-1",
+            deezerId = "99",
+            source = "musicbrainz",
+        )
+        every { desiredItemDao.observeAll() } returns flowOf(listOf(upgraded))
+
+        val keys = repo.observeDesiredIdentityKeys().first()
+        val deezerHitKey = DesiredRepository.identityKey(
+            DesiredRepository.TYPE_ARTIST,
+            "Ext Artist",
+            null,
+            null,
+            "99",
+        )
+        assertTrue(deezerHitKey in keys)
+        assertTrue("mb:ARTIST:mbid-1" in keys)
+    }
+
+    @Test
+    fun `removeMatching clears mb-upgraded row via deezer facet`() = runTest {
+        val upgraded = DesiredItemEntity(
+            id = "dz-1",
+            identityKey = "mb:ARTIST:mbid-1",
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Ext Artist",
+            musicbrainzId = "mbid-1",
+            deezerId = "99",
+            source = "musicbrainz",
+        )
+        coEvery { desiredItemDao.getByDeezerId("ARTIST", "99") } returns upgraded
+
+        repo.removeMatching(
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Ext Artist",
+            deezerId = "99",
+        )
+
+        coVerify { desiredItemDao.deleteById("dz-1") }
     }
 }

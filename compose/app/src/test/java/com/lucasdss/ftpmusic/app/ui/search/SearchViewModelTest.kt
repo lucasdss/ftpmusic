@@ -1333,4 +1333,105 @@ class SearchViewModelTest {
             )
         }
     }
+
+    @Test
+    fun `removeDiscoverArtistDesired uses removeMatching facets`() = runTest(testDispatcher) {
+        viewModel.removeDiscoverArtistDesired(
+            DiscoverArtistHit(
+                name = "Ext Artist",
+                mbid = null,
+                deezerId = "99",
+                source = "deezer",
+            ),
+        )
+        advanceUntilIdle()
+        coVerify {
+            desiredRepo.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                title = "Ext Artist",
+                musicbrainzId = null,
+                deezerId = "99",
+            )
+        }
+    }
+
+    @Test
+    fun `removeDiscoverAlbumDesired uses removeMatching facets`() = runTest(testDispatcher) {
+        viewModel.removeDiscoverAlbumDesired(
+            DiscoverAlbumHit(
+                title = "Discovery",
+                artistName = "Daft Punk",
+                deezerId = "5",
+                source = "deezer",
+            ),
+        )
+        advanceUntilIdle()
+        coVerify {
+            desiredRepo.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                title = "Discovery",
+                artistName = "Daft Punk",
+                musicbrainzId = null,
+                deezerId = "5",
+            )
+        }
+    }
+
+    @Test
+    fun `removeDiscoverTrackDesired uses removeMatching facets`() = runTest(testDispatcher) {
+        viewModel.removeDiscoverTrackDesired(
+            DiscoverTrackHit(
+                title = "One More Time",
+                artistName = "Daft Punk",
+                deezerId = "3135556",
+            ),
+        )
+        advanceUntilIdle()
+        coVerify {
+            desiredRepo.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK,
+                title = "One More Time",
+                artistName = "Daft Punk",
+                musicbrainzId = null,
+                deezerId = "3135556",
+            )
+        }
+    }
+
+    @Test
+    fun `desiredIdentityKeyForArtist deezer key present in alias set after mb upgrade`() {
+        val hit = DiscoverArtistHit(name = "Ext Artist", deezerId = "99", source = "deezer")
+        val hitKey = viewModel.desiredIdentityKeyForArtist(hit)
+        val upgraded = com.lucasdss.ftpmusic.app.data.db.DesiredItemEntity(
+            id = "1",
+            identityKey = "mb:ARTIST:mbid-1",
+            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+            title = "Ext Artist",
+            musicbrainzId = "mbid-1",
+            deezerId = "99",
+            source = "musicbrainz",
+        )
+        val aliases = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.aliasKeys(upgraded)
+        assertTrue(hitKey in aliases)
+    }
+
+    @Test
+    fun `isDiscoverArtistDesired true for mb hit when stored row is deezer-only`() {
+        val hit = DiscoverArtistHit(
+            name = "Ext Artist",
+            mbid = "mbid-1",
+            deezerId = "99",
+            source = "musicbrainz",
+        )
+        val dzOnly = com.lucasdss.ftpmusic.app.data.db.DesiredItemEntity(
+            id = "1",
+            identityKey = "dz:ARTIST:99",
+            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+            title = "Ext Artist",
+            deezerId = "99",
+            source = "deezer",
+        )
+        val keys = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.aliasKeys(dzOnly)
+        assertTrue(viewModel.isDiscoverArtistDesired(hit, keys))
+    }
 }

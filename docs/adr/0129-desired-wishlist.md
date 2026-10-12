@@ -21,7 +21,10 @@ search-to-add and export/share — not star semantics on library rows.
    separate data path from `FavoriteRepository`.
 3. Identity: MBID canonical, then Deezer id, then normalized title+artist.
    Cross-key merge upgrades name/Deezer rows to MBID without wiping
-   `matched_local_id`; detail surfaces resolve via `findMatchingDesired`.
+   `matched_local_id`; detail + Discover remove resolve via
+   `findMatchingDesired` / `removeMatching`. Discover badges intersect
+   hit `probeKeys` with observed row aliases (`mb:` / `dz:` / `nm:` +
+   stored). Writes serialize on a repository Mutex (match-then-merge race).
 4. Fulfillment v1: reconcile sets `matched_local_id`; keep row with badge;
    user clears manually. Track reconcile falls back to exact title+artist;
    album name match skips blank artist.

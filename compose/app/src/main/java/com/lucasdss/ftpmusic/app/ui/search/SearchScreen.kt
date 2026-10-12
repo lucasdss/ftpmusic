@@ -1518,8 +1518,7 @@ fun SearchScreen(
                         state.discoverArtists,
                         key = { "disc-ar-${it.mbid ?: it.deezerId ?: it.name}" },
                     ) { hit ->
-                        val desiredKey = viewModel.desiredIdentityKeyForArtist(hit)
-                        val isDesired = desiredKey in state.desiredIdentityKeys
+                        val isDesired = viewModel.isDiscoverArtistDesired(hit, state.desiredIdentityKeys)
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -1552,7 +1551,7 @@ fun SearchScreen(
                                 IconButton(
                                     onClick = {
                                         if (isDesired) {
-                                            viewModel.removeDesiredByIdentityKey(desiredKey)
+                                            viewModel.removeDiscoverArtistDesired(hit)
                                         } else {
                                             viewModel.addDiscoverArtistDesired(hit)
                                         }
@@ -1581,8 +1580,7 @@ fun SearchScreen(
                         state.discoverAlbums,
                         key = { "disc-al-${it.deezerId ?: it.mbid ?: it.title}|${it.artistName.orEmpty()}" },
                     ) { hit ->
-                        val desiredKey = viewModel.desiredIdentityKeyForAlbum(hit)
-                        val isDesired = desiredKey in state.desiredIdentityKeys
+                        val isDesired = viewModel.isDiscoverAlbumDesired(hit, state.desiredIdentityKeys)
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -1625,7 +1623,7 @@ fun SearchScreen(
                                 IconButton(
                                     onClick = {
                                         if (isDesired) {
-                                            viewModel.removeDesiredByIdentityKey(desiredKey)
+                                            viewModel.removeDiscoverAlbumDesired(hit)
                                         } else {
                                             viewModel.addDiscoverAlbumDesired(hit)
                                         }
@@ -1652,8 +1650,7 @@ fun SearchScreen(
                         },
                     ) { hit ->
                         val localId = hit.localTrackId
-                        val desiredKey = viewModel.desiredIdentityKeyForTrack(hit)
-                        val isDesired = desiredKey in state.desiredIdentityKeys
+                        val isDesired = viewModel.isDiscoverTrackDesired(hit, state.desiredIdentityKeys)
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -1704,7 +1701,7 @@ fun SearchScreen(
                                 IconButton(
                                     onClick = {
                                         if (isDesired) {
-                                            viewModel.removeDesiredByIdentityKey(desiredKey)
+                                            viewModel.removeDiscoverTrackDesired(hit)
                                         } else {
                                             viewModel.addDiscoverTrackDesired(hit)
                                         }

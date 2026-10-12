@@ -47,7 +47,10 @@ Never blind `DELETE` + `REPLACE` that can clobber another row’s unique key.
 
 Artist/Album detail and Discover use `findMatchingDesired` /
 `removeMatching` so a Deezer-added `dz:…` row toggles correctly when the
-detail surface only knows MBID or name.
+detail surface only knows MBID or name. Discover badges intersect hit
+`probeKeys` with observed row alias keys (`mb:` / `dz:` / `nm:` + stored)
+so both mb↔dz directions light correctly. Concurrent adds serialize on a
+repository Mutex.
 
 ### Fulfillment (v1)
 

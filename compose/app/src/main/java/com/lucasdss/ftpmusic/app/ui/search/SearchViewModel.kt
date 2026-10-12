@@ -1191,6 +1191,35 @@ class SearchViewModel @Inject constructor(
             hit.deezerId,
         )
 
+    fun isDiscoverArtistDesired(hit: DiscoverArtistHit, desiredKeys: Set<String>): Boolean =
+        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.matchesDesired(
+            desiredKeys = desiredKeys,
+            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+            title = hit.name,
+            musicbrainzId = hit.mbid,
+            deezerId = hit.deezerId,
+        )
+
+    fun isDiscoverAlbumDesired(hit: DiscoverAlbumHit, desiredKeys: Set<String>): Boolean =
+        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.matchesDesired(
+            desiredKeys = desiredKeys,
+            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+            title = hit.title,
+            artistName = hit.artistName,
+            musicbrainzId = hit.mbid,
+            deezerId = hit.deezerId,
+        )
+
+    fun isDiscoverTrackDesired(hit: DiscoverTrackHit, desiredKeys: Set<String>): Boolean =
+        com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.matchesDesired(
+            desiredKeys = desiredKeys,
+            entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK,
+            title = hit.title,
+            artistName = hit.artistName,
+            musicbrainzId = hit.mbid,
+            deezerId = hit.deezerId,
+        )
+
     fun addDiscoverArtistDesired(hit: DiscoverArtistHit) {
         viewModelScope.launch {
             desiredRepository.addDesired(
@@ -1236,6 +1265,42 @@ class SearchViewModel @Inject constructor(
     fun removeDesiredByIdentityKey(identityKey: String) {
         viewModelScope.launch {
             desiredRepository.removeByIdentityKey(identityKey)
+        }
+    }
+
+    /** Discover toggle-off: match facets so MB-upgraded rows still delete. */
+    fun removeDiscoverArtistDesired(hit: DiscoverArtistHit) {
+        viewModelScope.launch {
+            desiredRepository.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                title = hit.name,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+            )
+        }
+    }
+
+    fun removeDiscoverAlbumDesired(hit: DiscoverAlbumHit) {
+        viewModelScope.launch {
+            desiredRepository.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
+                title = hit.title,
+                artistName = hit.artistName,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+            )
+        }
+    }
+
+    fun removeDiscoverTrackDesired(hit: DiscoverTrackHit) {
+        viewModelScope.launch {
+            desiredRepository.removeMatching(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK,
+                title = hit.title,
+                artistName = hit.artistName,
+                musicbrainzId = hit.mbid,
+                deezerId = hit.deezerId,
+            )
         }
     }
 

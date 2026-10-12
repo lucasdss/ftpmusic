@@ -9,7 +9,10 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Local Desired wishlist (ADR-0129). Cross-key merge: resolve by MBID, then
@@ -21,6 +24,9 @@ class DesiredRepository @Inject constructor(
     private val trackDao: TrackDao,
     private val metadataDao: CachedMetadataDao,
 ) {
+    /** Serializes match-then-merge so concurrent adds cannot insert duplicate rows. */
+    private val writeMutex = Mutex()
+
     companion object {
         const val TYPE_ARTIST = "ARTIST"
         const val TYPE_ALBUM = "ALBUM"
@@ -46,6 +52,55 @@ class DesiredRepository @Inject constructor(
         }
 
         fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
+
+        /**
+         * All scheme keys a Desired row can answer to for O(1) Discover badge
+         * lookup after MBID/Deezer upgrades rewrite [DesiredItemEntity.identityKey].
+         */
+        fun aliasKeys(item: DesiredItemEntity): Set<String> = probeKeys(
+            entityType = item.entityType,
+            title = item.title,
+            artistName = item.artistName,
+            musicbrainzId = item.musicbrainzId,
+            deezerId = item.deezerId,
+            storedIdentityKey = item.identityKey,
+        )
+
+        /**
+         * Probe keys for a Discover/detail hit (mb + dz + nm). Intersect with
+         * [aliasKeys] / [observeDesiredIdentityKeys] so badge works both ways
+         * (mb-hit vs dz-stored and dz-hit vs mb-stored).
+         */
+        fun probeKeys(
+            entityType: String,
+            title: String,
+            artistName: String? = null,
+            musicbrainzId: String? = null,
+            deezerId: String? = null,
+            storedIdentityKey: String? = null,
+        ): Set<String> {
+            val type = entityType.uppercase()
+            val keys = linkedSetOf<String>()
+            storedIdentityKey?.let { keys.add(it) }
+            musicbrainzId?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let {
+                keys.add("mb:$type:$it")
+            }
+            deezerId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                keys.add("dz:$type:$it")
+            }
+            keys.add(identityKey(type, title, artistName, null, null))
+            return keys
+        }
+
+        fun matchesDesired(
+            desiredKeys: Set<String>,
+            entityType: String,
+            title: String,
+            artistName: String? = null,
+            musicbrainzId: String? = null,
+            deezerId: String? = null,
+        ): Boolean = probeKeys(entityType, title, artistName, musicbrainzId, deezerId)
+            .any { it in desiredKeys }
     }
 
     fun observeAll(): Flow<List<DesiredItemEntity>> = desiredItemDao.observeAll()
@@ -101,6 +156,7 @@ class DesiredRepository @Inject constructor(
     /**
      * Idempotent add with cross-key merge (name/Deezer → MBID upgrades to one row).
      * Preserves matched_local_id. Deletes weaker duplicate rows in one transaction.
+     * Mutex serializes match-then-merge across concurrent callers.
      */
     suspend fun addDesired(
         entityType: String,
@@ -111,7 +167,7 @@ class DesiredRepository @Inject constructor(
         deezerId: String? = null,
         source: String = "manual",
         note: String? = null,
-    ): DesiredItemEntity {
+    ): DesiredItemEntity = writeMutex.withLock {
         val type = entityType.uppercase()
         val cleanTitle = title.trim()
         val cleanArtist = artistName?.trim()?.takeIf { it.isNotEmpty() }
@@ -137,7 +193,7 @@ class DesiredRepository @Inject constructor(
                 note = note,
             )
             desiredItemDao.mergeReplace(entity, emptyList())
-            return entity
+            return@withLock entity
         }
 
         val keepId = matches.minBy { it.desiredAt }.id
@@ -166,17 +222,21 @@ class DesiredRepository @Inject constructor(
         )
         val losers = matches.map { it.id }.filter { it != keepId }
         desiredItemDao.mergeReplace(winner, losers)
-        return desiredItemDao.getById(keepId)
+        return@withLock desiredItemDao.getById(keepId)
             ?: desiredItemDao.getByIdentityKey(finalKey)
             ?: winner
     }
 
     suspend fun removeDesired(id: String) {
-        desiredItemDao.deleteById(id)
+        writeMutex.withLock {
+            desiredItemDao.deleteById(id)
+        }
     }
 
     suspend fun removeByIdentityKey(identityKey: String) {
-        desiredItemDao.deleteByIdentityKey(identityKey)
+        writeMutex.withLock {
+            desiredItemDao.deleteByIdentityKey(identityKey)
+        }
     }
 
     /** Remove any row matching the given identity facets (detail / Discover toggle). */
@@ -187,9 +247,11 @@ class DesiredRepository @Inject constructor(
         musicbrainzId: String? = null,
         deezerId: String? = null,
     ) {
-        val match = findMatchingDesired(entityType, title, artistName, musicbrainzId, deezerId)
-        if (match != null) {
-            desiredItemDao.deleteById(match.id)
+        writeMutex.withLock {
+            val match = findMatchingDesired(entityType, title, artistName, musicbrainzId, deezerId)
+            if (match != null) {
+                desiredItemDao.deleteById(match.id)
+            }
         }
     }
 
@@ -209,8 +271,15 @@ class DesiredRepository @Inject constructor(
         }
     }
 
-    fun observeDesiredIdentityKeys(): Flow<Set<String>> =
-        desiredItemDao.observeAll().map { list -> list.map { it.identityKey }.toSet() }
+    /**
+     * Union of stored keys plus mb/dz/nm aliases so Discover badges stay true
+     * after cross-key upgrades rewrite [DesiredItemEntity.identityKey].
+     */
+    fun observeDesiredIdentityKeys(): Flow<Set<String>> = desiredItemDao.observeAll()
+        .map { list ->
+            list.flatMapTo(linkedSetOf()) { aliasKeys(it) }
+        }
+        .distinctUntilChanged()
 
     suspend fun snapshotShareText(): String = buildShareText(desiredItemDao.getAll())
 
