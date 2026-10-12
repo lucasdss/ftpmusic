@@ -313,6 +313,37 @@ class MediaSessionPlaybackProvider @Inject constructor(
         PlayerHolder.player?.let { onPlayerWired(it) }
     }
 
+    /**
+     * ADR-0123: after [PlayerHolder.seedFromSessionVolume], push holder volume
+     * into [playbackState] immediately so Now Playing does not keep a stale
+     * local/default `1.0f` baseline for the first cast volume drag.
+     */
+    fun republishAfterCastVolumeSeed() {
+        if (!connected) return
+        val player = PlayerHolder.player
+        if (player != null) {
+            publishFromPlayer(player)
+            return
+        }
+        // No player yet (rare race during connect): patch volume fields only.
+        if (!PlayerHolder.isCasting) return
+        val volume = when {
+            PlayerHolder.pendingCastVolume != null -> PlayerHolder.pendingCastVolume!!
+            PlayerHolder.castVolume > 0.001f -> PlayerHolder.castVolume
+            else -> PlayerHolder.castDeviceVolume
+        }
+        if (kotlin.math.abs(_playbackState.value.volume - volume) > 0.001f) {
+            _playbackState.update {
+                it.copy(
+                    isCasting = true,
+                    castDeviceName = PlayerHolder.castDeviceName,
+                    volume = volume,
+                    muted = PlayerHolder.castDeviceMuted,
+                )
+            }
+        }
+    }
+
     private var registeredOn: Player? = null
     private fun registerListener() {
         registeredOn?.removeListener(playerListener)

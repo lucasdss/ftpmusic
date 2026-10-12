@@ -262,6 +262,14 @@ fun FtpmusicNavHost() {
 
     DisposableEffect(Unit) {
         val router = androidx.mediarouter.media.MediaRouter.getInstance(context)
+        val selector = androidx.mediarouter.media.MediaRouteSelector.Builder()
+            .addControlCategory(androidx.mediarouter.media.MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
+            .addControlCategory("com.google.android.gms.cast.CATEGORY_CAST")
+            .build()
+        val discoveryFlags =
+            androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or
+                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN or
+                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_UNFILTERED_EVENTS
         val callback = object : androidx.mediarouter.media.MediaRouter.Callback() {
             override fun onRouteAdded(
                 router: androidx.mediarouter.media.MediaRouter,
@@ -278,24 +286,18 @@ fun FtpmusicNavHost() {
                 refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
             }
         }
-        router.addCallback(
-            androidx.mediarouter.media.MediaRouteSelector.Builder()
-                .addControlCategory(androidx.mediarouter.media.MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
-                .addControlCategory("com.google.android.gms.cast.CATEGORY_CAST")
-                .build(),
-            callback,
-            androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or
-                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN or
-                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_UNFILTERED_EVENTS,
-        )
+        fun addDiscovery() {
+            router.addCallback(selector, callback, discoveryFlags)
+        }
+        addDiscovery()
         refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
 
-        // Poll routes every 2s for the first 30s — catches Cast SDK provider registration
+        // Short warmup poll (10s) — force-scan + callbacks cover the rest (ADR-0123)
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         var pollCount = 0
         val pollRunnable = object : Runnable {
             override fun run() {
-                if (pollCount >= 15) return // 15 polls × 2s = 30s max
+                if (pollCount >= 5) return // 5 polls × 2s = 10s max
                 pollCount++
                 android.util.Log.d("ftpmusic-cast", "[NavHost] poll #$pollCount: ${router.routes.size} routes")
                 refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
@@ -304,8 +306,28 @@ fun FtpmusicNavHost() {
         }
         handler.postDelayed(pollRunnable, 2000L)
 
+        val clearScanning = Runnable {
+            CastButtonState.isScanning.value = false
+        }
+        CastButtonState.onForceScanRequested = {
+            if (!CastButtonState.isScanning.value) {
+                CastButtonState.isScanning.value = true
+                android.util.Log.d("ftpmusic-cast", "[NavHost] force scan: re-toggle ACTIVE_SCAN")
+                try {
+                    router.removeCallback(callback)
+                } catch (_: Exception) {}
+                addDiscovery()
+                refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
+                handler.removeCallbacks(clearScanning)
+                handler.postDelayed(clearScanning, 5_000L)
+            }
+        }
+
         onDispose {
             handler.removeCallbacks(pollRunnable)
+            handler.removeCallbacks(clearScanning)
+            CastButtonState.onForceScanRequested = null
+            CastButtonState.isScanning.value = false
             router.removeCallback(callback)
         }
     }
@@ -1174,6 +1196,8 @@ fun FtpmusicNavHost() {
         val dialogConnectedDeviceName = CastButtonState.connectedDeviceName.value
         val dialogConnectingDeviceName = CastButtonState.connectingDeviceName.value
         val dialogDiscoveredDevices = CastButtonState.discoveredDevices.value
+        val dialogIsScanning = CastButtonState.isScanning.value
+        val dialogConnectionWeak = CastButtonState.connectionWeak.value
         val sessionDevice = if (dialogIsCasting) {
             try {
                 CastContext.getSharedInstance(context).sessionManager.currentCastSession?.castDevice
@@ -1201,12 +1225,15 @@ fun FtpmusicNavHost() {
             isCasting = dialogIsCasting,
             connectedDeviceName = dialogConnectedDeviceName,
             connectingDeviceName = dialogConnectingDeviceName,
+            isScanning = dialogIsScanning,
+            connectionWeak = dialogConnectionWeak,
             onDismiss = {
                 // Cancel any pending connect (timeout + connecting state) — the
                 // reconnect-hang fix: Cancel must always un-stick the picker.
                 CastButtonState.onConnectCancelled?.invoke()
                 CastButtonState.showDialog.value = false
             },
+            onForceScan = { CastButtonState.requestForceScan() },
             onDeviceSelected = { device ->
                 try {
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(

@@ -315,6 +315,21 @@ class MediaService : MediaLibraryService() {
         }
     }
 
+    /** ADR-0123: live-session requestStatus heartbeat (not a non-GMS ping). */
+    private val castHeartbeatHandler = Handler(Looper.getMainLooper())
+    private var castHeartbeatRunnable: Runnable? = null
+    private var castHeartbeatAwaitingResult = false
+    private var castHeartbeatMissCount = 0
+
+    @VisibleForTesting
+    internal var castHeartbeatIntervalMs: Long = 12_000L
+
+    @VisibleForTesting
+    internal var castHeartbeatTimeoutMs: Long = 8_000L
+
+    @VisibleForTesting
+    internal var castHeartbeatWeakThreshold: Int = 2
+
     /** Registered MediaQueue.Callback for receiver queue change tracking. */
     private var mediaQueueCallback: MediaQueue.Callback? = null
 
@@ -364,6 +379,8 @@ class MediaService : MediaLibraryService() {
             PlayerHolder.pendingCastVolume = null
             PlayerHolder.pendingCastVolumeTimestamp = 0L
             PlayerHolder.seedFromSessionVolume(session.volume)
+            playbackProvider.republishAfterCastVolumeSeed()
+            startCastHeartbeat()
             // Re-register both RemoteMediaClient and MediaQueue callbacks.
             // On resume, the receiver is the source of truth — sync remote→local.
             val rmc = session.remoteMediaClient
@@ -509,6 +526,9 @@ class MediaService : MediaLibraryService() {
             // Resumed/new session → the receiver-state mirror must be active
             // even if onDeviceInfoChanged's setup is still retrying.
             wireCastStateMirror()
+            PlayerHolder.seedFromSessionVolume(session.volume)
+            playbackProvider.republishAfterCastVolumeSeed()
+            startCastHeartbeat()
         }
         override fun onSessionStartFailed(session: CastSession, error: Int) {
             android.util.Log.w("ftpmusic-cast", "[SessionManager] onSessionStartFailed: error=$error")
@@ -1652,8 +1672,10 @@ class MediaService : MediaLibraryService() {
                         CastButtonState.connectedDeviceName.value = it
                     }
                     PlayerHolder.seedFromSessionVolume(existing.volume)
+                    playbackProvider.republishAfterCastVolumeSeed()
                     attachCastPlayerToSession()
                     wireCastStateMirror()
+                    startCastHeartbeat()
                 }
             } catch (_: Exception) {}
 
@@ -3739,6 +3761,8 @@ class MediaService : MediaLibraryService() {
     internal fun setupRemoteCastSessionWithRetry() {
         // Seed the device volume from the Cast session before onDeviceVolumeChanged fires
         PlayerHolder.seedFromSessionVolume(castCtx?.sessionManager?.currentCastSession?.volume)
+        playbackProvider.republishAfterCastVolumeSeed()
+        startCastHeartbeat()
         var attempts = 0
         val gen = castDisconnectGen
         fun attempt() {
@@ -3799,6 +3823,99 @@ class MediaService : MediaLibraryService() {
     internal fun clearCastMirror() {
         lastMirrorTrackId = null
         playbackProvider.castStateSource = null
+        stopCastHeartbeat()
+    }
+
+    /**
+     * ADR-0123: while a Cast session is live, periodically call
+     * [RemoteMediaClient.requestStatus] to verify the media channel.
+     * Soft-fails into [CastButtonState.connectionWeak]; hard end remains
+     * SessionManagerListener. Not a non-GMS ICMP/mDNS probe.
+     */
+    @VisibleForTesting
+    internal fun startCastHeartbeat() {
+        stopCastHeartbeat()
+        CastButtonState.connectionWeak.value = false
+        castHeartbeatMissCount = 0
+        castHeartbeatAwaitingResult = false
+        val runnable = object : Runnable {
+            override fun run() {
+                tickCastHeartbeat()
+                castHeartbeatHandler.postDelayed(this, castHeartbeatIntervalMs)
+            }
+        }
+        castHeartbeatRunnable = runnable
+        castHeartbeatHandler.postDelayed(runnable, castHeartbeatIntervalMs)
+    }
+
+    @VisibleForTesting
+    internal fun stopCastHeartbeat() {
+        castHeartbeatRunnable?.let { castHeartbeatHandler.removeCallbacks(it) }
+        castHeartbeatRunnable = null
+        castHeartbeatAwaitingResult = false
+        castHeartbeatMissCount = 0
+        CastButtonState.connectionWeak.value = false
+    }
+
+    @VisibleForTesting
+    internal fun tickCastHeartbeat() {
+        if (!PlayerHolder.isCasting) {
+            stopCastHeartbeat()
+            return
+        }
+        val rmc = try {
+            castCtx?.sessionManager?.currentCastSession
+                ?.takeIf { it.isConnected }
+                ?.remoteMediaClient
+        } catch (_: Exception) {
+            null
+        }
+        if (rmc == null) {
+            onCastHeartbeatMiss("no live remoteMediaClient")
+            return
+        }
+        if (castHeartbeatAwaitingResult) {
+            onCastHeartbeatMiss("requestStatus timeout")
+            return
+        }
+        castHeartbeatAwaitingResult = true
+        val timeout = Runnable {
+            if (castHeartbeatAwaitingResult) {
+                castHeartbeatAwaitingResult = false
+                onCastHeartbeatMiss("requestStatus timeout")
+            }
+        }
+        castHeartbeatHandler.postDelayed(timeout, castHeartbeatTimeoutMs)
+        try {
+            rmc.requestStatus().setResultCallback { result ->
+                castHeartbeatHandler.removeCallbacks(timeout)
+                castHeartbeatAwaitingResult = false
+                if (result.status.isSuccess) {
+                    castHeartbeatMissCount = 0
+                    if (CastButtonState.connectionWeak.value) {
+                        CastButtonState.connectionWeak.value = false
+                        android.util.Log.d("ftpmusic-cast", "[Cast heartbeat] recovered")
+                    }
+                } else {
+                    onCastHeartbeatMiss("requestStatus status=${result.status.statusCode}")
+                }
+            }
+        } catch (e: Exception) {
+            castHeartbeatHandler.removeCallbacks(timeout)
+            castHeartbeatAwaitingResult = false
+            onCastHeartbeatMiss("requestStatus throw: ${e.message}")
+        }
+    }
+
+    private fun onCastHeartbeatMiss(reason: String) {
+        castHeartbeatMissCount++
+        android.util.Log.w(
+            "ftpmusic-cast",
+            "[Cast heartbeat] miss #$castHeartbeatMissCount: $reason",
+        )
+        if (castHeartbeatMissCount >= castHeartbeatWeakThreshold) {
+            CastButtonState.connectionWeak.value = true
+        }
     }
 
     /**

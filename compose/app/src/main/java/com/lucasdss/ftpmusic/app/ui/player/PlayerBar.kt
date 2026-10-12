@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.lucasdss.ftpmusic.app.R
+import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
@@ -1072,17 +1073,28 @@ private fun ColumnScope.PlayerMainBody(
                         value = displayVolume,
                         onValueChange = { display ->
                             if (!volumeDragging) {
+                                // ADR-0123: prefer holder when UI still shows stale
+                                // local/default 1.0 (or false 0) after cast seed.
+                                val baseline = resolveCastDragBaseline(volume)
+                                val baselineDisplay = volumeToDisplay(baseline)
                                 // M3 Slider can emit display=0 on first press
                                 // (zero-width / press quirk). That plus the
                                 // delta formula sends SET_VOLUME(0). Ignore
                                 // only before drag-start; a real slide-to-0
                                 // after drag started must still send.
-                                if (isSpuriousZeroDisplay(display, volumeToDisplay(volume))) {
+                                if (isSpuriousZeroDisplay(display, baselineDisplay)) {
                                     return@Slider
                                 }
                                 volumeDragging = true
-                                dragStartVolume = volume
-                                dragStartDisplay = volumeToDisplay(volume)
+                                dragStartVolume = baseline
+                                dragStartDisplay = baselineDisplay
+                                val staleUi = kotlin.math.abs(baseline - volume) > 0.05f
+                                if (staleUi) {
+                                    // Snap to holder baseline; ignore press at stale
+                                    // thumb so first send is not absolute ~1.0.
+                                    volumeDragValue = baselineDisplay
+                                    return@Slider
+                                }
                             }
                             hasDragged = true
                             volumeDragValue = display
@@ -3153,6 +3165,28 @@ internal fun displayToVolume(display: Float): Float = display.coerceIn(0f, 1f).l
 /** First-press display=0 while the thumb is not at 0. Mid-drag 0 is real. */
 internal fun isSpuriousZeroDisplay(display: Float, baselineDisplay: Float): Boolean =
     display <= 0.001f && baselineDisplay > 0.05f
+
+/**
+ * ADR-0123: drag baseline when casting. Prefer pending / confirmed / device
+ * holder values when Compose still shows stale local default (~1.0) or false 0.
+ */
+internal fun resolveCastDragBaseline(uiVolume: Float): Float {
+    val pending = PlayerHolder.pendingCastVolume
+    if (pending != null) return pending.coerceIn(0f, 1f)
+    val holder = when {
+        PlayerHolder.castVolume > 0.001f -> PlayerHolder.castVolume
+        else -> PlayerHolder.castDeviceVolume
+    }.coerceIn(0f, 1f)
+    // Stale UI at max (common: local PlaybackState.volume survived connect).
+    if (uiVolume >= 0.99f && kotlin.math.abs(holder - uiVolume) > 0.05f) {
+        return holder
+    }
+    // Stale UI at zero while holder has a real mid-scale level.
+    if (uiVolume <= 0.001f && holder > 0.05f) {
+        return holder
+    }
+    return uiVolume.coerceIn(0f, 1f)
+}
 
 /** Delta send for the cast slider. */
 internal fun volumeForDrag(display: Float, dragStartVolume: Float, dragStartDisplay: Float): Float {

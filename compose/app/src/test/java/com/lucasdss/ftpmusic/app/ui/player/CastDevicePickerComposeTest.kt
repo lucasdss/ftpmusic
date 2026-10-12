@@ -126,4 +126,34 @@ class CastDevicePickerComposeTest {
         composeRule.onNodeWithText("Cancel").performClick()
         assertTrue(dismissed)
     }
+
+    @Test
+    fun `empty state Search again invokes onForceScan`() {
+        var scanned = false
+        composeRule.setContent {
+            CastDevicePickerDialog(
+                devices = emptyList(),
+                onDismiss = {},
+                onDeviceSelected = {},
+                onForceScan = { scanned = true },
+            )
+        }
+        composeRule.onNodeWithText("Search again").performClick()
+        assertTrue(scanned)
+    }
+
+    @Test
+    fun `connection weak banner shown while casting`() {
+        composeRule.setContent {
+            CastDevicePickerDialog(
+                devices = listOf(mockDevice("Mini Speaker", "Google Home Mini")),
+                isCasting = true,
+                connectedDeviceName = "Mini Speaker",
+                connectionWeak = true,
+                onDismiss = {},
+                onDeviceSelected = {},
+            )
+        }
+        composeRule.onNodeWithText("Connection weak — playback may stall").assertExists()
+    }
 }

@@ -983,4 +983,57 @@ class MediaSessionPlaybackProviderTest {
         assertTrue("pending must be dropped by disconnect", captured.isEmpty())
         assertTrue(provider.playerWired.value)
     }
+
+    @Test
+    fun `republishAfterCastVolumeSeed updates stale UI volume from holder`() {
+        PlayerHolder.isCasting = false
+        PlayerHolder.pendingCastVolume = null
+        PlayerHolder.castVolume = 0f
+        PlayerHolder.castDeviceVolume = 0.5f
+        val mockPlayer = mockk<Player>(relaxed = true)
+        every { mockPlayer.volume } returns 1.0f
+        every { mockPlayer.currentMediaItem } returns null
+        every { mockPlayer.mediaItemCount } returns 0
+        every { mockPlayer.isPlaying } returns false
+        PlayerHolder.player = mockPlayer
+        provider.connect()
+        assertEquals(
+            "precondition: local playback volume is 1.0 before cast seed",
+            1.0f,
+            provider.playbackState.value.volume,
+            0.001f,
+        )
+
+        // Cast connects: seed holder but UI would stay at 1.0 without republish.
+        PlayerHolder.isCasting = true
+        PlayerHolder.castDeviceName = "Nest Mini"
+        PlayerHolder.seedFromSessionVolume(0.3)
+        assertEquals(
+            "seed alone must not yet flip StateFlow without republish",
+            1.0f,
+            provider.playbackState.value.volume,
+            0.001f,
+        )
+
+        provider.republishAfterCastVolumeSeed()
+
+        assertEquals(0.3f, provider.playbackState.value.volume, 0.001f)
+        assertTrue(provider.playbackState.value.isCasting)
+    }
+
+    @Test
+    fun `republishAfterCastVolumeSeed patches volume without player`() {
+        PlayerHolder.isCasting = true
+        PlayerHolder.castDeviceName = "Nest Mini"
+        PlayerHolder.player = null
+        PlayerHolder.pendingCastVolume = null
+        PlayerHolder.castVolume = 0.42f
+        PlayerHolder.castDeviceVolume = 0.42f
+        provider.connect()
+
+        provider.republishAfterCastVolumeSeed()
+
+        assertEquals(0.42f, provider.playbackState.value.volume, 0.001f)
+        assertEquals("Nest Mini", provider.playbackState.value.castDeviceName)
+    }
 }

@@ -41,9 +41,12 @@ fun CastDevicePickerDialog(
     isCasting: Boolean = false,
     connectedDeviceName: String? = null,
     connectingDeviceName: String? = null,
+    isScanning: Boolean = false,
+    connectionWeak: Boolean = false,
     onDismiss: () -> Unit,
     onDeviceSelected: (CastDevice) -> Unit,
     onDisconnect: () -> Unit = {},
+    onForceScan: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -67,7 +70,7 @@ fun CastDevicePickerDialog(
                     Icon(Icons.Default.Cast, null, tint = BrandTeal, modifier = Modifier.size(adp(18f)))
                 }
                 Spacer(Modifier.width(spacingM()))
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(
                         "Cast to device",
                         color = Color.White,
@@ -75,11 +78,44 @@ fun CastDevicePickerDialog(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        if (devices.isEmpty()) "Scanning for devices\u2026" else "Available on your network",
+                        when {
+                            isScanning -> "Scanning for devices\u2026"
+                            devices.isEmpty() -> "Scanning for devices\u2026"
+                            else -> "Available on your network"
+                        },
                         color = Color(0xFF888888),
                         fontSize = textLabelM(),
                     )
                 }
+                IconButton(
+                    onClick = onForceScan,
+                    enabled = !isScanning,
+                    modifier = Modifier.size(adp(48f)),
+                ) {
+                    if (isScanning) {
+                        CircularProgressIndicator(
+                            color = BrandTeal,
+                            modifier = Modifier.size(adp(20f)),
+                            strokeWidth = adp(2f),
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Search again",
+                            tint = BrandTeal,
+                            modifier = Modifier.size(adp(22f)),
+                        )
+                    }
+                }
+            }
+
+            if (connectionWeak && isCasting) {
+                Text(
+                    "Connection weak — playback may stall",
+                    color = Color(0xFFE8A840),
+                    fontSize = textLabelM(),
+                    modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingS()),
+                )
             }
 
             Spacer(Modifier.height(spacingL()))
@@ -107,17 +143,31 @@ fun CastDevicePickerDialog(
 
             // ── Device list ──
             if (devices.isEmpty()) {
-                Row(
+                Column(
                     Modifier.fillMaxWidth().padding(horizontal = spacingXL(), vertical = spacing3XL()),
-                    horizontalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    CircularProgressIndicator(
-                        color = BrandTeal,
-                        modifier = Modifier.size(adp(32f)),
-                        strokeWidth = adp(2f),
-                    )
-                    Spacer(Modifier.width(spacingM()))
-                    Text("Looking for devices\u2026", color = Color(0xFF666666), fontSize = textBodyM())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            color = BrandTeal,
+                            modifier = Modifier.size(adp(32f)),
+                            strokeWidth = adp(2f),
+                        )
+                        Spacer(Modifier.width(spacingM()))
+                        Text("Looking for devices\u2026", color = Color(0xFF666666), fontSize = textBodyM())
+                    }
+                    Spacer(Modifier.height(spacingL()))
+                    TextButton(
+                        onClick = onForceScan,
+                        enabled = !isScanning,
+                    ) {
+                        Text(
+                            if (isScanning) "Searching\u2026" else "Search again",
+                            color = BrandTeal,
+                            fontSize = textBodyM(),
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
                 }
             } else {
                 val sortedDevices = if (isCasting && connectedDeviceName != null) {

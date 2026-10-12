@@ -19,6 +19,9 @@ class CastButtonStateTest {
         CastButtonState.connectedDeviceName.value = null
         CastButtonState.showDialog.value = false
         CastButtonState.discoveredDevices.value = emptyList()
+        CastButtonState.isScanning.value = false
+        CastButtonState.connectionWeak.value = false
+        CastButtonState.onForceScanRequested = null
     }
 
     @Test
@@ -282,5 +285,35 @@ class CastButtonStateTest {
         CastButtonState.endSessionForSwitch()
 
         assertTrue("endSessionForSwitch must invoke its callback", switchInvoked)
+    }
+
+    @Test
+    fun `requestForceScan invokes callback when not scanning`() {
+        var scans = 0
+        CastButtonState.isScanning.value = false
+        CastButtonState.onForceScanRequested = { scans++ }
+
+        CastButtonState.requestForceScan()
+
+        assertEquals(1, scans)
+    }
+
+    @Test
+    fun `requestForceScan spam-guarded while scanning`() {
+        var scans = 0
+        CastButtonState.isScanning.value = true
+        CastButtonState.onForceScanRequested = { scans++ }
+
+        CastButtonState.requestForceScan()
+
+        assertEquals(0, scans)
+    }
+
+    @Test
+    fun `disconnect clears connectionWeak`() {
+        CastButtonState.isCasting.value = true
+        CastButtonState.connectionWeak.value = true
+        CastButtonState.disconnect()
+        assertFalse(CastButtonState.connectionWeak.value)
     }
 }

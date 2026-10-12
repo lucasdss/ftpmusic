@@ -7,6 +7,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.lucasdss.ftpmusic.app.ui.player.displayToVolume
 import com.lucasdss.ftpmusic.app.ui.player.isSpuriousZeroDisplay
+import com.lucasdss.ftpmusic.app.ui.player.resolveCastDragBaseline
 import com.lucasdss.ftpmusic.app.ui.player.volumeForDrag
 import com.lucasdss.ftpmusic.app.ui.player.volumeToDisplay
 import io.mockk.*
@@ -845,5 +846,52 @@ class MediaServiceCastVolumeTest {
             dragStartDisplay = volumeToDisplay(0.5f),
         )
         assertEquals(0f, sent, 0.001f)
+    }
+
+    // ── ADR-0123 stale-1 baseline ─────────────────────────────────────────
+
+    @Test
+    fun `resolveCastDragBaseline prefers holder when UI stuck at 1`() {
+        PlayerHolder.pendingCastVolume = null
+        PlayerHolder.castVolume = 0.3f
+        PlayerHolder.castDeviceVolume = 0.3f
+        assertEquals(0.3f, resolveCastDragBaseline(1.0f), 0.001f)
+    }
+
+    @Test
+    fun `resolveCastDragBaseline prefers holder when UI stuck at 0`() {
+        PlayerHolder.pendingCastVolume = null
+        PlayerHolder.castVolume = 0.4f
+        PlayerHolder.castDeviceVolume = 0.4f
+        assertEquals(0.4f, resolveCastDragBaseline(0f), 0.001f)
+    }
+
+    @Test
+    fun `resolveCastDragBaseline prefers pending over holder`() {
+        PlayerHolder.pendingCastVolume = 0.55f
+        PlayerHolder.castVolume = 0.3f
+        assertEquals(0.55f, resolveCastDragBaseline(1.0f), 0.001f)
+    }
+
+    @Test
+    fun `resolveCastDragBaseline keeps UI when it matches holder`() {
+        PlayerHolder.pendingCastVolume = null
+        PlayerHolder.castVolume = 0.3f
+        PlayerHolder.castDeviceVolume = 0.3f
+        assertEquals(0.3f, resolveCastDragBaseline(0.3f), 0.001f)
+    }
+
+    @Test
+    fun `first raise from stale 1 baseline must not send near 1`() {
+        // Simulate ADR-0123 fix path: resolve baseline then delta-drag slightly up.
+        PlayerHolder.pendingCastVolume = null
+        PlayerHolder.castVolume = 0.3f
+        PlayerHolder.castDeviceVolume = 0.3f
+        val baseline = resolveCastDragBaseline(1.0f)
+        val startDisplay = volumeToDisplay(baseline)
+        val raisedDisplay = (startDisplay + 0.05f).coerceIn(0f, 1f)
+        val sent = volumeForDrag(raisedDisplay, baseline, startDisplay)
+        assertTrue("first raise must stay near device level, sent=$sent", sent < 0.5f)
+        assertTrue("first raise must actually increase, sent=$sent", sent > baseline)
     }
 }

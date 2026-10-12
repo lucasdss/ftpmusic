@@ -28,6 +28,12 @@ object CastButtonState {
     /** Device name currently attempting to connect (null = not connecting). */
     val connectingDeviceName = mutableStateOf<String?>(null)
 
+    /** True while a user-forced MediaRouter active scan is in flight (~5s). */
+    val isScanning = mutableStateOf(false)
+
+    /** Soft signal: live-session requestStatus heartbeat missed (not a hard disconnect). */
+    val connectionWeak = mutableStateOf(false)
+
     /** Whether the Cast button should be visible (devices found OR already casting). */
     val isButtonVisible: Boolean
         get() = discoveredDevices.value.isNotEmpty() || isCasting.value
@@ -62,6 +68,18 @@ object CastButtonState {
      */
     var onConnectCancelled: (() -> Unit)? = null
 
+    /**
+     * Callback for user-forced device rediscovery (picker "Search again").
+     * NavHost registers here to re-toggle MediaRouter discovery + refresh routes.
+     */
+    var onForceScanRequested: (() -> Unit)? = null
+
+    /** Request a force scan if one is not already running. */
+    fun requestForceScan() {
+        if (isScanning.value) return
+        onForceScanRequested?.invoke()
+    }
+
     /** Disconnects the active Cast session. */
     fun disconnect() {
         try {
@@ -74,6 +92,7 @@ object CastButtonState {
             isCasting.value = false
             connectedDeviceName.value = null
             connectingDeviceName.value = null
+            connectionWeak.value = false
 
             // 4. MediaService handles switch to ExoPlayer, Cast SDK handles session
             onDisconnectRequested?.invoke()
