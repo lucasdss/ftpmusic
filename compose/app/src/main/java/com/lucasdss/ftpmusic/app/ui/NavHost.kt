@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -380,23 +381,30 @@ fun FtpmusicNavHost() {
                     )
                 }
                 if (showBottomBar) {
+                    // ADR-0127: density + hide-labels drive bar/item height; clear M3
+                    // default insets — Column already applies navigationBarsPadding().
+                    val barHeight = navBarHeight(hideNavLabels)
                     NavigationBar(
                         containerColor = Background,
                         tonalElevation = 0.dp,
-                        modifier = Modifier.drawBehind {
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.06f),
-                                start = Offset(0f, 0f),
-                                end = Offset(size.width, 0f),
-                                strokeWidth = 1.dp.toPx(),
-                            )
-                        },
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                        modifier = Modifier
+                            .height(barHeight)
+                            .drawBehind {
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.06f),
+                                    start = Offset(0f, 0f),
+                                    end = Offset(size.width, 0f),
+                                    strokeWidth = 1.dp.toPx(),
+                                )
+                            },
                     ) {
                         tabs.forEach { tab ->
                             // ADR-0062: highlight from activeBottomTab so Home stays
                             // selected on mix/album/… drill-downs (flat graph).
                             val selected = TabNavigationPolicy.isTabSelected(activeBottomTab, tab.route)
                             NavigationBarItem(
+                                modifier = Modifier.height(barHeight),
                                 icon = {
                                     Icon(
                                         imageVector = if (tab.route == "favorites" && selected) {

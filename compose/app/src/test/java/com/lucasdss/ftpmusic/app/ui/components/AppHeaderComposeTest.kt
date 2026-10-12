@@ -1,12 +1,19 @@
 package com.lucasdss.ftpmusic.app.ui.components
 
 import android.app.Application
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.google.android.gms.cast.CastDevice
+import com.lucasdss.ftpmusic.app.ui.LocalTypographyPrefs
+import com.lucasdss.ftpmusic.app.ui.TypographyPrefs
+import com.lucasdss.ftpmusic.app.ui.UiDensityPreset
 import com.lucasdss.ftpmusic.app.ui.issues.AppIssue
 import com.lucasdss.ftpmusic.app.ui.issues.AppIssueHeaderState
 import com.lucasdss.ftpmusic.app.ui.issues.AppIssueIconKind
@@ -132,5 +139,34 @@ class AppHeaderComposeTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("app_header_issue_status").assertDoesNotExist()
+    }
+
+    @Test
+    fun `Tiny density header shorter than Medium`() {
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalTypographyPrefs provides TypographyPrefs(density = UiDensityPreset.Tiny),
+            ) {
+                AppHeader(
+                    onSettingsClick = {},
+                    modifier = Modifier.testTag("hdr_tiny"),
+                )
+            }
+            CompositionLocalProvider(
+                LocalTypographyPrefs provides TypographyPrefs(density = UiDensityPreset.Medium),
+            ) {
+                AppHeader(
+                    onSettingsClick = {},
+                    modifier = Modifier.testTag("hdr_medium"),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val tinyHeader = composeRule.onNodeWithTag("hdr_tiny").fetchSemanticsNode().boundsInRoot.height
+        val mediumHeader = composeRule.onNodeWithTag("hdr_medium").fetchSemanticsNode().boundsInRoot.height
+        assertTrue(
+            "Tiny header ($tinyHeader) must be shorter than Medium ($mediumHeader)",
+            tinyHeader < mediumHeader,
+        )
     }
 }

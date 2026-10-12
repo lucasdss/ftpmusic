@@ -1,6 +1,8 @@
 package com.lucasdss.ftpmusic.app.ui
 
 import android.app.Application
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -8,6 +10,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.testTag
@@ -91,23 +94,49 @@ class NavBarLabelsTest {
         assertTrue(iconBounds.width > 0f)
         assertTrue(labelBounds.width > 0f)
     }
+
+    @Test
+    fun `icon-only bar shorter than labeled at Medium density`() {
+        var labeledH = 0f
+        var iconOnlyH = 0f
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalTypographyPrefs provides TypographyPrefs(density = UiDensityPreset.Medium),
+            ) {
+                TestBottomBar(hideNavLabels = false, barTag = "nav_bar_labeled")
+                TestBottomBar(hideNavLabels = true, barTag = "nav_bar_icon")
+            }
+        }
+        composeRule.waitForIdle()
+        labeledH = composeRule.onNodeWithTag("nav_bar_labeled").fetchSemanticsNode().boundsInRoot.height
+        iconOnlyH = composeRule.onNodeWithTag("nav_bar_icon").fetchSemanticsNode().boundsInRoot.height
+        assertTrue(
+            "icon-only ($iconOnlyH) must be shorter than labeled ($labeledH)",
+            iconOnlyH < labeledH,
+        )
+    }
 }
 
 /**
  * Mirrors prod NavigationBarItem label wiring from FtpmusicNavHost
- * (fillMaxWidth + TextAlign.Center + Medium weight). Tags are harness-only.
+ * (fillMaxWidth + TextAlign.Center + Medium weight + ADR-0127 height). Tags are harness-only.
  */
 @Composable
-private fun TestBottomBar(hideNavLabels: Boolean) {
+private fun TestBottomBar(hideNavLabels: Boolean, barTag: String = "nav_bar") {
     val label = "Home"
-    NavigationBar {
+    val barH = navBarHeight(hideNavLabels)
+    NavigationBar(
+        windowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = Modifier.height(barH).testTag(barTag),
+    ) {
         NavigationBarItem(
+            modifier = Modifier.height(barH),
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Home,
                     contentDescription = navTabIconContentDescription(hideNavLabels, label),
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(adp(22f))
                         .testTag("nav_icon_Home"),
                 )
             },

@@ -151,3 +151,51 @@ fun asp(base: Float, role: TextRole = TextRole.Body): TextUnit {
 
 /** Interactive 0–5★ glyph size (pair with minimumInteractiveComponentSize). */
 @Composable fun ratingStarInteractiveSize(): Dp = adp(ReactionIconTokens.STAR_BASE_DP)
+
+// ── Shell chrome (ADR-0127) ──────────────────────────────────────────────────
+
+/** Material minimum interactive size — never shrink chrome hit below this. */
+const val INTERACTIVE_FLOOR_DP = 48f
+
+/** Labeled bottom nav base height (M3 tall container). */
+const val NAV_BAR_LABELED_BASE_DP = 80f
+
+/** Icon-only bottom nav base height (compact). */
+const val NAV_BAR_ICON_ONLY_BASE_DP = 56f
+
+/** AppHeader logo base size. */
+const val APP_HEADER_LOGO_BASE_DP = 56f
+
+/** AppHeader logo corner radius base. */
+const val APP_HEADER_LOGO_CORNER_BASE_DP = 16f
+
+/** Pure: clamp desired dp to ≥ [INTERACTIVE_FLOOR_DP]. */
+fun interactiveFloorDp(desiredDp: Float): Float = maxOf(desiredDp, INTERACTIVE_FLOOR_DP)
+
+/** Pure: labeled vs icon-only nav base before width×density. */
+fun navBarBaseDp(hideLabels: Boolean): Float = if (hideLabels) NAV_BAR_ICON_ONLY_BASE_DP else NAV_BAR_LABELED_BASE_DP
+
+/**
+ * Pure: nav bar height after width×density factor, floored for a11y.
+ * [factor] = [AdaptiveScale.combinedFactor].
+ */
+fun navBarHeightDp(hideLabels: Boolean, factor: Float): Float = interactiveFloorDp(navBarBaseDp(hideLabels) * factor)
+
+/** Floor a composed Dp to ≥48.dp for interactive chrome. */
+@Composable
+fun interactiveFloor(desired: Dp): Dp = maxOf(desired, INTERACTIVE_FLOOR_DP.dp)
+
+/**
+ * Bottom NavigationBar / item height — density-aware, a11y-floored.
+ * Must stay tied to the same [hideLabels] that nulls item labels.
+ */
+@Composable
+fun navBarHeight(hideLabels: Boolean): Dp = interactiveFloor(adp(navBarBaseDp(hideLabels)))
+
+/** AppHeader brand logo size (scales with density). */
+@Composable
+fun appHeaderLogoSize(): Dp = adp(APP_HEADER_LOGO_BASE_DP)
+
+/** AppHeader brand logo corner radius. */
+@Composable
+fun appHeaderLogoCorner(): Dp = adp(APP_HEADER_LOGO_CORNER_BASE_DP)

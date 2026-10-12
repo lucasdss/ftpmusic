@@ -23,7 +23,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandBg
@@ -41,6 +40,7 @@ import com.lucasdss.ftpmusic.app.ui.player.CastButton
  *
  * Settings lives here (not bottom nav) per ADR-0055. Search remains a bottom tab (ADR-0014).
  * Issue status icon + sheet per ADR-0120 (replaces unreachable text pill / ServerErrorBanner).
+ * Logo / spacers / lineHeights scale with UiDensityPreset (ADR-0127).
  */
 @Composable
 fun AppHeader(
@@ -52,6 +52,9 @@ fun AppHeader(
     issueHeaderState: AppIssueHeaderState? = null,
     onIssueStatusClick: (() -> Unit)? = null,
 ) {
+    val logoSize = appHeaderLogoSize()
+    val logoCorner = appHeaderLogoCorner()
+    val logoShape = RoundedCornerShape(logoCorner)
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = spacingS()),
         verticalAlignment = Alignment.CenterVertically,
@@ -59,16 +62,17 @@ fun AppHeader(
         // ── Logo ──
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .size(logoSize)
+                .clip(logoShape)
                 .background(BrandBg)
-                .border(1.dp, BrandTeal.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                .border(1.dp, BrandTeal.copy(alpha = 0.18f), logoShape)
                 .shadow(
                     elevation = spacingXS(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = logoShape,
                     ambientColor = BrandTeal,
                     spotColor = BrandTeal,
-                ),
+                )
+                .testTag("app_header_logo"),
             contentAlignment = Alignment.Center,
         ) {
             androidx.compose.foundation.Image(
@@ -79,7 +83,7 @@ fun AppHeader(
             )
         }
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(spacingM()))
 
         // ── App name + tagline (2/3 of free space) ──
         Column(modifier = Modifier.weight(2f)) {
@@ -89,7 +93,7 @@ fun AppHeader(
                 fontSize = textHeadingM(),
                 fontWeight = FontWeight.Bold,
                 fontFamily = outfitFontFamily(),
-                lineHeight = 18.sp,
+                lineHeight = asp(18f, TextRole.Heading),
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
@@ -99,7 +103,7 @@ fun AppHeader(
                 fontSize = textLabelM(),
                 fontWeight = FontWeight.Medium,
                 fontFamily = outfitFontFamily(),
-                lineHeight = 12.sp,
+                lineHeight = asp(12f, TextRole.Label),
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
@@ -115,13 +119,13 @@ fun AppHeader(
                 onClick = onIssueStatusClick,
                 interactive = interactive,
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(spacingXS()))
         }
 
         if (onSettingsClick != null) {
             Box(
                 Modifier
-                    .size(minTouchTarget())
+                    .size(interactiveFloor(minTouchTarget()))
                     .clip(CircleShape)
                     .testTag("app_header_settings")
                     .semantics { contentDescription = "Settings" }
@@ -135,7 +139,7 @@ fun AppHeader(
                     modifier = Modifier.size(adp(22f)),
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(spacingS()))
         }
 
         // ── Cast button (gated with settings — ADR-0097 / ADR-0100) ──
