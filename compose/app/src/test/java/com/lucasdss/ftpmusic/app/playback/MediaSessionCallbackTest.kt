@@ -42,6 +42,8 @@ class MediaSessionCallbackTest {
             every { uri.toString() } returns (firstArg() as String)
             uri
         }
+        every { Uri.encode(any()) } answers { firstArg() }
+        every { Uri.decode(any()) } answers { firstArg() }
     }
 
     @After
@@ -909,7 +911,7 @@ class MediaSessionCallbackTest {
     }
 
     @Test
-    fun `onGetChildren root returns five nodes`() {
+    fun `onGetChildren root returns nine nodes`() {
         val callback = createCallback(mockk(relaxed = true))
         val result = callback.onGetChildren(
             mockk(relaxed = true),
@@ -919,7 +921,7 @@ class MediaSessionCallbackTest {
             50,
             null,
         ).get()
-        assertEquals(5, result.value?.size)
+        assertEquals(9, result.value?.size)
     }
 
     @Test
@@ -943,6 +945,129 @@ class MediaSessionCallbackTest {
         val item = MediaItem.Builder().setMediaId(AutoBrowseIds.album("al1")).build()
         val result = callback.onAddMediaItems(mockk(relaxed = true), mockk(relaxed = true), listOf(item)).get()
         assertEquals(listOf("t1", "t2"), result.map { it.mediaId })
+    }
+
+    @Test
+    fun `onAddMediaItems passes through radio without album expand`() {
+        val callback = createCallback(mockk(relaxed = true))
+        val item = MediaItem.Builder()
+            .setMediaId(AutoBrowseIds.radio("s1"))
+            .setUri("https://stream.example/1")
+            .setMediaMetadata(
+                androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle("Synth")
+                    .setExtras(
+                        android.os.Bundle().apply { putString("type", "radio") },
+                    )
+                    .build(),
+            )
+            .build()
+        val result = callback.onAddMediaItems(mockk(relaxed = true), mockk(relaxed = true), listOf(item)).get()
+        assertEquals(1, result.size)
+        assertEquals(AutoBrowseIds.radio("s1"), result[0].mediaId)
+    }
+
+    @Test
+    fun `onSearch and onGetSearchResult return local hits`() {
+        val localSearch = mockk<com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository>()
+        coEvery { localSearch.search("beatles", any(), any()) } returns
+            com.lucasdss.ftpmusic.app.data.search.LocalSearchHit(
+                tracks = listOf(TrackEntity(id = "t1", title = "Help")),
+                albums = emptyList(),
+                artists = emptyList(),
+                playlists = emptyList(),
+                genres = emptyList(),
+            )
+        val callback = MediaSessionCallback(
+            trackDao = mockk(relaxed = true),
+            metadataDao = mockk(relaxed = true),
+            authHelper = SubsonicAuthHelper(),
+            api = mockk(relaxed = true),
+            localSearch = localSearch,
+            playlistDao = mockk(relaxed = true),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val session = mockk<androidx.media3.session.MediaLibraryService.MediaLibrarySession>(relaxed = true)
+        val searchResult = callback.onSearch(session, mockk(relaxed = true), "beatles", null).get()
+        assertEquals(0, searchResult.resultCode)
+        verify { session.notifySearchResultChanged(any(), eq("beatles"), eq(1), isNull()) }
+
+        val page = callback.onGetSearchResult(
+            session,
+            mockk(relaxed = true),
+            "beatles",
+            0,
+            20,
+            null,
+        ).get()
+        assertEquals(1, page.value?.size)
+        assertEquals("t1", page.value?.get(0)?.mediaId)
+    }
+
+    @Test
+    fun `onSearch blank query notifies zero`() {
+        val callback = createCallback(mockk(relaxed = true))
+        val session = mockk<androidx.media3.session.MediaLibraryService.MediaLibrarySession>(relaxed = true)
+        callback.onSearch(session, mockk(relaxed = true), "  ", null).get()
+        verify { session.notifySearchResultChanged(any(), eq("  "), eq(0), isNull()) }
+    }
+
+    @Test
+    fun `onGetSearchResult synthesizes search3 hits when Room empty`() {
+        val api = mockk<SubsonicApi>(relaxed = true)
+        coEvery { api.search3(any(), any(), any(), any(), any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "searchResult3" to mapOf(
+                    "song" to listOf(
+                        mapOf(
+                            "id" to "remote-1",
+                            "title" to "Remote Hit",
+                            "artist" to "X",
+                            "duration" to 120,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTracksByIds(listOf("remote-1")) } returns emptyList()
+        val localSearch = mockk<com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository>()
+        coEvery { localSearch.search(any(), any(), any()) } returns
+            com.lucasdss.ftpmusic.app.data.search.LocalSearchHit()
+        val callback = MediaSessionCallback(
+            trackDao = trackDao,
+            metadataDao = mockk(relaxed = true),
+            authHelper = SubsonicAuthHelper(),
+            api = api,
+            localSearch = localSearch,
+            playlistDao = mockk(relaxed = true),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val session = mockk<androidx.media3.session.MediaLibraryService.MediaLibrarySession>(relaxed = true)
+        callback.onSearch(session, mockk(relaxed = true), "remote", null).get()
+        val page = callback.onGetSearchResult(
+            session,
+            mockk(relaxed = true),
+            "remote",
+            0,
+            20,
+            null,
+        ).get()
+        assertEquals(1, page.value?.size)
+        assertEquals("remote-1", page.value?.get(0)?.mediaId)
+        assertEquals("Remote Hit", page.value?.get(0)?.mediaMetadata?.title.toString())
+    }
+
+    @Test
+    fun `onAddMediaItems empty browse expand returns empty not folder`() {
+        val playlistDao = mockk<com.lucasdss.ftpmusic.app.data.db.PlaylistDao>(relaxed = true)
+        coEvery { playlistDao.getEntries("p0") } returns emptyList()
+        val callback = createCallback(mockk(relaxed = true), playlistDao = playlistDao)
+        val item = MediaItem.Builder().setMediaId(AutoBrowseIds.playlist("p0")).build()
+        val result = callback.onAddMediaItems(mockk(relaxed = true), mockk(relaxed = true), listOf(item)).get()
+        assertTrue(result.isEmpty())
     }
 
     @Test

@@ -102,4 +102,43 @@ class MediaSessionCallbackReactionTest {
         assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
         coVerify { fav.likeTrack("t1") }
     }
+
+    @Test
+    fun `onCustomCommand skips radio current item`() {
+        val fav = mockk<FavoriteRepository>(relaxed = true)
+        val reaction = CurrentTrackReactionController(fav, mockk(relaxed = true))
+        val cb = callback(reaction)
+        val player = mockk<Player>(relaxed = true)
+        every { player.currentMediaItem } returns MediaItem.Builder()
+            .setMediaId(AutoBrowseIds.radio("station-1"))
+            .build()
+        val session = mockk<MediaSession>(relaxed = true)
+        every { session.player } returns player
+
+        val result = cb.onCustomCommand(
+            session,
+            mockk(relaxed = true),
+            MediaSessionReactionCommands.LIKE_COMMAND,
+            Bundle.EMPTY,
+        ).get()
+        assertEquals(SessionResult.RESULT_ERROR_NOT_SUPPORTED, result.resultCode)
+        coVerify(exactly = 0) { fav.likeTrack(any()) }
+    }
+
+    @Test
+    fun `onSetRating skips radio current item`() {
+        val fav = mockk<FavoriteRepository>(relaxed = true)
+        val reaction = CurrentTrackReactionController(fav, mockk(relaxed = true))
+        val cb = callback(reaction)
+        val player = mockk<Player>(relaxed = true)
+        every { player.currentMediaItem } returns MediaItem.Builder()
+            .setMediaId("radio:99")
+            .build()
+        val session = mockk<MediaSession>(relaxed = true)
+        every { session.player } returns player
+
+        val result = cb.onSetRating(session, mockk(relaxed = true), ThumbRating(true)).get()
+        assertEquals(SessionResult.RESULT_ERROR_NOT_SUPPORTED, result.resultCode)
+        coVerify(exactly = 0) { fav.likeTrack(any()) }
+    }
 }

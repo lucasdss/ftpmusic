@@ -10,13 +10,20 @@ import com.lucasdss.ftpmusic.app.MainActivity
 import com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
+import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
+import com.lucasdss.ftpmusic.app.data.db.GenreDao
+import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
+import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.playback.AutoRadioStationsSource
 import com.lucasdss.ftpmusic.app.playback.CurrentTrackReactionController
+import com.lucasdss.ftpmusic.app.playback.DefaultAutoRadioStationsSource
 import com.lucasdss.ftpmusic.app.playback.MediaSessionCallback
 import dagger.Module
 import dagger.Provides
@@ -33,6 +40,14 @@ object MediaModule {
 
     @Provides
     @Singleton
+    fun provideAutoRadioStationsSource(
+        api: SubsonicApi,
+        authHelper: SubsonicAuthHelper,
+        radioFavoriteDao: RadioFavoriteDao,
+    ): AutoRadioStationsSource = DefaultAutoRadioStationsSource(api, authHelper, radioFavoriteDao)
+
+    @Provides
+    @Singleton
     fun provideMediaSessionCallback(
         trackDao: TrackDao,
         metadataDao: CachedMetadataDao,
@@ -42,15 +57,25 @@ object MediaModule {
         persistenceManager: com.lucasdss.ftpmusic.app.playback.QueuePersistenceManager,
         playlistDao: PlaylistDao,
         reactionController: CurrentTrackReactionController,
+        genreDao: GenreDao,
+        customMixDao: CustomMixDao,
+        genreMixDao: GenreMixDao,
+        dailyMixRepository: DailyMixRepository,
+        radioSource: AutoRadioStationsSource,
     ): MediaSessionCallback = MediaSessionCallback(
-        trackDao,
-        metadataDao,
-        authHelper,
-        api,
-        localSearch,
-        persistenceManager,
-        playlistDao,
-        reactionController,
+        trackDao = trackDao,
+        metadataDao = metadataDao,
+        authHelper = authHelper,
+        api = api,
+        localSearch = localSearch,
+        persistenceManager = persistenceManager,
+        playlistDao = playlistDao,
+        reactionController = reactionController,
+        genreDao = genreDao,
+        customMixDao = customMixDao,
+        genreMixDao = genreMixDao,
+        dailyMixRepository = dailyMixRepository,
+        radioSource = radioSource,
     )
 
     @Provides

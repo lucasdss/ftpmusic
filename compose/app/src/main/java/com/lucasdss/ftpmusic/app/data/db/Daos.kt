@@ -336,6 +336,12 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE genre = :genre")
     suspend fun getTracksByGenre(genre: String): List<TrackEntity>
 
+    /** Paged genre tracks for Android Auto browse (ADR-0131). */
+    @Query(
+        "SELECT * FROM tracks WHERE genre = :genre ORDER BY title ASC LIMIT :limit OFFSET :offset",
+    )
+    suspend fun getTracksByGenrePaged(genre: String, limit: Int, offset: Int): List<TrackEntity>
+
     // ── v47/v51/v52: Custom Daily Mix source pools (disliked tracks + parent
     //    album/artist ledger flags excluded at SQL; id-only for AND intersect) ──
 

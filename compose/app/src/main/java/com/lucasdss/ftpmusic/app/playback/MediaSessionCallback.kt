@@ -40,10 +40,13 @@ import kotlinx.coroutines.withContext
  * System UI can rebuild the last queue after process death.
  *
  * Android Auto browse tree: [onGetLibraryRoot] / [onGetChildren] / [onGetItem]
- * via [AutoBrowseCatalog] (ADR-0091). Local-first Room only.
+ * via [AutoBrowseCatalog] (ADR-0091 / ADR-0131). Local-first Room + radio source.
+ *
+ * In-Auto search: [onSearch] / [onGetSearchResult] (ADR-0131). Voice
+ * [searchAndNavidromeExpand] stays album-expand — do not converge.
  *
  * Like/dislike custom commands (ADR-0118): [onConnect] / [onCustomCommand] /
- * [onSetRating] via [CurrentTrackReactionController].
+ * [onSetRating] via [CurrentTrackReactionController]. Radio gated (ADR-0131).
  *
  * The requested track is placed first in the returned list so playback
  * starts at the correct position. The remaining album tracks follow in
@@ -62,9 +65,26 @@ class MediaSessionCallback(
     private val persistenceManager: QueuePersistenceManager? = null,
     private val playlistDao: PlaylistDao? = null,
     private val reactionController: CurrentTrackReactionController? = null,
+    private val genreDao: com.lucasdss.ftpmusic.app.data.db.GenreDao? = null,
+    private val customMixDao: com.lucasdss.ftpmusic.app.data.db.CustomMixDao? = null,
+    private val genreMixDao: com.lucasdss.ftpmusic.app.data.db.GenreMixDao? = null,
+    private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository? = null,
+    private val radioSource: AutoRadioStationsSource? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MediaLibraryService.MediaLibrarySession.Callback {
+
+    /** Cached in-Auto search hits keyed by query (ADR-0131). */
+    private val searchCache = java.util.concurrent.ConcurrentHashMap<String, SearchCacheEntry>()
+
+    private data class SearchCacheEntry(
+        val tracks: List<com.lucasdss.ftpmusic.app.data.db.TrackEntity>,
+        val albums: List<com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity>,
+        val artists: List<com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity>,
+        val playlists: List<com.lucasdss.ftpmusic.app.data.db.PlaylistEntity>,
+        val genres: List<com.lucasdss.ftpmusic.app.data.db.GenreEntity>,
+        val totalCount: Int,
+    )
 
     private val browseCatalog: AutoBrowseCatalog? by lazy {
         val playlists = playlistDao ?: return@lazy null
@@ -83,6 +103,11 @@ class MediaSessionCallback(
                     Uri.parse(authHelper.buildStreamUrl(baseUrl, trackId, username, password))
                 }
             },
+            genreDao = genreDao,
+            customMixDao = customMixDao,
+            genreMixDao = genreMixDao,
+            dailyMixRepository = dailyMixRepository,
+            radioSource = radioSource,
         )
     }
 
@@ -146,12 +171,21 @@ class MediaSessionCallback(
     ): ListenableFuture<List<MediaItem>> {
         if (mediaItems.isEmpty()) return Futures.immediateFuture(mediaItems)
         if (mediaItems.size != 1) return Futures.immediateFuture(mediaItems)
-        val mediaId = mediaItems.first().mediaId ?: return Futures.immediateFuture(mediaItems)
+        val first = mediaItems.first()
+        val mediaId = first.mediaId ?: return Futures.immediateFuture(mediaItems)
+        // Radio items already carry stream URI — do not album-expand.
+        if (AutoBrowseIds.isRadioMediaId(mediaId) ||
+            first.mediaMetadata.extras?.getString("type") == "radio"
+        ) {
+            return Futures.immediateFuture(mediaItems)
+        }
         return scope.future {
             try {
                 if (AutoBrowseIds.isBrowseNode(mediaId)) {
                     val expanded = browseCatalog?.expandForPlayback(mediaId).orEmpty()
-                    if (expanded.isNotEmpty()) return@future expanded
+                    // Empty expand (dangling playlist entries, empty mix): do not
+                    // fall through to album expand with a folder MediaItem (no URI).
+                    return@future if (expanded.isNotEmpty()) expanded else emptyList()
                 }
                 val expanded = expandToAlbum(mediaId)
                 if (expanded != null && expanded.size > 1) expanded else mediaItems
@@ -160,6 +194,144 @@ class MediaSessionCallback(
                 mediaItems
             }
         }
+    }
+
+    override fun onSearch(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<Void>> {
+        if (query.isBlank()) {
+            session.notifySearchResultChanged(browser, query, 0, params)
+            return Futures.immediateFuture(LibraryResult.ofVoid())
+        }
+        return scope.future {
+            try {
+                val entry = runSearch(query)
+                searchCache[query] = entry
+                session.notifySearchResultChanged(browser, query, entry.totalCount, params)
+                LibraryResult.ofVoid()
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaSessionCallback] onSearch failed: ${e.message}")
+                session.notifySearchResultChanged(browser, query, 0, params)
+                LibraryResult.ofVoid()
+            }
+        }
+    }
+
+    override fun onGetSearchResult(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        val catalog = browseCatalog
+            ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
+        return scope.future {
+            try {
+                val entry = searchCache[query] ?: runSearch(query).also { searchCache[query] = it }
+                val items = catalog.searchResultItems(
+                    tracks = entry.tracks,
+                    albums = entry.albums,
+                    artists = entry.artists,
+                    playlists = entry.playlists,
+                    genres = entry.genres,
+                    page = page,
+                    pageSize = pageSize,
+                )
+                LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaSessionCallback] onGetSearchResult failed: ${e.message}")
+                LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    private suspend fun runSearch(query: String): SearchCacheEntry {
+        val local = try {
+            localSearch?.search(query, limit = 50, playableOnly = false)
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic", "[MediaSessionCallback] local search failed: ${e.message}")
+            null
+        }
+        var tracks = local?.tracks.orEmpty()
+        val albums = local?.albums.orEmpty()
+        val artists = local?.artists.orEmpty()
+        val playlists = local?.playlists.orEmpty()
+        val genres = local?.genres.orEmpty()
+
+        // Optional search3 when local corpus empty and credentials present.
+        if (tracks.isEmpty() && albums.isEmpty() && artists.isEmpty()) {
+            tracks = networkSearchTracks(query)
+        }
+
+        val total = tracks.size + albums.size + artists.size + playlists.size + genres.size
+        return SearchCacheEntry(tracks, albums, artists, playlists, genres, total)
+    }
+
+    private suspend fun networkSearchTracks(query: String): List<com.lucasdss.ftpmusic.app.data.db.TrackEntity> {
+        val username = SubsonicCredentials.username
+        val password = SubsonicCredentials.password
+        if (username.isEmpty() || password.isEmpty() || !DynamicBaseUrl.isConfigured()) {
+            return emptyList()
+        }
+        return try {
+            val auth = authHelper.buildAuthParams(username, password)
+            val response = api.search3(query, songCount = 20, artistCount = 0, albumCount = 0, auth = auth)
+            val sr = response["subsonic-response"] as? Map<*, *> ?: return emptyList()
+            val searchResult = sr["searchResult3"] as? Map<*, *> ?: return emptyList()
+            val songs: List<*> = when (val raw = searchResult["song"]) {
+                is List<*> -> raw
+                is Map<*, *> -> listOf(raw)
+                else -> return emptyList()
+            }
+            val maps = songs.mapNotNull { it as? Map<*, *> }
+            val ids = maps.mapNotNull { songIdOf(it["id"]) }
+            val fromRoom = if (ids.isEmpty()) emptyList() else trackDao.getTracksByIds(ids)
+            if (fromRoom.isNotEmpty()) {
+                // Preserve search3 ranking where possible.
+                val byId = fromRoom.associateBy { it.id }
+                return ids.mapNotNull { byId[it] }.ifEmpty { fromRoom }
+            }
+            // Local corpus empty: synthesize thin TrackEntity rows from search3
+            // so Auto search can still show / play streamable hits (ADR-0131).
+            maps.mapNotNull { m ->
+                val id = songIdOf(m["id"]) ?: return@mapNotNull null
+                com.lucasdss.ftpmusic.app.data.db.TrackEntity(
+                    id = id,
+                    title = m["title"] as? String ?: id,
+                    artist = m["artist"] as? String,
+                    album = m["album"] as? String,
+                    albumId = songIdOf(m["albumId"]),
+                    artistId = songIdOf(m["artistId"]),
+                    coverArtUrl = songIdOf(m["coverArt"]),
+                    durationSeconds = when (val d = m["duration"]) {
+                        is Number -> d.toInt()
+                        is String -> d.toIntOrNull()
+                        else -> null
+                    },
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic", "[MediaSessionCallback] search3 fallback failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun songIdOf(raw: Any?): String? = when (raw) {
+        is String -> raw.takeIf { it.isNotBlank() }
+        is Number -> raw.toString()
+        else -> null
+    }
+
+    private fun isRadioCurrent(mediaItem: MediaItem?): Boolean {
+        if (mediaItem == null) return false
+        val id = mediaItem.mediaId
+        if (!id.isNullOrBlank() && AutoBrowseIds.isRadioMediaId(id)) return true
+        return mediaItem.mediaMetadata.extras?.getString("type") == "radio"
     }
 
     /**
@@ -401,9 +573,11 @@ class MediaSessionCallback(
         val controllerRef = reactionController
             ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
         return scope.future {
-            val trackId = withContext(mainDispatcher) {
-                session.player.currentMediaItem?.mediaId
+            val current = withContext(mainDispatcher) { session.player.currentMediaItem }
+            if (isRadioCurrent(current)) {
+                return@future SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
             }
+            val trackId = current?.mediaId
             if (trackId.isNullOrBlank()) {
                 return@future SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)
             }
@@ -433,9 +607,11 @@ class MediaSessionCallback(
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
         }
         return scope.future {
-            val trackId = withContext(mainDispatcher) {
-                session.player.currentMediaItem?.mediaId
+            val currentItem = withContext(mainDispatcher) { session.player.currentMediaItem }
+            if (isRadioCurrent(currentItem)) {
+                return@future SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
             }
+            val trackId = currentItem?.mediaId
             if (trackId.isNullOrBlank()) {
                 return@future SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)
             }
@@ -472,6 +648,20 @@ class MediaSessionCallback(
 
     /** Refresh overflow buttons + ThumbRating metadata after a reaction change. */
     fun refreshReactionSurfaces(session: MediaSession, snap: CurrentTrackReactionController.Snapshot) {
+        val current = try {
+            session.player.currentMediaItem
+        } catch (_: Exception) {
+            null
+        }
+        if (isRadioCurrent(current)) {
+            try {
+                session.setMediaButtonPreferences(ImmutableList.of())
+                session.setCustomLayout(ImmutableList.of())
+            } catch (_: Exception) {
+                // Session may be released during teardown.
+            }
+            return
+        }
         val buttons = MediaSessionReactionCommands.buttons(snap.isStarred, snap.isDisliked)
         try {
             session.setMediaButtonPreferences(buttons)

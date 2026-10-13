@@ -8,14 +8,21 @@ import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedAlbumTrackEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
+import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
+import com.lucasdss.ftpmusic.app.data.db.CustomMixEntity
+import com.lucasdss.ftpmusic.app.data.db.GenreDao
+import com.lucasdss.ftpmusic.app.data.db.GenreEntity
+import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
+import java.time.LocalDate
 
 /**
- * Local-first Android Auto browse tree (ADR-0091).
- * Room only — no network on browse clicks.
+ * Local-first Android Auto browse tree (ADR-0091 / ADR-0131).
+ * Room for library nodes; radio uses [AutoRadioStationsSource] (network + bookmarks).
  */
 class AutoBrowseCatalog(
     private val trackDao: TrackDao,
@@ -23,6 +30,11 @@ class AutoBrowseCatalog(
     private val playlistDao: PlaylistDao,
     private val artworkUriFor: (coverArtId: String?) -> Uri?,
     private val streamUriFor: (trackId: String) -> Uri?,
+    private val genreDao: GenreDao? = null,
+    private val customMixDao: CustomMixDao? = null,
+    private val genreMixDao: GenreMixDao? = null,
+    private val dailyMixRepository: DailyMixRepository? = null,
+    private val radioSource: AutoRadioStationsSource? = null,
 ) {
     fun rootItem(): MediaItem = folder(
         mediaId = AutoBrowseIds.ROOT,
@@ -40,13 +52,27 @@ class AutoBrowseCatalog(
                 trackItem(it)
             }
 
+            AutoBrowseIds.OFFLINE -> trackDao.getDownloadedPaged(limit = size, offset = offset).map {
+                trackItem(it)
+            }
+
             AutoBrowseIds.FAVORITES -> trackDao.getStarred(limit = size, offset = offset).map { trackItem(it) }
 
-            AutoBrowseIds.PLAYLISTS -> pageList(playlistDao.getAll(), offset, size) { playlistFolder(it) }
+            AutoBrowseIds.MIXES -> {
+                val mixes = customMixDao?.getAll().orEmpty().drop(offset).take(size)
+                mixes.map { mixFolder(it) }
+            }
+
+            AutoBrowseIds.PLAYLISTS -> playlistDao.getAll().drop(offset).take(size).map { playlistFolder(it) }
 
             AutoBrowseIds.ALBUMS -> metadataDao.getAlbumsPaged(size, offset).map { albumFolder(it) }
 
             AutoBrowseIds.ARTISTS -> metadataDao.getArtistsPaged(size, offset).map { artistFolder(it) }
+
+            AutoBrowseIds.GENRES -> genreDao?.getAllByPopularity().orEmpty()
+                .drop(offset).take(size).map { genreFolder(it) }
+
+            AutoBrowseIds.RADIO -> loadRadioStations().drop(offset).take(size).map { radioItem(it) }
 
             else -> {
                 AutoBrowseIds.parsePlaylist(parentId)?.let { id ->
@@ -55,6 +81,10 @@ class AutoBrowseCatalog(
                     albumTracks(id, offset, size)
                 } ?: AutoBrowseIds.parseArtist(parentId)?.let { id ->
                     artistAlbums(id, offset, size)
+                } ?: AutoBrowseIds.parseMix(parentId)?.let { id ->
+                    mixTracks(id, offset, size)
+                } ?: AutoBrowseIds.parseGenre(parentId)?.let { name ->
+                    genreTracks(name, offset, size)
                 } ?: emptyList()
             }
         }
@@ -64,10 +94,14 @@ class AutoBrowseCatalog(
         when (mediaId) {
             AutoBrowseIds.ROOT -> return rootItem()
             AutoBrowseIds.RECENT -> return folder(AutoBrowseIds.RECENT, "Recently played", playable = false)
+            AutoBrowseIds.OFFLINE -> return folder(AutoBrowseIds.OFFLINE, "Downloads", playable = false)
             AutoBrowseIds.FAVORITES -> return folder(AutoBrowseIds.FAVORITES, "Favorites", playable = false)
+            AutoBrowseIds.MIXES -> return folder(AutoBrowseIds.MIXES, "Daily Mixes", playable = false)
             AutoBrowseIds.PLAYLISTS -> return folder(AutoBrowseIds.PLAYLISTS, "Playlists", playable = false)
             AutoBrowseIds.ALBUMS -> return folder(AutoBrowseIds.ALBUMS, "Albums", playable = false)
             AutoBrowseIds.ARTISTS -> return folder(AutoBrowseIds.ARTISTS, "Artists", playable = false)
+            AutoBrowseIds.GENRES -> return folder(AutoBrowseIds.GENRES, "Genres", playable = false)
+            AutoBrowseIds.RADIO -> return folder(AutoBrowseIds.RADIO, "Live Radio", playable = false)
         }
         AutoBrowseIds.parsePlaylist(mediaId)?.let { id ->
             return playlistDao.getById(id)?.let { playlistFolder(it) }
@@ -78,11 +112,22 @@ class AutoBrowseCatalog(
         AutoBrowseIds.parseArtist(mediaId)?.let { id ->
             return metadataDao.getArtistById(id)?.let { artistFolder(it) }
         }
+        AutoBrowseIds.parseMix(mediaId)?.let { id ->
+            return customMixDao?.getById(id)?.let { mixFolder(it) }
+        }
+        AutoBrowseIds.parseGenre(mediaId)?.let { name ->
+            val genres = genreDao?.getGenresByNames(listOf(name)).orEmpty()
+            return genres.firstOrNull()?.let { genreFolder(it) }
+                ?: folder(AutoBrowseIds.genre(name), name, playable = false)
+        }
+        AutoBrowseIds.parseRadio(mediaId)?.let { stationId ->
+            return loadRadioStations().firstOrNull { it.id == stationId }?.let { radioItem(it) }
+        }
         val track = trackDao.getTrack(mediaId) ?: return null
         return trackItem(track)
     }
 
-    /** Expand browse media id to a playable timeline (album / playlist / track). */
+    /** Expand browse media id to a playable timeline. */
     suspend fun expandForPlayback(mediaId: String): List<MediaItem> {
         AutoBrowseIds.parseAlbum(mediaId)?.let { albumId ->
             return albumTracks(albumId, offset = 0, size = 500)
@@ -95,18 +140,73 @@ class AutoBrowseCatalog(
                 .ifEmpty { metadataDao.getAlbumsByTrackArtistId(artistId) }
             return albums.flatMap { albumTracks(it.id, offset = 0, size = 200) }.take(500)
         }
+        AutoBrowseIds.parseMix(mediaId)?.let { mixId ->
+            return mixTracks(mixId, offset = 0, size = 500)
+        }
+        AutoBrowseIds.parseGenre(mediaId)?.let { name ->
+            return genreTracks(name, offset = 0, size = 500)
+        }
+        AutoBrowseIds.parseRadio(mediaId)?.let { stationId ->
+            val station = loadRadioStations().firstOrNull { it.id == stationId } ?: return emptyList()
+            return listOf(radioItem(station))
+        }
+        when (mediaId) {
+            AutoBrowseIds.OFFLINE -> return trackDao.getDownloadedPaged(limit = 500, offset = 0).map { trackItem(it) }
+
+            AutoBrowseIds.FAVORITES -> return trackDao.getStarred(limit = 500, offset = 0).map { trackItem(it) }
+
+            AutoBrowseIds.RECENT -> return trackDao.getRecentlyPlayedPaged(limit = 500, offset = 0).map {
+                trackItem(it)
+            }
+        }
         if (AutoBrowseIds.isBrowseNode(mediaId)) return emptyList()
         val track = trackDao.getTrack(mediaId) ?: return emptyList()
         return listOf(trackItem(track))
     }
 
+    /**
+     * Flatten local search hit into Auto MediaItems (tracks + folder hits), then page.
+     * Used by [MediaSessionCallback.onGetSearchResult] — not the voice expand path.
+     */
+    fun searchResultItems(
+        tracks: List<TrackEntity>,
+        albums: List<CachedAlbumEntity>,
+        artists: List<CachedArtistEntity>,
+        playlists: List<PlaylistEntity>,
+        genres: List<GenreEntity>,
+        page: Int,
+        pageSize: Int,
+    ): List<MediaItem> {
+        val all = buildList {
+            tracks.forEach { add(trackItem(it)) }
+            albums.forEach { add(albumFolder(it)) }
+            artists.forEach { add(artistFolder(it)) }
+            playlists.forEach { add(playlistFolder(it)) }
+            genres.forEach { add(genreFolder(it)) }
+        }
+        val size = pageSize.coerceIn(1, 100)
+        val offset = (page.coerceAtLeast(0)) * size
+        return all.drop(offset).take(size)
+    }
+
     private fun rootChildren(): List<MediaItem> = listOf(
         folder(AutoBrowseIds.RECENT, "Recently played", playable = false),
+        folder(AutoBrowseIds.OFFLINE, "Downloads", playable = false),
         folder(AutoBrowseIds.FAVORITES, "Favorites", playable = false),
+        folder(AutoBrowseIds.MIXES, "Daily Mixes", playable = false),
         folder(AutoBrowseIds.PLAYLISTS, "Playlists", playable = false),
         folder(AutoBrowseIds.ALBUMS, "Albums", playable = false),
         folder(AutoBrowseIds.ARTISTS, "Artists", playable = false),
+        folder(AutoBrowseIds.GENRES, "Genres", playable = false),
+        folder(AutoBrowseIds.RADIO, "Live Radio", playable = false),
     )
+
+    private suspend fun loadRadioStations(): List<AutoRadioStation> = try {
+        radioSource?.loadStations().orEmpty()
+    } catch (e: Exception) {
+        android.util.Log.w("ftpmusic", "[AutoBrowse] radio load failed: ${e.message}")
+        emptyList()
+    }
 
     private suspend fun playlistTracks(playlistId: String, offset: Int, size: Int): List<MediaItem> {
         val entries = playlistDao.getEntries(playlistId)
@@ -127,12 +227,74 @@ class AutoBrowseCatalog(
         return albums.drop(offset).take(size).map { albumFolder(it) }
     }
 
+    private suspend fun mixTrackIds(mixId: Long): List<String> {
+        val mixDao = genreMixDao ?: return emptyList()
+        val today = LocalDate.now().toString()
+        val yesterday = LocalDate.now().minusDays(1).toString()
+        val row = mixDao.getDailyMix(today, mixId) ?: mixDao.getDailyMix(yesterday, mixId) ?: return emptyList()
+        val ids = mixDao.getDailyMixTrackIds(row.id)
+        val filtered = dailyMixRepository?.filterPlayableMixTrackIds(ids) ?: ids
+        return filtered
+    }
+
+    private suspend fun mixTracks(mixId: Long, offset: Int, size: Int): List<MediaItem> {
+        val ids = mixTrackIds(mixId).drop(offset).take(size)
+        if (ids.isEmpty()) return emptyList()
+        val tracks = trackDao.getTracksByIds(ids).associateBy { it.id }
+        return ids.mapNotNull { tracks[it]?.let { t -> trackItem(t) } }
+    }
+
+    private suspend fun genreTracks(genre: String, offset: Int, size: Int): List<MediaItem> =
+        trackDao.getTracksByGenrePaged(genre, size, offset).map { trackItem(it) }
+
+    private suspend fun mixFolder(mix: CustomMixEntity): MediaItem {
+        val count = mixTrackIds(mix.id).size
+        return folder(
+            mediaId = AutoBrowseIds.mix(mix.id),
+            title = mix.name,
+            subtitle = if (count > 0) "$count tracks" else null,
+            playable = count > 0,
+            mediaType = MediaMetadata.MEDIA_TYPE_PLAYLIST,
+        )
+    }
+
+    private fun genreFolder(genre: GenreEntity): MediaItem = folder(
+        mediaId = AutoBrowseIds.genre(genre.name),
+        title = genre.name,
+        subtitle = if (genre.songCount > 0) "${genre.songCount} tracks" else null,
+        playable = genre.songCount > 0,
+        mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
+    )
+
+    private fun radioItem(station: AutoRadioStation): MediaItem {
+        val uri = station.streamUrl.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+        val metadata = MediaMetadata.Builder()
+            .setTitle(station.name)
+            .setIsBrowsable(false)
+            .setIsPlayable(uri != null)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
+            .apply {
+                setExtras(
+                    Bundle().apply {
+                        putString("type", "radio")
+                        putString("streamUrl", station.streamUrl)
+                        station.homePageUrl?.let { putString("homePageUrl", it) }
+                    },
+                )
+            }
+            .build()
+        return MediaItem.Builder()
+            .setMediaId(AutoBrowseIds.radio(station.id))
+            .apply { if (uri != null) setUri(uri) }
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
     private fun playlistFolder(playlist: PlaylistEntity): MediaItem = folder(
         mediaId = AutoBrowseIds.playlist(playlist.id),
         title = playlist.name,
         subtitle = "${playlist.trackCount} tracks",
         artwork = artworkUriFor(playlist.coverArt),
-        // Empty playlists stay browsable but not Play-all (dead Auto affordance).
         playable = playlist.trackCount > 0,
         mediaType = MediaMetadata.MEDIA_TYPE_PLAYLIST,
     )
@@ -142,7 +304,6 @@ class AutoBrowseCatalog(
         title = album.name,
         subtitle = album.artist,
         artwork = artworkUriFor(album.coverArt),
-        // Empty / unknown songCount: browsable but not Play-all (playlist parity, ADR-0100).
         playable = (album.songCount ?: 0) > 0,
         mediaType = MediaMetadata.MEDIA_TYPE_ALBUM,
     )
@@ -157,7 +318,6 @@ class AutoBrowseCatalog(
     )
 
     private fun trackItem(track: TrackEntity): MediaItem {
-        // Stream URI only — CacheDataSource keys on stream id= (ADR-0095 revision).
         val uri = streamUriFor(track.id)
         val metadata = MediaMetadata.Builder()
             .setTitle(track.title)
@@ -233,7 +393,4 @@ class AutoBrowseCatalog(
             .setMediaMetadata(metadata)
             .build()
     }
-
-    private fun <T> pageList(all: List<T>, offset: Int, size: Int, map: (T) -> MediaItem): List<MediaItem> =
-        all.drop(offset).take(size).map(map)
 }

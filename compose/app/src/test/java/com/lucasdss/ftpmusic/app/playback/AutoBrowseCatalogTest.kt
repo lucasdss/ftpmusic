@@ -5,11 +5,18 @@ import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedAlbumTrackEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
+import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
+import com.lucasdss.ftpmusic.app.data.db.CustomMixEntity
+import com.lucasdss.ftpmusic.app.data.db.DailyMixEntity
+import com.lucasdss.ftpmusic.app.data.db.GenreDao
+import com.lucasdss.ftpmusic.app.data.db.GenreEntity
+import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntryEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -28,6 +35,11 @@ class AutoBrowseCatalogTest {
     private lateinit var trackDao: TrackDao
     private lateinit var metadataDao: CachedMetadataDao
     private lateinit var playlistDao: PlaylistDao
+    private lateinit var genreDao: GenreDao
+    private lateinit var customMixDao: CustomMixDao
+    private lateinit var genreMixDao: GenreMixDao
+    private lateinit var dailyMixRepository: DailyMixRepository
+    private lateinit var radioSource: AutoRadioStationsSource
     private lateinit var catalog: AutoBrowseCatalog
 
     @Before
@@ -38,15 +50,27 @@ class AutoBrowseCatalogTest {
             every { uri.toString() } returns (firstArg() as String)
             uri
         }
+        every { Uri.encode(any()) } answers { firstArg() }
+        every { Uri.decode(any()) } answers { firstArg() }
         trackDao = mockk(relaxed = true)
         metadataDao = mockk(relaxed = true)
         playlistDao = mockk(relaxed = true)
+        genreDao = mockk(relaxed = true)
+        customMixDao = mockk(relaxed = true)
+        genreMixDao = mockk(relaxed = true)
+        dailyMixRepository = mockk(relaxed = true)
+        radioSource = mockk(relaxed = true)
         catalog = AutoBrowseCatalog(
             trackDao = trackDao,
             metadataDao = metadataDao,
             playlistDao = playlistDao,
             artworkUriFor = { id -> id?.let { Uri.parse("art://$it") } },
             streamUriFor = { id -> Uri.parse("stream://$id") },
+            genreDao = genreDao,
+            customMixDao = customMixDao,
+            genreMixDao = genreMixDao,
+            dailyMixRepository = dailyMixRepository,
+            radioSource = radioSource,
         )
     }
 
@@ -56,16 +80,20 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
-    fun `root has five browse nodes`() = runBlocking {
+    fun `root has nine browse nodes`() = runBlocking {
         val kids = catalog.children(AutoBrowseIds.ROOT, page = 0, pageSize = 50)
-        assertEquals(5, kids.size)
+        assertEquals(9, kids.size)
         assertEquals(
             listOf(
                 AutoBrowseIds.RECENT,
+                AutoBrowseIds.OFFLINE,
                 AutoBrowseIds.FAVORITES,
+                AutoBrowseIds.MIXES,
                 AutoBrowseIds.PLAYLISTS,
                 AutoBrowseIds.ALBUMS,
                 AutoBrowseIds.ARTISTS,
+                AutoBrowseIds.GENRES,
+                AutoBrowseIds.RADIO,
             ),
             kids.map { it.mediaId },
         )
@@ -149,7 +177,95 @@ class AutoBrowseCatalogTest {
     fun `browse node ids detected`() {
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.ROOT))
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.album("x")))
+        assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.OFFLINE))
+        assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.mix(1)))
+        assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.genre("Rock")))
+        assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.radio("s1")))
+        assertTrue(AutoBrowseIds.isRadioMediaId(AutoBrowseIds.radio("s1")))
+        assertTrue(AutoBrowseIds.isRadioMediaId("radio:123"))
         assertFalse(AutoBrowseIds.isBrowseNode("plain-track-id"))
+    }
+
+    @Test
+    fun `offline downloads paged`() = runBlocking {
+        coEvery { trackDao.getDownloadedPaged(20, 0) } returns listOf(
+            TrackEntity(id = "d1", title = "Dl"),
+        )
+        val kids = catalog.children(AutoBrowseIds.OFFLINE, 0, 20)
+        assertEquals("d1", kids.single().mediaId)
+    }
+
+    @Test
+    fun `genres list and expand`() = runBlocking {
+        coEvery { genreDao.getAllByPopularity() } returns listOf(
+            GenreEntity(id = 1, name = "Rock", songCount = 5),
+            GenreEntity(id = 2, name = "Jazz", songCount = 0),
+        )
+        val folders = catalog.children(AutoBrowseIds.GENRES, 0, 20)
+        assertEquals(2, folders.size)
+        assertTrue(folders[0].mediaMetadata.isPlayable == true)
+        assertFalse(folders[1].mediaMetadata.isPlayable == true)
+
+        coEvery { trackDao.getTracksByGenrePaged("Rock", 500, 0) } returns listOf(
+            TrackEntity(id = "r1", title = "Riff", genre = "Rock"),
+        )
+        val expanded = catalog.expandForPlayback(AutoBrowseIds.genre("Rock"))
+        assertEquals(listOf("r1"), expanded.map { it.mediaId })
+    }
+
+    @Test
+    fun `daily mix expand uses today then yesterday`() = runBlocking {
+        val today = java.time.LocalDate.now().toString()
+        val yesterday = java.time.LocalDate.now().minusDays(1).toString()
+        coEvery { genreMixDao.getDailyMix(today, 7L) } returns null
+        coEvery { genreMixDao.getDailyMix(yesterday, 7L) } returns DailyMixEntity(
+            id = 42,
+            date = yesterday,
+            mixId = 7L,
+        )
+        coEvery { genreMixDao.getDailyMixTrackIds(42) } returns listOf("t1", "t2")
+        coEvery { dailyMixRepository.filterPlayableMixTrackIds(listOf("t1", "t2")) } returns listOf("t1", "t2")
+        coEvery { trackDao.getTracksByIds(listOf("t1", "t2")) } returns listOf(
+            TrackEntity(id = "t1", title = "One"),
+            TrackEntity(id = "t2", title = "Two"),
+        )
+        val items = catalog.expandForPlayback(AutoBrowseIds.mix(7))
+        assertEquals(listOf("t1", "t2"), items.map { it.mediaId })
+    }
+
+    @Test
+    fun `empty mix folder is not playable`() = runBlocking {
+        coEvery { customMixDao.getAll() } returns listOf(
+            CustomMixEntity(id = 1, name = "Empty Mix", sourceKind = "genres"),
+        )
+        coEvery { genreMixDao.getDailyMix(any(), any()) } returns null
+        val kids = catalog.children(AutoBrowseIds.MIXES, 0, 20)
+        assertFalse(kids.single().mediaMetadata.isPlayable == true)
+    }
+
+    @Test
+    fun `radio stations from source`() = runBlocking {
+        coEvery { radioSource.loadStations() } returns listOf(
+            AutoRadioStation(id = "s1", name = "Synth", streamUrl = "https://stream.example/1"),
+        )
+        val kids = catalog.children(AutoBrowseIds.RADIO, 0, 20)
+        assertEquals(1, kids.size)
+        assertEquals(AutoBrowseIds.radio("s1"), kids[0].mediaId)
+        assertTrue(kids[0].mediaMetadata.isPlayable == true)
+        assertEquals(
+            androidx.media3.common.MediaMetadata.MEDIA_TYPE_RADIO_STATION,
+            kids[0].mediaMetadata.mediaType,
+        )
+
+        val expanded = catalog.expandForPlayback(AutoBrowseIds.radio("s1"))
+        assertEquals(1, expanded.size)
+        assertEquals("https://stream.example/1", expanded[0].localConfiguration?.uri?.toString())
+    }
+
+    @Test
+    fun `offline radio empty when source empty`() = runBlocking {
+        coEvery { radioSource.loadStations() } returns emptyList()
+        assertTrue(catalog.children(AutoBrowseIds.RADIO, 0, 20).isEmpty())
     }
 
     @Test
