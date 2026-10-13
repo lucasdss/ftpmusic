@@ -1,6 +1,6 @@
 # Library Scroll Chrome — Behavior Report
 
-Date: 2026-10-10 (amended 2026-10-13)  
+Date: 2026-10-10 (amended 2026-10-14)  
 Status: Delivered  
 Related: ADR-0114, ADR-0097, ADR-0107  
 Market: `docs/SCROLL_FLUIDITY_MARKET_RESEARCH.md`
@@ -15,6 +15,9 @@ Bug: `fillMaxSize` translate left bottom paint strip ≈ `offsetPx`; mini hide
 made strip obvious; mini reveal left strip above mini.  
 Fix: `appHeaderRidingContent` = measure `H+maxHeaderPx` + translate + parent
 `clipToBounds` — bottom strip **not** acceptable.  
+Regression `5d2fb5d`: clip **after** top pad → top black row; tabs clipped.  
+Fix: `appHeaderRidingClipHost` = clip **before** `padding(top)` so chips/search
+reclaim header band; bottom overhang still clipped.  
 Mini: hide on vertical scroll; show after 200ms idle. Nav fixed.  
 Spotify/YTM keep mini — we diverge on purpose (more list space).
 
@@ -22,11 +25,15 @@ Spotify/YTM keep mini — we diverge on purpose (more list space).
 
 ### Library / Favorites chrome
 
-- Outer `Column` keeps full `LocalAppHeaderContentPadding` + `clipToBounds()`.
+- Outer `Column` uses `Modifier.appHeaderRidingClipHost(headerPad)`:
+  `fillMaxSize` → `clipToBounds` → `background(Background)` → `padding(top)`.
+  **Clip before pad** is required — clip after pad discards top reclaim.
 - Chips + search (Library) / mode chips (Favorites) **and** list body share
   `Modifier.appHeaderRidingContent` via `LocalAppHeaderOffsetPx`.
 - Measure height = viewport `H` + fixed header-pad px; layout reports `H`;
   paint translate `-offsetPx` (ADR-0107: size stable during fling).
+- Collapsed: brand AppHeader off-screen; library nav chips + search visible in
+  former header band (not covered by Background strip).
 - No Background gap between chrome and Lazy when header collapses.
 - **No** bottom paint strip above nav/mini at any offset (incl. mini hidden).
 
@@ -48,7 +55,8 @@ Spotify/YTM keep mini — we diverge on purpose (more list space).
 
 ## Manual
 
-- Library Albums fling → chips/search enter header band; **no mid black row** under chrome; Settings not tappable collapsed.
+- Library Albums fling → chips/search enter header band fully visible; **no top
+  black row** over tabs; **no mid black row** under chrome; Settings not tappable collapsed.
 - Mini gone mid-fling; **no black band** where mini was; mini back ~200ms after stop with **no band above mini**; nav stays.
 - Favorites mode chips + list same ride as Library.
 

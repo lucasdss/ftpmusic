@@ -18,7 +18,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -916,11 +915,7 @@ fun FavoritesScreen(
     val headerOffset = LocalAppHeaderOffsetPx.current
     val headerPadPx = with(LocalDensity.current) { headerPad.toPx() }
     Column(
-        Modifier
-            .fillMaxSize()
-            .background(Background)
-            .padding(top = headerPad)
-            .clipToBounds(),
+        Modifier.appHeaderRidingClipHost(headerPad),
     ) {
         Column(
             Modifier

@@ -25,7 +25,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -120,11 +119,7 @@ fun LibraryContent(
     val headerOffset = LocalAppHeaderOffsetPx.current
     val headerPadPx = with(LocalDensity.current) { headerPad.toPx() }
     Column(
-        Modifier
-            .fillMaxSize()
-            .background(Background)
-            .padding(top = headerPad)
-            .clipToBounds(),
+        Modifier.appHeaderRidingClipHost(headerPad),
     ) {
         // Refresh favorites (thumbs/bookmarks) whenever Library becomes visible
         val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current

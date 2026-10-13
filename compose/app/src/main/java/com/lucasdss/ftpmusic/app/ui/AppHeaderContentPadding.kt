@@ -1,8 +1,12 @@
 package com.lucasdss.ftpmusic.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
@@ -66,23 +70,44 @@ fun appHeaderRidingMeasureHeight(constraintsMaxHeight: Int, maxOffsetPx: Float):
 }
 
 /**
+ * Outer host for Library/Favorites riding chrome (ADR-0114).
+ *
+ * **Order is load-bearing:** `clipToBounds` must precede `padding(top = headerPad)`.
+ * Clip after padding excludes the header band and discards upward chrome paint
+ * (top black row / hidden tabs). Clip first keeps full viewport bounds so
+ * [appHeaderRidingContent] can reclaim the pad band while bottom overhang is
+ * still clipped at the column edge (no strip above nav/mini).
+ */
+fun Modifier.appHeaderRidingClipHost(headerPad: Dp): Modifier = this
+    .fillMaxSize()
+    .clipToBounds()
+    .background(Background)
+    .padding(top = headerPad)
+
+/**
  * Library/Favorites chrome+list ride: measure child at `H + maxOffsetPx` (fixed;
  * changes only when header pad changes), report layout `H`, paint-translate by
- * `-offsetPx`. Pair with parent `clipToBounds()` so offset=0 overhang never paints
- * over nav/mini. ADR-0107: Lazy size stable during fling (extra not tied to live offset).
+ * `-offsetPx`. Pair with [appHeaderRidingClipHost] (clip **before** top padding)
+ * so reclaim paints into the header band and offset=0 overhang never paints over
+ * nav/mini. ADR-0107: Lazy size stable during fling (extra not tied to live offset).
+ *
+ * Requires a **bounded** max height (both call sites use `fillMaxSize` under Scaffold).
+ * Unbounded height skips over-measure and reports the child's natural size — never
+ * pass `Constraints.Infinity` as a layout height.
  */
 fun Modifier.appHeaderRidingContent(offsetPx: () -> Float, maxOffsetPx: Float): Modifier = this
     .layout { measurable, constraints ->
-        val targetHeight = appHeaderRidingMeasureHeight(constraints.maxHeight, maxOffsetPx)
-        val childConstraints =
-            if (targetHeight == Constraints.Infinity) {
-                constraints
-            } else {
-                constraints.copy(
-                    minHeight = targetHeight,
-                    maxHeight = targetHeight,
-                )
+        if (constraints.maxHeight == Constraints.Infinity) {
+            val placeable = measurable.measure(constraints)
+            return@layout layout(placeable.width, placeable.height) {
+                placeable.placeRelative(0, 0)
             }
+        }
+        val targetHeight = appHeaderRidingMeasureHeight(constraints.maxHeight, maxOffsetPx)
+        val childConstraints = constraints.copy(
+            minHeight = targetHeight,
+            maxHeight = targetHeight,
+        )
         val placeable = measurable.measure(childConstraints)
         layout(constraints.maxWidth, constraints.maxHeight) {
             placeable.placeRelative(0, 0)

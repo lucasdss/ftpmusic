@@ -63,6 +63,8 @@ class AppHeaderContentPaddingTest {
         assertEquals(0, appHeaderRidingMeasureHeight(0, 0f))
         assertEquals(100, appHeaderRidingMeasureHeight(100, 0f))
         assertEquals(148, appHeaderRidingMeasureHeight(100, 48f))
+        // Pure helper preserves Infinity; Modifier.appHeaderRidingContent guards
+        // and never reports Infinity as a layout height (see KDoc).
         assertEquals(Constraints.Infinity, appHeaderRidingMeasureHeight(Constraints.Infinity, 72f))
     }
 
