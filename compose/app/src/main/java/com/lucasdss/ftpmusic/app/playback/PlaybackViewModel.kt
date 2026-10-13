@@ -588,6 +588,22 @@ class PlaybackViewModel @Inject constructor(
         }
     }
 
+    /** Current + upcoming media ids (exclude finished prefix from history filter). */
+    private fun currentAndUpcomingQueueTrackIds(): Set<String> {
+        val queuePlayer = PlayerHolder.exoPlayer ?: PlayerHolder.player ?: return emptySet()
+        if (queuePlayer.mediaItemCount == 0) return emptySet()
+        val activeTrackId = PlayerHolder.player?.currentMediaItem?.mediaId?.takeIf { it.isNotEmpty() }
+        val currentIndex = activeTrackId?.let { id ->
+            (0 until queuePlayer.mediaItemCount).firstOrNull { i ->
+                queuePlayer.getMediaItemAt(i)?.mediaId == id
+            }
+        } ?: queuePlayer.currentMediaItemIndex.coerceAtLeast(0)
+        if (currentIndex < 0) return emptySet()
+        return (currentIndex until queuePlayer.mediaItemCount).mapNotNull { i ->
+            queuePlayer.getMediaItemAt(i)?.mediaId?.takeIf { it.isNotEmpty() }
+        }.toSet()
+    }
+
     /**
      * Save current queue as a local-first playlist (ADR-0075).
      * Unlike [shareQueue], this uses [PlaylistRepository] Room + pending sync.
@@ -620,12 +636,14 @@ class PlaybackViewModel @Inject constructor(
         }
     }
 
-    /** Refresh Recently Played band, excluding IDs already in the active queue. */
+    /**
+     * Refresh Recently Played band. Exclude only current + upcoming so finished
+     * tracks still in the Exo prefix can reappear (Apple/Spotify history).
+     */
     fun refreshQueueHistory() {
         viewModelScope.launch {
             try {
-                val exclude = currentQueueTrackIds().toSet() +
-                    setOfNotNull(PlayerHolder.player?.currentMediaItem?.mediaId)
+                val exclude = currentAndUpcomingQueueTrackIds()
                 val rows = trackDao.getRecentlyPlayed(limit = 20)
                 _queueHistory.value = rows
                     .filter { it.id !in exclude }

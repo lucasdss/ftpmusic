@@ -775,19 +775,19 @@ class PlaybackManagerTest {
     )
 
     @Test
-    fun `addToQueue appends via addMediaItems without replacing timeline`() {
+    fun `addToQueue inserts via addMediaItem at Dual index without replacing timeline`() {
         PlayerHolder.player = mockPlayer
         val manager = baseManager()
 
         manager.addToQueue(Track("t-add", "Add Me", duration = 150), "http://server/rest/stream?id=t-add")
 
-        verify { mockPlayer.addMediaItems(match { it.size == 1 && it[0].mediaId == "t-add" }) }
+        verify { mockPlayer.addMediaItem(any(), match { it.mediaId == "t-add" }) }
         verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         assertEquals("Priority queue grew", 1, manager.priorityQueueSize)
     }
 
     @Test
-    fun `addAllToQueue appends via addMediaItems without replacing timeline`() {
+    fun `addAllToQueue inserts via addMediaItems at Dual index without replacing timeline`() {
         PlayerHolder.player = mockPlayer
         val manager = baseManager()
 
@@ -796,7 +796,12 @@ class PlaybackManagerTest {
             listOf("http://a", "http://b"),
         )
 
-        verify { mockPlayer.addMediaItems(match { it.size == 2 && it.map { i -> i.mediaId } == listOf("t1", "t2") }) }
+        verify {
+            mockPlayer.addMediaItems(
+                any(),
+                match { it.size == 2 && it.map { i -> i.mediaId } == listOf("t1", "t2") },
+            )
+        }
         verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         assertEquals("Priority queue grew", 2, manager.priorityQueueSize)
     }
@@ -832,7 +837,8 @@ class PlaybackManagerTest {
 
         manager.addAllToQueue(emptyList(), emptyList())
 
-        verify { mockPlayer.addMediaItems(emptyList()) }
+        verify(exactly = 0) { mockPlayer.addMediaItems(any(), any()) }
+        verify(exactly = 0) { mockPlayer.addMediaItems(any<List<MediaItem>>()) }
         verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         assertEquals("Priority queue untouched", 0, manager.priorityQueueSize)
     }
@@ -875,11 +881,13 @@ class PlaybackManagerTest {
 
         manager.addToQueue(Track("t-cast", "Cast Me", duration = 150), "http://server/rest/stream?id=t-cast")
 
-        verify(exactly = 0) { mockPlayer.addMediaItems(any()) }
+        verify(exactly = 0) { mockPlayer.addMediaItem(any(), any()) }
+        verify(exactly = 0) { mockPlayer.addMediaItems(any<List<MediaItem>>()) }
         assertEquals("Exactly one Add event", 1, actions.size)
         val add = actions[0] as? CastQueueAction.Add
         assertNotNull("Event must be Add", add)
-        assertNull("Append has no insert-before item", add!!.beforeEntryId)
+        // Sole priority item — no post-insert neighbor.
+        assertNull("Solo Add has no insert-before item", add!!.beforeEntryId)
         assertEquals("t-cast", add.mediaItem.mediaId)
     }
 

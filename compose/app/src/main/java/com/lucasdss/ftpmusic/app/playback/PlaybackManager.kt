@@ -572,14 +572,13 @@ class PlaybackManager @Inject constructor(
             artistId = track.artistId, albumId = track.albumId,
             mimeType = mimeType,
         ).ensureEntryId()
-        // Insert immediately after the canonical current item. The receiver may
-        // trim played items, so derive the anchor from mediaId before mutation.
-        val currentIndex = currentCanonicalIndex()
-        optimist.playNextOptimistic(item, currentIndex)
+        // Align PRIORITY splice to live playhead before insert (not on every AUTO —
+        // that would skip unplayed PRIORITY). Then insert at Dual index.
+        val currentIndex = alignAnchorToPlayhead()
+        optimist.playNextOptimistic(item, currentIndex.takeIf { it >= 0 })
         val inserted = dualQueue.getMerged().firstOrNull { it.queueEntryId() == item.queueEntryId() } ?: item
         val insertIndex = dualQueue.getMerged().indexOfFirst { it.queueEntryId() == item.queueEntryId() }
             .coerceAtLeast(0)
-        // Local: insert without replacing timeline (same idea as addToQueue).
         if (!PlayerHolder.isCasting) {
             PlayerHolder.player?.addMediaItem(insertIndex, inserted)
         } else {
@@ -589,38 +588,44 @@ class PlaybackManager @Inject constructor(
         val (tracks, urls) = buildQueueStateFromDual()
         persistenceSave(tracks, urls, currentCanonicalIndex().coerceAtLeast(0))
         PlayerHolder.player?.let { updateNextTrackPreview(it) }
-        // Bi-directional sync during Cast: item inserted after current
+        // Cast: insert before the post-mutation neighbor of the new entry.
         emitCastOrCommit {
-            val beforeEntryId = dualQueue.getMerged().getOrNull(currentIndex + 2)?.queueEntryId()
+            val beforeEntryId = dualQueue.getMerged().getOrNull(insertIndex + 1)?.queueEntryId()
                 ?.takeIf { it > 0 }
             CastQueueAction.Add(inserted, beforeEntryId)
         }
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
-            "queueEdit action=playNext trackId=${track.id} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+            "queueEdit action=playNext trackId=${track.id} casting=${PlayerHolder.isCasting} " +
+                "size=${dualQueue.size} afterIndex=$currentIndex insertIndex=$insertIndex " +
+                "priSize=${dualQueue.prioritySize} contextSize=${dualQueue.contextSize}",
         )
     }
 
     fun addAllToQueue(tracks: List<Track>, urls: List<String>) {
         val items = buildMediaItems(tracks, urls).map { it.ensureEntryId() }
+        if (items.isEmpty()) return
+        alignAnchorToPlayhead()
         optimist.snapshot()
         dualQueue.addAllToQueue(items)
-        // Append to the player WITHOUT replacing the timeline — the current
-        // track keeps playing with no gap. During Cast the remote queue is
-        // updated exclusively via the Add events below (old behavior replaced
-        // the remote queue with the merged list AND appended again → dups).
+        // Local: insert at Dual PRIORITY-tail index (industry), not Exo append.
+        val firstId = items.first().queueEntryId()
+        val insertIndex = dualQueue.getMerged().indexOfFirst { it.queueEntryId() == firstId }
+            .coerceAtLeast(0)
         if (!PlayerHolder.isCasting) {
-            PlayerHolder.player?.addMediaItems(items)
+            PlayerHolder.player?.addMediaItems(insertIndex, items)
         } else {
             syncDualQueueToPlayer()
         }
         val (allTracks, allUrls) = buildQueueStateFromDual()
         persistenceSave(allTracks, allUrls, currentCanonicalIndex().coerceAtLeast(0))
-        // Bi-directional sync during Cast
-        emitCastAddsOrCommit(items)
+        val beforeEntryId = dualQueue.getMerged().getOrNull(insertIndex + items.size)?.queueEntryId()
+            ?.takeIf { it > 0 }
+        emitCastAddsOrCommit(items, beforeEntryId)
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
-            "queueEdit action=addAll count=${items.size} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+            "queueEdit action=addAll count=${items.size} casting=${PlayerHolder.isCasting} " +
+                "size=${dualQueue.size} insertIndex=$insertIndex",
         )
     }
 
@@ -699,23 +704,29 @@ class PlaybackManager @Inject constructor(
             artistId = track.artistId, albumId = track.albumId,
             mimeType = mimeType,
         ).ensureEntryId()
-        // Dual-queue: append to priority queue with optimistic snapshot
+        alignAnchorToPlayhead()
         optimist.addToQueueOptimistic(item)
-        // Append to the player without replacing the timeline (no playback gap).
+        val inserted = dualQueue.getMerged().firstOrNull { it.queueEntryId() == item.queueEntryId() } ?: item
+        val insertIndex = dualQueue.getMerged().indexOfFirst { it.queueEntryId() == item.queueEntryId() }
+            .coerceAtLeast(0)
+        // Local: mid-list insert at Dual PRIORITY-tail (not Exo append → Dual≠Exo drift).
         if (!PlayerHolder.isCasting) {
-            PlayerHolder.player?.addMediaItems(listOf(item))
+            PlayerHolder.player?.addMediaItem(insertIndex, inserted)
         } else {
             syncDualQueueToPlayer()
         }
         val (allTracks, allUrls) = buildQueueStateFromDual()
         persistenceSave(allTracks, allUrls, currentCanonicalIndex().coerceAtLeast(0))
         PlayerHolder.player?.let { updateNextTrackPreview(it) }
-        // Bi-directional sync during Cast — -1 appends at the end of the remote
-        // queue (mediaItemCount-1 pointed at the pre-append last item).
-        emitCastOrCommit { CastQueueAction.Add(item) }
+        emitCastOrCommit {
+            val beforeEntryId = dualQueue.getMerged().getOrNull(insertIndex + 1)?.queueEntryId()
+                ?.takeIf { it > 0 }
+            CastQueueAction.Add(inserted, beforeEntryId)
+        }
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
-            "queueEdit action=add trackId=${track.id} casting=${PlayerHolder.isCasting} size=${dualQueue.size}",
+            "queueEdit action=add trackId=${track.id} casting=${PlayerHolder.isCasting} " +
+                "size=${dualQueue.size} insertIndex=$insertIndex",
         )
     }
 
@@ -1268,12 +1279,13 @@ class PlaybackManager @Inject constructor(
         }
     }
 
-    private fun emitCastAddsOrCommit(items: List<MediaItem>) {
+    private fun emitCastAddsOrCommit(items: List<MediaItem>, beforeEntryId: Int? = null) {
         if (PlayerHolder.isCasting) {
             if (items.isEmpty()) return
             // One AddAll → one RMC insert → one castAck (ADR-0111). N× Add shared
             // the same revision and produced castAckFail floods in v1.8.0 logs.
-            castQueueListener?.invoke(CastQueueAction.AddAll(items))
+            // beforeEntryId null → receiver append (CP tail); set for mid-queue Add to Queue.
+            castQueueListener?.invoke(CastQueueAction.AddAll(items, beforeEntryId))
         } else {
             optimist.commit()
         }
@@ -1308,12 +1320,39 @@ class PlaybackManager @Inject constructor(
         local.setMediaItems(merged, startIndex.coerceIn(0, merged.lastIndex), 0L)
     }
 
+    /**
+     * Move Dual [contextAnchor] to the live playhead so PRIORITY splices after
+     * the currently playing CONTEXT row (Apple/Spotify Play Next). Call only
+     * immediately before Play Next / Add to Queue — not on every AUTO (that
+     * reorders PRIORITY behind a suffix playhead and can skip Up Next).
+     *
+     * @return canonical merged index after align (or -1 if empty / unknown)
+     */
+    private fun alignAnchorToPlayhead(): Int {
+        val beforeIds = dualQueue.entryIds()
+        val idx = currentCanonicalIndex()
+        if (idx < 0) return -1
+        dualQueue.alignAnchorToMergedIndex(idx)
+        if (beforeIds != dualQueue.entryIds()) {
+            // Align reordered PRIORITY relative to context — resync Exo projection.
+            syncDualQueueToPlayer()
+        }
+        return currentCanonicalIndex()
+    }
+
     /** Resolve active item into the canonical full queue. */
     private fun currentCanonicalIndex(): Int {
         val merged = dualQueue.getMerged()
         if (merged.isEmpty()) return -1
         val active = PlayerHolder.player
-        val activeId = active?.currentMediaItem?.mediaId
+        val activeItem = active?.currentMediaItem
+        // Prefer entryId when duplicates share mediaId (Play Next of same track).
+        val activeEntryId = activeItem?.queueEntryId() ?: 0
+        if (activeEntryId > 0) {
+            val byEntry = merged.indexOfFirst { it.queueEntryId() == activeEntryId }
+            if (byEntry >= 0) return byEntry
+        }
+        val activeId = activeItem?.mediaId
         val byId = activeId?.let { id -> merged.indexOfFirst { it.mediaId == id } } ?: -1
         if (byId >= 0) return byId
         // Casting + mediaId miss: fail closed (−1) — never coerce to 0 (false "not last").

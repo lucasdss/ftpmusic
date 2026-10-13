@@ -1447,9 +1447,18 @@ private fun BoxScope.PlayerQueuePanel(
 
                     // Scrollable content below the fixed drag handle.
                     // Industry: Queue (PRIORITY) → Next from → Autoplay (ADR-0053 / 0070).
-                    val priorityTracks = nextTracks.filter { it.isPriority && !it.isCurrent }
-                    val continueTracks = nextTracks.filter { !it.isPriority && !it.isAutoplay && !it.isCurrent }
-                    val autoplayTracks = nextTracks.filter { !it.isPriority && it.isAutoplay && !it.isCurrent }
+                    // Up Next = strictly after playhead (Apple/Spotify); past rows → history.
+                    val currentQueueIdx = nextTracks.firstOrNull { it.isCurrent }?.queueIndex
+                        ?: trackIndex
+                    val priorityTracks = nextTracks.filter {
+                        it.isPriority && !it.isCurrent && it.queueIndex > currentQueueIdx
+                    }
+                    val continueTracks = nextTracks.filter {
+                        !it.isPriority && !it.isAutoplay && !it.isCurrent && it.queueIndex > currentQueueIdx
+                    }
+                    val autoplayTracks = nextTracks.filter {
+                        !it.isPriority && it.isAutoplay && !it.isCurrent && it.queueIndex > currentQueueIdx
+                    }
                     val reorderableTracks = priorityTracks + continueTracks + autoplayTracks
                     val queueListState = rememberLazyListState()
                     val autoCenterQueue = LocalListChromePrefs.current.autoCenterNowPlaying

@@ -86,6 +86,15 @@ class DualQueueManagerTest {
     }
 
     @Test
+    fun `playNext after alignAnchor to mid-context inserts after playhead`() {
+        // Industry: align then playNext → [a,b,c,X,d]. Stale-anchor without align → [a,X,b,c,d].
+        manager.setContext(listOf(item("a"), item("b"), item("c"), item("d")), startIndex = 0)
+        manager.alignAnchorToMergedIndex(2)
+        manager.playNext(item("x"), afterIndex = 2)
+        assertEquals(listOf("a", "b", "c", "x", "d"), manager.getMerged().map { it.mediaId })
+    }
+
+    @Test
     fun `multiple playNext inserts in order`() {
         manager.playNext(item("second"))
         manager.playNext(item("first"))

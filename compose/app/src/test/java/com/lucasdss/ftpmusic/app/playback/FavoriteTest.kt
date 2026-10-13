@@ -709,13 +709,53 @@ class FavoriteTest {
             androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
         every { player.currentMediaItem } returns
             androidx.media3.common.MediaItem.Builder().setMediaId("t1").build()
+        every { player.currentMediaItemIndex } returns 0
         PlayerHolder.exoPlayer = player
+        PlayerHolder.player = player
         try {
             viewModel.refreshQueueHistory()
             testDispatcher.scheduler.advanceUntilIdle()
             assertEquals(listOf("t2"), viewModel.queueHistory.value.map { it.id })
         } finally {
             PlayerHolder.exoPlayer = null
+            PlayerHolder.player = null
+        }
+    }
+
+    @Test
+    fun `refreshQueueHistory includes finished tracks still in Exo prefix`() = runTest {
+        // Market: finished leave Up Next but stay in Recently Played even if
+        // still present in the Exo timeline prefix before current.
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getRecentlyPlayed(limit = 20) } returns listOf(
+            TrackEntity(id = "finished", title = "Done"),
+            TrackEntity(id = "upcoming", title = "Later"),
+            TrackEntity(id = "other", title = "Other"),
+        )
+        val (viewModel, _) = vm(mockk(relaxed = true), trackDao)
+        val player = mockk<androidx.media3.common.Player>(relaxed = true)
+        every { player.mediaItemCount } returns 3
+        every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("finished").build()
+        every { player.getMediaItemAt(1) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("current").build()
+        every { player.getMediaItemAt(2) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("upcoming").build()
+        every { player.currentMediaItem } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("current").build()
+        every { player.currentMediaItemIndex } returns 1
+        PlayerHolder.exoPlayer = player
+        PlayerHolder.player = player
+        try {
+            viewModel.refreshQueueHistory()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertEquals(
+                listOf("finished", "other"),
+                viewModel.queueHistory.value.map { it.id },
+            )
+        } finally {
+            PlayerHolder.exoPlayer = null
+            PlayerHolder.player = null
         }
     }
 

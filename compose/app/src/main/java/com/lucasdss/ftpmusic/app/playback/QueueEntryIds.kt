@@ -26,7 +26,12 @@ internal object QueueEntryIdMemory {
 fun MediaItem.queueEntryId(): Int {
     QueueEntryIdMemory.get(this).takeIf { it > 0 }?.let { return it }
     (localConfiguration?.tag as? Int)?.takeIf { it > 0 }?.let { return it }
-    return mediaMetadata.extras?.getInt(QUEUE_ENTRY_ID_EXTRA, 0) ?: 0
+    // JVM/unit stubs may lack a real MediaMetadata.extras Bundle.
+    return try {
+        mediaMetadata.extras?.getInt(QUEUE_ENTRY_ID_EXTRA, 0) ?: 0
+    } catch (_: Throwable) {
+        0
+    }
 }
 
 fun MediaItem.hasQueueEntryId(): Boolean = queueEntryId() > 0

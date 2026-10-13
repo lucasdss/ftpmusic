@@ -422,6 +422,74 @@ class PlaybackManagerBranchCoverageTest {
     }
 
     @Test
+    fun `playNext mid-album aligns anchor so insert is after playhead`() {
+        // Regression: stale contextAnchor left Play Next before playhead (diag 2026-10-13).
+        val dual = DualQueueManager()
+        val m = PlaybackManager(
+            queueManager,
+            mockPersistenceManager,
+            mockOfflineModeManager,
+            mockDownloadManager,
+            castPreferences,
+            mockAppContext,
+            mockQueueJournalDao,
+            dual,
+            OptimisticQueueDelegate(dual),
+        )
+        m.playAlbum(
+            listOf(track("a"), track("b"), track("c"), track("d")),
+            listOf(url("a"), url("b"), url("c"), url("d")),
+            skipPersistence = true,
+        )
+        // Simulate AUTO advance to c without aligning Dual (pre-fix world).
+        stubPlayerQueue("a", "b", "c", "d")
+        every { mockPlayer.currentMediaItemIndex } returns 2
+        every { mockPlayer.currentMediaItem } returns
+            MediaItem.Builder().setMediaId("c").setUri(url("c")).build()
+        every { mockPlayer.currentPosition } returns 1_000L
+
+        m.playNext(track("x"), url("x"))
+
+        assertEquals(listOf("a", "b", "c", "x", "d"), dual.getMerged().map { it.mediaId })
+        verify {
+            mockPlayer.addMediaItem(
+                3,
+                match { it.mediaId == "x" },
+            )
+        }
+    }
+
+    @Test
+    fun `addToQueue mid-album inserts at Dual index not Exo end`() {
+        val dual = DualQueueManager()
+        val m = PlaybackManager(
+            queueManager,
+            mockPersistenceManager,
+            mockOfflineModeManager,
+            mockDownloadManager,
+            castPreferences,
+            mockAppContext,
+            mockQueueJournalDao,
+            dual,
+            OptimisticQueueDelegate(dual),
+        )
+        m.playAlbum(
+            listOf(track("a"), track("b"), track("c")),
+            listOf(url("a"), url("b"), url("c")),
+            skipPersistence = true,
+        )
+        stubPlayerQueue("a", "b", "c")
+        every { mockPlayer.currentMediaItemIndex } returns 1
+        every { mockPlayer.currentMediaItem } returns
+            MediaItem.Builder().setMediaId("b").setUri(url("b")).build()
+
+        m.addToQueue(track("p"), url("p"))
+
+        assertEquals(listOf("a", "b", "p", "c"), dual.getMerged().map { it.mediaId })
+        verify { mockPlayer.addMediaItem(2, match { it.mediaId == "p" }) }
+    }
+
+    @Test
     fun `isAutoplayFlags and dualQueueSize reflect queue`() {
         val m = mgr()
         m.playAlbum(listOf(track("a")), listOf(url("a")), skipPersistence = true)
