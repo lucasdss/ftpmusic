@@ -25,12 +25,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -113,15 +114,17 @@ fun LibraryContent(
 
     // Chrome (chips + search) sits above Lazy — pad Column, not only list content
     // (ADR-0107 / post-1.8.0 hard-fix). Lazy top pad is local spacing only.
-    // ADR-0114: chrome + list ride -offsetPx together (one graphicsLayer) so collapse
-    // leaves no Background gap between chrome and Lazy.
+    // ADR-0114: chrome + list ride via appHeaderRidingContent (fixed over-measure +
+    // graphicsLayer -offsetPx) so collapse leaves no mid/bottom Background strip.
     val headerPad = LocalAppHeaderContentPadding.current
     val headerOffset = LocalAppHeaderOffsetPx.current
+    val headerPadPx = with(LocalDensity.current) { headerPad.toPx() }
     Column(
         Modifier
             .fillMaxSize()
             .background(Background)
-            .padding(top = headerPad),
+            .padding(top = headerPad)
+            .clipToBounds(),
     ) {
         // Refresh favorites (thumbs/bookmarks) whenever Library becomes visible
         val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -133,9 +136,10 @@ fun LibraryContent(
         Column(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    translationY = appHeaderChromeTranslationY(headerOffset.offsetPx())
-                }
+                .appHeaderRidingContent(
+                    offsetPx = { headerOffset.offsetPx() },
+                    maxOffsetPx = headerPadPx,
+                )
                 .background(Background),
         ) {
             // Server issues: AppHeader IssueStatusIcon + sheet (ADR-0120).
@@ -725,7 +729,7 @@ fun LibraryContent(
                     }
                 } // close Box(Modifier.weight(1f))
             }
-        } // chrome + list graphicsLayer wrap
+        } // chrome + list appHeaderRidingContent wrap
     }
 
     // ── Remove from device confirmation ──

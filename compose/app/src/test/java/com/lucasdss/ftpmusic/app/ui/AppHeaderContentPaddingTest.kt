@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui
 
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -46,5 +47,37 @@ class AppHeaderContentPaddingTest {
         assertEquals(-48f, appHeaderChromeTranslationY(48f), 0f)
         assertEquals(-120.5f, appHeaderChromeTranslationY(120.5f), 0.0001f)
         assertTrue(abs(appHeaderChromeTranslationY(10f) + 10f) < 0.0001f)
+    }
+
+    @Test
+    fun `riding extra clamps non-positive max offset to zero and ceils fractions`() {
+        assertEquals(0, appHeaderRidingExtraPx(0f))
+        assertEquals(0, appHeaderRidingExtraPx(-12f))
+        assertEquals(48, appHeaderRidingExtraPx(48f))
+        assertEquals(49, appHeaderRidingExtraPx(48.2f))
+        assertEquals(49, appHeaderRidingExtraPx(48.6f))
+    }
+
+    @Test
+    fun `riding measure height adds fixed extra without live offset`() {
+        assertEquals(0, appHeaderRidingMeasureHeight(0, 0f))
+        assertEquals(100, appHeaderRidingMeasureHeight(100, 0f))
+        assertEquals(148, appHeaderRidingMeasureHeight(100, 48f))
+        assertEquals(Constraints.Infinity, appHeaderRidingMeasureHeight(Constraints.Infinity, 72f))
+    }
+
+    @Test
+    fun `riding translation plus fixed extra covers bottom strip`() {
+        // Visible gap under fillMaxSize translate was ≈ offset; over-measure by maxOffset
+        // means after -offset paint, bottom still reaches parent H when offset ≤ maxOffset.
+        val maxOffset = 72f
+        val offset = 40f
+        val parentH = 800
+        val childH = appHeaderRidingMeasureHeight(parentH, maxOffset)
+        val translationY = appHeaderChromeTranslationY(offset)
+        val paintedBottom = childH + translationY
+        assertTrue(paintedBottom >= parentH)
+        assertEquals(parentH + 72, childH)
+        assertEquals(-40f, translationY, 0f)
     }
 }

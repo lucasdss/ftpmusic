@@ -18,10 +18,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -909,22 +910,25 @@ fun FavoritesScreen(
     }
 
     // Mode chips sit above Lazy — pad Column so chrome clears overlay AppHeader.
-    // ADR-0114: chips + list ride -offsetPx together (one graphicsLayer) so collapse
-    // leaves no Background gap between chrome and Lazy.
+    // ADR-0114: chips + list ride via appHeaderRidingContent (fixed over-measure +
+    // graphicsLayer -offsetPx) so collapse leaves no mid/bottom Background strip.
     val headerPad = LocalAppHeaderContentPadding.current
     val headerOffset = LocalAppHeaderOffsetPx.current
+    val headerPadPx = with(LocalDensity.current) { headerPad.toPx() }
     Column(
         Modifier
             .fillMaxSize()
             .background(Background)
-            .padding(top = headerPad),
+            .padding(top = headerPad)
+            .clipToBounds(),
     ) {
         Column(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    translationY = appHeaderChromeTranslationY(headerOffset.offsetPx())
-                }
+                .appHeaderRidingContent(
+                    offsetPx = { headerOffset.offsetPx() },
+                    maxOffsetPx = headerPadPx,
+                )
                 .background(Background),
         ) {
             FavoritesModeChips(
