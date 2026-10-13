@@ -128,14 +128,28 @@ class PlaybackManager @Inject constructor(
     /** Canonical queue size — reads directly from Player. */
     val queueSize: Int get() = PlayerHolder.player?.mediaItemCount ?: 0
 
-    /** Size of the priority queue (user-added tracks via Play Next / Add to Queue). */
+    /** Size of the priority queue (Play Next + manual_end Add to Queue). */
     val priorityQueueSize: Int get() = dualQueue.prioritySize
+
+    /** Size of the LATE band (session_end Add to Queue). */
+    val lateQueueSize: Int get() = dualQueue.lateSize
 
     /** Size of the context queue (the album/playlist/mix being played). */
     val contextSize: Int get() = dualQueue.contextSize
 
-    /** Per-merged-index PRIORITY flags for Room / UI sectioning. */
-    fun isPriorityFlags(): List<Boolean> = dualQueue.originIsContextFlags().map { !it }
+    /**
+     * Per-merged-index user-queue flags (PRIORITY or LATE) for Room / Clear.
+     * Sheet sectioning uses [isLateFlags] to split Next in Queue vs Queued later.
+     */
+    fun isPriorityFlags(): List<Boolean> = dualQueue.isUserQueueFlags()
+
+    /** Per-merged-index LATE flags (ADR-0135 session_end Add to Queue). */
+    fun isLateFlags(): List<Boolean> = dualQueue.isLateFlags()
+
+    /** Current Add to Queue placement from user setting (default MANUAL_END). */
+    fun addToQueuePlacement(): AddToQueuePlacement = AddToQueuePlacement.fromKey(
+        storage?.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_ADD_TO_QUEUE_PLACEMENT),
+    )
 
     fun entryIds(): List<Int> = dualQueue.entryIds()
 
@@ -179,7 +193,7 @@ class PlaybackManager @Inject constructor(
         sourceId: String? = null,
         sourceName: String? = null,
     ): Boolean {
-        val hasPriority = dualQueue.prioritySize > 0
+        val hasPriority = dualQueue.userQueueSize > 0
         when (overwriteBehavior()) {
             // CLEAN: never ask — always clear priority and play the new context.
             OverwriteBehavior.CLEAN -> {
@@ -231,7 +245,7 @@ class PlaybackManager @Inject constructor(
         sourceId: String? = null,
         sourceName: String? = null,
     ): Boolean {
-        val hasPriority = dualQueue.prioritySize > 0
+        val hasPriority = dualQueue.userQueueSize > 0
         when (overwriteBehavior()) {
             OverwriteBehavior.CLEAN -> {
                 dualQueue.clearPriority()
@@ -435,6 +449,7 @@ class PlaybackManager @Inject constructor(
         nextEntryId: Int = 0,
         positionMs: Long = 0L,
         isAutoplayFlags: List<Boolean>? = null,
+        isLateFlags: List<Boolean>? = null,
         playWhenReady: Boolean = true,
     ): Boolean {
         ensurePlayer()
@@ -456,10 +471,18 @@ class PlaybackManager @Inject constructor(
             }
         }
         val flags = alignParallelList(isPriorityFlags, n, tracks.size)
+        val late = alignParallelList(isLateFlags, n, tracks.size)
+            ?: List(n) { false }
         if (flags != null) {
             dualQueue.restoreEntries(
-                items.zip(flags).map { (item, isPri) ->
-                    DualQueueManager.SnapshotEntry(item, isContext = !isPri)
+                items.mapIndexed { i, item ->
+                    val isPri = flags[i]
+                    val isLate = late[i]
+                    DualQueueManager.SnapshotEntry(
+                        item = item,
+                        isContext = !isPri && !isLate,
+                        isLate = isLate,
+                    )
                 },
             )
             dualQueue.alignAnchorToMergedIndex(startIndex.coerceIn(0, items.lastIndex))
@@ -606,9 +629,10 @@ class PlaybackManager @Inject constructor(
         val items = buildMediaItems(tracks, urls).map { it.ensureEntryId() }
         if (items.isEmpty()) return
         alignAnchorToPlayhead()
+        val sessionEnd = addToQueuePlacement() == AddToQueuePlacement.SESSION_END
         optimist.snapshot()
-        dualQueue.addAllToQueue(items)
-        // Local: insert at Dual PRIORITY-tail index (industry), not Exo append.
+        if (sessionEnd) dualQueue.addAllToLate(items) else dualQueue.addAllToQueue(items)
+        // Local: insert at Dual index (PRIORITY tail or LATE), not Exo append.
         val firstId = items.first().queueEntryId()
         val insertIndex = dualQueue.getMerged().indexOfFirst { it.queueEntryId() == firstId }
             .coerceAtLeast(0)
@@ -625,7 +649,7 @@ class PlaybackManager @Inject constructor(
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
             "queueEdit action=addAll count=${items.size} casting=${PlayerHolder.isCasting} " +
-                "size=${dualQueue.size} insertIndex=$insertIndex",
+                "size=${dualQueue.size} insertIndex=$insertIndex sessionEnd=$sessionEnd",
         )
     }
 
@@ -705,11 +729,12 @@ class PlaybackManager @Inject constructor(
             mimeType = mimeType,
         ).ensureEntryId()
         alignAnchorToPlayhead()
-        optimist.addToQueueOptimistic(item)
+        val sessionEnd = addToQueuePlacement() == AddToQueuePlacement.SESSION_END
+        optimist.addToQueueOptimistic(item, sessionEnd = sessionEnd)
         val inserted = dualQueue.getMerged().firstOrNull { it.queueEntryId() == item.queueEntryId() } ?: item
         val insertIndex = dualQueue.getMerged().indexOfFirst { it.queueEntryId() == item.queueEntryId() }
             .coerceAtLeast(0)
-        // Local: mid-list insert at Dual PRIORITY-tail (not Exo append → Dual≠Exo drift).
+        // Local: insert at Dual PRIORITY-tail or LATE (not Exo append → Dual≠Exo drift).
         if (!PlayerHolder.isCasting) {
             PlayerHolder.player?.addMediaItem(insertIndex, inserted)
         } else {
@@ -726,7 +751,7 @@ class PlaybackManager @Inject constructor(
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
             "queueEdit action=add trackId=${track.id} casting=${PlayerHolder.isCasting} " +
-                "size=${dualQueue.size} insertIndex=$insertIndex",
+                "size=${dualQueue.size} insertIndex=$insertIndex sessionEnd=$sessionEnd",
         )
     }
 
@@ -1221,9 +1246,10 @@ class PlaybackManager @Inject constructor(
         contextSize: Int = dualQueue.contextSize,
     ) {
         val safeCtx = contextSize.coerceIn(0, tracks.size)
-        val flags = dualQueue.originIsContextFlags().map { !it }
+        val flags = dualQueue.isUserQueueFlags()
             .let { f -> if (f.size == tracks.size) f else null }
         val autoplay = isAutoplayFlags().takeIf { it.size == tracks.size }
+        val late = isLateFlags().takeIf { it.size == tracks.size }
         val idx = index
         scope.launch(kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> }) {
             persistenceManager.save(
@@ -1236,6 +1262,7 @@ class PlaybackManager @Inject constructor(
                 dualQueue.entryIds().takeIf { it.size == tracks.size },
                 dualQueue.peekNextEntryId(),
                 autoplay,
+                late,
             )
         }
     }

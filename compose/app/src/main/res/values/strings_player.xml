@@ -7,6 +7,8 @@
     <string name="player_end_of_queue">End of queue</string>
     <!-- Spotify-explicit dual band (ADR-0074): manual PRIORITY queue -->
     <string name="player_queue_section">Next in Queue · %1$d</string>
+    <!-- ADR-0135: session_end Add to Queue band (after Next from) -->
+    <string name="player_queued_later_section">Queued later · %1$d</string>
     <string name="player_next_from_section">Next from · %1$d</string>
     <string name="player_next_from_source_section">Next from · %1$s · %2$d</string>
     <string name="player_autoplay_section">Autoplay · %1$d</string>

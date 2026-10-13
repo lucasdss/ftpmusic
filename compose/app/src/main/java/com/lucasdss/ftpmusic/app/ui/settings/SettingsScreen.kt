@@ -567,6 +567,41 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            // ═══ Add to Queue placement (ADR-0135) ═══
+            SectionLabel("Add to Queue")
+            SectionCard {
+                Text(
+                    "Where new tracks go when you tap Add to Queue (Play Next is unchanged):",
+                    color = Color(0xFF888888),
+                    fontSize = textLabelS(),
+                    modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+                )
+                OverwriteBehaviorOption(
+                    label = "After your queued songs",
+                    subtitle = "Like Apple Music & Spotify — before the rest of the album",
+                    selected = state.addToQueuePlacement ==
+                        com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.MANUAL_END,
+                    onClick = {
+                        viewModel.setAddToQueuePlacement(
+                            com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.MANUAL_END,
+                        )
+                    },
+                )
+                OverwriteBehaviorOption(
+                    label = "At the end of what’s playing",
+                    subtitle = "Like YouTube Music — after the album or playlist",
+                    selected = state.addToQueuePlacement ==
+                        com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.SESSION_END,
+                    onClick = {
+                        viewModel.setAddToQueuePlacement(
+                            com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.SESSION_END,
+                        )
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             // ═══ Network section ═══
             SectionLabel("NETWORK")
             SectionCard {

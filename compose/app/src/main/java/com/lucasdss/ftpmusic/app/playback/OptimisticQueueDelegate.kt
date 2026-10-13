@@ -17,6 +17,7 @@ class OptimisticQueueDelegate @Inject constructor(private val dualQueue: DualQue
         val items: List<MediaItem>,
         val contextItems: List<MediaItem> = items,
         val priorityItems: List<MediaItem> = emptyList(),
+        val lateItems: List<MediaItem> = emptyList(),
         internal val orderedEntries: List<DualQueueManager.SnapshotEntry> = emptyList(),
         val revision: Long = 0L,
     )
@@ -31,6 +32,7 @@ class OptimisticQueueDelegate @Inject constructor(private val dualQueue: DualQue
             items = dualQueue.getMerged(),
             contextItems = dualQueue.contextItems(),
             priorityItems = dualQueue.priorityItems(),
+            lateItems = dualQueue.lateItems(),
             orderedEntries = dualQueue.snapshotEntries(),
             revision = nextRevision,
         ).also { lastSnapshot = it }
@@ -48,6 +50,7 @@ class OptimisticQueueDelegate @Inject constructor(private val dualQueue: DualQue
             dualQueue.setContext(snap.contextItems)
             dualQueue.clearPriority()
             snap.priorityItems.forEach { dualQueue.addToQueue(it) }
+            snap.lateItems.forEach { dualQueue.addToLate(it) }
         }
         lastSnapshot = null
         return true
@@ -75,9 +78,9 @@ class OptimisticQueueDelegate @Inject constructor(private val dualQueue: DualQue
     }
 
     /** Add to Queue with optimistic snapshot. */
-    fun addToQueueOptimistic(item: MediaItem): Snapshot {
+    fun addToQueueOptimistic(item: MediaItem, sessionEnd: Boolean = false): Snapshot {
         val snap = snapshot()
-        dualQueue.addToQueue(item)
+        if (sessionEnd) dualQueue.addToLate(item) else dualQueue.addToQueue(item)
         return snap
     }
 

@@ -36,3 +36,6 @@ Persist SoT: ADR 0067.
 
 Collection row-tap / Play header contract: ADR 0061,
 `docs/COLLECTION_PLAY_FROM_TRACK_BEHAVIOR_REPORT.md`.
+
+Add to Queue placement toggle (manual_end / session_end LATE): ADR 0135,
+`docs/QUEUE_PLAY_NEXT_ADD_MARKET_ALIGNMENT_BEHAVIOR_REPORT.md`.

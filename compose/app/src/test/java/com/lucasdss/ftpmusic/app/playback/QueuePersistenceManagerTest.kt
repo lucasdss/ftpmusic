@@ -328,6 +328,34 @@ class QueuePersistenceManagerTest {
     }
 
     @Test
+    fun `save persists isLateFlags and restore returns them`() = runTest {
+        val tracks = listOf(
+            Track("c1", "C1", duration = 100),
+            Track("p1", "P1", duration = 100),
+            Track("l1", "L1", duration = 100),
+        )
+        val urls = listOf("http://ex.com/c1", "http://ex.com/p1", "http://ex.com/l1")
+        val itemsSlot = slot<List<QueueItemEntity>>()
+        coEvery { dao.replaceAllAndState(capture(itemsSlot), any()) } just Runs
+        coEvery { dao.getAllOnce() } answers { itemsSlot.captured }
+        coEvery { dao.getState() } returns QueueStateEntity(currentIndex = 0, positionMs = 0L)
+
+        manager.save(
+            tracks,
+            urls,
+            currentIndex = 0,
+            positionMs = 0L,
+            isPriorityFlags = listOf(false, true, true),
+            isLateFlags = listOf(false, false, true),
+        )
+
+        assertEquals(listOf(false, false, true), itemsSlot.captured.map { it.isLate })
+        assertTrue(itemsSlot.captured[2].isPriority)
+        val restored = manager.restore()
+        assertEquals(listOf(false, false, true), restored!!.isLateFlags)
+    }
+
+    @Test
     fun `save ignores mismatched isAutoplayFlags list`() = runTest {
         val tracks = listOf(Track("a", "A", duration = 1), Track("b", "B", duration = 1))
         val urls = listOf("http://a", "http://b")

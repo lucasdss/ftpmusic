@@ -804,6 +804,18 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setAddToQueuePlacement persists key`() {
+        viewModel.setAddToQueuePlacement(
+            com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.SESSION_END,
+        )
+        assertEquals(
+            com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.SESSION_END,
+            viewModel.state.value.addToQueuePlacement,
+        )
+        verify { storage.put(SecureStorage.KEY_ADD_TO_QUEUE_PLACEMENT, "session_end") }
+    }
+
+    @Test
     fun `stored push overwrite maps to ASK`() {
         assertEquals(
             com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.ASK,

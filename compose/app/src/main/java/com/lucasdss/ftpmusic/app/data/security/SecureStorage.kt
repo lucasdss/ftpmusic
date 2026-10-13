@@ -153,6 +153,9 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_PREFER_ITUNES_ART = "prefer_itunes_art"
         const val KEY_LASTFM_API_KEY = "lastfm_api_key"
         const val KEY_QUEUE_OVERWRITE_BEHAVIOR = "queue_overwrite_behavior"
+
+        /** ADR-0135: Add to Queue placement — manual_end (default) | session_end. */
+        const val KEY_ADD_TO_QUEUE_PLACEMENT = "add_to_queue_placement"
         const val KEY_CUSTOM_HEADERS = "custom_headers"
         const val KEY_AUTO_DOWNLOAD_PLAYLISTS = "auto_download_playlists"
 

@@ -17,13 +17,15 @@ data class SavedQueueState(
      * release; never origin SoT (use [isPriorityFlags]).
      */
     val contextSize: Int = -1,
-    /** Per-row PRIORITY flags aligned with [tracks]. */
+    /** Per-row PRIORITY/LATE flags aligned with [tracks]. */
     val isPriorityFlags: List<Boolean>? = null,
     /** Per-row [queueEntryId]; 0 = unstamped legacy. */
     val entryIds: List<Int>? = null,
     val nextEntryId: Int = 1,
     /** Per-row Continuous Play Autoplay flags aligned with [tracks]. */
     val isAutoplayFlags: List<Boolean>? = null,
+    /** Per-row LATE (session_end Add to Queue) flags — ADR-0135. */
+    val isLateFlags: List<Boolean>? = null,
     /** ExoPlayer [Player.repeatMode] from queue_state (ADR-0087). */
     val repeatMode: Int = 0,
     /** ExoPlayer shuffle from queue_state (ADR-0087). */
@@ -42,6 +44,7 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
         entryIds: List<Int>? = null,
         nextEntryId: Int = 1,
         isAutoplayFlags: List<Boolean>? = null,
+        isLateFlags: List<Boolean>? = null,
     ) {
         if (tracks.isEmpty()) {
             dao.clear()
@@ -55,6 +58,8 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
             ?: List(tracks.size) { index -> index + 1 }
         val autoplay = isAutoplayFlags?.takeIf { it.size == tracks.size }
             ?: List(tracks.size) { false }
+        val late = isLateFlags?.takeIf { it.size == tracks.size }
+            ?: List(tracks.size) { false }
         val entities = tracks.zip(urls).mapIndexed { index, (track, url) ->
             QueueItemEntity(
                 trackId = track.id,
@@ -67,12 +72,13 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
                 url = url,
                 position = index,
                 durationSeconds = track.duration,
-                isPriority = flags[index],
+                isPriority = flags[index] || late[index],
                 entryId = ids[index],
                 isAutoplay = autoplay[index],
+                isLate = late[index],
             )
         }
-        val derivedCtx = flags.count { !it }
+        val derivedCtx = entities.count { !it.isPriority }
         val derivedNext = maxOf(nextEntryId, ids.max() + 1, 1)
         // Preserve sleep/play extras from existing row (ADR-0074 merge).
         // Construct a real entity (do not copy a MockK stub) so nextEntryId sticks.
@@ -131,6 +137,7 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
         val flags = entities.map { it.isPriority }
         val ids = entities.map { it.entryId }
         val autoplay = entities.map { it.isAutoplay }
+        val late = entities.map { it.isLate }
         val derivedCtx = flags.count { !it }
         val derivedNext = maxOf(state.nextEntryId, ids.max() + 1, 1)
         return SavedQueueState(
@@ -143,6 +150,7 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
             entryIds = ids,
             nextEntryId = derivedNext,
             isAutoplayFlags = autoplay,
+            isLateFlags = late,
             repeatMode = state.repeatMode,
             shuffleEnabled = state.shuffleEnabled,
         )

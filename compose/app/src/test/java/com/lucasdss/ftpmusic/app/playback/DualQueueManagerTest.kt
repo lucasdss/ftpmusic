@@ -110,6 +110,28 @@ class DualQueueManagerTest {
     }
 
     @Test
+    fun `addToLate appends after full context suffix`() {
+        manager.setContext(listOf(item("a"), item("b"), item("c")), startIndex = 0)
+        manager.addToQueue(item("p1"))
+        manager.addToLate(item("late1"))
+        // a + p1 + b,c + late1
+        assertEquals(listOf("a", "p1", "b", "c", "late1"), manager.getMerged().map { it.mediaId })
+        assertEquals(listOf(false, false, false, false, true), manager.isLateFlags())
+        assertEquals(listOf(false, true, false, false, true), manager.isUserQueueFlags())
+    }
+
+    @Test
+    fun `clearPriority clears late too`() {
+        manager.setContext(listOf(item("a"), item("b")))
+        manager.addToQueue(item("p"))
+        manager.addToLate(item("l"))
+        manager.clearPriority()
+        assertEquals(listOf("a", "b"), manager.getMerged().map { it.mediaId })
+        assertEquals(0, manager.lateSize)
+        assertEquals(0, manager.userQueueSize)
+    }
+
+    @Test
     fun `addToQueue with no context`() {
         manager.addToQueue(item("pri1"))
         assertEquals(listOf("pri1"), manager.getMerged().map { it.mediaId })

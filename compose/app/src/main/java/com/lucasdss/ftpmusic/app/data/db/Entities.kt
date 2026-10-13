@@ -343,12 +343,14 @@ data class QueueItemEntity(
     val position: Int,
     @ColumnInfo(name = "duration_seconds") val durationSeconds: Int? = null,
     @ColumnInfo(name = "added_at") val addedAt: Long = System.currentTimeMillis(),
-    /** True = user Queue (PRIORITY); false = CONTEXT / Continue Playing. */
+    /** True = user Queue (PRIORITY or LATE); false = CONTEXT / Continue Playing. */
     @ColumnInfo(name = "is_priority") val isPriority: Boolean = false,
     /** Monotonic occurrence id. 0 = legacy unstamped row. */
     @ColumnInfo(name = "entry_id") val entryId: Int = 0,
     /** Continuous Play Autoplay tail (ADR-0053 / ADR-0065). Survives process death. */
     @ColumnInfo(name = "is_autoplay") val isAutoplay: Boolean = false,
+    /** ADR-0135: session_end Add to Queue (LATE band after full CONTEXT). */
+    @ColumnInfo(name = "is_late") val isLate: Boolean = false,
 )
 
 /** Single-row table for queue playback state (index, position, cast status). */

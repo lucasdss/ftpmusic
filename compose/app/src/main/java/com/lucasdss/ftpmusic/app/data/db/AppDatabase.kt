@@ -37,7 +37,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DesiredItemEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 64,
+    version = 65,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1169,6 +1169,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_64 = ALL_MIGRATIONS_63 + MIGRATION_63_64
+
+        /** ADR-0135: LATE band flag for session_end Add to Queue. */
+        val MIGRATION_64_65 = object : Migration(64, 65) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE queue_items ADD COLUMN is_late INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_65 = ALL_MIGRATIONS_64 + MIGRATION_64_65
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

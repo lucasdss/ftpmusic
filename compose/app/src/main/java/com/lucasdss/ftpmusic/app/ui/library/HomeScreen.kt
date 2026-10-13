@@ -533,6 +533,10 @@ fun HomeScreen(
                 showAlbumSheet = null
                 onAlbumClick(album.id)
             },
+            onPlayNext = {
+                showAlbumSheet = null
+                viewModel.albumAction(album.id, "playnext")
+            },
             onAddToQueue = {
                 showAlbumSheet = null
                 viewModel.albumAction(album.id, "queue")

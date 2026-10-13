@@ -593,6 +593,12 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 64 to 65 adds is_late`() {
+        run(AppDatabase.MIGRATION_64_65)
+        verify { db.execSQL(match { it.contains("is_late") && it.contains("queue_items") }) }
+    }
+
+    @Test
     fun `FTS5 callback creates table on create and open`() {
         AppDatabase.FTS5_CALLBACK.onCreate(db)
         AppDatabase.FTS5_CALLBACK.onOpen(db)
@@ -613,6 +619,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(62, AppDatabase.ALL_MIGRATIONS_62.last().endVersion)
         assertEquals(63, AppDatabase.ALL_MIGRATIONS_63.last().endVersion)
         assertEquals(64, AppDatabase.ALL_MIGRATIONS_64.last().endVersion)
+        assertEquals(65, AppDatabase.ALL_MIGRATIONS_65.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -642,9 +649,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_58, AppDatabase.ALL_MIGRATIONS_59,
             AppDatabase.ALL_MIGRATIONS_60, AppDatabase.ALL_MIGRATIONS_61,
             AppDatabase.ALL_MIGRATIONS_62, AppDatabase.ALL_MIGRATIONS_63,
-            AppDatabase.ALL_MIGRATIONS_64,
+            AppDatabase.ALL_MIGRATIONS_64, AppDatabase.ALL_MIGRATIONS_65,
         )
-        assertEquals(55, all.size)
+        assertEquals(56, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

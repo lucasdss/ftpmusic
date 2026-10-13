@@ -825,4 +825,41 @@ class PlaybackManagerBranchCoverageTest {
         )
         assertEquals(OverwriteBehavior.CLEAN, m.overwriteBehavior())
     }
+
+    @Test
+    fun `addToQueue session_end inserts after full context`() {
+        val storage = mockk<com.lucasdss.ftpmusic.app.data.security.SecureStorage>(relaxed = true)
+        every {
+            storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_ADD_TO_QUEUE_PLACEMENT)
+        } returns "session_end"
+        val dual = DualQueueManager()
+        val m = PlaybackManager(
+            queueManager,
+            mockPersistenceManager,
+            mockOfflineModeManager,
+            mockDownloadManager,
+            castPreferences,
+            mockAppContext,
+            mockQueueJournalDao,
+            dual,
+            OptimisticQueueDelegate(dual),
+            storage,
+        )
+        m.playAlbum(
+            listOf(track("a"), track("b"), track("c")),
+            listOf(url("a"), url("b"), url("c")),
+            skipPersistence = true,
+        )
+        stubPlayerQueue("a", "b", "c")
+        every { mockPlayer.currentMediaItemIndex } returns 0
+        every { mockPlayer.currentMediaItem } returns
+            MediaItem.Builder().setMediaId("a").setUri(url("a")).build()
+        m.addToQueue(track("p1"), url("p1")) // PRIORITY still via play? No — session_end → LATE
+        m.addToQueue(track("late"), url("late"))
+        // Both session_end → LATE after full context: a,b,c,p1,late? Wait first add is also LATE
+        assertEquals(AddToQueuePlacement.SESSION_END, m.addToQueuePlacement())
+        assertEquals(listOf("a", "b", "c", "p1", "late"), dual.getMerged().map { it.mediaId })
+        assertEquals(listOf(false, false, false, true, true), m.isLateFlags())
+        verify { mockPlayer.addMediaItem(3, match { it.mediaId == "p1" }) }
+    }
 }

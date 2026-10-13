@@ -1446,20 +1446,24 @@ private fun BoxScope.PlayerQueuePanel(
                     }
 
                     // Scrollable content below the fixed drag handle.
-                    // Industry: Queue (PRIORITY) → Next from → Autoplay (ADR-0053 / 0070).
+                    // Industry: Queue (PRIORITY) → Next from → Queued later → Autoplay.
                     // Up Next = strictly after playhead (Apple/Spotify); past rows → history.
                     val currentQueueIdx = nextTracks.firstOrNull { it.isCurrent }?.queueIndex
                         ?: trackIndex
                     val priorityTracks = nextTracks.filter {
-                        it.isPriority && !it.isCurrent && it.queueIndex > currentQueueIdx
+                        it.isPriority && !it.isLate && !it.isCurrent && it.queueIndex > currentQueueIdx
                     }
                     val continueTracks = nextTracks.filter {
                         !it.isPriority && !it.isAutoplay && !it.isCurrent && it.queueIndex > currentQueueIdx
                     }
+                    val lateTracks = nextTracks.filter {
+                        it.isLate && !it.isCurrent && it.queueIndex > currentQueueIdx
+                    }
                     val autoplayTracks = nextTracks.filter {
                         !it.isPriority && it.isAutoplay && !it.isCurrent && it.queueIndex > currentQueueIdx
                     }
-                    val reorderableTracks = priorityTracks + continueTracks + autoplayTracks
+                    val reorderableTracks =
+                        priorityTracks + continueTracks + lateTracks + autoplayTracks
                     val queueListState = rememberLazyListState()
                     val autoCenterQueue = LocalListChromePrefs.current.autoCenterNowPlaying
                     // cast-notice (always present) then now-playing-anchor
@@ -2000,6 +2004,82 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
 
+                        // ADR-0135: session_end Add to Queue — after Next from.
+                        if (lateTracks.isNotEmpty()) {
+                            item(key = "hdr-late") {
+                                Spacer(Modifier.height(spacingS()))
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = spacingXL())
+                                        .testTag("queue_section_late")
+                                        .clip(RoundedCornerShape(cornerM()))
+                                        .border(
+                                            1.dp,
+                                            BrandPurple.copy(alpha = 0.22f),
+                                            RoundedCornerShape(cornerM()),
+                                        )
+                                        .background(BrandPurple.copy(alpha = 0.06f))
+                                        .padding(horizontal = spacingM(), vertical = spacingXS()),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.QueueMusic,
+                                        null,
+                                        tint = BrandPurple,
+                                        modifier = Modifier.size(adp(14f)),
+                                    )
+                                    Spacer(Modifier.width(spacingS()))
+                                    Text(
+                                        stringResource(
+                                            R.string.player_queued_later_section,
+                                            lateTracks.size,
+                                        ),
+                                        color = BrandPurple,
+                                        fontSize = textLabelS(),
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp,
+                                    )
+                                }
+                            }
+                            items(lateTracks, key = { queueRowKey(it) }, contentType = { "queue" }) { track ->
+                                val key = queueRowKey(track)
+                                ReorderableItem(state = reorderableState, key = key) { isDragging ->
+                                    QueueDismissTrackRow(
+                                        track = track,
+                                        isPlaying = isPlaying,
+                                        isDragging = isDragging && !selectionMode,
+                                        downloadedTrackIds = downloadedTrackIds,
+                                        onPlayQueueItem = onPlayQueueItem,
+                                        onRemoveFromQueue = onRemoveFromQueue,
+                                        selectionMode = selectionMode,
+                                        selected = key in selectedKeys,
+                                        onToggleSelect = {
+                                            selectedKeys = if (key in selectedKeys) {
+                                                selectedKeys - key
+                                            } else {
+                                                selectedKeys + key
+                                            }
+                                        },
+                                        onLongPressSelect = {
+                                            if (!selectionMode) {
+                                                selectionMode = true
+                                                selectedKeys = setOf(key)
+                                            }
+                                        },
+                                        dragHandleModifier = if (selectionMode) {
+                                            Modifier
+                                        } else {
+                                            Modifier.draggableHandle(
+                                                onDragStarted = {
+                                                    onBeginQueueReorder(track.entryId, track.queueIndex)
+                                                },
+                                                onDragStopped = { onCommitQueueReorder() },
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
                         // Apple: Autoplay band + in-queue toggle always visible (ADR-0074).
                         // ADR-0093: Cast CP append enabled — switch stays interactive while casting.
                         item(key = "hdr-autoplay") {
@@ -2146,7 +2226,9 @@ private fun BoxScope.PlayerQueuePanel(
                             }
                         }
 
-                        if (priorityTracks.isEmpty() && continueTracks.isEmpty() && autoplayTracks.isEmpty()) {
+                        if (priorityTracks.isEmpty() && continueTracks.isEmpty() &&
+                            lateTracks.isEmpty() && autoplayTracks.isEmpty()
+                        ) {
                             item(key = "empty-queue") {
                                 Spacer(Modifier.height(spacing2XL()))
                                 Column(

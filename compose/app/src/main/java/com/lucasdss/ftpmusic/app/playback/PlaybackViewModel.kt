@@ -728,6 +728,7 @@ class PlaybackViewModel @Inject constructor(
         val start = 0
         val end = minOf(currentIndex + count, queuePlayer.mediaItemCount)
         val priorityFlags = playbackManager.isPriorityFlags()
+        val lateFlags = playbackManager.isLateFlags()
         val autoplayFlags = playbackManager.isAutoplayFlags()
         val entryIds = playbackManager.entryIds()
         return (start until end).mapNotNull { i ->
@@ -736,6 +737,7 @@ class PlaybackViewModel @Inject constructor(
             val coverUrl = item.mediaMetadata.artworkUri?.toString()
             val durationMs = item.mediaMetadata.extras?.getLong("duration") ?: 0L
             val rating = item.mediaMetadata.extras?.getInt("userRating")?.takeIf { it > 0 }
+            val isLate = lateFlags.getOrElse(i) { false }
             UpcomingTrack(
                 title = title,
                 artist = item.mediaMetadata.artist?.toString(),
@@ -747,6 +749,7 @@ class PlaybackViewModel @Inject constructor(
                 queueIndex = i,
                 entryId = entryIds.getOrElse(i) { item.queueEntryId() },
                 isPriority = priorityFlags.getOrElse(i) { false },
+                isLate = isLate,
                 isAutoplay = autoplayFlags.getOrElse(i) { false } || item.isAutoplay(),
             )
         }
@@ -765,7 +768,10 @@ data class UpcomingTrack(
     val queueIndex: Int = 0,
     /** Stable Dual-queue entry id (>0) for reorder keys; 0 = fall back to index. */
     val entryId: Int = 0,
+    /** PRIORITY or LATE (user-added). */
     val isPriority: Boolean = false,
+    /** ADR-0135 session_end Add to Queue band. */
+    val isLate: Boolean = false,
     val isAutoplay: Boolean = false,
 )
 

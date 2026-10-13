@@ -17,27 +17,28 @@ internal object QueueRevisionTracker {
 }
 
 /**
- * Canonical dual-queue aligned to Spotify / Apple Music:
+ * Canonical dual-queue aligned to Spotify / Apple Music, plus optional LATE
+ * band for YTM-like Add to Queue (ADR-0135):
  *
  * - CONTEXT = album/playlist/mix ("Continue Playing" / "Next from …")
- * - PRIORITY = user Queue ("Next in Queue")
+ * - PRIORITY = user Queue ("Next in Queue") — Play Next + manual_end Add
+ * - LATE = session-end Add to Queue ("Queued later") after full CONTEXT
  *
  * Merged playback order (never interleaved):
- * `[CONTEXT 0..anchor] + [PRIORITY] + [CONTEXT after anchor]`
- *
- * Upcoming after the current track is always PRIORITY then CONTEXT suffix.
+ * `[CONTEXT 0..anchor] + [PRIORITY] + [CONTEXT after] + [LATE]`
  */
 @Singleton
 class DualQueueManager @Inject constructor() {
 
-    private enum class Origin { CONTEXT, PRIORITY }
+    private enum class Origin { CONTEXT, PRIORITY, LATE }
 
     private data class Entry(val item: MediaItem, val origin: Origin)
 
-    data class SnapshotEntry(val item: MediaItem, val isContext: Boolean)
+    data class SnapshotEntry(val item: MediaItem, val isContext: Boolean, val isLate: Boolean = false)
 
     private val context = mutableListOf<MediaItem>()
     private val priority = mutableListOf<MediaItem>()
+    private val late = mutableListOf<MediaItem>()
 
     /** Inclusive index into [context] for the current context track (merge split). */
     private var contextAnchor = 0
@@ -67,6 +68,7 @@ class DualQueueManager @Inject constructor() {
         entries.clear()
         if (context.isEmpty()) {
             entries.addAll(priority.map { Entry(it, Origin.PRIORITY) })
+            entries.addAll(late.map { Entry(it, Origin.LATE) })
         } else {
             val anchor = contextAnchor.coerceIn(0, context.lastIndex)
             contextAnchor = anchor
@@ -77,13 +79,14 @@ class DualQueueManager @Inject constructor() {
             for (i in (anchor + 1)..context.lastIndex) {
                 entries.add(Entry(context[i], Origin.CONTEXT))
             }
+            entries.addAll(late.map { Entry(it, Origin.LATE) })
         }
         markChanged()
     }
 
     /**
-     * Replace CONTEXT; keep PRIORITY. [startIndex] is the playing track within
-     * the new context — PRIORITY is inserted immediately after it (industry).
+     * Replace CONTEXT; keep PRIORITY + LATE. [startIndex] is the playing track
+     * within the new context — PRIORITY is inserted immediately after it.
      */
     @Synchronized
     fun setContext(items: List<MediaItem>, startIndex: Int = 0) {
@@ -143,7 +146,6 @@ class DualQueueManager @Inject constructor() {
         if (afterIndex == null || entries.isEmpty()) return 0
         val idx = afterIndex.coerceIn(-1, entries.lastIndex)
         if (idx < 0) return 0
-        // Count how many PRIORITY entries sit at or before idx in merged list.
         var priBeforeOrAt = 0
         var seenPri = 0
         for (i in entries.indices) {
@@ -152,15 +154,13 @@ class DualQueueManager @Inject constructor() {
                 seenPri++
             }
         }
-        // If afterIndex points at a PRIORITY row, insert after that row in PRIORITY.
         if (idx in entries.indices && entries[idx].origin == Origin.PRIORITY) {
             return priBeforeOrAt
         }
-        // afterIndex in CONTEXT prefix (incl. anchor) or before PRIORITY → front of queue.
         return 0
     }
 
-    /** Append to the end of the PRIORITY queue (Add to Queue). */
+    /** Append to the end of the PRIORITY queue (Add to Queue · manual_end). */
     @Synchronized
     fun addToQueue(item: MediaItem) {
         priority.add(stamp(item))
@@ -171,6 +171,20 @@ class DualQueueManager @Inject constructor() {
     fun addAllToQueue(items: List<MediaItem>) {
         if (items.isEmpty()) return
         priority.addAll(stampAll(items))
+        rebuildMerged()
+    }
+
+    /** Append to LATE band after full CONTEXT (Add to Queue · session_end). */
+    @Synchronized
+    fun addToLate(item: MediaItem) {
+        late.add(stamp(item))
+        rebuildMerged()
+    }
+
+    @Synchronized
+    fun addAllToLate(items: List<MediaItem>) {
+        if (items.isEmpty()) return
+        late.addAll(stampAll(items))
         rebuildMerged()
     }
 
@@ -200,6 +214,11 @@ class DualQueueManager @Inject constructor() {
                 priority.removeAt(pIdx)
             }
 
+            Origin.LATE -> {
+                val lIdx = lateIndexForMerged(index) ?: return null
+                late.removeAt(lIdx)
+            }
+
             Origin.CONTEXT -> {
                 val cIdx = contextIndexForMerged(index) ?: return null
                 context.removeAt(cIdx)
@@ -221,7 +240,13 @@ class DualQueueManager @Inject constructor() {
     @Synchronized
     fun move(from: Int, to: Int): Boolean {
         if (from < 0 || from >= entries.size || to < 0 || to >= entries.size || from == to) return false
-        val snapshot = entries.map { SnapshotEntry(it.item, it.origin == Origin.CONTEXT) }.toMutableList()
+        val snapshot = entries.map {
+            SnapshotEntry(
+                item = it.item,
+                isContext = it.origin == Origin.CONTEXT,
+                isLate = it.origin == Origin.LATE,
+            )
+        }.toMutableList()
         val moved = snapshot.removeAt(from)
         snapshot.add(to, moved)
         restoreFromMergedSnapshot(snapshot)
@@ -232,14 +257,14 @@ class DualQueueManager @Inject constructor() {
     fun getMerged(): List<MediaItem> = entries.map { it.item }
 
     @Synchronized
-    internal fun snapshotEntries(): List<SnapshotEntry> =
-        entries.map { SnapshotEntry(it.item, it.origin == Origin.CONTEXT) }
+    internal fun snapshotEntries(): List<SnapshotEntry> = entries.map {
+        SnapshotEntry(
+            item = it.item,
+            isContext = it.origin == Origin.CONTEXT,
+            isLate = it.origin == Origin.LATE,
+        )
+    }
 
-    /**
-     * Restore from a merged snapshot. Contiguous PRIORITY block is extracted;
-     * CONTEXT prefix length becomes the anchor (last CONTEXT before PRIORITY,
-     * or last CONTEXT if no PRIORITY).
-     */
     @Synchronized
     internal fun restoreEntries(snapshot: List<SnapshotEntry>) {
         restoreFromMergedSnapshot(snapshot)
@@ -248,27 +273,37 @@ class DualQueueManager @Inject constructor() {
     private fun restoreFromMergedSnapshot(snapshot: List<SnapshotEntry>) {
         context.clear()
         priority.clear()
+        late.clear()
         if (snapshot.isEmpty()) {
             contextAnchor = 0
             rebuildMerged()
             return
         }
-        // Industry normalize: collect CONTEXT in order and PRIORITY in order of appearance.
+        // Collect CONTEXT / PRIORITY / LATE in appearance order.
+        // Anchor = last CONTEXT before first PRIORITY (or last CONTEXT if none).
         val ctx = mutableListOf<MediaItem>()
         val pri = mutableListOf<MediaItem>()
+        val lat = mutableListOf<MediaItem>()
         var anchor = -1
         var seenPriority = false
         for (s in snapshot) {
-            if (s.isContext) {
-                ctx.add(s.item)
-                if (!seenPriority) anchor = ctx.lastIndex
-            } else {
-                seenPriority = true
-                pri.add(s.item)
+            when {
+                s.isLate -> lat.add(s.item)
+
+                s.isContext -> {
+                    ctx.add(s.item)
+                    if (!seenPriority) anchor = ctx.lastIndex
+                }
+
+                else -> {
+                    seenPriority = true
+                    pri.add(s.item)
+                }
             }
         }
         context.addAll(stampAll(ctx))
         priority.addAll(stampAll(pri))
+        late.addAll(stampAll(lat))
         contextAnchor = when {
             ctx.isEmpty() -> 0
             anchor >= 0 -> anchor
@@ -278,15 +313,22 @@ class DualQueueManager @Inject constructor() {
     }
 
     /**
-     * Rebuild from separate lists (Room is_priority restore / legacy migrate).
+     * Rebuild from separate lists (Room restore).
      * [startIndex] is the playing index in the **merged** industry layout after rebuild.
      */
     @Synchronized
-    fun restoreLists(contextItems: List<MediaItem>, priorityItems: List<MediaItem>, startIndex: Int = 0) {
+    fun restoreLists(
+        contextItems: List<MediaItem>,
+        priorityItems: List<MediaItem>,
+        lateItems: List<MediaItem> = emptyList(),
+        startIndex: Int = 0,
+    ) {
         context.clear()
         context.addAll(stampAll(contextItems))
         priority.clear()
         priority.addAll(stampAll(priorityItems))
+        late.clear()
+        late.addAll(stampAll(lateItems))
         contextAnchor = if (context.isEmpty()) 0 else startIndex.coerceIn(0, context.lastIndex)
         rebuildMerged()
         alignAnchorToMergedIndex(startIndex)
@@ -302,7 +344,7 @@ class DualQueueManager @Inject constructor() {
             contextAnchor = cIdx
             rebuildMerged()
         }
-        // Playing inside PRIORITY: keep existing anchor (queue plays before suffix).
+        // Playing inside PRIORITY / LATE: keep existing anchor.
     }
 
     private fun priorityIndexForMerged(mergedIndex: Int): Int? {
@@ -312,6 +354,18 @@ class DualQueueManager @Inject constructor() {
             if (entries[i].origin == Origin.PRIORITY) {
                 if (i == mergedIndex) return p
                 p++
+            }
+        }
+        return null
+    }
+
+    private fun lateIndexForMerged(mergedIndex: Int): Int? {
+        var l = 0
+        for (i in 0..mergedIndex) {
+            if (i >= entries.size) return null
+            if (entries[i].origin == Origin.LATE) {
+                if (i == mergedIndex) return l
+                l++
             }
         }
         return null
@@ -335,9 +389,20 @@ class DualQueueManager @Inject constructor() {
     @Synchronized
     internal fun priorityItems(): List<MediaItem> = priority.toList()
 
+    @Synchronized
+    internal fun lateItems(): List<MediaItem> = late.toList()
+
     /** Per-merged-index origin flags for persistence (true = CONTEXT). */
     @Synchronized
     fun originIsContextFlags(): List<Boolean> = entries.map { it.origin == Origin.CONTEXT }
+
+    /** Per-merged-index LATE flags (session_end Add to Queue). */
+    @Synchronized
+    fun isLateFlags(): List<Boolean> = entries.map { it.origin == Origin.LATE }
+
+    /** True for PRIORITY or LATE (user-added; Clear targets these). */
+    @Synchronized
+    fun isUserQueueFlags(): List<Boolean> = entries.map { it.origin == Origin.PRIORITY || it.origin == Origin.LATE }
 
     @Synchronized
     fun entryIds(): List<Int> = entries.map { it.item.queueEntryId() }
@@ -355,13 +420,19 @@ class DualQueueManager @Inject constructor() {
 
     val prioritySize: Int get() = priority.size
 
-    val isEmpty: Boolean get() = context.isEmpty() && priority.isEmpty()
+    val lateSize: Int get() = late.size
+
+    /** User-added count (PRIORITY + LATE) for overwrite protection. */
+    val userQueueSize: Int get() = priority.size + late.size
+
+    val isEmpty: Boolean get() = context.isEmpty() && priority.isEmpty() && late.isEmpty()
 
     @Synchronized
     fun clear() {
         if (isEmpty) return
         context.clear()
         priority.clear()
+        late.clear()
         contextAnchor = 0
         rebuildMerged()
     }
@@ -374,10 +445,12 @@ class DualQueueManager @Inject constructor() {
         rebuildMerged()
     }
 
+    /** Clear PRIORITY and LATE (Spotify/Apple Clear Next in Queue). */
     @Synchronized
     fun clearPriority() {
-        if (priority.isEmpty()) return
+        if (priority.isEmpty() && late.isEmpty()) return
         priority.clear()
+        late.clear()
         rebuildMerged()
     }
 }

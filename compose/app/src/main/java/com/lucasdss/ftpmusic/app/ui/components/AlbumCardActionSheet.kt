@@ -8,7 +8,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,7 +29,7 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 
 /**
  * Bottom sheet shown on long-press of an album card.
- * Actions: Play, Shuffle, Add to Queue, Add to Playlist, Download.
+ * Actions: Play, Shuffle, Play Next, Add to Queue, Add to Playlist, Download.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +39,7 @@ fun AlbumCardActionSheet(
     trackCount: Int,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
+    onPlayNext: () -> Unit = {},
     onAddToQueue: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onDownload: () -> Unit,
@@ -77,6 +81,7 @@ fun AlbumCardActionSheet(
             // Actions
             AlbumSheetAction("Play", Icons.Default.PlayArrow, Color.White, onPlay)
             AlbumSheetAction("Shuffle", Icons.Default.Shuffle, Color(0xFFCCCCCC), onShuffle)
+            AlbumSheetAction("Play Next", Icons.Default.PlaylistPlay, BrandPurple, onPlayNext)
             AlbumSheetAction("Add to Queue", Icons.AutoMirrored.Filled.QueueMusic, BrandTeal, onAddToQueue)
             AlbumSheetAction(
                 "Add to Playlist",

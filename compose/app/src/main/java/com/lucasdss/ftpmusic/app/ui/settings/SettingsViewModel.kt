@@ -62,6 +62,9 @@ data class SettingsUiState(
     val isTesting: Boolean = false,
     val journalCap: Int = 100,
     val continuousPlayEnabled: Boolean = true,
+    /** ADR-0135: Add to Queue placement (Apple/Spotify vs YTM). */
+    val addToQueuePlacement: com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement =
+        com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.MANUAL_END,
     // Library Metrics
     val albumCount: Int = 0,
     val artistCount: Int = 0,
@@ -225,6 +228,9 @@ class SettingsViewModel @Inject constructor(
             password = storage.get(SecureStorage.KEY_PASSWORD) ?: "",
             journalCap = resolvedJournalCap,
             continuousPlayEnabled = resolvedContinuousPlay,
+            addToQueuePlacement = com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.fromKey(
+                storage.get(SecureStorage.KEY_ADD_TO_QUEUE_PLACEMENT),
+            ),
             syncIntervalHours = syncHours,
             homeRecentTtlMinutes = savedHomeRecentTtl,
             preferItunesArt = savedPreferItunesArt,
@@ -646,6 +652,12 @@ class SettingsViewModel @Inject constructor(
     fun setOverwriteBehavior(behavior: com.lucasdss.ftpmusic.app.playback.OverwriteBehavior) {
         _state.value = _state.value.copy(overwriteBehavior = behavior)
         storage.put(SecureStorage.KEY_QUEUE_OVERWRITE_BEHAVIOR, behavior.key)
+    }
+
+    /** ADR-0135: where Add to Queue inserts (Play Next unaffected). */
+    fun setAddToQueuePlacement(placement: com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement) {
+        _state.value = _state.value.copy(addToQueuePlacement = placement)
+        storage.put(SecureStorage.KEY_ADD_TO_QUEUE_PLACEMENT, placement.key)
     }
 
     fun setCoverArtQuota(mb: Int) {

@@ -2374,6 +2374,7 @@ class MediaService : MediaLibraryService() {
             saved.nextEntryId,
             saved.positionMs,
             saved.isAutoplayFlags,
+            isLateFlags = saved.isLateFlags,
             playWhenReady = seatPlayWhenReady,
         )
         if (restored && saved.isAutoplayFlags?.any { it } == true) {
@@ -3282,6 +3283,7 @@ class MediaService : MediaLibraryService() {
                 saved.nextEntryId,
                 saved.positionMs,
                 saved.isAutoplayFlags,
+                isLateFlags = saved.isLateFlags,
             )
             if (restored && saved.isAutoplayFlags?.any { it } == true) {
                 hasLoadedContinuation = true
@@ -3359,6 +3361,7 @@ class MediaService : MediaLibraryService() {
                 playbackManager.entryIds(),
                 playbackManager.peekNextEntryId(),
                 playbackManager.isAutoplayFlags(),
+                playbackManager.isLateFlags(),
             )
             // savePlayQueue: debounce by 1.5s — cancels previous pending call, fires after idle window.
             // saveQueueStateSync() (onDestroy/onTaskRemoved) bypasses this for guaranteed last-chance persistence.
@@ -3434,6 +3437,7 @@ class MediaService : MediaLibraryService() {
                             playbackManager.entryIds(),
                             playbackManager.peekNextEntryId(),
                             playbackManager.isAutoplayFlags(),
+                            playbackManager.isLateFlags(),
                         )
                     }
                 }
@@ -3450,6 +3454,7 @@ class MediaService : MediaLibraryService() {
                             playbackManager.entryIds(),
                             playbackManager.peekNextEntryId(),
                             playbackManager.isAutoplayFlags(),
+                            playbackManager.isLateFlags(),
                         )
                     } catch (_: Exception) {}
                 }
