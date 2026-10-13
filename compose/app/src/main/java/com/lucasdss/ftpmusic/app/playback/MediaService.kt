@@ -853,6 +853,13 @@ class MediaService : MediaLibraryService() {
                 )
                 detachCastSessionFromMediaSession()
             }
+            // ADR-0132: Auto/Media3 may seat items without Dual — adopt on playlist change.
+            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
+                val p = PlayerHolder.player
+                if (p != null && !PlayerHolder.isCasting) {
+                    maybeAdoptExternalTimeline(p)
+                }
+            }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -1045,17 +1052,46 @@ class MediaService : MediaLibraryService() {
                 saveQueueState()
             }
             // ADR-0121: reload Room reactions for shade/lock thumbs when UI dead.
+            // ADR-0132: clear reaction buttons immediately on radio so stale like/dislike
+            // from the previous track cannot hit the shade during async load.
             val transitionTrackId = mediaItem?.mediaId
+            val transitionIsRadio = mediaItem != null && (
+                AutoBrowseIds.isRadioMediaId(transitionTrackId.orEmpty()) ||
+                    mediaItem.mediaMetadata.extras?.getString("type") == "radio"
+                )
             if (!transitionTrackId.isNullOrBlank()) {
                 reactionController.clear()
-                scope.launch {
-                    try {
-                        reactionController.load(transitionTrackId)
-                    } catch (e: Exception) {
-                        android.util.Log.w(
-                            "ftpmusic",
-                            "[MediaService] reaction load failed: ${e.message}",
+                if (transitionIsRadio) {
+                    handler.post {
+                        mediaSessionCallback.refreshReactionSurfaces(
+                            mediaSession,
+                            CurrentTrackReactionController.Snapshot(
+                                trackId = transitionTrackId,
+                                isStarred = false,
+                                isDisliked = false,
+                            ),
                         )
+                        // Clear stale thumbs in PlaybackState extras (notif falls back to these).
+                        val cur = playbackProvider.playbackState.value
+                        playbackProvider.updateExtraState(
+                            isStarred = false,
+                            sleepTimerEndMs = cur.sleepTimerEndMs,
+                            downloadedTrackIds = cur.downloadedTrackIds,
+                            isDisliked = false,
+                            trackRating = 0,
+                        )
+                        notificationProvider?.notifyChanged()
+                    }
+                } else {
+                    scope.launch {
+                        try {
+                            reactionController.load(transitionTrackId)
+                        } catch (e: Exception) {
+                            android.util.Log.w(
+                                "ftpmusic",
+                                "[MediaService] reaction load failed: ${e.message}",
+                            )
+                        }
                     }
                 }
             }
@@ -2515,7 +2551,27 @@ class MediaService : MediaLibraryService() {
         player.setMediaItems(items)
         player.prepare()
         player.play()
+        // ADR-0132: voice/Auto search seats the player without Dual — adopt so
+        // BT resume / process death persist what just started.
+        playbackManager.adoptPlayerTimelineAsContext(items, startIndex = 0, sourceName = "Voice search")
         android.util.Log.d("ftpmusic", "[MediaService] Playing ${items.size} items for search query")
+    }
+
+    /**
+     * ADR-0132: when Media3 / Android Auto seats a timeline that Dual does not
+     * know about, adopt it as CONTEXT so persistence/BT resume stay honest.
+     * No-op when casting or when Dual already matches.
+     */
+    private fun maybeAdoptExternalTimeline(player: Player) {
+        if (PlayerHolder.isCasting) return
+        val count = player.mediaItemCount
+        if (count <= 0) return
+        val playerIds = (0 until count).map { player.getMediaItemAt(it).mediaId }
+        val dualIds = playbackManager.currentQueueMediaIdList()
+        if (playerIds == dualIds) return
+        val items = (0 until count).map { player.getMediaItemAt(it) }
+        val start = player.currentMediaItemIndex.coerceIn(0, items.lastIndex)
+        playbackManager.adoptPlayerTimelineAsContext(items, start, sourceName = "Android Auto")
     }
 
     /**
@@ -4193,9 +4249,16 @@ class MediaService : MediaLibraryService() {
     }
 
     private fun handleReactionCustomAction(action: String) {
-        val trackId = mediaSession.player.currentMediaItem?.mediaId
+        val current = mediaSession.player.currentMediaItem
+        val trackId = current?.mediaId
             ?: playbackProvider.playbackState.value.currentTrackId
             ?: return
+        // ADR-0132: gate shade/QS reactions the same as MediaSessionCallback.
+        if (AutoBrowseIds.isRadioMediaId(trackId) ||
+            current?.mediaMetadata?.extras?.getString("type") == "radio"
+        ) {
+            return
+        }
         scope.launch {
             try {
                 // Emit via controller only — wireReactionSurfaceUpdates owns refresh.

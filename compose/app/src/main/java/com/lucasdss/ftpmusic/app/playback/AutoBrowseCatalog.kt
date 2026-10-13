@@ -210,10 +210,20 @@ class AutoBrowseCatalog(
 
     private suspend fun playlistTracks(playlistId: String, offset: Int, size: Int): List<MediaItem> {
         val entries = playlistDao.getEntries(playlistId)
-        val page = entries.drop(offset).take(size)
-        if (page.isEmpty()) return emptyList()
-        val tracks = trackDao.getTracksByIds(page.map { it.trackId }).associateBy { it.id }
-        return page.mapNotNull { entry -> tracks[entry.trackId]?.let { trackItem(it) } }
+        // ADR-0132: over-fetch past dangling ids so Auto gets a full page (or EOF).
+        val out = ArrayList<MediaItem>(size)
+        var cursor = offset.coerceAtLeast(0)
+        while (out.size < size && cursor < entries.size) {
+            val chunk = entries.drop(cursor).take((size - out.size).coerceAtLeast(1) * 2)
+            if (chunk.isEmpty()) break
+            cursor += chunk.size
+            val tracks = trackDao.getTracksByIds(chunk.map { it.trackId }).associateBy { it.id }
+            for (entry in chunk) {
+                tracks[entry.trackId]?.let { out.add(trackItem(it)) }
+                if (out.size >= size) break
+            }
+        }
+        return out
     }
 
     private suspend fun albumTracks(albumId: String, offset: Int, size: Int): List<MediaItem> {
@@ -238,10 +248,21 @@ class AutoBrowseCatalog(
     }
 
     private suspend fun mixTracks(mixId: Long, offset: Int, size: Int): List<MediaItem> {
-        val ids = mixTrackIds(mixId).drop(offset).take(size)
-        if (ids.isEmpty()) return emptyList()
-        val tracks = trackDao.getTracksByIds(ids).associateBy { it.id }
-        return ids.mapNotNull { tracks[it]?.let { t -> trackItem(t) } }
+        val allIds = mixTrackIds(mixId)
+        // ADR-0132: over-fetch past dangling ids so Auto gets a full page (or EOF).
+        val out = ArrayList<MediaItem>(size)
+        var cursor = offset.coerceAtLeast(0)
+        while (out.size < size && cursor < allIds.size) {
+            val chunk = allIds.drop(cursor).take((size - out.size).coerceAtLeast(1) * 2)
+            if (chunk.isEmpty()) break
+            cursor += chunk.size
+            val tracks = trackDao.getTracksByIds(chunk).associateBy { it.id }
+            for (id in chunk) {
+                tracks[id]?.let { out.add(trackItem(it)) }
+                if (out.size >= size) break
+            }
+        }
+        return out
     }
 
     private suspend fun genreTracks(genre: String, offset: Int, size: Int): List<MediaItem> =
@@ -313,7 +334,8 @@ class AutoBrowseCatalog(
         title = artist.name,
         subtitle = artist.albumCount?.let { "$it albums" },
         artwork = artworkUriFor(artist.coverArt),
-        playable = true,
+        // ADR-0132: empty artists stay browsable but not Play-all.
+        playable = (artist.albumCount ?: 0) > 0,
         mediaType = MediaMetadata.MEDIA_TYPE_ARTIST,
     )
 

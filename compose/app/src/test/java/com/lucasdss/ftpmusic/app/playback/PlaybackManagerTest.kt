@@ -1131,4 +1131,33 @@ class PlaybackManagerTest {
         )
         assertNotEquals("getCoverArt", stateTracks.single().coverArt)
     }
+
+    @Test
+    fun `adoptPlayerTimelineAsContext rebuilds Dual without reseating player`() {
+        PlayerHolder.player = mockPlayer
+        val mgr = baseManager()
+        // Seed Dual with a different queue first.
+        mgr.playSingleTrack(Track("old", "Old", duration = 10), "http://old")
+        clearMocks(mockPlayer, answers = false)
+
+        val autoItems = listOf(
+            MediaItem.Builder().setMediaId("a1").setUri("http://a1")
+                .setMediaMetadata(
+                    androidx.media3.common.MediaMetadata.Builder().setTitle("A1").build(),
+                )
+                .build(),
+            MediaItem.Builder().setMediaId("a2").setUri("http://a2")
+                .setMediaMetadata(
+                    androidx.media3.common.MediaMetadata.Builder().setTitle("A2").build(),
+                )
+                .build(),
+        )
+        mgr.adoptPlayerTimelineAsContext(autoItems, startIndex = 1, sourceName = "Android Auto")
+
+        assertEquals(listOf("a1", "a2"), mgr.currentQueueMediaIdList())
+        assertEquals(0, mgr.priorityQueueSize)
+        // Must not touch the already-seated player timeline.
+        verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
+        verify(exactly = 0) { mockPlayer.clearMediaItems() }
+    }
 }

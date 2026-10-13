@@ -93,4 +93,29 @@ class AutoRadioStationsSourceTest {
         assertEquals(1, stations.size)
         assertEquals("bm1", stations[0].id)
     }
+
+    @Test
+    fun `local-only skips network and returns bookmarks`() = runBlocking {
+        val api = mockk<SubsonicApi>(relaxed = true)
+        SubsonicCredentials.username = "u"
+        SubsonicCredentials.password = "p"
+        DynamicBaseUrl.url = "https://music.example.com"
+        val favDao = mockk<RadioFavoriteDao>()
+        coEvery { favDao.getAll() } returns listOf(
+            RadioFavoriteEntity(
+                stationId = "bm2",
+                name = "LocalOnly",
+                streamUrl = "https://bm2.example",
+            ),
+        )
+        val source = DefaultAutoRadioStationsSource(
+            api = api,
+            authHelper = SubsonicAuthHelper(),
+            radioFavoriteDao = favDao,
+            isLocalOnly = { true },
+        )
+        val stations = source.loadStations()
+        assertEquals("bm2", stations.single().id)
+        io.mockk.coVerify(exactly = 0) { api.getInternetRadioStations(any()) }
+    }
 }

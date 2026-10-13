@@ -1,10 +1,14 @@
 package com.lucasdss.ftpmusic.app.playback
 
+import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
+import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Station row for Android Auto Live Radio (ADR-0131). */
 data class AutoRadioStation(val id: String, val name: String, val streamUrl: String, val homePageUrl: String? = null)
@@ -20,7 +24,11 @@ class DefaultAutoRadioStationsSource(
     private val api: SubsonicApi,
     private val authHelper: SubsonicAuthHelper,
     private val radioFavoriteDao: RadioFavoriteDao,
+    private val offlineModeManager: OfflineModeManager? = null,
     private val cacheTtlMs: Long = 60_000L,
+    private val isLocalOnly: () -> Boolean = {
+        LocalOnlyPolicy.isLocalOnly(offlineModeManager?.isOfflineEnabled() == true)
+    },
 ) : AutoRadioStationsSource {
     @Volatile
     private var cachedAtMs: Long = 0L
@@ -28,8 +36,15 @@ class DefaultAutoRadioStationsSource(
     @Volatile
     private var cachedStations: List<AutoRadioStation> = emptyList()
 
-    override suspend fun loadStations(): List<AutoRadioStation> {
+    private val loadMutex = Mutex()
+
+    override suspend fun loadStations(): List<AutoRadioStation> = loadMutex.withLock {
         val now = System.currentTimeMillis()
+        // ADR-0132: local-only / simulate-offline → bookmarks only (no network, no
+        // stale network-station cache from before the policy flip).
+        if (isLocalOnly()) {
+            return loadBookmarks(now)
+        }
         if (cachedStations.isNotEmpty() && now - cachedAtMs < cacheTtlMs) {
             return cachedStations
         }
@@ -52,6 +67,10 @@ class DefaultAutoRadioStationsSource(
                 android.util.Log.w("ftpmusic", "[AutoRadio] network load failed: ${e.message}")
             }
         }
+        return loadBookmarks(now)
+    }
+
+    private suspend fun loadBookmarks(now: Long): List<AutoRadioStation> {
         val bookmarks = radioFavoriteDao.getAll().map {
             AutoRadioStation(
                 id = it.stationId,

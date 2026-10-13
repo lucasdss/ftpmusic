@@ -1343,4 +1343,36 @@ class PlaybackManager @Inject constructor(
         val currentPos = active?.currentPosition ?: player.currentPosition
         player.setMediaItems(merged, currentIdx.coerceIn(0, merged.lastIndex), currentPos)
     }
+
+    /**
+     * ADR-0132: adopt an external player timeline (Android Auto / voice search)
+     * into Dual CONTEXT without re-seating the player. Clears PRIORITY so
+     * BT resume / process death persist what the car started.
+     */
+    fun adoptPlayerTimelineAsContext(
+        items: List<MediaItem>,
+        startIndex: Int = 0,
+        sourceName: String = "Android Auto",
+    ) {
+        if (items.isEmpty()) return
+        optimist.snapshot()
+        dualQueue.clearPriority()
+        val stamped = items.map { it.ensureEntryId() }
+        val si = startIndex.coerceIn(0, stamped.lastIndex)
+        dualQueue.setContextWithSource(stamped, sourceName, si)
+        val (tracks, urls) = buildQueueStateFromDual()
+        if (tracks.isEmpty()) {
+            scope.launch { persistenceManager.clear() }
+        } else {
+            persistenceSave(tracks, urls, si.coerceIn(0, tracks.lastIndex))
+        }
+        optimist.commit()
+        android.util.Log.i(
+            "ftpmusic-playback",
+            "[adoptPlayerTimelineAsContext] items=${stamped.size} start=$si source=$sourceName",
+        )
+    }
+
+    /** Ordered Dual media ids — used to detect Auto timeline desync (ADR-0132). */
+    fun currentQueueMediaIdList(): List<String> = dualQueue.getMerged().map { it.mediaId }
 }

@@ -269,6 +269,32 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
+    fun `artist with zero albums is not playable`() = runBlocking {
+        coEvery { metadataDao.getArtistsPaged(any(), any()) } returns listOf(
+            CachedArtistEntity(id = "ar0", name = "Empty", albumCount = 0),
+            CachedArtistEntity(id = "ar1", name = "Has", albumCount = 2),
+        )
+        val kids = catalog.children(AutoBrowseIds.ARTISTS, 0, 20)
+        assertFalse(kids[0].mediaMetadata.isPlayable == true)
+        assertTrue(kids[1].mediaMetadata.isPlayable == true)
+    }
+
+    @Test
+    fun `playlist page skips dangling entries and fills page`() = runBlocking {
+        coEvery { playlistDao.getEntries("p1") } returns listOf(
+            PlaylistEntryEntity(playlistId = "p1", trackId = "missing", position = 0),
+            PlaylistEntryEntity(playlistId = "p1", trackId = "t1", position = 1),
+            PlaylistEntryEntity(playlistId = "p1", trackId = "t2", position = 2),
+        )
+        coEvery { trackDao.getTracksByIds(any()) } answers {
+            val ids = firstArg<List<String>>()
+            ids.filter { it != "missing" }.map { TrackEntity(id = it, title = it) }
+        }
+        val kids = catalog.children(AutoBrowseIds.playlist("p1"), 0, 2)
+        assertEquals(listOf("t1", "t2"), kids.map { it.mediaId })
+    }
+
+    @Test
     fun `artists paged from dao`() = runBlocking {
         coEvery { metadataDao.getArtistsPaged(10, 0) } returns listOf(
             CachedArtistEntity(id = "ar1", name = "Artist One"),

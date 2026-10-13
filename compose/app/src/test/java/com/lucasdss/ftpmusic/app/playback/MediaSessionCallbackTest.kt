@@ -756,7 +756,7 @@ class MediaSessionCallbackTest {
     }
 
     @Test
-    fun `searchAndNavidromeExpand returns empty when expandToAlbum fails`() = runBlocking {
+    fun `searchAndNavidromeExpand falls back to single track when expandToAlbum fails`() = runBlocking {
         val api = mockk<SubsonicApi>(relaxed = true)
         // Search succeeds but the track ID from results isn't in the local DB
         coEvery { api.search3(any(), any(), any(), any(), any(), any(), any(), any()) } returns mapOf(
@@ -770,7 +770,50 @@ class MediaSessionCallbackTest {
 
         val callback = createCallback(mockk(relaxed = true), mockk(relaxed = true), api)
         val items = callback.searchAndNavidromeExpand("test")
-        assertTrue(items.isEmpty())
+        assertEquals(1, items.size)
+        assertEquals("song-99", items[0].mediaId)
+        assertEquals("Ghost Track", items[0].mediaMetadata.title.toString())
+    }
+
+    @Test
+    fun `searchAndNavidromeExpand coerces numeric song id`() = runBlocking {
+        val api = mockk<SubsonicApi>(relaxed = true)
+        coEvery { api.search3(any(), any(), any(), any(), any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "searchResult3" to mapOf(
+                    "song" to listOf(mapOf("id" to 42, "title" to "Numeric")),
+                ),
+            ),
+        )
+        val callback = createCallback(mockk(relaxed = true), mockk(relaxed = true), api)
+        val items = callback.searchAndNavidromeExpand("num")
+        assertEquals(1, items.size)
+        assertEquals("42", items[0].mediaId)
+    }
+
+    @Test
+    fun `searchAndNavidromeExpand local hit without album falls back to single`() = runBlocking {
+        val localSearch = mockk<com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository>()
+        coEvery { localSearch.search("solo", any(), any()) } returns
+            com.lucasdss.ftpmusic.app.data.search.LocalSearchHit(
+                tracks = listOf(TrackEntity(id = "solo-1", title = "Solo", albumId = null)),
+            )
+        val trackDao = mockk<TrackDao>(relaxed = true)
+        coEvery { trackDao.getTrack("solo-1") } returns TrackEntity(id = "solo-1", title = "Solo", albumId = null)
+        val callback = MediaSessionCallback(
+            trackDao = trackDao,
+            metadataDao = mockk(relaxed = true),
+            authHelper = SubsonicAuthHelper(),
+            api = mockk(relaxed = true),
+            localSearch = localSearch,
+            playlistDao = mockk(relaxed = true),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val items = callback.searchAndNavidromeExpand("solo")
+        assertEquals(1, items.size)
+        assertEquals("solo-1", items[0].mediaId)
     }
 
     @Test

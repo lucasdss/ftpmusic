@@ -44,7 +44,13 @@ object MediaModule {
         api: SubsonicApi,
         authHelper: SubsonicAuthHelper,
         radioFavoriteDao: RadioFavoriteDao,
-    ): AutoRadioStationsSource = DefaultAutoRadioStationsSource(api, authHelper, radioFavoriteDao)
+        offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
+    ): AutoRadioStationsSource = DefaultAutoRadioStationsSource(
+        api = api,
+        authHelper = authHelper,
+        radioFavoriteDao = radioFavoriteDao,
+        offlineModeManager = offlineModeManager,
+    )
 
     @Provides
     @Singleton

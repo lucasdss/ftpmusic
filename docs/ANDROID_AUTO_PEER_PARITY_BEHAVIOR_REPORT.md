@@ -1,6 +1,6 @@
 # Android Auto Peer Parity — Behavior Report
 
-Caveman. ADR-0131. Scope 1A+2B (phone projection). Supersedes ADR-0091 Out for search/radio.
+Caveman. ADR-0131 + ADR-0132 hardening. Scope 1A+2B (phone projection).
 
 ## Ship
 
@@ -11,12 +11,13 @@ Caveman. ADR-0131. Scope 1A+2B (phone projection). Supersedes ADR-0091 Out for s
 | Downloads | `is_downloaded=1` paged (`auto_offline`) |
 | Favorites | Starred tracks paged |
 | Daily Mixes | Recipes → today/yesterday tracks |
-| Playlists / Albums / Artists | Unchanged ADR-0091 |
+| Playlists / Albums / Artists | Album expand; artist Play-all iff albumCount>0 |
 | Genres | Room genres → paged tracks |
-| Live Radio | Network stations; bookmarks offline |
-| In-Auto search | `onSearch` / `onGetSearchResult` local-first |
-| Voice play-from-search | Unchanged album-expand path |
-| Reactions | Like/dislike gated off radio |
+| Live Radio | Network stations; bookmarks when offline/local-only |
+| In-Auto search | `onSearch` / `onGetSearchResult` local-first; LRU+TTL cache |
+| Voice play-from-search | Album expand; single-track fallback; numeric ids |
+| Dual adopt | Auto/voice timeline → Dual CONTEXT (BT/resume) |
+| Reactions | Like/dislike gated off radio (session + notif) |
 
 ## Root order
 
@@ -35,16 +36,19 @@ Caveman. ADR-0131. Scope 1A+2B (phone projection). Supersedes ADR-0091 Out for s
 | Case | Result |
 |------|--------|
 | Empty Room | Empty children |
-| Offline radio | `radio_favorites` only |
-| Empty mix / genre / playlist | Browsable, not Play-all |
-| Radio current item | Reactions skipped |
+| Offline / local-only radio | `radio_favorites` only |
+| Empty mix / genre / playlist / artist | Browsable, not Play-all |
+| Dangling playlist entries | Skip; fill page until EOF |
+| Radio current item | Reactions skipped (session + shade) |
+| Voice expand null album | Single stream MediaItem |
 | Empty search query | Empty results |
-| Process death | Resumption unchanged |
+| Process death | Resumption from Dual-adopted queue |
 
 ## Out
 
-AAOS. Car App Library. Wear. Dual-band Auto labels.
+AAOS. Car App Library. Wear. Dual-band Auto labels. Discovery nodes.
 
 ## Coverage
 
-`AutoBrowseCatalogTest`, `MediaSessionCallback` browse/search/reaction tests.
+`AutoBrowseCatalogTest`, `MediaSessionCallback` browse/search/reaction,
+`AutoRadioStationsSourceTest`, Dual adopt unit tests.
