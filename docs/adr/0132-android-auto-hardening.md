@@ -19,7 +19,10 @@ playlist IDs truncate Auto pages; local-only still network-fetches radio.
 2. **Dual adopt** — `PlaybackManager.adoptPlayerTimelineAsContext` rebuilds
    Dual CONTEXT from an external timeline (Auto / voice) without re-seating
    the player; called from `playSearchItems` and MediaService when player
-   timeline diverges from Dual after Auto seat.
+   timeline diverges from Dual after Auto seat. `maybeAdoptExternalTimeline`
+   no-ops while `shouldAdoptExternalTimeline()` is false (≈1s after local
+   `syncDualQueueToPlayer`) so PLAYLIST_CHANGED mid-sync cannot wipe
+   PRIORITY/LATE. Explicit voice `adoptPlayerTimelineAsContext` bypasses the gate.
 3. **Radio reactions** — Gate `handleReactionCustomAction`; clear custom
    layout immediately on radio transition; omit reaction buttons in
    `onConnect` when current item is radio.

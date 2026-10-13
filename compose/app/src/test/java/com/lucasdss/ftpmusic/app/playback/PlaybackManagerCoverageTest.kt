@@ -164,7 +164,7 @@ class PlaybackManagerCoverageTest {
         assertEquals("Move preserves queue origin", 1, mgr.priorityQueueSize)
         assertEquals(2, mgr.contextSize)
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -180,7 +180,7 @@ class PlaybackManagerCoverageTest {
         mgr.moveQueueItem(1, 1)
 
         coVerify(exactly = 0) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -244,7 +244,7 @@ class PlaybackManagerCoverageTest {
 
         assertEquals("Priority queue survives context removal", 1, mgr.priorityQueueSize)
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -344,7 +344,7 @@ class PlaybackManagerCoverageTest {
         mgr.playQueueItem(1)
         // No Cast event — local path must not invoke the listener
         coVerify(exactly = 0) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -373,6 +373,7 @@ class PlaybackManagerCoverageTest {
                 any(),
                 any(),
                 any(),
+                any(),
             )
         }
 
@@ -389,7 +390,7 @@ class PlaybackManagerCoverageTest {
         val mgr = baseManager()
         mgr.pushContext(emptyList(), emptyList())
         coVerify(exactly = 0) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 

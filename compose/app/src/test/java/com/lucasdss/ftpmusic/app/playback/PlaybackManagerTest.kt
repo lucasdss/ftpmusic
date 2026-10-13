@@ -165,7 +165,7 @@ class PlaybackManagerTest {
         manager.addToQueue(track, url)
 
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -187,7 +187,7 @@ class PlaybackManagerTest {
         manager.addAllToQueue(tracks, urls)
 
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -218,7 +218,18 @@ class PlaybackManagerTest {
         assertEquals(3, manager.contextSize)
         assertEquals(0, manager.priorityQueueSize)
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), match { it == 3 }, any(), any(), any(), any())
+            mockPersistenceManager.save(
+                any(),
+                any(),
+                any(),
+                any(),
+                match { it == 3 },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
     }
 
@@ -245,7 +256,18 @@ class PlaybackManagerTest {
 
         assertEquals(2, manager.contextSize)
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), match { it == 2 }, any(), any(), any(), any())
+            mockPersistenceManager.save(
+                any(),
+                any(),
+                any(),
+                any(),
+                match { it == 2 },
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
     }
 
@@ -826,6 +848,7 @@ class PlaybackManagerTest {
                 any(),
                 any(),
                 any(),
+                any(),
             )
         }
     }
@@ -859,6 +882,7 @@ class PlaybackManagerTest {
         coVerify(timeout = 1_000) {
             mockPersistenceManager.save(
                 match { it.any { t -> t.id == "t1" } },
+                any(),
                 any(),
                 any(),
                 any(),
@@ -1167,5 +1191,43 @@ class PlaybackManagerTest {
         // Must not touch the already-seated player timeline.
         verify(exactly = 0) { mockPlayer.setMediaItems(any(), any(), any()) }
         verify(exactly = 0) { mockPlayer.clearMediaItems() }
+    }
+
+    @Test
+    fun `local sync suppresses external Dual adopt briefly`() {
+        var now = 1_000L
+        val mgr = baseManager()
+        mgr.elapsedRealtimeMs = { now }
+        assertTrue(mgr.shouldAdoptExternalTimeline())
+        mgr.noteLocalQueueMutation(suppressMs = 1_000L)
+        assertTrue(!mgr.shouldAdoptExternalTimeline())
+        now = 1_999L
+        assertTrue(!mgr.shouldAdoptExternalTimeline())
+        now = 2_000L
+        assertTrue(mgr.shouldAdoptExternalTimeline())
+    }
+
+    @Test
+    fun `syncDualQueueToPlayer notes local mutation for adopt gate`() {
+        var now = 5_000L
+        PlayerHolder.player = mockPlayer
+        every { mockPlayer.mediaItemCount } returns 1
+        every { mockPlayer.currentMediaItemIndex } returns 0
+        every { mockPlayer.currentPosition } returns 0L
+        every { mockPlayer.currentMediaItem } returns
+            MediaItem.Builder().setMediaId("t1").setUri("http://t1").build()
+        val mgr = baseManager()
+        mgr.elapsedRealtimeMs = { now }
+        mgr.playAlbum(
+            listOf(Track("t1", "T1", duration = 10)),
+            listOf("http://t1"),
+            skipPersistence = true,
+        )
+        now = 10_000L
+        assertTrue(mgr.shouldAdoptExternalTimeline())
+        mgr.syncDualQueueToPlayer()
+        assertTrue(!mgr.shouldAdoptExternalTimeline())
+        now = 11_000L
+        assertTrue(mgr.shouldAdoptExternalTimeline())
     }
 }

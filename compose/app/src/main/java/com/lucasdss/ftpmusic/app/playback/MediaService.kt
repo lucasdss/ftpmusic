@@ -2625,6 +2625,8 @@ class MediaService : MediaLibraryService() {
      */
     private fun maybeAdoptExternalTimeline(player: Player) {
         if (PlayerHolder.isCasting) return
+        // ADR-0132: skip while local Dual→player sync may leave lists briefly unequal.
+        if (!playbackManager.shouldAdoptExternalTimeline()) return
         val count = player.mediaItemCount
         if (count <= 0) return
         val playerIds = (0 until count).map { player.getMediaItemAt(it).mediaId }

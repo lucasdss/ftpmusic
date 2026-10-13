@@ -100,6 +100,8 @@ class PlaybackManager @Inject constructor(
     )
 
     private companion object {
+        const val LOCAL_QUEUE_ADOPT_SUPPRESS_MS = 1_000L
+
         fun newDualQueuePair(): Pair<DualQueueManager, OptimisticQueueDelegate> {
             val dualQueue = DualQueueManager()
             return dualQueue to OptimisticQueueDelegate(dualQueue)
@@ -111,6 +113,17 @@ class PlaybackManager @Inject constructor(
     @Volatile
     var journalCap: Int = 100
         private set
+
+    /**
+     * Suppress Auto Dual-adopt after local Dual→player sync (ADR-0132).
+     * Prevents PLAYLIST_CHANGED mid-setMediaItems from wiping PRIORITY/LATE.
+     */
+    @Volatile
+    private var suppressExternalAdoptUntilElapsedMs: Long = 0L
+
+    /** Elapsed realtime for adopt suppress — injectable for unit tests. */
+    @Volatile
+    internal var elapsedRealtimeMs: () -> Long = { android.os.SystemClock.elapsedRealtime() }
 
     private val _continuousPlayEnabled = MutableStateFlow(true)
 
@@ -1394,6 +1407,8 @@ class PlaybackManager @Inject constructor(
      * [MediaService.loadFullQueueToReceiver] so the receiver gets the full phone queue.
      */
     fun syncDualQueueToPlayer() {
+        // Gate Auto adopt for the duration of setMediaItems + settle window.
+        noteLocalQueueMutation()
         val merged = dualQueue.getMerged()
         val active = PlayerHolder.player
         val player = if (PlayerHolder.isCasting) PlayerHolder.exoPlayer else active
@@ -1409,6 +1424,17 @@ class PlaybackManager @Inject constructor(
         val currentPos = active?.currentPosition ?: player.currentPosition
         player.setMediaItems(merged, currentIdx.coerceIn(0, merged.lastIndex), currentPos)
     }
+
+    /** Mark a local Dual→player sync so [shouldAdoptExternalTimeline] stays false briefly. */
+    fun noteLocalQueueMutation(suppressMs: Long = LOCAL_QUEUE_ADOPT_SUPPRESS_MS) {
+        suppressExternalAdoptUntilElapsedMs = elapsedRealtimeMs() + suppressMs.coerceAtLeast(0L)
+    }
+
+    /**
+     * False while a local sync may leave player/Dual mediaId lists briefly unequal.
+     * Explicit [adoptPlayerTimelineAsContext] (voice search) does not consult this gate.
+     */
+    fun shouldAdoptExternalTimeline(): Boolean = elapsedRealtimeMs() >= suppressExternalAdoptUntilElapsedMs
 
     /**
      * ADR-0132: adopt an external player timeline (Android Auto / voice search)

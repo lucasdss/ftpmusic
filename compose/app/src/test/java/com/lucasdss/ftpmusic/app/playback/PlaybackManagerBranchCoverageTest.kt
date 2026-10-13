@@ -90,7 +90,7 @@ class PlaybackManagerBranchCoverageTest {
 
         coVerify(exactly = 0) { mockPersistenceManager.clear() }
         coVerify(exactly = 0) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         }
     }
 

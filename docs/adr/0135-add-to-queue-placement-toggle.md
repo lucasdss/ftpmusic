@@ -21,7 +21,8 @@ Labels are shared; “end of queue” is not.
 4. Persist `queue_items.is_late`; LATE also `is_priority=1` (user-added).
 5. Clear Next in Queue → clear PRIORITY **and** LATE.
 6. Toggle flip does not reshuffle existing rows — future adds only.
-7. Queue sheet: LATE section **Queued later** below Next from when non-empty.
+7. Queue sheet: PRIORITY → Next from → Autoplay → **Queued later** (LATE last),
+   matching Dual merge so sheet order equals playback order.
 
 ## Consequences
 
