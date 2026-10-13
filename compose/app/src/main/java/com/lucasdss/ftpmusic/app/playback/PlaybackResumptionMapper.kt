@@ -68,17 +68,26 @@ object PlaybackResumptionMapper {
         val urls = saved.urls
         val items = saved.tracks.mapIndexed { index, track ->
             val rawUrl = urls.getOrNull(index).orEmpty()
-            val url = if (rawUrl.isNotBlank()) migrateStreamUrl(track.id, rawUrl) else ""
+            val isRadio = AutoBrowseIds.isRadioMediaId(track.id)
+            // ADR-0136: radio streams keep raw URL — migrateStreamUrl is Subsonic-only.
+            val url = when {
+                rawUrl.isBlank() -> ""
+                isRadio -> rawUrl
+                else -> migrateStreamUrl(track.id, rawUrl)
+            }
             val metadata = MediaMetadata.Builder()
                 .setTitle(track.title)
                 .setArtist(track.artist)
                 .setAlbumTitle(track.album ?: "")
                 .apply {
+                    if (isRadio) {
+                        setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION)
+                    }
                     artworkUriFor(track)?.let { setArtworkUri(it) }
                     setExtras(
                         Bundle().apply {
                             putLong("duration", (track.duration ?: 0) * 1000L)
-                            putString("type", "music")
+                            putString("type", if (isRadio) "radio" else "music")
                             putString("artistId", track.artistId)
                             putString("albumId", track.albumId)
                         },

@@ -295,6 +295,25 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
+    fun `playlist pages by playable index without overlap after dangling`() = runBlocking {
+        // Raw entries: miss, t1, miss, t2, miss, t3, t4 — playable t1..t4
+        val entries = listOf("miss0", "t1", "miss1", "t2", "miss2", "t3", "t4").mapIndexed { i, id ->
+            PlaylistEntryEntity(playlistId = "p1", trackId = id, position = i)
+        }
+        coEvery { playlistDao.getEntries("p1") } returns entries
+        coEvery { trackDao.getTracksByIds(any()) } answers {
+            firstArg<List<String>>()
+                .filter { !it.startsWith("miss") }
+                .map { TrackEntity(id = it, title = it) }
+        }
+        val page0 = catalog.children(AutoBrowseIds.playlist("p1"), 0, 2)
+        val page1 = catalog.children(AutoBrowseIds.playlist("p1"), 1, 2)
+        assertEquals(listOf("t1", "t2"), page0.map { it.mediaId })
+        assertEquals(listOf("t3", "t4"), page1.map { it.mediaId })
+        assertTrue(page0.map { it.mediaId }.intersect(page1.map { it.mediaId }.toSet()).isEmpty())
+    }
+
+    @Test
     fun `artists paged from dao`() = runBlocking {
         coEvery { metadataDao.getArtistsPaged(10, 0) } returns listOf(
             CachedArtistEntity(id = "ar1", name = "Artist One"),

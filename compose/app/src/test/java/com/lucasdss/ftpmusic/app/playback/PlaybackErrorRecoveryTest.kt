@@ -184,6 +184,20 @@ class PlaybackErrorRecoveryTest {
     }
 
     @Test
+    fun `error auto-skip ignores Auto browse radio streams`() {
+        // ADR-0136: Auto seats auto_radio: — same RADIO_IGNORE as phone radio:
+        assertEquals(
+            ErrorSkipAction.RADIO_IGNORE,
+            decideErrorSkipAction(
+                errorCount = 1,
+                currentMediaId = "auto_radio:station1",
+                currentIndex = 0,
+                mediaItemCount = 5,
+            ),
+        )
+    }
+
+    @Test
     fun `error auto-skip handles unknown media id`() {
         // Null id at the last position → nothing to skip to
         assertEquals(
@@ -233,6 +247,21 @@ class PlaybackErrorRecoveryTest {
         val cached = setOf("c")
         assertEquals(
             3,
+            findNextCachedIndex(
+                fromIndex = 0,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { it in cached },
+            ),
+        )
+    }
+
+    @Test
+    fun `findNextCachedIndex skips auto_radio prefix`() {
+        val ids = listOf("a", "auto_radio:live", "c")
+        val cached = setOf("auto_radio:live", "c")
+        assertEquals(
+            2,
             findNextCachedIndex(
                 fromIndex = 0,
                 mediaItemCount = ids.size,
@@ -295,6 +324,21 @@ class PlaybackErrorRecoveryTest {
                 mediaItemCount = ids.size,
                 mediaIdAt = { ids[it] },
                 isCached = { false },
+            ),
+        )
+    }
+
+    @Test
+    fun `resolveOfflineStartIndex skips auto_radio even if marked cached`() {
+        val ids = listOf("auto_radio:x", "t1")
+        val cached = setOf("auto_radio:x", "t1")
+        assertEquals(
+            1,
+            resolveOfflineStartIndex(
+                fromIndex = 0,
+                mediaItemCount = ids.size,
+                mediaIdAt = { ids[it] },
+                isCached = { it in cached },
             ),
         )
     }

@@ -93,8 +93,12 @@ internal fun decideErrorSkipAction(
     mediaItemCount: Int,
 ): ErrorSkipAction = when {
     errorCount > 3 -> ErrorSkipAction.RETRY_LIMIT_STOP
-    currentMediaId?.startsWith("radio:") == true -> ErrorSkipAction.RADIO_IGNORE
+
+    currentMediaId != null && AutoBrowseIds.isRadioMediaId(currentMediaId) ->
+        ErrorSkipAction.RADIO_IGNORE
+
     currentIndex + 1 < mediaItemCount -> ErrorSkipAction.SKIP_NEXT
+
     else -> ErrorSkipAction.LAST_TRACK_STOP
 }
 
@@ -110,7 +114,7 @@ internal fun findNextCachedIndex(
 ): Int? {
     for (i in (fromIndex + 1) until mediaItemCount) {
         val id = mediaIdAt(i) ?: continue
-        if (id.startsWith("radio:")) continue
+        if (AutoBrowseIds.isRadioMediaId(id)) continue
         if (isCached(id)) return i
     }
     return null
@@ -132,7 +136,7 @@ internal fun resolveOfflineStartIndex(
     for (offset in 0 until mediaItemCount) {
         val i = (start + offset) % mediaItemCount
         val id = mediaIdAt(i) ?: continue
-        if (id.startsWith("radio:")) continue
+        if (AutoBrowseIds.isRadioMediaId(id)) continue
         if (isCached(id)) return i
     }
     return null

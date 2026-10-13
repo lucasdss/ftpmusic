@@ -70,6 +70,7 @@ class MediaSessionCallback(
     private val genreMixDao: com.lucasdss.ftpmusic.app.data.db.GenreMixDao? = null,
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository? = null,
     private val radioSource: AutoRadioStationsSource? = null,
+    private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MediaLibraryService.MediaLibrarySession.Callback {
@@ -291,8 +292,8 @@ class MediaSessionCallback(
         val playlists = local?.playlists.orEmpty()
         val genres = local?.genres.orEmpty()
 
-        // Optional search3 when local corpus empty and credentials present.
-        if (tracks.isEmpty() && albums.isEmpty() && artists.isEmpty()) {
+        // Optional search3 when local corpus empty, online, and not LocalOnly (ADR-0136).
+        if (tracks.isEmpty() && albums.isEmpty() && artists.isEmpty() && !isLocalOnly()) {
             tracks = networkSearchTracks(query)
         }
 
@@ -354,6 +355,11 @@ class MediaSessionCallback(
         is Number -> raw.toString()
         else -> null
     }
+
+    /** ADR-0136: align Auto/voice search with phone LocalOnly (radio source already gates). */
+    private fun isLocalOnly(): Boolean = com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy.isLocalOnly(
+        offlineModeManager?.isOfflineEnabled() == true,
+    )
 
     private fun isRadioCurrent(mediaItem: MediaItem?): Boolean {
         if (mediaItem == null) return false
@@ -528,6 +534,15 @@ class MediaSessionCallback(
             }
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic", "[MediaSessionCallback] local search failed: ${e.message}")
+        }
+
+        // ADR-0136: LocalOnly / offline → Room only (no search3).
+        if (isLocalOnly()) {
+            android.util.Log.d(
+                "ftpmusic",
+                "[MediaSessionCallback] searchAndNavidromeExpand: local-only — skip search3",
+            )
+            return emptyList()
         }
 
         val response = api.search3(query, songCount = 10, artistCount = 20, albumCount = 10, auth = auth)

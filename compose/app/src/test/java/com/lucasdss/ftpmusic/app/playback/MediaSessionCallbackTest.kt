@@ -817,6 +817,30 @@ class MediaSessionCallbackTest {
     }
 
     @Test
+    fun `searchAndNavidromeExpand skips search3 when local-only`() = runBlocking {
+        val api = mockk<SubsonicApi>(relaxed = true)
+        val offline = mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>()
+        every { offline.isOfflineEnabled() } returns true
+        val localSearch = mockk<com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository>()
+        coEvery { localSearch.search(any(), any(), any()) } returns
+            com.lucasdss.ftpmusic.app.data.search.LocalSearchHit()
+        val callback = MediaSessionCallback(
+            trackDao = mockk(relaxed = true),
+            metadataDao = mockk(relaxed = true),
+            authHelper = SubsonicAuthHelper(),
+            api = api,
+            localSearch = localSearch,
+            playlistDao = mockk(relaxed = true),
+            offlineModeManager = offline,
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val items = callback.searchAndNavidromeExpand("nowhere")
+        assertTrue(items.isEmpty())
+        io.mockk.coVerify(exactly = 0) { api.search3(any(), any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `onPlaybackResumption returns playlist from Room and applies transport when for playback`() {
         val persistence = mockk<QueuePersistenceManager>()
         coEvery { persistence.restore() } returns SavedQueueState(
@@ -1101,6 +1125,31 @@ class MediaSessionCallbackTest {
         assertEquals(1, page.value?.size)
         assertEquals("remote-1", page.value?.get(0)?.mediaId)
         assertEquals("Remote Hit", page.value?.get(0)?.mediaMetadata?.title.toString())
+    }
+
+    @Test
+    fun `onSearch skips search3 when local-only`() {
+        val api = mockk<SubsonicApi>(relaxed = true)
+        val offline = mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>()
+        every { offline.isOfflineEnabled() } returns true
+        val localSearch = mockk<com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository>()
+        coEvery { localSearch.search(any(), any(), any()) } returns
+            com.lucasdss.ftpmusic.app.data.search.LocalSearchHit()
+        val callback = MediaSessionCallback(
+            trackDao = mockk(relaxed = true),
+            metadataDao = mockk(relaxed = true),
+            authHelper = SubsonicAuthHelper(),
+            api = api,
+            localSearch = localSearch,
+            playlistDao = mockk(relaxed = true),
+            offlineModeManager = offline,
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val session = mockk<androidx.media3.session.MediaLibraryService.MediaLibrarySession>(relaxed = true)
+        callback.onSearch(session, mockk(relaxed = true), "remote", null).get()
+        verify { session.notifySearchResultChanged(any(), eq("remote"), eq(0), isNull()) }
+        io.mockk.coVerify(exactly = 0) { api.search3(any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test

@@ -124,6 +124,32 @@ class PlaybackResumptionMapperTest {
     }
 
     @Test
+    fun `toMediaItemsWithStartPosition preserves auto_radio type and raw url`() {
+        val stream = "https://radio.example.com/live.mp3"
+        val saved = SavedQueueState(
+            tracks = listOf(Track(id = "auto_radio:station1", title = "Live", artist = "Radio")),
+            urls = listOf(stream),
+            currentIndex = 0,
+            positionMs = 0L,
+        )
+        val playlist = PlaybackResumptionMapper.toMediaItemsWithStartPosition(saved)
+        assertNotNull(playlist)
+        val item = playlist!!.mediaItems.single()
+        assertEquals("auto_radio:station1", item.mediaId)
+        assertEquals(
+            androidx.media3.common.MediaMetadata.MEDIA_TYPE_RADIO_STATION,
+            item.mediaMetadata.mediaType,
+        )
+        // Raw URL preserved (no Subsonic migrateStreamUrl rewrite).
+        assertEquals(stream, item.localConfiguration?.uri?.toString())
+        // Extras may be dropped on JVM Media3 stubs; prefer mediaId + mediaType.
+        val typeExtra = item.mediaMetadata.extras?.getString("type")
+        if (typeExtra != null) {
+            assertEquals("radio", typeExtra)
+        }
+    }
+
+    @Test
     fun `fromPlayer snapshots seated playlist`() {
         val player = mockk<Player>(relaxed = true)
         every { player.mediaItemCount } returns 2

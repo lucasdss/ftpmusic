@@ -68,6 +68,7 @@ object MediaModule {
         genreMixDao: GenreMixDao,
         dailyMixRepository: DailyMixRepository,
         radioSource: AutoRadioStationsSource,
+        offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
     ): MediaSessionCallback = MediaSessionCallback(
         trackDao = trackDao,
         metadataDao = metadataDao,
@@ -82,6 +83,7 @@ object MediaModule {
         genreMixDao = genreMixDao,
         dailyMixRepository = dailyMixRepository,
         radioSource = radioSource,
+        offlineModeManager = offlineModeManager,
     )
 
     @Provides

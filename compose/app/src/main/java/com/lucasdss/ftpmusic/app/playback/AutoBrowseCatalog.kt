@@ -210,20 +210,15 @@ class AutoBrowseCatalog(
 
     private suspend fun playlistTracks(playlistId: String, offset: Int, size: Int): List<MediaItem> {
         val entries = playlistDao.getEntries(playlistId)
-        // ADR-0132: over-fetch past dangling ids so Auto gets a full page (or EOF).
-        val out = ArrayList<MediaItem>(size)
-        var cursor = offset.coerceAtLeast(0)
-        while (out.size < size && cursor < entries.size) {
-            val chunk = entries.drop(cursor).take((size - out.size).coerceAtLeast(1) * 2)
-            if (chunk.isEmpty()) break
-            cursor += chunk.size
-            val tracks = trackDao.getTracksByIds(chunk.map { it.trackId }).associateBy { it.id }
-            for (entry in chunk) {
-                tracks[entry.trackId]?.let { out.add(trackItem(it)) }
-                if (out.size >= size) break
-            }
-        }
-        return out
+        // ADR-0136: page by playable index (not raw entry offset) so dangling
+        // skips on page 0 do not duplicate/skip on page N.
+        val orderedIds = entries.map { it.trackId }
+        val present = trackDao.getTracksByIds(orderedIds).associateBy { it.id }
+        return orderedIds
+            .mapNotNull { present[it] }
+            .drop(offset.coerceAtLeast(0))
+            .take(size)
+            .map { trackItem(it) }
     }
 
     private suspend fun albumTracks(albumId: String, offset: Int, size: Int): List<MediaItem> {
@@ -249,20 +244,13 @@ class AutoBrowseCatalog(
 
     private suspend fun mixTracks(mixId: Long, offset: Int, size: Int): List<MediaItem> {
         val allIds = mixTrackIds(mixId)
-        // ADR-0132: over-fetch past dangling ids so Auto gets a full page (or EOF).
-        val out = ArrayList<MediaItem>(size)
-        var cursor = offset.coerceAtLeast(0)
-        while (out.size < size && cursor < allIds.size) {
-            val chunk = allIds.drop(cursor).take((size - out.size).coerceAtLeast(1) * 2)
-            if (chunk.isEmpty()) break
-            cursor += chunk.size
-            val tracks = trackDao.getTracksByIds(chunk).associateBy { it.id }
-            for (id in chunk) {
-                tracks[id]?.let { out.add(trackItem(it)) }
-                if (out.size >= size) break
-            }
-        }
-        return out
+        // ADR-0136: page by playable index after Room filter (same as playlist).
+        val present = trackDao.getTracksByIds(allIds).associateBy { it.id }
+        return allIds
+            .mapNotNull { present[it] }
+            .drop(offset.coerceAtLeast(0))
+            .take(size)
+            .map { trackItem(it) }
     }
 
     private suspend fun genreTracks(genre: String, offset: Int, size: Int): List<MediaItem> =
