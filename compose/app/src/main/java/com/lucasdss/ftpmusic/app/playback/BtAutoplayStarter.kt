@@ -35,7 +35,14 @@ object BtAutoplayStarter {
         sdkInt: Int = Build.VERSION.SDK_INT,
     ): StartResult {
         MediaServiceStartRequest.foregroundRequested = true
+        // ADR-0133: preserve an in-flight Resume tap across A2DP reconnect storms;
+        // otherwise clear so a stale tap cannot leak into a pure background wake.
+        val preservePendingTap = MediaServiceStartRequest.btAutoplayRequested &&
+            MediaServiceStartRequest.userInitiatedResume
         MediaServiceStartRequest.btAutoplayRequested = true
+        if (!preservePendingTap) {
+            MediaServiceStartRequest.userInitiatedResume = false
+        }
         val intent = Intent(context, MediaService::class.java).apply {
             action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY
         }
@@ -88,6 +95,13 @@ object BtAutoplayStarter {
     fun notificationsEnabled(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()
 
+    /** Cancel Resume notif after successful tap-play / autoplay (ADR-0133). */
+    fun cancelResumeNotification(context: Context) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return
+        manager.cancel(RESUME_NOTIFICATION_ID)
+    }
+
     fun postResumeNotification(
         context: Context,
         @StringRes bodyRes: Int = com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body,
@@ -107,6 +121,8 @@ object BtAutoplayStarter {
         }
         val launch = Intent(context, MediaService::class.java).apply {
             action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY
+            // ADR-0133: tap must play on API ≥37 — distinguish from background A2DP.
+            putExtra(MediaServiceStartRequest.EXTRA_USER_INITIATED_RESUME, true)
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pending = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

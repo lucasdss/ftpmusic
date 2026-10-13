@@ -196,6 +196,7 @@ class MediaServiceFgsReassertTest {
     @Test
     fun `applyBtPlayAfterSeat offline seeks to first cached then plays on API36`() {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b", "c"))
+        var cancelled = 0
         service.applyBtPlayAfterSeat(
             player = player,
             sdkInt = 36,
@@ -203,9 +204,11 @@ class MediaServiceFgsReassertTest {
             isCached = { it == "b" },
             postWiuNotif = { error("no WIU on API36") },
             postOfflineNotif = { error("must not offline-notif when cache exists") },
+            cancelResumeNotif = { cancelled++ },
         )
         verify { player.seekTo(1, 0L) }
         verify { player.play() }
+        assertEquals(1, cancelled)
     }
 
     @Test
@@ -232,6 +235,7 @@ class MediaServiceFgsReassertTest {
         service.applyBtPlayAfterSeat(
             player = player,
             sdkInt = 37,
+            userInitiated = false,
             networkBlocked = true,
             isCached = { it == "a" },
             postWiuNotif = { wiu++ },
@@ -240,6 +244,45 @@ class MediaServiceFgsReassertTest {
         assertEquals(1, wiu)
         verify { player.pause() }
         verify(exactly = 0) { player.seekTo(any(), any()) }
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat A17 userInitiated tap plays and cancels Resume notif`() {
+        // ADR-0133: Resume notif tap must play() on API ≥37 — not re-enter WIU loop.
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
+        var wiu = 0
+        var cancelled = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            userInitiated = true,
+            networkBlocked = false,
+            postWiuNotif = { wiu++ },
+            cancelResumeNotif = { cancelled++ },
+        )
+        assertEquals(0, wiu)
+        assertEquals(1, cancelled)
+        verify { player.play() }
+        verify(exactly = 0) { player.pause() }
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat A17 background without tap still posts WIU`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
+        var wiu = 0
+        var cancelled = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            userInitiated = false,
+            networkBlocked = false,
+            postWiuNotif = { wiu++ },
+            cancelResumeNotif = { cancelled++ },
+        )
+        assertEquals(1, wiu)
+        assertEquals(0, cancelled)
+        verify { player.pause() }
+        verify(exactly = 0) { player.play() }
     }
 
     private fun mockOfflineQueuePlayer(currentIndex: Int, ids: List<String>): Player {

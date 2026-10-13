@@ -50,6 +50,14 @@ class PlaybackResumptionMapperTest {
     }
 
     @Test
+    fun `shouldPlayAfterBtSeat true when userInitiated even on API 37`() {
+        assertTrue(PlaybackResumptionMapper.shouldPlayAfterBtSeat(36, userInitiated = false))
+        assertFalse(PlaybackResumptionMapper.shouldPlayAfterBtSeat(37, userInitiated = false))
+        assertTrue(PlaybackResumptionMapper.shouldPlayAfterBtSeat(37, userInitiated = true))
+        assertTrue(PlaybackResumptionMapper.shouldPlayAfterBtSeat(38, userInitiated = true))
+    }
+
+    @Test
     fun `shouldWaitForRestoreOnGetSession only when empty and in flight`() {
         assertTrue(PlaybackResumptionMapper.shouldWaitForRestoreOnGetSession(true, true))
         assertFalse(PlaybackResumptionMapper.shouldWaitForRestoreOnGetSession(false, true))

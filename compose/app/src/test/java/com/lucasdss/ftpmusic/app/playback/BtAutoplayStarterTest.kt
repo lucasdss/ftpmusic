@@ -18,6 +18,7 @@ class BtAutoplayStarterTest {
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
         MediaServiceStartRequest.btAutoplayRequested = false
         MediaServiceStartRequest.foregroundRequested = false
+        MediaServiceStartRequest.userInitiatedResume = true // stale tap must not leak
         val ctx = mockk<Context>(relaxed = true)
         val result = BtAutoplayStarter.startAutoplay(
             context = ctx,
@@ -27,6 +28,7 @@ class BtAutoplayStarterTest {
         assertEquals(BtAutoplayStarter.StartResult.Started, result)
         assertTrue(MediaServiceStartRequest.btAutoplayRequested)
         assertTrue(MediaServiceStartRequest.foregroundRequested)
+        assertFalse(MediaServiceStartRequest.userInitiatedResume)
         val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             ctx,
             offline = false,
@@ -34,6 +36,23 @@ class BtAutoplayStarterTest {
         )
         assertTrue(snap.contains("ftpmusic-bt"))
         assertTrue(snap.contains("result=Started"))
+    }
+
+    @Test
+    fun `startAutoplay preserves in-flight user tap across reconnect`() {
+        MediaServiceStartRequest.btAutoplayRequested = true
+        MediaServiceStartRequest.userInitiatedResume = true
+        val ctx = mockk<Context>(relaxed = true)
+        BtAutoplayStarter.startAutoplay(
+            context = ctx,
+            startForegroundService = { _, _ -> },
+            postFallback = {},
+        )
+        assertTrue(MediaServiceStartRequest.btAutoplayRequested)
+        assertTrue(
+            "pending Resume tap must survive A2DP reconnect clobber",
+            MediaServiceStartRequest.userInitiatedResume,
+        )
     }
 
     @Test
@@ -85,5 +104,43 @@ class BtAutoplayStarterRobolectricTest {
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         org.junit.Assert.assertNotNull(nm.getNotificationChannel(BtAutoplayStarter.RESUME_CHANNEL_ID))
         assertTrue(BtAutoplayStarter.notificationsEnabled(ctx))
+    }
+
+    @Test
+    fun `postResumeNotification PendingIntent carries USER_INITIATED_RESUME extra`() {
+        // ADR-0133: tap must be distinguishable from background A2DP wake.
+        val ctx = RuntimeEnvironment.getApplication()
+        BtAutoplayStarter.postResumeNotification(ctx)
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        @Suppress("DEPRECATION")
+        val notif = nm.activeNotifications
+            .firstOrNull { it.id == BtAutoplayStarter.RESUME_NOTIFICATION_ID }
+            ?.notification
+        org.junit.Assert.assertNotNull(notif)
+        val contentIntent = notif!!.contentIntent
+        org.junit.Assert.assertNotNull(contentIntent)
+        // Robolectric: unwrap PendingIntent → Intent via shadow or reflection
+        val intent = org.robolectric.Shadows.shadowOf(contentIntent).savedIntent
+        assertEquals(MediaServiceStartRequest.ACTION_BT_AUTOPLAY, intent.action)
+        assertTrue(
+            intent.getBooleanExtra(
+                MediaServiceStartRequest.EXTRA_USER_INITIATED_RESUME,
+                false,
+            ),
+        )
+    }
+
+    @Test
+    fun `cancelResumeNotification removes posted Resume notif`() {
+        val ctx = RuntimeEnvironment.getApplication()
+        BtAutoplayStarter.postResumeNotification(ctx)
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        assertTrue(
+            nm.activeNotifications.any { it.id == BtAutoplayStarter.RESUME_NOTIFICATION_ID },
+        )
+        BtAutoplayStarter.cancelResumeNotification(ctx)
+        assertFalse(
+            nm.activeNotifications.any { it.id == BtAutoplayStarter.RESUME_NOTIFICATION_ID },
+        )
     }
 }

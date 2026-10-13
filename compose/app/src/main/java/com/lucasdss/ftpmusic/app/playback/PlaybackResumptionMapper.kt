@@ -30,6 +30,13 @@ object PlaybackResumptionMapper {
     fun shouldBackgroundAutoplay(sdkInt: Int): Boolean = sdkInt < ANDROID_17_API
 
     /**
+     * After BT seat: play when background autoplay is allowed **or** the wake was
+     * a Resume-notification tap (user-initiated WIU; ADR-0133).
+     */
+    fun shouldPlayAfterBtSeat(sdkInt: Int, userInitiated: Boolean): Boolean =
+        userInitiated || shouldBackgroundAutoplay(sdkInt)
+
+    /**
      * Migrate persisted stream URLs (legacy pipe / 127.0.0.1:9000 proxy) to a
      * playable remote URL aligned with [trackId] — same rules as PlaybackManager.
      */
