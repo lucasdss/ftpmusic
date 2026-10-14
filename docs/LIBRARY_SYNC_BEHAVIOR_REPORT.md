@@ -15,9 +15,9 @@ Enqueued: app start (`FtpmusicApp`) + interval / Wi‑Fi-only setting change.
 Caveats:
 
 - WM / Doze **defer** past wall-clock interval — not AlarmManager exact.
-- Skip: `already_running` → WM `Result.success`. Soft skips
-  (`offline` / `unreachable` / `cellular_policy` / `cooldown`) → WM
-  `Result.retry` (ADR-0139).
+- Skip: `already_running` / `cooldown` → WM `Result.success`. Soft skips
+  (`offline` / `unreachable` / `cellular_policy`) → WM `Result.retry`
+  (ADR-0139 + hardening).
 - App-open `MetadataSyncWorker.start()` FULL **only** if `albumCount==0`; else WM
   (+ Home newest-id DELTA ADR-0109).
 
@@ -103,8 +103,8 @@ daily-mix seed → populate `tracks` → FTS rebuild → **imported playlists re
 
 | End state | Result |
 |-----------|--------|
-| Job null + `already_running` | `success` |
-| Job null + soft skip (offline / cellular / cooldown / …) | `retry` |
+| Job null + `already_running` / `cooldown` | `success` |
+| Job null + soft skip (offline / cellular / …) | `retry` |
 | Unreachable before start | `retry` |
 | `phase == "error"` after join | `retry` (fail after 3 attempts) |
 | `phase == "complete"` | `success` |
@@ -153,8 +153,10 @@ Track phase uses `AdaptiveSyncLimiter`:
 - Start concurrency **2**, delay **200ms**
 - Success streak → up to **4** / delay **100ms**
 - Failures → concurrency down to **2**; delay climbs **+150ms per failed batch**, capped **500ms**
-- Per-album null/`getAlbum` fail → upsert `sync_skip_albums`; success clears row
-- No consecutive-abort / no >5% track-phase `error` (ADR-0139); residual skips drain next run
+- Per-album null/`getAlbum` fail → `recordFailure` on `sync_skip_albums` (`fail_count`);
+  success clears row; evict after 10 fails
+- Soft-stop track drain after **8** consecutive nulls (no `phase=error`); residual next run
+- Album list: safety max pages + stop on zero-new-id page
 - OkHttp `maxRequestsPerHost=6`
 
 ## User controls

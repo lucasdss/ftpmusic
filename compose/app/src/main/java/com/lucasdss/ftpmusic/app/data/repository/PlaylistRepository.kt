@@ -208,13 +208,31 @@ class PlaylistRepository @Inject constructor(
         val pl = sr["playlist"] as? Map<*, *> ?: return
         val entries = pl["entry"] as? List<*>
 
-        val playlistMeta = cached.copy(
-            name = pl["name"] as? String ?: cached.name,
-            comment = pl["comment"] as? String ?: cached.comment,
-            owner = pl["owner"] as? String ?: cached.owner,
-            isPublic = (pl["public"] as? Boolean) ?: cached.isPublic,
-            trackCount = (pl["songCount"] as? Number)?.toInt() ?: cached.trackCount,
-            coverArt = pl["coverArt"] as? String ?: cached.coverArt,
+        // ADR-0139 hardening: re-check outbound pending / conflict after network
+        // round-trip so a local edit during fetch is not overwritten.
+        val latest = playlistDao.getById(playlistId) ?: cached
+        if (latest.isConflicted) {
+            Log.d("ftpmusic-playlist", "refreshImported abort — conflicted playlistId=$playlistId")
+            return
+        }
+        val pendingAfter = try {
+            pendingChangeDao.pendingCountForPlaylist(playlistId)
+        } catch (e: Exception) {
+            Log.w("ftpmusic-playlist", "pending re-check failed for $playlistId: ${e.message}")
+            return
+        }
+        if (pendingAfter > 0) {
+            Log.d("ftpmusic-playlist", "refreshImported abort — pending outbound playlistId=$playlistId")
+            return
+        }
+
+        val playlistMeta = latest.copy(
+            name = pl["name"] as? String ?: latest.name,
+            comment = pl["comment"] as? String ?: latest.comment,
+            owner = pl["owner"] as? String ?: latest.owner,
+            isPublic = (pl["public"] as? Boolean) ?: latest.isPublic,
+            trackCount = (pl["songCount"] as? Number)?.toInt() ?: latest.trackCount,
+            coverArt = pl["coverArt"] as? String ?: latest.coverArt,
             lastSyncedAt = System.currentTimeMillis(),
             updatedAt = System.currentTimeMillis(),
         )

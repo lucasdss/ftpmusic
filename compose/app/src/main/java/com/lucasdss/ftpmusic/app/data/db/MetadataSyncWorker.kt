@@ -200,6 +200,18 @@ class MetadataSyncWorker(
         private const val ORPHAN_RANDOM_ROUNDS_MAX = 50
 
         /**
+         * Safety ceiling for album-list pagination (500 × 10k = 5M albums).
+         * Guards against servers that ignore `offset` and never return a short page.
+         */
+        private const val ALBUM_LIST_MAX_PAGES = 10_000
+
+        /**
+         * Soft-stop track drain after this many consecutive getAlbum nulls in one run.
+         * Does **not** set phase=error — remaining albums wait for the next sync.
+         */
+        private const val TRACK_CONSECUTIVE_FAIL_SOFT_STOP = 8
+
+        /**
          * Choose periodic sync mode from watermark.
          * Never synced full (or older than 7d) → FULL; else DELTA.
          */
@@ -553,11 +565,12 @@ class MetadataSyncWorker(
         val listType = if (mode == LibrarySyncMode.DELTA) "newest" else "alphabeticalByName"
 
         val allAlbums = mutableListOf<CachedAlbumEntity>()
+        val seenAlbumIds = mutableSetOf<String>()
         var offset = 0
         var page = 0
         var listIncomplete = false
-        // ADR-0139: DELTA and FULL both walk until a short page (no page cap).
-        while (true) {
+        // ADR-0139: walk until short page; safety max + zero-new-ids guard (offset-ignore).
+        while (page < ALBUM_LIST_MAX_PAGES) {
             val response = api.getAlbumList2(
                 type = listType,
                 size = PAGE_SIZE,
@@ -574,14 +587,26 @@ class MetadataSyncWorker(
             val albums = albumList?.get("album") as? List<*>
             if (albums.isNullOrEmpty()) break
 
+            var newOnPage = 0
             albums.forEach { a ->
                 val m = a as? Map<*, *> ?: return@forEach
-                parseAlbumMap(m)?.let { allAlbums.add(it) }
+                val parsed = parseAlbumMap(m) ?: return@forEach
+                if (seenAlbumIds.add(parsed.id)) {
+                    allAlbums.add(parsed)
+                    newOnPage++
+                }
             }
             page++
             if (albums.size < PAGE_SIZE) break
+            if (newOnPage == 0) {
+                Log.w(TAG, "Album list page=$page yielded 0 new ids — stopping (offset ignored?)")
+                break
+            }
             offset += PAGE_SIZE
             delay(100L) // throttle between paginated API calls
+        }
+        if (page >= ALBUM_LIST_MAX_PAGES) {
+            Log.w(TAG, "Album list hit safety max pages=$ALBUM_LIST_MAX_PAGES — stopping walk")
         }
 
         if (listIncomplete) {
@@ -1271,7 +1296,7 @@ class MetadataSyncWorker(
             val storedVersion = prefs.getInt("metadata_version", 0)
             val forceResync = force || storedVersion < METADATA_VERSION
             val skipIds = try {
-                syncSkipAlbumDao?.getAllIds()?.toSet() ?: emptySet()
+                syncSkipAlbumDao?.getRetryableIds()?.toSet() ?: emptySet()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 emptySet()
@@ -1298,6 +1323,8 @@ class MetadataSyncWorker(
             val count = AtomicInteger(0)
             val totalTracks = AtomicInteger(0)
             val failedCount = AtomicInteger(0)
+            val consecutiveFailures = AtomicInteger(0)
+            val softStopped = AtomicBoolean(false)
 
             // Helper: fetch one album's tracks (called from parallel coroutines).
             // Pure network — DB writes are batched per chunk below so a full
@@ -1345,7 +1372,7 @@ class MetadataSyncWorker(
             // Process in adaptive batches for controlled concurrency + memory; each
             // batch's fetched tracks are written in ONE transaction (ADR-0045).
             var index = 0
-            while (index < pendingAlbums.size) {
+            while (index < pendingAlbums.size && !softStopped.get()) {
                 val batchSize = trackLimiter.concurrency
                 val end = minOf(index + batchSize, pendingAlbums.size)
                 val chunk = pendingAlbums.subList(index, end).toList()
@@ -1358,19 +1385,32 @@ class MetadataSyncWorker(
                             if (tracks == null) {
                                 failedCount.incrementAndGet()
                                 batchFailures.incrementAndGet()
+                                val streak = consecutiveFailures.incrementAndGet()
                                 try {
-                                    syncSkipAlbumDao?.upsert(
-                                        SyncSkipAlbumEntity(
-                                            albumId = album.id,
-                                            failedAt = System.currentTimeMillis(),
-                                            reason = "get_album_null",
-                                        ),
-                                    )
+                                    val fails = syncSkipAlbumDao?.recordFailure(
+                                        albumId = album.id,
+                                        reason = "get_album_null",
+                                    ) ?: 1
+                                    if (fails >= SyncSkipAlbumDao.MAX_FAIL_COUNT) {
+                                        syncSkipAlbumDao?.delete(album.id)
+                                        Log.w(
+                                            TAG,
+                                            "Evicted skip album ${album.id} after $fails failures",
+                                        )
+                                    }
                                 } catch (e: Exception) {
                                     if (e is CancellationException) throw e
                                 }
+                                if (streak >= TRACK_CONSECUTIVE_FAIL_SOFT_STOP) {
+                                    softStopped.set(true)
+                                    Log.w(
+                                        TAG,
+                                        "Soft-stopping track drain after $streak consecutive failures",
+                                    )
+                                }
                                 emptyList<CachedAlbumTrackEntity>()
                             } else {
+                                consecutiveFailures.set(0)
                                 try {
                                     syncSkipAlbumDao?.delete(album.id)
                                 } catch (e: Exception) {
@@ -1411,7 +1451,7 @@ class MetadataSyncWorker(
                     albumTracksProgress = count.get(),
                     trackCount = corpusCount,
                 )
-                if (index < pendingAlbums.size) {
+                if (!softStopped.get() && index < pendingAlbums.size) {
                     delay(trackLimiter.batchDelayMs)
                 }
             }
@@ -1419,7 +1459,11 @@ class MetadataSyncWorker(
             // ADR-0139: residual skip-queue rows retry next sync — do not fail the run.
             val f = failedCount.get()
             if (f > 0) {
-                Log.w(TAG, "Album track sync deferred $f failures of $pendingTotal to skip queue")
+                Log.w(
+                    TAG,
+                    "Album track sync deferred $f failures of $pendingTotal " +
+                        "(softStopped=${softStopped.get()})",
+                )
             }
             val corpusCount = try {
                 trackDao.trackCountAll()

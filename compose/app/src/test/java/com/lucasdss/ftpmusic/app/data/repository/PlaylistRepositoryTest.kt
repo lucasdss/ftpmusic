@@ -228,6 +228,7 @@ class PlaylistRepositoryTest {
         )
         coEvery { pendingChangeDao.pendingCountForPlaylist("pl-ok") } returns 0
         coEvery { pendingChangeDao.pendingCountForPlaylist("pl-pending") } returns 1
+        coEvery { playlistDao.getById("pl-ok") } returns PlaylistEntity(id = "pl-ok", name = "OK")
         coEvery { api.getPlaylist(any(), id = "pl-ok") } returns mapOf(
             "subsonic-response" to mapOf(
                 "status" to "ok",
@@ -239,6 +240,8 @@ class PlaylistRepositoryTest {
                 ),
             ),
         )
+        val upserted = slot<List<PlaylistEntity>>()
+        coEvery { playlistDao.upsertAll(capture(upserted)) } returns Unit
 
         repo.refreshImportedPlaylists()
 
@@ -247,7 +250,42 @@ class PlaylistRepositoryTest {
         coVerify(exactly = 0) { api.getPlaylist(any(), id = "pl-conflict") }
         coVerify(exactly = 0) { api.getPlaylist(any(), id = "pl-remote-only") }
         coVerify(exactly = 0) { downloadManager.enqueue(any(), any(), priority = any()) }
-        coVerify { playlistDao.upsertAll(match { it[0].name == "OK Updated" }) }
+        assertEquals("OK Updated", upserted.captured[0].name)
+    }
+
+    @Test
+    fun `refreshImportedPlaylists aborts write when pending appears after fetch`() = runTest {
+        coEvery { api.getPlaylists(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlists" to mapOf(
+                    "playlist" to listOf(
+                        mapOf<String, Any?>("id" to "pl-race", "name" to "Race", "songCount" to 1),
+                    ),
+                ),
+            ),
+        )
+        coEvery { playlistDao.getAll() } returns listOf(PlaylistEntity(id = "pl-race", name = "Race"))
+        // Pre-check clear, post-fetch pending
+        coEvery { pendingChangeDao.pendingCountForPlaylist("pl-race") } returnsMany listOf(0, 1)
+        coEvery { playlistDao.getById("pl-race") } returns PlaylistEntity(id = "pl-race", name = "Race")
+        coEvery { api.getPlaylist(any(), id = "pl-race") } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlist" to mapOf(
+                    "id" to "pl-race",
+                    "name" to "Server Wins",
+                    "songCount" to 1,
+                    "entry" to listOf(mapOf("id" to "t1", "title" to "T")),
+                ),
+            ),
+        )
+
+        repo.refreshImportedPlaylists()
+
+        coVerify { api.getPlaylist(any(), id = "pl-race") }
+        coVerify(exactly = 0) { playlistDao.replaceEntries(any(), any()) }
+        coVerify(exactly = 0) { playlistDao.upsertAll(any()) }
     }
 
     @Test

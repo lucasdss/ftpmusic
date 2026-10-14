@@ -14,7 +14,7 @@ import dagger.assisted.AssistedInject
  * WorkManager CoroutineWorker that delegates to [MetadataSyncWorker]
  * for periodic library metadata sync (ADR-0045: DELTA or weekly FULL;
  * ADR-0068: await completion + retry on error phase;
- * ADR-0139: soft-skip → Result.retry except already_running).
+ * ADR-0139: soft-skip → Result.retry except already_running / cooldown).
  *
  * Scheduled via WorkManager in [com.lucasdss.ftpmusic.app.FtpmusicApp].
  */
@@ -41,8 +41,11 @@ class SyncScheduleWorker @AssistedInject constructor(
                 Log.d("ftpmusic-work", "Periodic sync skipped reason=$reason")
                 DiagnosticLog.d("ftpmusic-work", "periodic sync skipped reason=$reason")
                 return when (reason) {
-                    "already_running" -> Result.success()
-                    "offline", "unreachable", "cellular_policy", "cooldown" -> Result.retry()
+                    // Cooldown cannot succeed until wall-clock elapses — avoid hot WM retry.
+                    "already_running", "cooldown" -> Result.success()
+
+                    "offline", "unreachable", "cellular_policy" -> Result.retry()
+
                     else -> Result.retry()
                 }
             }

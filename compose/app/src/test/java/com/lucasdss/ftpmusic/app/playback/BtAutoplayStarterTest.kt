@@ -112,6 +112,7 @@ class BtAutoplayStarterRobolectricTest {
         val ctx = RuntimeEnvironment.getApplication()
         BtAutoplayStarter.postResumeNotification(ctx)
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
         @Suppress("DEPRECATION")
         val notif = nm.activeNotifications
             .firstOrNull { it.id == BtAutoplayStarter.RESUME_NOTIFICATION_ID }

@@ -641,4 +641,6 @@ data class SyncSkipAlbumEntity(
     @PrimaryKey @ColumnInfo(name = "album_id") val albumId: String,
     @ColumnInfo(name = "failed_at") val failedAt: Long = System.currentTimeMillis(),
     val reason: String = "",
+    /** Consecutive sync-run failures; evicted at [SyncSkipAlbumDao.MAX_FAIL_COUNT]. */
+    @ColumnInfo(name = "fail_count", defaultValue = "1") val failCount: Int = 1,
 )

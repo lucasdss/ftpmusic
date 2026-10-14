@@ -2094,11 +2094,44 @@ interface DesiredItemDao {
 
 @Dao
 interface SyncSkipAlbumDao {
+    companion object {
+        /** Drop permanent failures after this many sync-run misses. */
+        const val MAX_FAIL_COUNT = 10
+    }
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(row: SyncSkipAlbumEntity)
 
+    @Query("SELECT * FROM sync_skip_albums WHERE album_id = :albumId")
+    suspend fun get(albumId: String): SyncSkipAlbumEntity?
+
+    /**
+     * Record a failed getAlbum: insert or bump fail_count. Returns the new count.
+     * Caller should [delete] when count reaches [MAX_FAIL_COUNT].
+     */
+    @Transaction
+    suspend fun recordFailure(albumId: String, reason: String, nowMs: Long = System.currentTimeMillis()): Int {
+        val prior = get(albumId)
+        val next = (prior?.failCount ?: 0) + 1
+        upsert(
+            SyncSkipAlbumEntity(
+                albumId = albumId,
+                failedAt = nowMs,
+                reason = reason,
+                failCount = next,
+            ),
+        )
+        return next
+    }
+
     @Query("DELETE FROM sync_skip_albums WHERE album_id = :albumId")
     suspend fun delete(albumId: String)
+
+    /** Retryable ids only — exhausted rows are deleted by the sync worker. */
+    @Query(
+        "SELECT album_id FROM sync_skip_albums WHERE fail_count < :maxFails ORDER BY failed_at ASC",
+    )
+    suspend fun getRetryableIds(maxFails: Int = MAX_FAIL_COUNT): List<String>
 
     @Query("SELECT album_id FROM sync_skip_albums ORDER BY failed_at ASC")
     suspend fun getAllIds(): List<String>

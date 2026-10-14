@@ -927,7 +927,8 @@ class MetadataSyncWorkerTest {
     @Test
     fun `syncNow completes with watermarks when album tracks fail into skip queue`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
-        coEvery { skipDao.getAllIds() } returns emptyList()
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.recordFailure(any(), any(), any()) } returns 1
         val w = MetadataSyncWorker(
             context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
             mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
@@ -969,7 +970,7 @@ class MetadataSyncWorkerTest {
         job!!.join()
 
         assertEquals("complete", w.status.value.phase)
-        coVerify(atLeast = 1) { skipDao.upsert(any()) }
+        coVerify(atLeast = 1) { skipDao.recordFailure(any(), any(), any()) }
         verify(atLeast = 1) {
             prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
         }
@@ -1619,7 +1620,8 @@ class MetadataSyncWorkerTest {
     @Test
     fun `syncAlbumTracks continues after consecutive failures and queues skips`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
-        coEvery { skipDao.getAllIds() } returns emptyList()
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.recordFailure(any(), any(), any()) } returnsMany listOf(1, 2, 3, 4, 5, 6, 7, 8)
         val w = MetadataSyncWorker(
             context,
             api,
@@ -1633,7 +1635,7 @@ class MetadataSyncWorkerTest {
             desiredRepository = mockk(relaxed = true),
             syncSkipAlbumDao = skipDao,
         )
-        val albums = (1..5).map { i -> CachedAlbumEntity(id = "al-$i", name = "A$i") }
+        val albums = (1..20).map { i -> CachedAlbumEntity(id = "al-$i", name = "A$i") }
         coEvery { metadataDao.getAllAlbums() } returns albums
         coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
         every { context.getSharedPreferences(any(), any()) } returns prefs
@@ -1642,15 +1644,18 @@ class MetadataSyncWorkerTest {
 
         w.syncAlbumTracks()
 
-        // ADR-0139: no abort — all pending drained into skip queue; phase stays tracks
+        // Soft-stop after consecutive fails — no phase=error; skip queue records
         assertNotEquals("error", w.status.value.phase)
-        coVerify(atLeast = 5) { skipDao.upsert(any()) }
+        coVerify(atLeast = 1) { skipDao.recordFailure(any(), any(), any()) }
+        // Must not burn through all 20 before soft-stop
+        coVerify(atMost = 16) { api.getAlbum(any(), any()) }
     }
 
     @Test
     fun `syncAlbumTracks does not set error phase when many albums fail`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
-        coEvery { skipDao.getAllIds() } returns emptyList()
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.recordFailure(any(), any(), any()) } returns 1
         val w = MetadataSyncWorker(
             context,
             api,
@@ -1681,14 +1686,14 @@ class MetadataSyncWorkerTest {
         w.syncAlbumTracks()
 
         assertNotEquals("error", w.status.value.phase)
-        coVerify(atLeast = 1) { skipDao.upsert(any()) }
+        coVerify(atLeast = 1) { skipDao.recordFailure(any(), any(), any()) }
         coVerify { skipDao.delete("al-1") }
     }
 
     @Test
     fun `syncAlbumTracks prioritizes durable skip queue albums`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
-        coEvery { skipDao.getAllIds() } returns listOf("al-skip")
+        coEvery { skipDao.getRetryableIds(any()) } returns listOf("al-skip")
         val w = MetadataSyncWorker(
             context,
             api,

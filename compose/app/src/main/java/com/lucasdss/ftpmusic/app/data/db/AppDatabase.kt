@@ -38,7 +38,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncSkipAlbumEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 66,
+    version = 67,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1198,6 +1198,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_66 = ALL_MIGRATIONS_65 + MIGRATION_65_66
+
+        /** ADR-0139 hardening: skip-queue fail_count for eviction. */
+        val MIGRATION_66_67 = object : Migration(66, 67) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE sync_skip_albums ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 1",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_67 = ALL_MIGRATIONS_66 + MIGRATION_66_67
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

@@ -94,11 +94,11 @@ class SyncScheduleWorkerTest {
     }
 
     @Test
-    fun `doWork returns Retry when sync skipped for cooldown`() = runBlocking {
+    fun `doWork returns Success when sync skipped for cooldown`() = runBlocking {
         every { metadataSyncWorker.syncNowAsync(any(), any()) } returns null
         every { metadataSyncWorker.lastSkipReason() } returns "cooldown"
         val result = worker.doWork()
-        assertTrue(result is ListenableWorker.Result.Retry)
+        assertTrue(result is ListenableWorker.Result.Success)
     }
 
     @Test

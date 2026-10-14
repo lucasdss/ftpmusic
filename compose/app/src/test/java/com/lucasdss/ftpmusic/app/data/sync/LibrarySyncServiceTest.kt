@@ -42,17 +42,15 @@ class LibrarySyncServiceTest {
     }
 
     @Test
-    fun `stop sends ACTION_STOP`() {
+    fun `stop uses stopService not startService`() {
         val context = mockk<Context>(relaxed = true)
-        every { context.startService(any()) } returns null
+        every { context.stopService(any()) } returns true
 
         LibrarySyncService.stop(context)
 
-        verify {
-            context.startService(
-                match<Intent> { it.action == LibrarySyncService.ACTION_STOP },
-            )
-        }
+        verify { context.stopService(any()) }
+        verify(exactly = 0) { context.startService(any()) }
+        verify(exactly = 0) { context.startForegroundService(any()) }
     }
 
     @Test

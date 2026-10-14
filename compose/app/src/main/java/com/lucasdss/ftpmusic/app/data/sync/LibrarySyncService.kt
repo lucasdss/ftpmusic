@@ -79,6 +79,16 @@ class LibrarySyncService : Service() {
         return START_NOT_STICKY
     }
 
+    /**
+     * Android 15+ `dataSync` 6-hour timeout — stop cleanly instead of letting the
+     * OS kill the FGS without tearing down our notification / collectors.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Log.w(TAG, "onTimeout startId=$startId fgsType=$fgsType — stopping")
+        DiagnosticLog.w(TAG, "onTimeout startId=$startId fgsType=$fgsType")
+        stopSelfSafely()
+    }
+
     override fun onDestroy() {
         statusJob?.cancel()
         scope.cancel()
@@ -177,14 +187,13 @@ class LibrarySyncService : Service() {
             }
         }
 
+        /** Prefer [Context.stopService] — never startService just to tear down. */
         fun stop(context: Context) {
             try {
-                val intent = Intent(context, LibrarySyncService::class.java).apply {
-                    action = ACTION_STOP
-                }
-                context.startService(intent)
+                val stopped = context.stopService(Intent(context, LibrarySyncService::class.java))
+                DiagnosticLog.d(TAG, "stopService stopped=$stopped")
             } catch (e: Exception) {
-                Log.w(TAG, "stop service failed: ${e.message}")
+                Log.w(TAG, "stopService failed: ${e.message}")
             }
         }
     }
