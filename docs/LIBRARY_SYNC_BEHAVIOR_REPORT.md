@@ -2,6 +2,50 @@
 
 Caveman terse. Code truth after ADR-0045 + ADR-0068 + ADR-0085 + ADR-0108 + ADR-0109.
 
+## FAQ — interval / background / Navidrome coverage
+
+### Auto after Sync Interval?
+
+**Yes.** Settings `sync_interval_hours` (default **12**, clamp **1–24**) →
+`NetworkPolicyHolder.rescheduleMetadataSync()` → WM unique periodic `"metadata_sync"` →
+`SyncScheduleWorker` → `MetadataSyncWorker.syncNowAsync` (DELTA if last FULL &lt; 7d else FULL).
+
+Enqueued: app start (`FtpmusicApp`) + interval / Wi‑Fi-only setting change.
+
+Caveats:
+
+- WM / Doze **defer** past wall-clock interval — not AlarmManager exact.
+- Skip (cooldown 5min / already_running / offline / cellular Wi‑Fi-only) → WM
+  `Result.success` → **no retry** until next period.
+- App-open `MetadataSyncWorker.start()` FULL **only** if `albumCount==0`; else WM
+  (+ Home newest-id DELTA ADR-0109).
+
+### Background?
+
+**Yes for library metadata** — WorkManager can start process for worker.
+Sync body = in-process coroutines (`MetadataSyncWorker`); **no sync FGS**.
+
+| Path | Background? |
+|------|-------------|
+| Periodic library (`SyncScheduleWorker`) | Yes (WM) |
+| Post-sync enrich (`MetadataEnrichScheduleWorker`) | Yes (WM one-shot) |
+| First-run FULL / manual Resync / Home DELTA | While app process alive |
+| Playlist (`PlaylistSyncWorker` ~15s loop) | Process-lifetime only — dies with process; **not** interval-tied. After **10** consecutive network failures loop `break`s → paused until process restart (pending flush can sit) |
+
+WM network: `UNMETERED` if sync Wi‑Fi-only else `CONNECTED`. No battery/charging/idle.
+
+### All Navidrome data?
+
+**No.** Adaptive densify (ADR-0045), not full Subsonic dump. See also
+`docs/NAVIDROME-API-CAPABILITIES.md`.
+
+| In library sync | Not / partial |
+|-----------------|---------------|
+| Albums, artists, genres, cover **IDs**, starred | Playlists auto-pull **NO** (import on demand; Playlist worker = outbound) |
+| Songs **PARTIAL** (DELTA caps; drain 400; orphan budgets) | Lyrics bulk **NO** (player on-demand) |
+| Ratings from `getStarred2` only | Cover **bytes**, radio, bookmarks, shares, play queue, similar songs, full catalog `userRating` |
+| Enrich bio/notes **PARTIAL** (capped async) | |
+
 ## Modes
 
 | Mode | Albums | Tracks | When |
@@ -103,8 +147,9 @@ Track phase uses `AdaptiveSyncLimiter`:
 
 - Start concurrency **2**, delay **200ms**
 - Success streak → up to **4** / delay **100ms**
-- Failures → down to **2** / delay **500ms**
+- Failures → concurrency down to **2**; delay climbs **+150ms per failed batch**, capped **500ms**
 - Abort after **3** consecutive null fetches
+- Track-phase fail ratio: if failed fetches &gt; **5%** of pending albums → `phase="error"` → WM retry
 - OkHttp `maxRequestsPerHost=6`
 
 ## User controls
@@ -134,6 +179,9 @@ WM constraint: `UNMETERED` when sync Wi‑Fi-only else `CONNECTED`.
 - Duplicate ids in one fetch → collapsed before write
 - Enrich columns survive catalog refresh (preserve upsert)
 - `LibraryViewModel.resyncAll` = default DELTA, **no production UI caller**
+- Cooldown-skip → WM `success` → next attempt waits full period (up to 24h) — common “missed interval” read
+- `SyncScheduleWorker` reads shared `status.phase` after `join()` — concurrent manual Resync can race phase (narrow)
+- Playlist flush loop permanent pause after 10 consecutive network fails until process restart
 
 ## Not in this pass
 
