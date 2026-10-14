@@ -112,6 +112,9 @@ class SettingsViewModelTest {
         serverProbe,
         mockk(relaxed = true), // searchIndexRebuilder
         mockk<AppUpdateChecker>(relaxed = true),
+        mockk<com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder>(relaxed = true).also {
+            every { it.available } returns kotlinx.coroutines.flow.MutableStateFlow(null)
+        },
     )
 
     @Test

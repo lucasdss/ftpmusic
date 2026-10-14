@@ -2,6 +2,7 @@ package com.lucasdss.ftpmusic.app.data.db
 
 import android.content.Context
 import androidx.work.ListenableWorker
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateProbe
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import io.mockk.*
 import kotlinx.coroutines.Job
@@ -16,6 +17,7 @@ import org.junit.Test
 class SyncScheduleWorkerTest {
 
     private lateinit var metadataSyncWorker: MetadataSyncWorker
+    private lateinit var appUpdateProbe: AppUpdateProbe
     private lateinit var worker: SyncScheduleWorker
     private lateinit var statusFlow: MutableStateFlow<SyncStatus>
 
@@ -23,6 +25,8 @@ class SyncScheduleWorkerTest {
     fun setup() {
         ReachabilityStateHolder.onApiSuccess()
         metadataSyncWorker = mockk(relaxed = true)
+        appUpdateProbe = mockk(relaxed = true)
+        coEvery { appUpdateProbe.probe(any()) } returns Unit
         statusFlow = MutableStateFlow(SyncStatus(phase = "complete"))
         every { metadataSyncWorker.status } returns statusFlow
         every { metadataSyncWorker.lastFullSyncMs() } returns System.currentTimeMillis() // recent → DELTA
@@ -32,7 +36,7 @@ class SyncScheduleWorkerTest {
         }
         val context = mockk<Context>(relaxed = true)
         val workerParams = mockk<androidx.work.WorkerParameters>(relaxed = true)
-        worker = spyk(SyncScheduleWorker(context, workerParams, metadataSyncWorker))
+        worker = spyk(SyncScheduleWorker(context, workerParams, metadataSyncWorker, appUpdateProbe))
     }
 
     @After
@@ -83,6 +87,22 @@ class SyncScheduleWorkerTest {
     fun `doWork returns Success when sync succeeds`() = runBlocking {
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Success)
+        coVerify { appUpdateProbe.probe(any()) }
+    }
+
+    @Test
+    fun `doWork still Success when update probe throws`() = runBlocking {
+        coEvery { appUpdateProbe.probe(any()) } throws RuntimeException("play boom")
+        val result = worker.doWork()
+        assertTrue(result is ListenableWorker.Result.Success)
+    }
+
+    @Test
+    fun `doWork skips probe when sync skipped already_running`() = runBlocking {
+        every { metadataSyncWorker.syncNowAsync(any(), any()) } returns null
+        every { metadataSyncWorker.lastSkipReason() } returns "already_running"
+        worker.doWork()
+        coVerify(exactly = 0) { appUpdateProbe.probe(any()) }
     }
 
     @Test

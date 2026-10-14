@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,7 @@ import com.lucasdss.ftpmusic.app.ui.Muted
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.issues.AppIssue
 import com.lucasdss.ftpmusic.app.ui.issues.AppIssueAction
+import com.lucasdss.ftpmusic.app.ui.issues.AppIssueKind
 import com.lucasdss.ftpmusic.app.ui.spacingL
 import com.lucasdss.ftpmusic.app.ui.spacingM
 import com.lucasdss.ftpmusic.app.ui.spacingS
@@ -33,7 +35,7 @@ import com.lucasdss.ftpmusic.app.ui.textLabelM
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IssueStatusSheet(issues: List<AppIssue>, onDismiss: () -> Unit, onAction: (AppIssue) -> Unit) {
+fun IssueStatusSheet(issues: List<AppIssue>, onDismiss: () -> Unit, onAction: (AppIssue, AppIssueAction) -> Unit) {
     if (issues.isEmpty()) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -57,7 +59,10 @@ fun IssueStatusSheet(issues: List<AppIssue>, onDismiss: () -> Unit, onAction: (A
             )
             Spacer(Modifier.height(spacingM()))
             issues.forEach { issue ->
-                IssueStatusRow(issue = issue, onAction = { onAction(issue) })
+                IssueStatusRow(
+                    issue = issue,
+                    onAction = { action -> onAction(issue, action) },
+                )
                 Spacer(Modifier.height(spacingS()))
             }
         }
@@ -65,13 +70,10 @@ fun IssueStatusSheet(issues: List<AppIssue>, onDismiss: () -> Unit, onAction: (A
 }
 
 @Composable
-private fun IssueStatusRow(issue: AppIssue, onAction: () -> Unit) {
-    val actionLabel: String? = when (issue.action) {
-        AppIssueAction.OpenSettings -> stringResource(R.string.issue_action_settings)
-        AppIssueAction.DismissPlaybackError -> stringResource(R.string.issue_action_dismiss)
-        is AppIssueAction.OpenPlaylist -> stringResource(R.string.issue_action_open_playlist)
-        AppIssueAction.None -> null
-    }
+private fun IssueStatusRow(issue: AppIssue, onAction: (AppIssueAction) -> Unit) {
+    val actionLabel: String? = actionLabelFor(issue.action, issue.kind)
+    val secondary = issue.secondaryAction
+    val secondaryLabel: String? = secondary?.let { actionLabelFor(it, issue.kind) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -89,13 +91,43 @@ private fun IssueStatusRow(issue: AppIssue, onAction: () -> Unit) {
             color = Muted,
             fontSize = textLabelM(),
         )
-        if (actionLabel != null) {
-            TextButton(
-                onClick = onAction,
-                modifier = Modifier.testTag("issue_status_action_${issue.id}"),
-            ) {
-                Text(actionLabel, color = BrandTeal, fontSize = textLabelM())
+        if (actionLabel != null || (secondary != null && secondaryLabel != null)) {
+            Row {
+                if (actionLabel != null) {
+                    TextButton(
+                        onClick = { onAction(issue.action) },
+                        modifier = Modifier.testTag("issue_status_action_${issue.id}"),
+                    ) {
+                        Text(actionLabel, color = BrandTeal, fontSize = textLabelM())
+                    }
+                }
+                if (secondary != null && secondaryLabel != null) {
+                    TextButton(
+                        onClick = { onAction(secondary) },
+                        modifier = Modifier.testTag("issue_status_secondary_${issue.id}"),
+                    ) {
+                        Text(secondaryLabel, color = BrandTeal, fontSize = textLabelM())
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun actionLabelFor(action: AppIssueAction, kind: AppIssueKind): String? = when (action) {
+    AppIssueAction.OpenSettings ->
+        if (kind == AppIssueKind.UPDATE_AVAILABLE) {
+            stringResource(R.string.issue_action_update)
+        } else {
+            stringResource(R.string.issue_action_settings)
+        }
+
+    AppIssueAction.DismissPlaybackError -> stringResource(R.string.issue_action_dismiss)
+
+    is AppIssueAction.DismissUpdateReminder -> stringResource(R.string.issue_action_not_now)
+
+    is AppIssueAction.OpenPlaylist -> stringResource(R.string.issue_action_open_playlist)
+
+    AppIssueAction.None -> null
 }

@@ -33,6 +33,8 @@ class PlayAppUpdateChecker @Inject constructor(private val appUpdateManager: App
             val info = awaitAppUpdateInfo()
             cachedInfo = info
             UpdateCheckMapper.fromPlayInfo(info)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             cachedInfo = null
             UpdateCheckResult.Unavailable(
@@ -108,5 +110,8 @@ class PlayAppUpdateChecker @Inject constructor(private val appUpdateManager: App
             .addOnFailureListener { e ->
                 if (cont.isActive) cont.resumeWithException(e)
             }
+        cont.invokeOnCancellation {
+            // Play Task has no cancel API; drop callbacks via isActive checks above.
+        }
     }
 }

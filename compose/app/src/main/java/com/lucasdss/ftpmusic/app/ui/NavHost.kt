@@ -139,13 +139,15 @@ fun FtpmusicNavHost() {
     val appContext = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(appContext) }
 
-    // AppHeader issue tray (ADR-0120)
-    val issueAggregator = remember {
+    // AppHeader issue tray (ADR-0120 / ADR-0140)
+    val issueEntryPoint = remember {
         dagger.hilt.android.EntryPointAccessors.fromApplication(
             appContext.applicationContext,
             AppIssueEntryPoint::class.java,
-        ).appIssueAggregator()
+        )
     }
+    val issueAggregator = remember { issueEntryPoint.appIssueAggregator() }
+    val updateAvailabilityHolder = remember { issueEntryPoint.appUpdateAvailabilityHolder() }
     val issueHeaderState by issueAggregator.headerState.collectAsStateWithLifecycle()
     var showIssueSheet by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(issueHeaderState.issues.isEmpty()) {
@@ -1167,8 +1169,8 @@ fun FtpmusicNavHost() {
                 IssueStatusSheet(
                     issues = issueHeaderState.issues,
                     onDismiss = { showIssueSheet = false },
-                    onAction = { issue ->
-                        when (val action = issue.action) {
+                    onAction = { _, action ->
+                        when (action) {
                             AppIssueAction.OpenSettings -> {
                                 showIssueSheet = false
                                 navController.navigateToSettings()
@@ -1181,6 +1183,10 @@ fun FtpmusicNavHost() {
                             is AppIssueAction.OpenPlaylist -> {
                                 showIssueSheet = false
                                 navController.navigate("playlist/${action.playlistId}")
+                            }
+
+                            is AppIssueAction.DismissUpdateReminder -> {
+                                updateAvailabilityHolder.dismiss(action.versionCode)
                             }
 
                             AppIssueAction.None -> Unit

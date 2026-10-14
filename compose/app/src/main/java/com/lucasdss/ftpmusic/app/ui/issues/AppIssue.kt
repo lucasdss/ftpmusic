@@ -1,7 +1,9 @@
 package com.lucasdss.ftpmusic.app.ui.issues
 
+import com.lucasdss.ftpmusic.app.data.update.AvailableUpdate
+
 /**
- * Global in-app issue for the AppHeader status tray (ADR-0120).
+ * Global in-app issue for the AppHeader status tray (ADR-0120 / ADR-0140).
  * One row in the status sheet; aggregator may emit several at once.
  */
 data class AppIssue(
@@ -10,6 +12,8 @@ data class AppIssue(
     val title: String,
     val body: String,
     val action: AppIssueAction = AppIssueAction.None,
+    /** Optional second CTA (e.g. update reminder Dismiss). */
+    val secondaryAction: AppIssueAction? = null,
     /** Lower = higher priority when picking the header icon for a single-kind set. */
     val priority: Int = kind.defaultPriority,
 )
@@ -22,6 +26,7 @@ enum class AppIssueKind {
     CELLULAR_LOCAL_ONLY,
     PLAYBACK_ERROR,
     PLAYLIST_CONFLICT,
+    UPDATE_AVAILABLE,
     ;
 
     val defaultPriority: Int
@@ -33,6 +38,7 @@ enum class AppIssueKind {
             PLAYLIST_CONFLICT -> 50
             CELLULAR_LOCAL_ONLY -> 60
             SIMULATE_OFFLINE -> 70
+            UPDATE_AVAILABLE -> 80
         }
 }
 
@@ -41,6 +47,7 @@ sealed class AppIssueAction {
     data object OpenSettings : AppIssueAction()
     data object DismissPlaybackError : AppIssueAction()
     data class OpenPlaylist(val playlistId: String) : AppIssueAction()
+    data class DismissUpdateReminder(val versionCode: Int) : AppIssueAction()
 }
 
 /** Which glyph the header icon shows (resolved from the active issue set). */
@@ -51,6 +58,7 @@ enum class AppIssueIconKind {
     WARNING,
     ERROR_OUTLINE,
     SYNC_PROBLEM,
+    SYSTEM_UPDATE,
 }
 
 data class AppIssueHeaderState(
@@ -75,6 +83,7 @@ fun resolveHeaderIcon(issues: List<AppIssue>): AppIssueIconKind {
         AppIssueKind.CELLULAR_LOCAL_ONLY -> AppIssueIconKind.CLOUD_OFF
         AppIssueKind.PLAYBACK_ERROR -> AppIssueIconKind.ERROR_OUTLINE
         AppIssueKind.PLAYLIST_CONFLICT -> AppIssueIconKind.SYNC_PROBLEM
+        AppIssueKind.UPDATE_AVAILABLE -> AppIssueIconKind.SYSTEM_UPDATE
     }
 }
 
@@ -87,6 +96,7 @@ data class AppIssueSnapshot(
     val cellularHardLocal: Boolean = false,
     val playbackError: String? = null,
     val conflictedPlaylists: List<ConflictedPlaylist> = emptyList(),
+    val updateAvailable: AvailableUpdate? = null,
 )
 
 data class ConflictedPlaylist(val id: String, val name: String, val conflictMessage: String? = null)
@@ -110,6 +120,8 @@ fun buildAppIssues(
     playbackTitle: String,
     conflictTitle: String,
     conflictBodyFor: (ConflictedPlaylist) -> String,
+    updateTitle: String = "",
+    updateBody: String = "",
     settingsAction: AppIssueAction = AppIssueAction.OpenSettings,
 ): List<AppIssue> {
     val out = mutableListOf<AppIssue>()
@@ -176,6 +188,17 @@ fun buildAppIssues(
             title = conflictTitle,
             body = conflictBodyFor(pl),
             action = AppIssueAction.OpenPlaylist(pl.id),
+        )
+    }
+    val update = snapshot.updateAvailable
+    if (update != null && updateTitle.isNotBlank()) {
+        out += AppIssue(
+            id = "update_available",
+            kind = AppIssueKind.UPDATE_AVAILABLE,
+            title = updateTitle,
+            body = updateBody,
+            action = settingsAction,
+            secondaryAction = AppIssueAction.DismissUpdateReminder(update.versionCode),
         )
     }
     return out.sortedBy { it.priority }

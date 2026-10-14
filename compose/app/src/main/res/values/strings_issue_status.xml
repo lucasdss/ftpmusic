@@ -27,7 +27,12 @@
     <string name="issue_playlist_conflict_body">\"%1$s\" has a sync conflict. Open the playlist to resolve.</string>
     <string name="issue_playlist_conflict_body_generic">A playlist has a sync conflict. Open it to resolve.</string>
 
+    <string name="issue_update_available_title">Update available</string>
+    <string name="issue_update_available_body">A newer version is ready. Open Settings to update.</string>
+
     <string name="issue_action_settings">Settings</string>
+    <string name="issue_action_update">Update</string>
     <string name="issue_action_dismiss">Dismiss</string>
+    <string name="issue_action_not_now">Not now</string>
     <string name="issue_action_open_playlist">Open</string>
 </resources>

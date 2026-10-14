@@ -18,6 +18,7 @@ import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.network.CustomHeadersInterceptor
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
 import com.lucasdss.ftpmusic.app.data.update.FlexibleInstallEvent
 import com.lucasdss.ftpmusic.app.data.update.UpdateCheckResult
@@ -165,6 +166,7 @@ class SettingsViewModel @Inject constructor(
     private val serverProbe: com.lucasdss.ftpmusic.app.data.network.ServerProbe,
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder,
     private val appUpdateChecker: AppUpdateChecker,
+    private val appUpdateAvailabilityHolder: AppUpdateAvailabilityHolder,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -253,6 +255,16 @@ class SettingsViewModel @Inject constructor(
             btResumeMode = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.mode(storage),
             btSelectedMacs = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.allowlist(storage),
         )
+        // ADR-0140: seed About update row from tray holder so "Update" CTA lands
+        // on an actionable Available state (no extra Play round-trip).
+        appUpdateAvailabilityHolder.available.value?.let { update ->
+            _state.value = _state.value.copy(
+                updateCheck = UpdateCheckUi.Available(
+                    availableVersionCode = update.versionCode,
+                    flexibleAllowed = update.flexibleAllowed,
+                ),
+            )
+        }
         // Bonded-device / role refresh needs a real Context (permissions + BT
         // adapter). Settings UI calls refreshBtResumeState() from LaunchedEffect;
         // skip here so unit tests with a mock Context stay green.
@@ -775,11 +787,13 @@ class SettingsViewModel @Inject constructor(
             when (val result = appUpdateChecker.check()) {
                 is UpdateCheckResult.UpToDate -> {
                     stopFlexibleInstallObserve()
+                    appUpdateAvailabilityHolder.publish(result)
                     _state.value = _state.value.copy(updateCheck = UpdateCheckUi.UpToDate)
                 }
 
                 is UpdateCheckResult.UpdateAvailable -> {
                     stopFlexibleInstallObserve()
+                    appUpdateAvailabilityHolder.publish(result)
                     _state.value = _state.value.copy(
                         updateCheck = UpdateCheckUi.Available(
                             availableVersionCode = result.availableVersionCode,
@@ -789,6 +803,7 @@ class SettingsViewModel @Inject constructor(
                 }
 
                 is UpdateCheckResult.InProgress -> {
+                    appUpdateAvailabilityHolder.publish(result)
                     _state.value = _state.value.copy(
                         updateCheck = UpdateCheckUi.InProgress(result.availableVersionCode),
                     )
@@ -797,6 +812,7 @@ class SettingsViewModel @Inject constructor(
 
                 is UpdateCheckResult.Unavailable -> {
                     stopFlexibleInstallObserve()
+                    // Soft Play blip — do not clear tray via publish(Unavailable).
                     _state.value = _state.value.copy(updateCheck = UpdateCheckUi.Error(result.message))
                 }
             }

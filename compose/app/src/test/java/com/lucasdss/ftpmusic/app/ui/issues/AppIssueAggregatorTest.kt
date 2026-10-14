@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui.issues
 
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
+import com.lucasdss.ftpmusic.app.data.update.AvailableUpdate
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -27,6 +28,8 @@ class AppIssueAggregatorTest {
         playbackTitle = "Playback error",
         conflictTitle = "Playlist sync conflict",
         conflictBodyFor = { "conflict ${it.name}" },
+        updateTitle = "Update available",
+        updateBody = "update body",
     )
 
     @Test
@@ -97,6 +100,31 @@ class AppIssueAggregatorTest {
     fun `cellular local only when os net and not offline`() {
         val issues = build(AppIssueSnapshot(cellularHardLocal = true))
         assertEquals(AppIssueKind.CELLULAR_LOCAL_ONLY, issues.single().kind)
+    }
+
+    @Test
+    fun `update available opens settings and dismiss secondary`() {
+        val issues = build(
+            AppIssueSnapshot(updateAvailable = AvailableUpdate(22, flexibleAllowed = true)),
+        )
+        val issue = issues.single()
+        assertEquals(AppIssueKind.UPDATE_AVAILABLE, issue.kind)
+        assertEquals(AppIssueAction.OpenSettings, issue.action)
+        assertEquals(AppIssueAction.DismissUpdateReminder(22), issue.secondaryAction)
+        assertEquals(AppIssueIconKind.SYSTEM_UPDATE, resolveHeaderIcon(issues))
+    }
+
+    @Test
+    fun `update available sorts after connectivity`() {
+        val issues = build(
+            AppIssueSnapshot(
+                hasOsNetwork = false,
+                updateAvailable = AvailableUpdate(22, true),
+            ),
+        )
+        assertEquals(AppIssueKind.NO_OS_NETWORK, issues.first().kind)
+        assertTrue(issues.any { it.kind == AppIssueKind.UPDATE_AVAILABLE })
+        assertEquals(AppIssueIconKind.WARNING, resolveHeaderIcon(issues))
     }
 
     @Test

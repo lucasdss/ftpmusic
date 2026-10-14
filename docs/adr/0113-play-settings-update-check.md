@@ -38,3 +38,10 @@ Home banners, and header gear badges were considered and rejected for v1
   reports it.
 - About card gains update row states (Idle/Checking/Available/InProgress/
   ReadyToInstall/Error); diagnostics export unchanged.
+
+## Supersession
+
+ADR-0140 adds a soft AppHeader issue-tray reminder (cold start + post-library
+sync probe). Settings remains the install surface; Play-only source and
+flexible/listing behavior from this ADR still apply. The v1 “no home surface /
+no auto-check” non-goals are superseded only for that tray path.

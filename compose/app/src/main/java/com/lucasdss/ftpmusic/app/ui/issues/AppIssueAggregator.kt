@@ -8,6 +8,8 @@ import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder
+import com.lucasdss.ftpmusic.app.data.update.AvailableUpdate
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
@@ -34,8 +36,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Combines connectivity / config / playback / playlist-conflict signals into a
- * single [issues] flow for the AppHeader status tray (ADR-0120).
+ * Combines connectivity / config / playback / playlist-conflict / update signals
+ * into a single [issues] flow for the AppHeader status tray (ADR-0120 / ADR-0140).
  *
  * ADR-0122: fail-soft — Room/Flow failures must never kill the process on
  * cold start (1.10.1 upgrade force-close). CEH + [catch] keep the tray empty.
@@ -46,6 +48,7 @@ class AppIssueAggregator @Inject constructor(
     private val offlineModeManager: OfflineModeManager,
     private val networkPolicyHolder: NetworkPolicyHolder,
     private val playlistDao: PlaylistDao,
+    private val updateAvailabilityHolder: AppUpdateAvailabilityHolder,
 ) {
     private val exceptionHandler = CoroutineExceptionHandler { _, t ->
         android.util.Log.e("ftpmusic-issues", "aggregator failed: ${t.message}", t)
@@ -72,6 +75,7 @@ class AppIssueAggregator @Inject constructor(
         val cellularPolicy: CellularMediaPolicy,
         val playback: String?,
         val conflicts: List<ConflictedPlaylist>,
+        val update: AvailableUpdate?,
     )
 
     private val connFlow: Flow<ConnSlice> = combine(
@@ -87,8 +91,9 @@ class AppIssueAggregator @Inject constructor(
         networkPolicyHolder.cellularMediaPolicy,
         PlayerHolder.playbackErrorFlow,
         conflictedFlow,
-    ) { policy, playback, conflicts ->
-        RestSlice(policy, playback, conflicts)
+        updateAvailabilityHolder.available,
+    ) { policy, playback, conflicts, update ->
+        RestSlice(policy, playback, conflicts, update)
     }
 
     private val snapshotFlow: Flow<AppIssueSnapshot> = combine(connFlow, restFlow) { conn, rest ->
@@ -102,6 +107,7 @@ class AppIssueAggregator @Inject constructor(
             cellularHardLocal = NetworkPolicyState.isCellularHardLocal(),
             playbackError = rest.playback,
             conflictedPlaylists = rest.conflicts,
+            updateAvailable = rest.update,
         )
     }
 
@@ -185,6 +191,8 @@ class AppIssueAggregator @Inject constructor(
                     context.getString(R.string.issue_playlist_conflict_body_generic)
                 }
             },
+            updateTitle = context.getString(R.string.issue_update_available_title),
+            updateBody = context.getString(R.string.issue_update_available_body),
         )
     }
 

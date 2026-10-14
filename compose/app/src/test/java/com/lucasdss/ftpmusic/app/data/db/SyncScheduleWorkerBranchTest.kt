@@ -1,7 +1,9 @@
 package com.lucasdss.ftpmusic.app.data.db
 
 import androidx.work.ListenableWorker
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateProbe
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
@@ -21,6 +23,7 @@ import org.junit.Test
 class SyncScheduleWorkerBranchTest {
 
     private lateinit var metadataSyncWorker: MetadataSyncWorker
+    private lateinit var appUpdateProbe: AppUpdateProbe
     private lateinit var worker: SyncScheduleWorker
     private lateinit var statusFlow: MutableStateFlow<SyncStatus>
 
@@ -28,6 +31,8 @@ class SyncScheduleWorkerBranchTest {
     fun setup() {
         ReachabilityStateHolder.onApiSuccess()
         metadataSyncWorker = mockk(relaxed = true)
+        appUpdateProbe = mockk(relaxed = true)
+        coEvery { appUpdateProbe.probe(any()) } returns Unit
         statusFlow = MutableStateFlow(SyncStatus(phase = "complete"))
         every { metadataSyncWorker.status } returns statusFlow
         every { metadataSyncWorker.lastFullSyncMs() } returns System.currentTimeMillis()
@@ -37,7 +42,7 @@ class SyncScheduleWorkerBranchTest {
         }
         val context = mockk<android.content.Context>(relaxed = true)
         val workerParams = mockk<androidx.work.WorkerParameters>(relaxed = true)
-        worker = spyk(SyncScheduleWorker(context, workerParams, metadataSyncWorker))
+        worker = spyk(SyncScheduleWorker(context, workerParams, metadataSyncWorker, appUpdateProbe))
     }
 
     @After

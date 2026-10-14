@@ -6,6 +6,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateProbe
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -14,7 +15,8 @@ import dagger.assisted.AssistedInject
  * WorkManager CoroutineWorker that delegates to [MetadataSyncWorker]
  * for periodic library metadata sync (ADR-0045: DELTA or weekly FULL;
  * ADR-0068: await completion + retry on error phase;
- * ADR-0139: soft-skip → Result.retry except already_running / cooldown).
+ * ADR-0139: soft-skip → Result.retry except already_running / cooldown;
+ * ADR-0140: after success, probe Play for update-available issue tray).
  *
  * Scheduled via WorkManager in [com.lucasdss.ftpmusic.app.FtpmusicApp].
  */
@@ -23,6 +25,7 @@ class SyncScheduleWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted workerParams: WorkerParameters,
     private val metadataSyncWorker: MetadataSyncWorker,
+    private val appUpdateProbe: AppUpdateProbe,
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
@@ -55,6 +58,13 @@ class SyncScheduleWorker @AssistedInject constructor(
                 Log.w("ftpmusic-work", "Periodic sync ended in error phase — retry")
                 DiagnosticLog.w("ftpmusic-work", "periodic sync error phase — retry")
                 return if (runAttemptCount < 3) Result.retry() else Result.failure()
+            }
+            // ADR-0140: piggyback Play update check; never fail WM on probe errors.
+            try {
+                appUpdateProbe.probe()
+            } catch (e: Exception) {
+                Log.w("ftpmusic-work", "Update probe after sync failed: ${e.message}")
+                DiagnosticLog.w("ftpmusic-work", "update probe failed: ${e.message}")
             }
             Result.success()
         } catch (e: Exception) {

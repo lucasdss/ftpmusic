@@ -16,7 +16,9 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.SyncStatus
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
+import com.lucasdss.ftpmusic.app.data.update.AvailableUpdate
 import com.lucasdss.ftpmusic.app.data.update.FlexibleInstallEvent
 import com.lucasdss.ftpmusic.app.data.update.UpdateCheckResult
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
@@ -32,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -67,6 +70,7 @@ class AppUpdateSettingsViewModelTest {
     private val serverConfigStore: com.lucasdss.ftpmusic.app.di.ServerConfigStore = mockk(relaxed = true)
     private val serverProbe: com.lucasdss.ftpmusic.app.data.network.ServerProbe = mockk(relaxed = true)
     private val appUpdateChecker: AppUpdateChecker = mockk(relaxed = true)
+    private val appUpdateAvailabilityHolder: AppUpdateAvailabilityHolder = mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var viewModel: SettingsViewModel
 
@@ -90,6 +94,7 @@ class AppUpdateSettingsViewModelTest {
         every { appUpdateChecker.applicationId() } returns "com.lucasdss.ftpmusic.app"
         every { appUpdateChecker.observeFlexibleInstall() } returns MutableSharedFlow()
         every { appUpdateChecker.completeUpdate() } returns true
+        every { appUpdateAvailabilityHolder.available } returns MutableStateFlow(null)
         viewModel = createViewModel()
     }
 
@@ -118,6 +123,7 @@ class AppUpdateSettingsViewModelTest {
         serverProbe,
         mockk(relaxed = true),
         appUpdateChecker,
+        appUpdateAvailabilityHolder,
     )
 
     @Test
@@ -128,6 +134,7 @@ class AppUpdateSettingsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(UpdateCheckUi.UpToDate, viewModel.state.value.updateCheck)
+        verify { appUpdateAvailabilityHolder.publish(UpdateCheckResult.UpToDate) }
     }
 
     @Test
@@ -143,10 +150,15 @@ class AppUpdateSettingsViewModelTest {
         ui as UpdateCheckUi.Available
         assertEquals(20, ui.availableVersionCode)
         assertTrue(ui.flexibleAllowed)
+        verify {
+            appUpdateAvailabilityHolder.publish(
+                UpdateCheckResult.UpdateAvailable(20, flexibleAllowed = true),
+            )
+        }
     }
 
     @Test
-    fun `checkForUpdates maps Unavailable to Error`() = runTest(testDispatcher) {
+    fun `checkForUpdates maps Unavailable to Error without publishing tray`() = runTest(testDispatcher) {
         coEvery { appUpdateChecker.check() } returns
             UpdateCheckResult.Unavailable("No network")
 
@@ -154,6 +166,19 @@ class AppUpdateSettingsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(UpdateCheckUi.Error("No network"), viewModel.state.value.updateCheck)
+        verify(exactly = 0) { appUpdateAvailabilityHolder.publish(any()) }
+    }
+
+    @Test
+    fun `init seeds Available from tray holder`() = runTest(testDispatcher) {
+        every { appUpdateAvailabilityHolder.available } returns
+            MutableStateFlow(AvailableUpdate(21, flexibleAllowed = true))
+
+        val seeded = createViewModel()
+        val ui = seeded.state.value.updateCheck
+        assertTrue(ui is UpdateCheckUi.Available)
+        ui as UpdateCheckUi.Available
+        assertEquals(21, ui.availableVersionCode)
     }
 
     @Test

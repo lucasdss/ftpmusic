@@ -38,6 +38,8 @@ class FtpmusicApp : Application() {
 
     @Inject lateinit var preferenceBootstrap: com.lucasdss.ftpmusic.app.data.preferences.PreferenceBootstrap
 
+    @Inject lateinit var appUpdateProbe: com.lucasdss.ftpmusic.app.data.update.AppUpdateProbe
+
     override fun onCreate() {
         super.onCreate()
         // Single authoritative server-config restore — runs before any worker,
@@ -134,6 +136,14 @@ class FtpmusicApp : Application() {
         // Start metadata sync — initial run, then periodic via WorkManager
         metadataSyncWorker.start()
         schedulePeriodicMetadataSync()
+        // ADR-0140: cold-start Play update probe (issue tray); fail-soft.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                appUpdateProbe.probe()
+            } catch (e: Exception) {
+                Log.w("ftpmusic-update", "[App] update probe failed: ${e.message}")
+            }
+        }
         // Initialize auto-cache byte counters for LRU eviction
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {

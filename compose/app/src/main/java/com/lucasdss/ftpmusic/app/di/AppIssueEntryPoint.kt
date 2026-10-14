@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.di
 
+import com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder
 import com.lucasdss.ftpmusic.app.ui.issues.AppIssueAggregator
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -9,4 +10,5 @@ import dagger.hilt.components.SingletonComponent
 @InstallIn(SingletonComponent::class)
 interface AppIssueEntryPoint {
     fun appIssueAggregator(): AppIssueAggregator
+    fun appUpdateAvailabilityHolder(): AppUpdateAvailabilityHolder
 }

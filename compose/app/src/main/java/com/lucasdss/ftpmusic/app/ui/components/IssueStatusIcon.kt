@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.SyncProblem
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
@@ -56,6 +57,7 @@ fun IssueStatusIcon(
         AppIssueIconKind.WARNING -> Icons.Default.Warning
         AppIssueIconKind.ERROR_OUTLINE -> Icons.Default.ErrorOutline
         AppIssueIconKind.SYNC_PROBLEM -> Icons.Default.SyncProblem
+        AppIssueIconKind.SYSTEM_UPDATE -> Icons.Default.SystemUpdate
     }
     Box(
         modifier = modifier
