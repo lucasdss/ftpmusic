@@ -58,4 +58,16 @@ class LibrarySyncServiceTest {
         assertEquals(7102, LibrarySyncService.NOTIFICATION_ID)
         assertEquals("library_sync", LibrarySyncService.CHANNEL_ID)
     }
+
+    @Test
+    fun `ACTION_STOP constant is stable for FGS teardown`() {
+        assertEquals(
+            "com.lucasdss.ftpmusic.app.action.LIBRARY_SYNC_STOP",
+            LibrarySyncService.ACTION_STOP,
+        )
+        assertEquals(
+            "com.lucasdss.ftpmusic.app.action.LIBRARY_SYNC_START",
+            LibrarySyncService.ACTION_START,
+        )
+    }
 }

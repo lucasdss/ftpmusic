@@ -238,9 +238,10 @@ class MetadataSyncWorkerTest {
     }
 
     @Test
-    fun `syncAlbumTracks evicts skip album after max fail_count`() = runTest {
+    fun `syncAlbumTracks keeps exhausted skip row instead of deleting`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
         coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns emptyList()
         coEvery { skipDao.recordFailure(any(), any(), any()) } returns SyncSkipAlbumDao.MAX_FAIL_COUNT
         val w = MetadataSyncWorker(
             context,
@@ -263,10 +264,48 @@ class MetadataSyncWorkerTest {
         every { prefs.getInt("metadata_version", 0) } returns 2
         coEvery { api.getAlbum(any(), any()) } throws RuntimeException("permanent fail")
 
-        w.syncAlbumTracks()
+        val complete = w.syncAlbumTracks()
 
+        assertTrue(complete) // single album fail — no soft-stop streak of 8
         coVerify { skipDao.recordFailure("al-bad", any(), any()) }
-        coVerify { skipDao.delete("al-bad") }
+        // Exhausted rows must remain so getExhaustedIds can exclude them next run
+        coVerify(exactly = 0) { skipDao.delete("al-bad") }
+    }
+
+    @Test
+    fun `syncAlbumTracks excludes exhausted albums from pending unless force`() = runTest {
+        val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns listOf("al-poison")
+        val w = MetadataSyncWorker(
+            context,
+            api,
+            authHelper,
+            metadataDao,
+            trackDao,
+            genreMixDao,
+            coverArtFallback,
+            mockk(relaxed = true),
+            dailyMixRepository,
+            desiredRepository = mockk(relaxed = true),
+            syncSkipAlbumDao = skipDao,
+        )
+        coEvery { metadataDao.getAllAlbums() } returns listOf(
+            CachedAlbumEntity(id = "al-poison", name = "Poison"),
+            CachedAlbumEntity(id = "al-ok", name = "Ok"),
+        )
+        coEvery { metadataDao.getAlbumTracks("al-poison") } returns emptyList()
+        coEvery { metadataDao.getAlbumTracks("al-ok") } returns listOf(
+            CachedAlbumTrackEntity(id = "t1", albumId = "al-ok", title = "T"),
+        )
+        every { prefs.getInt("metadata_version", 0) } returns 2
+
+        val complete = w.syncAlbumTracks(force = false)
+
+        assertTrue(complete)
+        coVerify(exactly = 0) { api.getAlbum(id = "al-poison", any()) }
+        // al-ok already has tracks and is not changed → not pending either
+        coVerify(exactly = 0) { api.getAlbum(id = "al-ok", any()) }
     }
 
     @Test
@@ -835,12 +874,16 @@ class MetadataSyncWorkerTest {
     // ── syncNow orchestration tests (UnconfinedTestDispatcher + testScheduler
     //    so orphan-phase delays advance with runTest)
 
-    private fun kotlinx.coroutines.test.TestScope.makeWorker(enrich: MetadataEnrichRunner? = null) = MetadataSyncWorker(
+    private fun kotlinx.coroutines.test.TestScope.makeWorker(
+        enrich: MetadataEnrichRunner? = null,
+        skipDao: SyncSkipAlbumDao? = null,
+    ) = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
         dailyMixRepository,
         metadataEnrichRunner = enrich,
         desiredRepository = mockk(relaxed = true),
+        syncSkipAlbumDao = skipDao,
         ioDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler),
     )
 
@@ -914,6 +957,53 @@ class MetadataSyncWorkerTest {
             prefsEditor.putString(MetadataSyncWorker.PREF_LAST_SYNC_MODE, "DELTA")
         }
         coVerify(exactly = 0) { trackDao.reconcileSearchCorpusAgainstCatalog() }
+    }
+
+    @Test
+    fun `syncNow soft-stop skips cadence watermark but completes`() = runTest {
+        val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns emptyList()
+        coEvery { skipDao.recordFailure(any(), any(), any()) } returns 1
+        val w = makeWorker(skipDao = skipDao)
+        coEvery { metadataDao.albumCount() } returns 1
+        coEvery { metadataDao.artistCount() } returns 1
+        coEvery { metadataDao.cachedTrackCount() } returns 0
+        coEvery { genreMixDao.getTopGenres() } returns emptyList()
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "albumList2" to mapOf<String, Any>()),
+        )
+        coEvery { api.getArtists(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "artists" to mapOf<String, Any>()),
+        )
+        coEvery { api.getGenres(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "genres" to mapOf<String, Any>()),
+        )
+        val albums = (1..20).map { i -> CachedAlbumEntity(id = "al-$i", name = "A$i") }
+        coEvery { metadataDao.getAllAlbums() } returns albums
+        coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
+        coEvery { metadataDao.countUncachedAlbums() } returns 20
+        coEvery { api.getStarred2(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "starred2" to mapOf<String, Any>()),
+        )
+        coEvery { api.getAlbum(any(), any()) } throws RuntimeException("network")
+
+        w.syncNow()
+        advanceUntilIdle()
+
+        assertEquals("complete", w.status.value.phase)
+        assertFalse(w.status.value.isRunning)
+        // Soft-stop must not advance DELTA/FULL cadence (ADR-0068 honesty)
+        verify(exactly = 0) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, any())
+        }
+        verify(exactly = 0) {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, any())
+        }
+        // Incomplete drain must not clear METADATA_VERSION force-resync ledger
+        verify(exactly = 0) { prefsEditor.putInt("metadata_version", any()) }
+        // Duration / last-run stamp still recorded for UI
+        verify(atLeast = 1) { prefsEditor.putLong("last_metadata_sync_ms", any()) }
     }
 
     @Test
@@ -1686,6 +1776,7 @@ class MetadataSyncWorkerTest {
     fun `syncAlbumTracks continues after consecutive failures and queues skips`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
         coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns emptyList()
         coEvery { skipDao.recordFailure(any(), any(), any()) } returnsMany listOf(1, 2, 3, 4, 5, 6, 7, 8)
         val w = MetadataSyncWorker(
             context,
@@ -1707,9 +1798,10 @@ class MetadataSyncWorkerTest {
         every { prefs.getInt("metadata_version", 0) } returns 2
         coEvery { api.getAlbum(any(), any()) } throws RuntimeException("Network gone")
 
-        w.syncAlbumTracks()
+        val complete = w.syncAlbumTracks()
 
         // Soft-stop after consecutive fails — no phase=error; skip queue records
+        assertFalse(complete)
         assertNotEquals("error", w.status.value.phase)
         coVerify(atLeast = 1) { skipDao.recordFailure(any(), any(), any()) }
         // Must not burn through all 20 before soft-stop
@@ -1717,9 +1809,122 @@ class MetadataSyncWorkerTest {
     }
 
     @Test
+    fun `syncAlbumTracks treats empty song list as failure when songCount positive`() = runTest {
+        val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns emptyList()
+        coEvery { skipDao.recordFailure(any(), any(), any()) } returns 1
+        val w = MetadataSyncWorker(
+            context,
+            api,
+            authHelper,
+            metadataDao,
+            trackDao,
+            genreMixDao,
+            coverArtFallback,
+            mockk(relaxed = true),
+            dailyMixRepository,
+            desiredRepository = mockk(relaxed = true),
+            syncSkipAlbumDao = skipDao,
+        )
+        coEvery { metadataDao.getAllAlbums() } returns listOf(
+            CachedAlbumEntity(id = "al-empty", name = "Empty", songCount = 5),
+        )
+        coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
+        every { prefs.getInt("metadata_version", 0) } returns 2
+        coEvery { api.getAlbum(id = "al-empty", any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "album" to mapOf("song" to emptyList<Any>())),
+        )
+
+        val complete = w.syncAlbumTracks()
+
+        assertTrue(complete)
+        assertNotEquals("error", w.status.value.phase)
+        coVerify { skipDao.recordFailure("al-empty", any(), any()) }
+        coVerify(exactly = 0) { skipDao.delete("al-empty") }
+        coVerify(exactly = 0) { metadataDao.replaceAlbumTracksBatch(any()) }
+    }
+
+    @Test
+    fun `syncAlbumTracks empty song with songCount 0 is success and clears skip`() = runTest {
+        val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns emptyList()
+        val w = MetadataSyncWorker(
+            context,
+            api,
+            authHelper,
+            metadataDao,
+            trackDao,
+            genreMixDao,
+            coverArtFallback,
+            mockk(relaxed = true),
+            dailyMixRepository,
+            desiredRepository = mockk(relaxed = true),
+            syncSkipAlbumDao = skipDao,
+        )
+        coEvery { metadataDao.getAllAlbums() } returns listOf(
+            CachedAlbumEntity(id = "al-zero", name = "Zero", songCount = 0),
+        )
+        coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
+        every { prefs.getInt("metadata_version", 0) } returns 2
+        coEvery { api.getAlbum(id = "al-zero", any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "album" to mapOf("song" to emptyList<Any>())),
+        )
+
+        val complete = w.syncAlbumTracks()
+
+        assertTrue(complete)
+        coVerify { skipDao.delete("al-zero") }
+        coVerify(exactly = 0) { skipDao.recordFailure(any(), any(), any()) }
+        coVerify { metadataDao.replaceAlbumTracks("al-zero", emptyList()) }
+        coVerify { metadataDao.setAlbumSongCount("al-zero", 0) }
+    }
+
+    @Test
+    fun `syncAlbumTracks FULL retryExhausted includes exhausted poison album`() = runTest {
+        val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns listOf("al-poison")
+        val w = MetadataSyncWorker(
+            context,
+            api,
+            authHelper,
+            metadataDao,
+            trackDao,
+            genreMixDao,
+            coverArtFallback,
+            mockk(relaxed = true),
+            dailyMixRepository,
+            desiredRepository = mockk(relaxed = true),
+            syncSkipAlbumDao = skipDao,
+        )
+        coEvery { metadataDao.getAllAlbums() } returns listOf(
+            CachedAlbumEntity(id = "al-poison", name = "Poison", songCount = 3),
+        )
+        coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
+        every { prefs.getInt("metadata_version", 0) } returns 2
+        coEvery { api.getAlbum(id = "al-poison", any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "album" to mapOf(
+                    "song" to listOf(mapOf("id" to "t1", "title" to "Healed")),
+                ),
+            ),
+        )
+
+        val complete = w.syncAlbumTracks(force = false, retryExhausted = true)
+
+        assertTrue(complete)
+        coVerify { api.getAlbum(id = "al-poison", any()) }
+        coVerify { skipDao.delete("al-poison") }
+    }
+
+    @Test
     fun `syncAlbumTracks does not set error phase when many albums fail`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
         coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.getExhaustedIds(any()) } returns emptyList()
         coEvery { skipDao.recordFailure(any(), any(), any()) } returns 1
         val w = MetadataSyncWorker(
             context,
@@ -1740,25 +1945,21 @@ class MetadataSyncWorkerTest {
         coEvery { metadataDao.replaceAlbumTracksBatch(any()) } returns Unit
         every { context.getSharedPreferences(any(), any()) } returns prefs
         every { prefs.getInt("metadata_version", 0) } returns 2
-        coEvery { api.getAlbum(id = "al-1", any()) } returns mapOf(
-            "subsonic-response" to mapOf("status" to "ok", "album" to mapOf("song" to emptyList<Any>())),
-        )
-        coEvery { api.getAlbum(id = "al-2", any()) } returns mapOf(
-            "subsonic-response" to mapOf("status" to "ok", "album" to mapOf("song" to emptyList<Any>())),
-        )
-        coEvery { api.getAlbum(id = match { it != "al-1" && it != "al-2" }, any()) } throws RuntimeException("fail")
+        // All fail (empty song[] + throws) — soft-stop without phase=error
+        coEvery { api.getAlbum(any(), any()) } throws RuntimeException("fail")
 
-        w.syncAlbumTracks()
+        val complete = w.syncAlbumTracks()
 
+        assertFalse(complete)
         assertNotEquals("error", w.status.value.phase)
         coVerify(atLeast = 1) { skipDao.recordFailure(any(), any(), any()) }
-        coVerify { skipDao.delete("al-1") }
     }
 
     @Test
     fun `syncAlbumTracks prioritizes durable skip queue albums`() = runTest {
         val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
         coEvery { skipDao.getRetryableIds(any()) } returns listOf("al-skip")
+        coEvery { skipDao.getExhaustedIds(any()) } returns emptyList()
         val w = MetadataSyncWorker(
             context,
             api,
@@ -1792,8 +1993,9 @@ class MetadataSyncWorkerTest {
             ),
         )
 
-        w.syncAlbumTracks()
+        val complete = w.syncAlbumTracks()
 
+        assertTrue(complete)
         coVerify { api.getAlbum(id = "al-skip", any()) }
         coVerify { skipDao.delete("al-skip") }
     }

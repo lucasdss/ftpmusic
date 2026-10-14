@@ -26,16 +26,23 @@ ratio). Uncapped drains need process survival — there was no sync FGS.
    Import picker remains for unimported server playlists.
 
 3. **Retry-on-skip 2C**
-   - WorkManager: soft skips `offline` / `unreachable` / `cellular_policy` /
-     `cooldown` → `Result.retry`. `already_running` → `Result.success`.
+   - WorkManager: soft skips `offline` / `unreachable` / `cellular_policy` →
+     `Result.retry`. `cooldown` and `already_running` → `Result.success()`
+     (avoid hot retry loops; see Amend §6).
    - Durable `sync_skip_albums` queue: failed `getAlbum` upserts; success deletes;
-     next sync prioritizes skip IDs. No 3-consecutive abort / no >5% phase=error
-     for per-album fails. Album-list fail-closed (ADR-0068) unchanged.
+     next sync prioritizes skip IDs. Exhausted rows (`fail_count >= 10`) stay
+     in the table and are excluded from DELTA pending — do not delete-to-suppress.
+     Scheduled FULL (and force) re-arms exhausted rows so server repairs can heal.
+     Empty `song[]` fails when catalog `songCount > 0`; `songCount == 0` is
+     success (clears stale tracks). Soft-stop after 8 consecutive nulls keeps
+     `phase != error` but does **not** advance FULL/DELTA cadence watermarks
+     (ADR-0068). Album-list fail-closed unchanged.
 
 4. **`LibrarySyncService` (`dataSync`)** — Started when a sync Job actually
    begins; stopped in `finally`. Separate from `MediaService`. On
    `ForegroundServiceStartNotAllowedException`, sync continues best-effort
-   without FGS. No fake 6h restart loops (ADR-0019).
+   without FGS. `onTimeout` cancels [MetadataSyncWorker] sync Jobs then stops
+   the FGS. No fake 6h restart loops (ADR-0019).
 
 ## Consequences
 
@@ -52,10 +59,12 @@ ratio). Uncapped drains need process survival — there was no sync FGS.
    (guards offset-ignoring servers). **Fail-closed:** zero-new-id and max-pages
    set `listIncomplete` and throw `AlbumListIncompleteException` — never
    FULL `replaceAlbumsDiffPreserveEnrich` from a truncated walk.
-2. Skip queue: `fail_count` (Room v67); evict at 10; soft-stop track drain after
-   8 consecutive nulls without `phase=error`.
+2. Skip queue: `fail_count` (Room v67); keep exhausted rows at 10 (exclude from
+   pending unless force); soft-stop track drain after 8 consecutive nulls
+   without `phase=error`, but skip cadence watermarks on soft-stop.
 3. `LibrarySyncService.stop` uses `Context.stopService` (no start-to-stop).
-4. `onTimeout` stops the dataSync FGS cleanly (Android 15+ 6h limit).
+4. `onTimeout` cancels sync Jobs via `MetadataSyncWorker.stop()` then stops the
+   dataSync FGS (Android 15+ 6h limit).
 5. Playlist silent refresh re-checks pending/conflict **after** `getPlaylist`
    before write (TOCTOU). Track writes use `upsertTracksPreserveCache` (never
    bare `REPLACE`). Abort entry clear when `songCount > 0` but `entry`

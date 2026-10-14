@@ -16,8 +16,14 @@ rollout past Room 65. Dual-path upgrades must stay non-destructive.
 - **FULL album-list fail-closed** — zero-new-id / max-pages abort; no catalog wipe.
 - **Playlist inbound safety** — `upsertTracksPreserveCache`; abort clear when
   `songCount > 0` but entries missing/malformed.
-- **Skip-queue eviction** — durable fail_count at 10 (tested).
+- **Skip-queue honesty** — keep exhausted rows (`fail_count >= 10`); exclude from
+  DELTA pending; FULL/force re-arms. Empty `song[]` fails when `songCount > 0`.
+- **Soft-stop watermarks** — consecutive-fail soft-stop no longer advances
+  FULL/DELTA cadence or `metadata_version` stamp (ADR-0068); UI still completes
+  without `phase=error`.
+- **FGS timeout** — `onTimeout` cancels sync Jobs then stops dataSync FGS.
 - Carries 1.13.0 features (Auto peer-parity, Play Next, LATE queue, chrome).
+- Post-review notes: `docs/POST_1_13_0_RELEASE_REVIEW_BEHAVIOR_REPORT.md`.
 
 ## Upgrade paths (do not wipe)
 
@@ -68,6 +74,6 @@ make bundle-release
 
 - Crashlytics / Sentry
 - `fallbackToDestructiveMigration`
-- FGS `onTimeout` cancelling sync Job (FGS stops; Job best-effort)
 - Soft-stop consecutive-fail race under parallel batches
 - Genre densify page safety cap
+- Cast JumpTo throw UX on Auto Queue seek

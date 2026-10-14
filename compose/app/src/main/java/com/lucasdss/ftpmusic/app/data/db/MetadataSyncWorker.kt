@@ -418,7 +418,14 @@ class MetadataSyncWorker(
                 DiagnosticLog.d(TAG, "phase=stars")
                 Log.d(TAG, "Starred/ratings sync complete")
 
-                syncAlbumTracks(forceTrackResync)
+                // False when soft-stopped mid-drain — ADR-0068: do not advance
+                // FULL/DELTA cadence watermarks (incomplete track corpus).
+                // FULL re-arms exhausted skip rows so server-side repairs can heal
+                // without requiring the Resync button.
+                val tracksDrainComplete = syncAlbumTracks(
+                    force = forceTrackResync,
+                    retryExhausted = resolvedMode == LibrarySyncMode.FULL,
+                )
                 if (abortIfCellularPolicyViolated()) return@syncJob
                 // Recompute artist album counts AFTER tracks are cached so
                 // track-artist attribution is included (Navidrome attributes
@@ -502,8 +509,9 @@ class MetadataSyncWorker(
                     Log.w(TAG, "desired reconcile: ${e.message}")
                 }
                 val current = _status.value
-                // ADR-0068: watermarks only on success — track-phase error must
-                // not advance last_full/delta cadence or skip needed heal.
+                // ADR-0068: watermarks only on full track-drain success.
+                // Soft-stop keeps phase != error (ADR-0139) but must not advance
+                // last_full/delta cadence or weekly heal is skipped.
                 if (current.phase != "error") {
                     _status.value = current.copy(
                         albums = albumCount, albumsTotal = albumCount,
@@ -519,13 +527,24 @@ class MetadataSyncWorker(
                     val editor = prefs.edit()
                         .putLong(PREF_LAST_METADATA_SYNC_MS, now)
                         .putLong(PREF_METADATA_SYNC_DURATION_MS, durationMs)
-                        .putInt("metadata_version", METADATA_VERSION)
                         .putString(PREF_LAST_SYNC_MODE, resolvedMode.name)
                         .putString(PREF_LAST_SYNC_SKIP_REASON, "")
-                    if (resolvedMode == LibrarySyncMode.FULL) {
-                        editor.putLong(PREF_LAST_FULL_SYNC_MS, now)
+                    if (tracksDrainComplete) {
+                        // Schema refetch ledger + cadence only on full drain —
+                        // soft-stop must not clear METADATA_VERSION force-resync.
+                        editor.putInt("metadata_version", METADATA_VERSION)
+                        if (resolvedMode == LibrarySyncMode.FULL) {
+                            editor.putLong(PREF_LAST_FULL_SYNC_MS, now)
+                        } else {
+                            editor.putLong(PREF_LAST_DELTA_SYNC_MS, now)
+                        }
                     } else {
-                        editor.putLong(PREF_LAST_DELTA_SYNC_MS, now)
+                        Log.w(
+                            TAG,
+                            "Soft-stopped track drain — skipping cadence watermark " +
+                                "and metadata_version stamp (mode=$resolvedMode)",
+                        )
+                        DiagnosticLog.d(TAG, "soft-stop: cadence+metadata_version skipped")
                     }
                     editor.apply()
                 }
@@ -1281,13 +1300,17 @@ class MetadataSyncWorker(
      * - albums in the durable skip queue (ADR-0139 retry-on-skip)
      * - all albums when [force] is set (Resync Library button)
      * - all albums when METADATA_VERSION was bumped (schema change)
+     * - exhausted skip rows when [retryExhausted] (scheduled FULL heal)
      * Falls back to lazy caching if the user opens an album before
      * the background sync reaches it.
+     *
+     * @return `true` when the full pending set was processed; `false` when
+     * soft-stopped early (caller must not advance cadence watermarks).
      */
-    internal suspend fun syncAlbumTracks(force: Boolean = false) {
+    internal suspend fun syncAlbumTracks(force: Boolean = false, retryExhausted: Boolean = false): Boolean {
         val username = SubsonicCredentials.username
         val password = SubsonicCredentials.password
-        if (username.isEmpty() || password.isEmpty()) return
+        if (username.isEmpty() || password.isEmpty()) return true
 
         val wm = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val lock = wm?.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "ftpmusic:tracksync")
@@ -1305,10 +1328,20 @@ class MetadataSyncWorker(
                 if (e is CancellationException) throw e
                 emptySet()
             }
+            val exhaustedIds = try {
+                syncSkipAlbumDao?.getExhaustedIds()?.toSet() ?: emptySet()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                emptySet()
+            }
 
-            // Pre-filter: only albums that actually need syncing
+            // Pre-filter: only albums that actually need syncing.
+            // Exhausted poison rows stay in DB; excluded on DELTA unless force /
+            // retryExhausted (FULL) so server-side repairs can heal weekly.
             val pendingAlbumsAll = albums.filter { album ->
-                if (forceResync || album.id in skipIds) return@filter true
+                if (forceResync) return@filter true
+                if (album.id in exhaustedIds) return@filter retryExhausted
+                if (album.id in skipIds) return@filter true
                 val existing = metadataDao.getAlbumTracks(album.id)
                 !(existing.isNotEmpty() && album.id !in changedAlbumIds)
             }
@@ -1322,7 +1355,7 @@ class MetadataSyncWorker(
                 isRunning = true,
             )
 
-            if (pendingAlbums.isEmpty()) return
+            if (pendingAlbums.isEmpty()) return true
 
             val count = AtomicInteger(0)
             val totalTracks = AtomicInteger(0)
@@ -1345,6 +1378,13 @@ class MetadataSyncWorker(
                     val albumData = sr["album"] as? Map<*, *>
                     val songs = albumData?.get("song") as? List<*>
                     if (songs == null) return null
+                    // Empty song[]: legit only when catalog songCount is explicitly 0.
+                    // Null songCount = unknown → fail (do not clear cached tracks).
+                    if (songs.isEmpty()) {
+                        val expected = album.songCount
+                        if (expected == null || expected > 0) return null
+                        return emptyList()
+                    }
 
                     return songs.mapNotNull { s ->
                         val m = s as? Map<*, *> ?: return@mapNotNull null
@@ -1396,10 +1436,10 @@ class MetadataSyncWorker(
                                         reason = "get_album_null",
                                     ) ?: 1
                                     if (fails >= SyncSkipAlbumDao.MAX_FAIL_COUNT) {
-                                        syncSkipAlbumDao?.delete(album.id)
+                                        // Keep row — getExhaustedIds excludes from pending.
                                         Log.w(
                                             TAG,
-                                            "Evicted skip album ${album.id} after $fails failures",
+                                            "Skip album ${album.id} exhausted after $fails failures",
                                         )
                                     }
                                 } catch (e: Exception) {
@@ -1419,6 +1459,15 @@ class MetadataSyncWorker(
                                     syncSkipAlbumDao?.delete(album.id)
                                 } catch (e: Exception) {
                                     if (e is CancellationException) throw e
+                                }
+                                // Legit empty album: clear any stale cached tracks.
+                                if (tracks.isEmpty()) {
+                                    try {
+                                        metadataDao.replaceAlbumTracks(album.id, emptyList())
+                                        metadataDao.setAlbumSongCount(album.id, 0)
+                                    } catch (e: Exception) {
+                                        if (e is CancellationException) throw e
+                                    }
                                 }
                                 tracks
                             }
@@ -1460,7 +1509,8 @@ class MetadataSyncWorker(
                 }
             }
 
-            // ADR-0139: residual skip-queue rows retry next sync — do not fail the run.
+            // ADR-0139: residual skip-queue rows retry next sync — do not fail the run
+            // with phase=error; soft-stop returns false so cadence watermarks hold.
             val f = failedCount.get()
             if (f > 0) {
                 Log.w(
@@ -1478,6 +1528,7 @@ class MetadataSyncWorker(
             _status.value = _status.value.copy(albumTracksProgress = count.get(), trackCount = corpusCount)
             if (count.get() > 0) Log.d(TAG, "Background-synced tracks for ${count.get()} albums")
             changedAlbumIds.clear()
+            return !softStopped.get()
         } finally {
             lock?.release()
         }

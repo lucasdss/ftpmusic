@@ -251,19 +251,19 @@ class MediaSessionCallback(
                 val entryId = AutoBrowseIds.parseQueueTrack(mediaId)
                     ?: throw IllegalArgumentException("Invalid queue track id: $mediaId")
                 val pm = playbackManager
-                    ?: throw IllegalStateException("PlaybackManager unavailable for queue seek")
+                    ?: error("PlaybackManager unavailable for queue seek")
                 withContext(mainDispatcher) {
                     val index = pm.indexOfQueueEntry(entryId)
                     if (index < 0) {
                         // Stale tap — fail the future so Media3 does not
                         // setMediaItems([]) and wipe the playing timeline.
-                        throw IllegalStateException("Queue entry $entryId no longer in Dual")
+                        error("Queue entry $entryId no longer in Dual")
                     }
                     // Cast: Dual JumpTo only. Returning items would make Media3
                     // call CastPlayer.setMediaItems and bypass itemId sync.
                     if (PlayerHolder.isCasting) {
                         pm.playQueueItem(index)
-                        throw IllegalStateException("Cast queue seek handled via JumpTo")
+                        error("Cast queue seek handled via JumpTo")
                     }
                     val merged = pm.mergedMediaItems()
                     // Local: return Dual timeline at target index — Media3

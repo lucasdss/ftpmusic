@@ -126,9 +126,9 @@ class PlaylistRepositoryBranchTest {
         repo.importPlaylist("pl-1")
 
         coVerify { playlistDao.replaceEntries(eq("pl-1"), match { it.map { e -> e.trackId } == listOf("t1", "t2") }) }
-        // t2 has no title → title falls back to id
+        // t2 has no title → title falls back to id (ADR-0139: preserve-cache upsert)
         coVerify {
-            trackDao.upsertAll(
+            trackDao.upsertTracksPreserveCache(
                 match {
                     it.size == 2 && it[0].id == "t1" && it[0].title == "T1" &&
                         it[1].id == "t2" &&

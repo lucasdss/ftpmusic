@@ -2095,7 +2095,11 @@ interface DesiredItemDao {
 @Dao
 interface SyncSkipAlbumDao {
     companion object {
-        /** Drop permanent failures after this many sync-run misses. */
+        /**
+         * Permanent failure threshold. Rows at/above this stay in the table so
+         * trackless poison albums are excluded from pending until force resync
+         * (do not delete-to-suppress — that re-pends forever).
+         */
         const val MAX_FAIL_COUNT = 10
     }
 
@@ -2107,7 +2111,8 @@ interface SyncSkipAlbumDao {
 
     /**
      * Record a failed getAlbum: insert or bump fail_count. Returns the new count.
-     * Caller should [delete] when count reaches [MAX_FAIL_COUNT].
+     * Keep the row when count reaches [MAX_FAIL_COUNT] — [getRetryableIds] /
+     * [getExhaustedIds] suppress retries until force.
      */
     @Transaction
     suspend fun recordFailure(albumId: String, reason: String, nowMs: Long = System.currentTimeMillis()): Int {
@@ -2124,14 +2129,21 @@ interface SyncSkipAlbumDao {
         return next
     }
 
+    /** Success path only — clear a skip row after a good getAlbum. */
     @Query("DELETE FROM sync_skip_albums WHERE album_id = :albumId")
     suspend fun delete(albumId: String)
 
-    /** Retryable ids only — exhausted rows are deleted by the sync worker. */
+    /** Retryable ids — excludes exhausted rows ([fail_count] >= [MAX_FAIL_COUNT]). */
     @Query(
         "SELECT album_id FROM sync_skip_albums WHERE fail_count < :maxFails ORDER BY failed_at ASC",
     )
     suspend fun getRetryableIds(maxFails: Int = MAX_FAIL_COUNT): List<String>
+
+    /** Exhausted poison ids — excluded from pending unless force resync. */
+    @Query(
+        "SELECT album_id FROM sync_skip_albums WHERE fail_count >= :maxFails ORDER BY failed_at ASC",
+    )
+    suspend fun getExhaustedIds(maxFails: Int = MAX_FAIL_COUNT): List<String>
 
     @Query("SELECT album_id FROM sync_skip_albums ORDER BY failed_at ASC")
     suspend fun getAllIds(): List<String>

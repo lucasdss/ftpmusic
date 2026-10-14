@@ -80,12 +80,17 @@ class LibrarySyncService : Service() {
     }
 
     /**
-     * Android 15+ `dataSync` 6-hour timeout — stop cleanly instead of letting the
-     * OS kill the FGS without tearing down our notification / collectors.
+     * Android 15+ `dataSync` 6-hour timeout — cancel the in-flight sync Job
+     * (ADR-0139) then tear down FGS so mid-write work does not continue orphaned.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "onTimeout startId=$startId fgsType=$fgsType — stopping")
+        Log.w(TAG, "onTimeout startId=$startId fgsType=$fgsType — cancelling sync + stopping")
         DiagnosticLog.w(TAG, "onTimeout startId=$startId fgsType=$fgsType")
+        try {
+            metadataSyncWorker.stop()
+        } catch (e: Exception) {
+            Log.w(TAG, "onTimeout stop worker: ${e.message}")
+        }
         stopSelfSafely()
     }
 
