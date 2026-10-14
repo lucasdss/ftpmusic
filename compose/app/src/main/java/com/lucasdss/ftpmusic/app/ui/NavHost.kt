@@ -510,10 +510,17 @@ fun FtpmusicNavHost() {
             val headerOffsetReader = remember(headerScroll) {
                 AppHeaderOffsetPx { headerScroll.offsetPx }
             }
+            // ADR-0143: reserve mini height in list contentPadding while a track is
+            // loaded (not tied to miniScroll.visible — absorbs reveal remasure).
+            val miniBottomPad = resolveMiniPlayerBottomContentPadding(
+                trackLoaded = playbackState.isVisible && !isFullPlayer && !isLoginScreen,
+                miniHeight = miniPlayerHeight(),
+            )
 
             CompositionLocalProvider(
                 LocalAppHeaderContentPadding provides headerInsetDp,
                 LocalAppHeaderOffsetPx provides headerOffsetReader,
+                LocalMiniPlayerBottomContentPadding provides miniBottomPad,
             ) {
                 NavHost(
                     navController = navController,

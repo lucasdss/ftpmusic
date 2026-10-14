@@ -46,6 +46,8 @@ Library tabs. Clip **must precede** top padding (`appHeaderRidingClipHost`).
   when clip precedes header pad.
 - Scaffold bottom padding is scroll-stable (not tied to header offset); mini
   show/hide `AnimatedVisibility` may remeasure during its short tween only.
+  Primary-tab lists with top-only header pad (Home/Search) also reserve mini
+  height in Lazy `contentPadding.bottom` while a track is loaded — ADR-0143.
 - Horizontal nested scroll ignored for mini (same rule as header).
 - Lazy viewport height is `H + maxHeaderPx` constantly while header pad is set —
   still stable during fling (extra not tied to live `offsetPx`).

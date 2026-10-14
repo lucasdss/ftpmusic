@@ -35,6 +35,28 @@ val ZeroAppHeaderOffsetPx = AppHeaderOffsetPx { 0f }
 val LocalAppHeaderOffsetPx = staticCompositionLocalOf { ZeroAppHeaderOffsetPx }
 
 /**
+ * Bottom Lazy [contentPadding] reserve for the mini-player hide/reveal delta (ADR-0143).
+ *
+ * Scaffold already insets content by the live bottomBar height. Primary-tab lists that
+ * only top-pad for the overlay header still need a fixed bottom reserve equal to mini
+ * height whenever a track is loaded — otherwise reveal shrinks the viewport while
+ * LazyList keeps [firstVisibleItem] and the last ~miniHeight clips under the mini.
+ * Independent of scroll-hide visibility so the pad absorbs the AnimatedVisibility tween.
+ */
+val LocalMiniPlayerBottomContentPadding = compositionLocalOf { 0.dp }
+
+/**
+ * Pure helper for tests — same rule as shell CompositionLocalProvider for mini bottom pad.
+ * [trackLoaded] matches mini-slot eligibility minus scroll-hide (`playback title != null`
+ * and not full-player / login). Non-positive [miniHeight] yields zero.
+ */
+fun resolveMiniPlayerBottomContentPadding(trackLoaded: Boolean, miniHeight: Dp): Dp {
+    if (!trackLoaded) return 0.dp
+    if (miniHeight <= 0.dp) return 0.dp
+    return miniHeight
+}
+
+/**
  * Pure helper for tests — same rule as shell CompositionLocalProvider.
  * [lastKnownHeight] bridges the first-frame gap before measure (`headerHeight == 0`).
  */

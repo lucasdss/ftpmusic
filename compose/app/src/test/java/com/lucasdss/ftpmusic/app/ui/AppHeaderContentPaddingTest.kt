@@ -11,6 +11,20 @@ import org.junit.Test
 class AppHeaderContentPaddingTest {
 
     @Test
+    fun `mini bottom pad equals mini height when track loaded`() {
+        assertEquals(64.dp, resolveMiniPlayerBottomContentPadding(trackLoaded = true, miniHeight = 64.dp))
+        assertEquals(72.dp, resolveMiniPlayerBottomContentPadding(trackLoaded = true, miniHeight = 72.dp))
+    }
+
+    @Test
+    fun `mini bottom pad zero when no track or non-positive height`() {
+        assertEquals(0.dp, resolveMiniPlayerBottomContentPadding(trackLoaded = false, miniHeight = 64.dp))
+        assertEquals(0.dp, resolveMiniPlayerBottomContentPadding(trackLoaded = true, miniHeight = 0.dp))
+        assertEquals(0.dp, resolveMiniPlayerBottomContentPadding(trackLoaded = true, miniHeight = (-8).dp))
+        assertEquals(0.dp, resolveMiniPlayerBottomContentPadding(trackLoaded = false, miniHeight = 0.dp))
+    }
+
+    @Test
     fun `padding equals header height when shown`() {
         assertEquals(72.dp, resolveAppHeaderContentPadding(showHeader = true, headerHeight = 72.dp))
     }

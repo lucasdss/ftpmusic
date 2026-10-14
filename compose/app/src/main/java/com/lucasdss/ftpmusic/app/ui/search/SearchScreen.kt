@@ -160,10 +160,11 @@ fun SearchScreen(
             }
         }
         val headerPad = LocalAppHeaderContentPadding.current
+        val miniBottomPad = LocalMiniPlayerBottomContentPadding.current
         LazyColumn(
             state = listState,
             modifier = Modifier.padding(padding),
-            contentPadding = PaddingValues(top = headerPad),
+            contentPadding = PaddingValues(top = headerPad, bottom = miniBottomPad),
         ) {
             // Search bar — full width with icon inside
             item {

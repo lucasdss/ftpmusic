@@ -119,10 +119,11 @@ fun HomeScreen(
             val scrollInProgress = listState.isScrollInProgress
             val cardDecode = albumCardWidth()
             val headerPad = LocalAppHeaderContentPadding.current
+            val miniBottomPad = LocalMiniPlayerBottomContentPadding.current
             LazyColumn(
                 state = listState,
                 modifier = Modifier.testTag("home_scroll"),
-                contentPadding = PaddingValues(top = headerPad),
+                contentPadding = PaddingValues(top = headerPad, bottom = miniBottomPad),
             ) {
                 // ── Surprise Me hero card ──
                 item(contentType = "hero") {
