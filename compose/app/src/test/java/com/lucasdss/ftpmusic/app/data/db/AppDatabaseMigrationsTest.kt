@@ -599,6 +599,53 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 65 to 66 creates sync_skip_albums`() {
+        run(AppDatabase.MIGRATION_65_66)
+        verify {
+            db.execSQL(
+                match {
+                    it.contains("sync_skip_albums") &&
+                        it.contains("album_id") &&
+                        it.contains("failed_at") &&
+                        it.contains("reason")
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `migration 66 to 67 adds fail_count`() {
+        run(AppDatabase.MIGRATION_66_67)
+        verify {
+            db.execSQL(
+                match {
+                    it.contains("sync_skip_albums") &&
+                        it.contains("fail_count") &&
+                        it.contains("DEFAULT 1")
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `migration chain 64 to 67 runs additive upgrades`() {
+        run(AppDatabase.MIGRATION_64_65)
+        run(AppDatabase.MIGRATION_65_66)
+        run(AppDatabase.MIGRATION_66_67)
+        verify { db.execSQL(match { it.contains("is_late") && it.contains("queue_items") }) }
+        verify { db.execSQL(match { it.contains("CREATE TABLE IF NOT EXISTS `sync_skip_albums`") }) }
+        verify { db.execSQL(match { it.contains("fail_count") }) }
+    }
+
+    @Test
+    fun `migration chain 65 to 67 runs additive upgrades`() {
+        run(AppDatabase.MIGRATION_65_66)
+        run(AppDatabase.MIGRATION_66_67)
+        verify { db.execSQL(match { it.contains("sync_skip_albums") }) }
+        verify { db.execSQL(match { it.contains("fail_count") }) }
+    }
+
+    @Test
     fun `FTS5 callback creates table on create and open`() {
         AppDatabase.FTS5_CALLBACK.onCreate(db)
         AppDatabase.FTS5_CALLBACK.onOpen(db)
@@ -620,6 +667,8 @@ class AppDatabaseMigrationsTest {
         assertEquals(63, AppDatabase.ALL_MIGRATIONS_63.last().endVersion)
         assertEquals(64, AppDatabase.ALL_MIGRATIONS_64.last().endVersion)
         assertEquals(65, AppDatabase.ALL_MIGRATIONS_65.last().endVersion)
+        assertEquals(66, AppDatabase.ALL_MIGRATIONS_66.last().endVersion)
+        assertEquals(67, AppDatabase.ALL_MIGRATIONS_67.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -650,8 +699,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_60, AppDatabase.ALL_MIGRATIONS_61,
             AppDatabase.ALL_MIGRATIONS_62, AppDatabase.ALL_MIGRATIONS_63,
             AppDatabase.ALL_MIGRATIONS_64, AppDatabase.ALL_MIGRATIONS_65,
+            AppDatabase.ALL_MIGRATIONS_66, AppDatabase.ALL_MIGRATIONS_67,
         )
-        assertEquals(56, all.size)
+        assertEquals(58, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

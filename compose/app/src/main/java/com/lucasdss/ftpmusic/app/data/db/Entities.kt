@@ -350,7 +350,7 @@ data class QueueItemEntity(
     /** Continuous Play Autoplay tail (ADR-0053 / ADR-0065). Survives process death. */
     @ColumnInfo(name = "is_autoplay") val isAutoplay: Boolean = false,
     /** ADR-0135: session_end Add to Queue (LATE band after full CONTEXT). */
-    @ColumnInfo(name = "is_late") val isLate: Boolean = false,
+    @ColumnInfo(name = "is_late", defaultValue = "0") val isLate: Boolean = false,
 )
 
 /** Single-row table for queue playback state (index, position, cast status). */

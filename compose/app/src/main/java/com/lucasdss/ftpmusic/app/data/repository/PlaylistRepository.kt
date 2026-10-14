@@ -86,21 +86,7 @@ class PlaylistRepository @Inject constructor(
         val pl = sr["playlist"] as? Map<*, *> ?: return
 
         val existing = playlistDao.getById(playlistId)
-        val entity = PlaylistEntity(
-            id = pl["id"] as? String ?: playlistId,
-            name = pl["name"] as? String ?: "Playlist",
-            comment = pl["comment"] as? String,
-            owner = pl["owner"] as? String,
-            isPublic = (pl["public"] as? Boolean) ?: false,
-            trackCount = (pl["songCount"] as? Number)?.toInt() ?: 0,
-            coverArt = pl["coverArt"] as? String,
-            lastSyncedAt = System.currentTimeMillis(),
-            fixedCoverKind = existing?.fixedCoverKind,
-            fixedCoverValue = existing?.fixedCoverValue,
-        )
-        playlistDao.upsertAll(listOf(entity))
-
-        val autoDownload = storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
+        val songCount = (pl["songCount"] as? Number)?.toInt() ?: 0
         val entries = pl["entry"] as? List<*>
         val entryEntities = mutableListOf<PlaylistEntryEntity>()
         val trackEntities = mutableListOf<TrackEntity>()
@@ -124,18 +110,44 @@ class PlaylistRepository @Inject constructor(
                     path = m["path"] as? String,
                 ),
             )
-            // Local-first: once imported, the tracks must be downloaded so the
-            // playlist is always ready to play (respects the auto-download toggle,
-            // mirroring PlaylistDetailViewModel.syncFromServer).
-            if (autoDownload) {
-                val streamUrl = buildStreamUrl(tid)
-                downloadManager.enqueue(tid, streamUrl, priority = 1)
+        }
+        // Malformed payload (songCount>0 but no parseable entries) — do not wipe local rows.
+        if (entryEntities.isEmpty() && songCount > 0) {
+            Log.w(
+                "ftpmusic-playlist",
+                "import abort — songCount=$songCount but entry missing/malformed playlistId=$playlistId",
+            )
+            return
+        }
+
+        val entity = PlaylistEntity(
+            id = pl["id"] as? String ?: playlistId,
+            name = pl["name"] as? String ?: "Playlist",
+            comment = pl["comment"] as? String,
+            owner = pl["owner"] as? String,
+            isPublic = (pl["public"] as? Boolean) ?: false,
+            trackCount = songCount,
+            coverArt = pl["coverArt"] as? String,
+            lastSyncedAt = System.currentTimeMillis(),
+            fixedCoverKind = existing?.fixedCoverKind,
+            fixedCoverValue = existing?.fixedCoverValue,
+        )
+        playlistDao.upsertAll(listOf(entity))
+
+        val autoDownload = storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
+        // Local-first: once imported, the tracks must be downloaded so the
+        // playlist is always ready to play (respects the auto-download toggle,
+        // mirroring PlaylistDetailViewModel.syncFromServer).
+        if (autoDownload) {
+            for (tid in entryEntities.map { it.trackId }) {
+                downloadManager.enqueue(tid, buildStreamUrl(tid), priority = 1)
             }
         }
-        if (trackEntities.isNotEmpty()) trackDao.upsertAll(trackEntities)
+        if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
         if (entryEntities.isNotEmpty()) {
             playlistDao.replaceEntries(playlistId, entryEntities)
         } else {
+            // True empty playlist (songCount==0).
             playlistDao.clearEntries(playlistId)
         }
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
@@ -206,6 +218,7 @@ class PlaylistRepository @Inject constructor(
         if (!auth.checkResponseStatus(response)) return
         val sr = response["subsonic-response"] as? Map<*, *> ?: return
         val pl = sr["playlist"] as? Map<*, *> ?: return
+        val songCount = (pl["songCount"] as? Number)?.toInt()
         val entries = pl["entry"] as? List<*>
 
         // ADR-0139 hardening: re-check outbound pending / conflict after network
@@ -225,18 +238,6 @@ class PlaylistRepository @Inject constructor(
             Log.d("ftpmusic-playlist", "refreshImported abort — pending outbound playlistId=$playlistId")
             return
         }
-
-        val playlistMeta = latest.copy(
-            name = pl["name"] as? String ?: latest.name,
-            comment = pl["comment"] as? String ?: latest.comment,
-            owner = pl["owner"] as? String ?: latest.owner,
-            isPublic = (pl["public"] as? Boolean) ?: latest.isPublic,
-            trackCount = (pl["songCount"] as? Number)?.toInt() ?: latest.trackCount,
-            coverArt = pl["coverArt"] as? String ?: latest.coverArt,
-            lastSyncedAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis(),
-        )
-        playlistDao.upsertAll(listOf(playlistMeta))
 
         val entryEntities = mutableListOf<PlaylistEntryEntity>()
         val trackEntities = mutableListOf<TrackEntity>()
@@ -262,10 +263,34 @@ class PlaylistRepository @Inject constructor(
                 ),
             )
         }
-        if (trackEntities.isNotEmpty()) trackDao.upsertAll(trackEntities)
+        val effectiveSongCount = songCount ?: latest.trackCount
+        // Malformed: claimed tracks but nothing parseable — keep local entries.
+        if (entryEntities.isEmpty() && effectiveSongCount > 0) {
+            Log.w(
+                "ftpmusic-playlist",
+                "refreshImported abort — songCount=$effectiveSongCount but entry missing/malformed " +
+                    "playlistId=$playlistId",
+            )
+            return
+        }
+
+        val playlistMeta = latest.copy(
+            name = pl["name"] as? String ?: latest.name,
+            comment = pl["comment"] as? String ?: latest.comment,
+            owner = pl["owner"] as? String ?: latest.owner,
+            isPublic = (pl["public"] as? Boolean) ?: latest.isPublic,
+            trackCount = songCount ?: latest.trackCount,
+            coverArt = pl["coverArt"] as? String ?: latest.coverArt,
+            lastSyncedAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+        )
+        playlistDao.upsertAll(listOf(playlistMeta))
+
+        if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
         if (entryEntities.isNotEmpty()) {
             playlistDao.replaceEntries(playlistId, entryEntities)
         } else {
+            // True empty playlist (songCount==0).
             playlistDao.clearEntries(playlistId)
         }
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(

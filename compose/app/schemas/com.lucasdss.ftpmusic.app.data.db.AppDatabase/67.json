@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 67,
-    "identityHash": "eefb5722a488271a93a529244cc3d5d7",
+    "identityHash": "2c97ed753cd69bfe31429624b6078964",
     "entities": [
       {
         "tableName": "servers",
@@ -1226,7 +1226,7 @@
       },
       {
         "tableName": "queue_items",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `track_id` TEXT NOT NULL, `title` TEXT NOT NULL, `artist` TEXT, `album` TEXT, `cover_art_id` TEXT, `artist_id` TEXT, `album_id` TEXT, `url` TEXT NOT NULL, `position` INTEGER NOT NULL, `duration_seconds` INTEGER, `added_at` INTEGER NOT NULL, `is_priority` INTEGER NOT NULL, `entry_id` INTEGER NOT NULL, `is_autoplay` INTEGER NOT NULL, `is_late` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `track_id` TEXT NOT NULL, `title` TEXT NOT NULL, `artist` TEXT, `album` TEXT, `cover_art_id` TEXT, `artist_id` TEXT, `album_id` TEXT, `url` TEXT NOT NULL, `position` INTEGER NOT NULL, `duration_seconds` INTEGER, `added_at` INTEGER NOT NULL, `is_priority` INTEGER NOT NULL, `entry_id` INTEGER NOT NULL, `is_autoplay` INTEGER NOT NULL, `is_late` INTEGER NOT NULL DEFAULT 0)",
         "fields": [
           {
             "fieldPath": "id",
@@ -1316,7 +1316,8 @@
             "fieldPath": "isLate",
             "columnName": "is_late",
             "affinity": "INTEGER",
-            "notNull": true
+            "notNull": true,
+            "defaultValue": "0"
           }
         ],
         "primaryKey": {
@@ -2295,7 +2296,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'eefb5722a488271a93a529244cc3d5d7')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2c97ed753cd69bfe31429624b6078964')"
     ]
   }
 }

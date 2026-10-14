@@ -49,12 +49,16 @@ ratio). Uncapped drains need process survival — there was no sync FGS.
 ## Amend — post-audit hardening
 
 1. Album-list walk: safety max pages + stop when a page yields zero new ids
-   (guards offset-ignoring servers).
+   (guards offset-ignoring servers). **Fail-closed:** zero-new-id and max-pages
+   set `listIncomplete` and throw `AlbumListIncompleteException` — never
+   FULL `replaceAlbumsDiffPreserveEnrich` from a truncated walk.
 2. Skip queue: `fail_count` (Room v67); evict at 10; soft-stop track drain after
    8 consecutive nulls without `phase=error`.
 3. `LibrarySyncService.stop` uses `Context.stopService` (no start-to-stop).
 4. `onTimeout` stops the dataSync FGS cleanly (Android 15+ 6h limit).
 5. Playlist silent refresh re-checks pending/conflict **after** `getPlaylist`
-   before write (TOCTOU).
+   before write (TOCTOU). Track writes use `upsertTracksPreserveCache` (never
+   bare `REPLACE`). Abort entry clear when `songCount > 0` but `entry`
+   missing/malformed.
 6. WM: `cooldown` → `Result.success()` (with `already_running`) to avoid hot
    retry loops; offline / unreachable / cellular still retry.

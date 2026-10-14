@@ -205,6 +205,71 @@ class MetadataSyncWorkerTest {
     }
 
     @Test
+    fun `syncAlbums FULL fail-closed when page yields zero new ids`() = runTest {
+        // Full page of albums, then another full page that only repeats ids (offset ignored).
+        val page1 = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to (1..500).map { mapOf("id" to "al-$it", "name" to "Album $it") },
+                ),
+            ),
+        )
+        val pageDup = mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf(
+                    "album" to (1..500).map { mapOf("id" to "al-$it", "name" to "Album $it") },
+                ),
+            ),
+        )
+        coEvery { api.getAlbumList2(type = any(), size = 500, offset = 0, auth = any()) } returns page1
+        coEvery { api.getAlbumList2(type = any(), size = 500, offset = 500, auth = any()) } returns pageDup
+
+        try {
+            worker.syncAlbums(LibrarySyncMode.FULL)
+            fail("expected AlbumListIncompleteException")
+        } catch (_: AlbumListIncompleteException) {
+            // expected — truncated walk must not FULL-diff-delete
+        }
+
+        coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
+        coVerify(exactly = 0) { metadataDao.upsertAlbumsPreserveEnrich(any()) }
+    }
+
+    @Test
+    fun `syncAlbumTracks evicts skip album after max fail_count`() = runTest {
+        val skipDao: SyncSkipAlbumDao = mockk(relaxed = true)
+        coEvery { skipDao.getRetryableIds(any()) } returns emptyList()
+        coEvery { skipDao.recordFailure(any(), any(), any()) } returns SyncSkipAlbumDao.MAX_FAIL_COUNT
+        val w = MetadataSyncWorker(
+            context,
+            api,
+            authHelper,
+            metadataDao,
+            trackDao,
+            genreMixDao,
+            coverArtFallback,
+            mockk(relaxed = true),
+            dailyMixRepository,
+            desiredRepository = mockk(relaxed = true),
+            syncSkipAlbumDao = skipDao,
+        )
+        coEvery { metadataDao.getAllAlbums() } returns listOf(
+            CachedAlbumEntity(id = "al-bad", name = "Bad"),
+        )
+        coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
+        every { context.getSharedPreferences(any(), any()) } returns prefs
+        every { prefs.getInt("metadata_version", 0) } returns 2
+        coEvery { api.getAlbum(any(), any()) } throws RuntimeException("permanent fail")
+
+        w.syncAlbumTracks()
+
+        coVerify { skipDao.recordFailure("al-bad", any(), any()) }
+        coVerify { skipDao.delete("al-bad") }
+    }
+
+    @Test
     fun `syncAlbums handles empty album list`() = runTest {
         val emptyResponse = mapOf(
             "subsonic-response" to mapOf("status" to "ok", "albumList2" to mapOf<String, Any>()),

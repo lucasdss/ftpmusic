@@ -123,7 +123,15 @@ Settings Resync → FULL watermark only → **Last delta** stays Never until WM 
 
 API `status=failed` mid-pagination → **no** upsert/replace. Keep cache. Next sync retries.
 
+Zero-new-id page or safety max pages → same fail-closed (`AlbumListIncompleteException`) —
+never FULL diff-delete from a truncated walk.
+
 Empty response + populated cache → keep (both modes).
+
+## Playlist inbound (1A)
+
+Silent refresh + import: `upsertTracksPreserveCache` (never bare track REPLACE).
+`songCount > 0` with missing/malformed `entry` → abort write (no `clearEntries`).
 
 ## Counts
 
@@ -156,7 +164,7 @@ Track phase uses `AdaptiveSyncLimiter`:
 - Per-album null/`getAlbum` fail → `recordFailure` on `sync_skip_albums` (`fail_count`);
   success clears row; evict after 10 fails
 - Soft-stop track drain after **8** consecutive nulls (no `phase=error`); residual next run
-- Album list: safety max pages + stop on zero-new-id page
+- Album list: safety max pages + zero-new-id → fail-closed (no FULL wipe)
 - OkHttp `maxRequestsPerHost=6`
 
 ## User controls

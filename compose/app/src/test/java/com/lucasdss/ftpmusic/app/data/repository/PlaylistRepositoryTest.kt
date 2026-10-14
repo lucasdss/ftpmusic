@@ -114,7 +114,11 @@ class PlaylistRepositoryTest {
                 },
             )
         }
-        coVerify { trackDao.upsertAll(match { it.size == 2 && it[0].id == "t1" && it[1].id == "t2" }) }
+        coVerify {
+            trackDao.upsertTracksPreserveCache(
+                match { it.size == 2 && it[0].id == "t1" && it[1].id == "t2" },
+            )
+        }
     }
 
     @Test
@@ -286,6 +290,95 @@ class PlaylistRepositoryTest {
         coVerify { api.getPlaylist(any(), id = "pl-race") }
         coVerify(exactly = 0) { playlistDao.replaceEntries(any(), any()) }
         coVerify(exactly = 0) { playlistDao.upsertAll(any()) }
+    }
+
+    @Test
+    fun `refreshImportedPlaylists preserves tracks via upsertTracksPreserveCache`() = runTest {
+        coEvery { api.getPlaylists(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlists" to mapOf(
+                    "playlist" to listOf(
+                        mapOf<String, Any?>("id" to "pl-ok", "name" to "OK", "songCount" to 1),
+                    ),
+                ),
+            ),
+        )
+        coEvery { playlistDao.getAll() } returns listOf(PlaylistEntity(id = "pl-ok", name = "OK"))
+        coEvery { pendingChangeDao.pendingCountForPlaylist("pl-ok") } returns 0
+        coEvery { playlistDao.getById("pl-ok") } returns PlaylistEntity(id = "pl-ok", name = "OK")
+        coEvery { api.getPlaylist(any(), id = "pl-ok") } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlist" to mapOf(
+                    "id" to "pl-ok",
+                    "name" to "OK",
+                    "songCount" to 1,
+                    "entry" to listOf(mapOf("id" to "t1", "title" to "Track")),
+                ),
+            ),
+        )
+
+        repo.refreshImportedPlaylists()
+
+        coVerify { trackDao.upsertTracksPreserveCache(match { it.size == 1 && it[0].id == "t1" }) }
+        coVerify(exactly = 0) { trackDao.upsertAll(any()) }
+    }
+
+    @Test
+    fun `refreshImportedPlaylists aborts when songCount positive but entry missing`() = runTest {
+        coEvery { api.getPlaylists(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlists" to mapOf(
+                    "playlist" to listOf(
+                        mapOf<String, Any?>("id" to "pl-bad", "name" to "Bad", "songCount" to 3),
+                    ),
+                ),
+            ),
+        )
+        coEvery { playlistDao.getAll() } returns listOf(
+            PlaylistEntity(id = "pl-bad", name = "Bad", trackCount = 3),
+        )
+        coEvery { pendingChangeDao.pendingCountForPlaylist("pl-bad") } returns 0
+        coEvery { playlistDao.getById("pl-bad") } returns
+            PlaylistEntity(id = "pl-bad", name = "Bad", trackCount = 3)
+        coEvery { api.getPlaylist(any(), id = "pl-bad") } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlist" to mapOf(
+                    "id" to "pl-bad",
+                    "name" to "Bad",
+                    "songCount" to 3,
+                    // entry omitted — malformed
+                ),
+            ),
+        )
+
+        repo.refreshImportedPlaylists()
+
+        coVerify(exactly = 0) { playlistDao.clearEntries(any()) }
+        coVerify(exactly = 0) { playlistDao.replaceEntries(any(), any()) }
+        coVerify(exactly = 0) { playlistDao.upsertAll(any()) }
+    }
+
+    @Test
+    fun `importPlaylist aborts when songCount positive but entry missing`() = runTest {
+        coEvery { api.getPlaylist(any(), id = "pl-bad") } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlist" to mapOf(
+                    "id" to "pl-bad",
+                    "name" to "Bad",
+                    "songCount" to 2,
+                ),
+            ),
+        )
+
+        repo.importPlaylist("pl-bad")
+
+        coVerify(exactly = 0) { playlistDao.upsertAll(any()) }
+        coVerify(exactly = 0) { playlistDao.clearEntries(any()) }
     }
 
     @Test

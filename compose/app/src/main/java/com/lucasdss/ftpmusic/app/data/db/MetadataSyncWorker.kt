@@ -599,19 +599,23 @@ class MetadataSyncWorker(
             page++
             if (albums.size < PAGE_SIZE) break
             if (newOnPage == 0) {
-                Log.w(TAG, "Album list page=$page yielded 0 new ids — stopping (offset ignored?)")
+                // Offset-ignoring / looping servers: partial walk must not FULL-diff-delete.
+                Log.w(TAG, "Album list page=$page yielded 0 new ids — fail-closed (offset ignored?)")
+                listIncomplete = true
                 break
             }
             offset += PAGE_SIZE
             delay(100L) // throttle between paginated API calls
         }
         if (page >= ALBUM_LIST_MAX_PAGES) {
-            Log.w(TAG, "Album list hit safety max pages=$ALBUM_LIST_MAX_PAGES — stopping walk")
+            Log.w(TAG, "Album list hit safety max pages=$ALBUM_LIST_MAX_PAGES — fail-closed")
+            listIncomplete = true
         }
 
         if (listIncomplete) {
             // ADR-0068: abort whole sync so watermarks stay honest (catch → phase=error).
-            Log.w(TAG, "Album list incomplete (API failed mid-pagination) — keeping cached albums")
+            // Also covers zero-new-id / max-pages stops — never replace from a truncated walk.
+            Log.w(TAG, "Album list incomplete (truncated walk) — keeping cached albums")
             throw AlbumListIncompleteException()
         }
 
