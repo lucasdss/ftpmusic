@@ -819,6 +819,18 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setArtistPlayOrder persists key`() {
+        viewModel.setArtistPlayOrder(
+            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_DESC,
+        )
+        assertEquals(
+            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_DESC,
+            viewModel.state.value.artistPlayOrder,
+        )
+        verify { storage.put(SecureStorage.KEY_ARTIST_PLAY_ORDER, "album_year_desc") }
+    }
+
+    @Test
     fun `stored push overwrite maps to ASK`() {
         assertEquals(
             com.lucasdss.ftpmusic.app.playback.OverwriteBehavior.ASK,

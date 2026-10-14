@@ -16,11 +16,14 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder
+import com.lucasdss.ftpmusic.app.playback.ArtistPlayOrderer
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +52,10 @@ data class ArtistDetailState(
     /** Stub / empty catalog — show Add Desired (ADR-0129). */
     val showAddDesired: Boolean = false,
     val isDesired: Boolean = false,
+    /** True while Play All / queue-all loads full catalog (ADR-0141). */
+    val isPreparingPlay: Boolean = false,
+    /** Full Room catalog size for this artist (not the paginated Songs tab). */
+    val catalogTrackCount: Int = 0,
 )
 
 @HiltViewModel
@@ -151,6 +158,11 @@ class ArtistDetailViewModel @Inject constructor(
                 // Load first page of tracks (cursor-based, local-first)
                 val firstPage = trackDao.getTracksByArtistId(artistId, TRACKS_PAGE_SIZE)
                 val localTracks = firstPage.map { it.toTrack() }
+                val catalogCount = try {
+                    trackDao.countTracksByArtistId(artistId)
+                } catch (_: Exception) {
+                    localTracks.size
+                }
 
                 if (localAlbums.isNotEmpty() || cachedArtist != null || localTracks.isNotEmpty()) {
                     val name = cachedArtist?.name ?: localAlbums.firstOrNull()?.artist ?: "Unknown"
@@ -176,6 +188,7 @@ class ArtistDetailViewModel @Inject constructor(
                         isLoading = false,
                         showAddDesired = emptyCatalog,
                         isDesired = isDesired,
+                        catalogTrackCount = catalogCount,
                     )
                     loadReactions(firstPage.map { it.id })
                     // Lazy: fetch public rating from MusicBrainz if not yet cached
@@ -324,9 +337,12 @@ class ArtistDetailViewModel @Inject constructor(
         id = id,
         title = title,
         artist = artist,
+        album = album,
         albumId = albumId,
         artistId = artistId,
         duration = durationSeconds,
+        trackNumber = trackNumber,
+        discNumber = discNumber,
         coverArt = coverArtUrl,
     )
 
@@ -342,19 +358,36 @@ class ArtistDetailViewModel @Inject constructor(
         playbackManager.playAlbum(tracks, urls, startIndex = index)
     }
 
+    /**
+     * Play full artist catalog using [ArtistPlayOrder] preference (ADR-0141).
+     * Default SHUFFLE; does not use the paginated Songs-tab list.
+     */
     fun playAll() {
-        val tracks = _state.value.tracks
-        if (tracks.isEmpty()) return
-        val urls = tracks.map { buildStreamUrl(it.id) }
-        val state = _state.value
-        val started = playbackManager.tryStartContext(
-            tracks,
-            urls,
-            sourceType = "artist",
-            sourceId = state.artistId,
-            sourceName = state.name,
-        )
-        if (!started) _showOverwriteModal.value = true
+        viewModelScope.launch {
+            preparePlayMutex.withLock {
+                val prepared = prepareOrderedCatalog() ?: return@withLock
+                val (tracks, urls, order) = prepared
+                val state = _state.value
+                val started = if (order == ArtistPlayOrder.SHUFFLE) {
+                    playbackManager.tryShuffleContext(
+                        tracks,
+                        urls,
+                        sourceType = "artist",
+                        sourceId = state.artistId,
+                        sourceName = state.name,
+                    )
+                } else {
+                    playbackManager.tryStartContext(
+                        tracks,
+                        urls,
+                        sourceType = "artist",
+                        sourceId = state.artistId,
+                        sourceName = state.name,
+                    )
+                }
+                if (!started) _showOverwriteModal.value = true
+            }
+        }
     }
 
     private val _showOverwriteModal = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -365,41 +398,69 @@ class ArtistDetailViewModel @Inject constructor(
         playbackManager.resolveOverwrite(clearAndPlay)
     }
 
-    fun shuffle() {
-        val tracks = _state.value.tracks
-        if (tracks.isEmpty()) return
-        val urls = tracks.map { buildStreamUrl(it.id) }
-        val state = _state.value
-        val started = playbackManager.tryShuffleContext(
-            tracks,
-            urls,
-            sourceType = "artist",
-            sourceId = state.artistId,
-            sourceName = state.name,
-        )
-        if (!started) _showOverwriteModal.value = true
-    }
-
     // ── Queue actions (parity with Album detail) ───────────────────────
 
-    /** Insert all artist top tracks at the front of the Priority Queue (Play Next). */
+    /** Insert all artist tracks at Priority front (Play Next), same order as Play All. */
     fun playNextAll() {
-        val tracks = _state.value.tracks
-        if (tracks.isEmpty()) return
-        // Reverse so the FIRST track ends up playing next.
-        tracks.zip(tracks.map { buildStreamUrl(it.id) }).reversed().forEach { (track, url) ->
-            playbackManager.playNext(track, url)
+        viewModelScope.launch {
+            preparePlayMutex.withLock {
+                val prepared = prepareOrderedCatalog() ?: return@withLock
+                val (tracks, urls, _) = prepared
+                // Reverse so the FIRST track ends up playing next.
+                tracks.zip(urls).reversed().forEach { (track, url) ->
+                    playbackManager.playNext(track, url)
+                }
+            }
         }
     }
 
-    /** Append all artist top tracks to the Priority Queue (Add to Queue). */
+    /** Append all artist tracks (Add to Queue), same order as Play All. */
     fun addAllToQueue() {
-        val tracks = _state.value.tracks
-        if (tracks.isEmpty()) return
-        tracks.zip(tracks.map { buildStreamUrl(it.id) }).forEach { (track, url) ->
-            playbackManager.addToQueue(track, url)
+        viewModelScope.launch {
+            preparePlayMutex.withLock {
+                val prepared = prepareOrderedCatalog() ?: return@withLock
+                val (tracks, urls, _) = prepared
+                tracks.zip(urls).forEach { (track, url) ->
+                    playbackManager.addToQueue(track, url)
+                }
+            }
         }
     }
+
+    /**
+     * Loads full artist catalog, applies [ArtistPlayOrder], builds stream URLs.
+     * Returns null when empty / no artist id.
+     */
+    private suspend fun prepareOrderedCatalog(): Triple<List<Track>, List<String>, ArtistPlayOrder>? {
+        val artistId = _state.value.artistId
+        if (artistId.isBlank()) return null
+        _state.value = _state.value.copy(isPreparingPlay = true)
+        return try {
+            val order = ArtistPlayOrder.fromKey(storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER))
+            val entities = trackDao.getAllTracksByArtistId(artistId)
+            if (entities.isEmpty()) return null
+            val tracks = entities.map { it.toTrack() }
+            val albumIds = tracks.mapNotNull { it.albumId }.distinct()
+            val albumYearById = if (albumIds.isEmpty()) {
+                emptyMap()
+            } else {
+                metadataDao.getAlbumYearRows(albumIds).associate { it.id to it.year }
+            }
+            val ordered = ArtistPlayOrderer.order(tracks, order, albumYearById)
+            val urls = ordered.map { buildStreamUrl(it.id) }
+            Triple(ordered, urls, order)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-artist", "prepareOrderedCatalog failed: ${e.message}")
+            null
+        } finally {
+            _state.value = _state.value.copy(isPreparingPlay = false)
+        }
+    }
+
+    /** Serializes Play All / queue-all so double-taps cannot race (ADR-0141). */
+    private val preparePlayMutex = Mutex()
 
     /** Insert a single track at the front of the Priority Queue. */
     fun playNextTrack(track: Track, url: String) {

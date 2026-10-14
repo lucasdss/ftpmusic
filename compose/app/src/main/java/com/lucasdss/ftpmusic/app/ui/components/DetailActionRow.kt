@@ -39,6 +39,7 @@ import com.lucasdss.ftpmusic.app.ui.textBodyM
 
 /**
  * Shared Play | Shuffle | More chrome for Album / Artist detail (ADR-0069).
+ * Artist may omit Shuffle ([onShuffle] null) — Play All order is Settings-driven (ADR-0141).
  *
  * Pad: spacingXL × spacingL. Height: detailActionHeight. Icon–label: 8dp.
  * More hit box ≥ [minTouchTarget].
@@ -47,7 +48,7 @@ import com.lucasdss.ftpmusic.app.ui.textBodyM
 fun DetailActionRow(
     playLabel: String,
     onPlay: () -> Unit,
-    onShuffle: () -> Unit,
+    onShuffle: (() -> Unit)?,
     onMore: () -> Unit,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
@@ -90,34 +91,36 @@ fun DetailActionRow(
                 )
             }
         }
-        Box(
-            Modifier
-                .weight(1f)
-                .height(detailActionHeight())
-                .clip(RoundedCornerShape(cornerM()))
-                .background(Color(0xFF252538))
-                .border(
-                    1.dp,
-                    Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
-                    RoundedCornerShape(cornerM()),
-                )
-                .clickable(enabled = enabled, onClick = onShuffle),
-            contentAlignment = Alignment.Center,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Shuffle,
-                    contentDescription = null,
-                    tint = Color(0xFFCCCCCC),
-                    modifier = Modifier.size(knobSize()),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Shuffle",
-                    color = Color(0xFFCCCCCC),
-                    fontSize = textBodyM(),
-                    fontWeight = FontWeight.SemiBold,
-                )
+        if (onShuffle != null) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(detailActionHeight())
+                    .clip(RoundedCornerShape(cornerM()))
+                    .background(Color(0xFF252538))
+                    .border(
+                        1.dp,
+                        Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
+                        RoundedCornerShape(cornerM()),
+                    )
+                    .clickable(enabled = enabled, onClick = onShuffle),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Shuffle,
+                        contentDescription = null,
+                        tint = Color(0xFFCCCCCC),
+                        modifier = Modifier.size(knobSize()),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Shuffle",
+                        color = Color(0xFFCCCCCC),
+                        fontSize = textBodyM(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
         }
         Box(

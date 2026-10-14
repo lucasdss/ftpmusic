@@ -378,25 +378,79 @@ class ArtistDetailViewModelTest {
     }
 
     @Test
-    fun `playAll uses loaded tracks`() = runTest(testDispatcher) {
+    fun `playAll default shuffle uses full catalog via tryShuffleContext`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns null
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
         coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns listOf(
             trackEntity("t1", "Alpha"),
-            trackEntity("t2", "Beta"),
         )
+        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns listOf(
+            trackEntity("t1", "Alpha"),
+            trackEntity("t2", "Beta"),
+            trackEntity("t3", "Gamma"),
+        )
+        coEvery { trackDao.countTracksByArtistId("ar-1") } returns 3
+        coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
+        every {
+            playbackManager.tryShuffleContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
+        } returns true
 
         viewModel.loadArtist("ar-1")
-        val loaded = viewModel.state.first { !it.isLoading && it.tracks.size == 2 }
+        viewModel.state.first { !it.isLoading && it.tracks.isNotEmpty() }
 
         viewModel.playAll()
         advanceUntilIdle()
 
-        // playAll() now routes through tryStartContext (overwrite protection).
-        verify { playbackManager.tryStartContext(any(), any(), 0, "artist", "ar-1", "Test Artist") }
+        verify {
+            playbackManager.tryShuffleContext(
+                match { it.size == 3 },
+                match { it.size == 3 },
+                sourceType = "artist",
+                sourceId = "ar-1",
+                sourceName = "Test Artist",
+            )
+        }
+        coVerify { trackDao.getAllTracksByArtistId("ar-1") }
+    }
+
+    @Test
+    fun `playAll title order uses tryStartContext with sorted catalog`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns "title_asc"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns listOf(trackEntity("t2", "Beta"))
+        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns listOf(
+            trackEntity("t2", "Beta"),
+            trackEntity("t1", "Alpha"),
+        )
+        coEvery { trackDao.countTracksByArtistId("ar-1") } returns 2
+        coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
+        every {
+            playbackManager.tryStartContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
+        } returns true
+
+        viewModel.loadArtist("ar-1")
+        viewModel.state.first { !it.isLoading }
+
+        viewModel.playAll()
+        advanceUntilIdle()
+
+        verify {
+            playbackManager.tryStartContext(
+                match { it.map { t -> t.id } == listOf("t1", "t2") },
+                any(),
+                sourceType = "artist",
+                sourceId = "ar-1",
+                sourceName = "Test Artist",
+            )
+        }
     }
 
     // ── MusicBrainz public rating ────────────────────────────────────────
@@ -605,14 +659,17 @@ class ArtistDetailViewModelTest {
     private suspend fun seedTracksForQueue() {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        // Stable order for Play Next / Add to Queue assertions (ADR-0141).
+        every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns "title_asc"
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName("Test Artist") } returns emptyList()
         coEvery { metadataDao.getAlbumsByTrackArtistId("ar-1") } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns listOf(
-            te("t1", "One"),
-            te("t2", "Two"),
-        )
+        coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
+        val seeded = listOf(te("t1", "One"), te("t2", "Two"))
+        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns seeded
+        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns seeded
+        coEvery { trackDao.countTracksByArtistId("ar-1") } returns seeded.size
         viewModel.loadArtist("ar-1")
         viewModel.state.first { it.tracks.size == 2 }
     }
@@ -624,6 +681,7 @@ class ArtistDetailViewModelTest {
     fun `playNextAll inserts tracks reversed so first plays next`() = runTest(testDispatcher) {
         seedTracksForQueue()
         viewModel.playNextAll()
+        advanceUntilIdle()
         // Reverse order: t2 first (playNext inserts at priority front), then t1.
         coVerify(exactly = 1) { playbackManager.playNext(match { it.id == "t2" }, any()) }
         coVerify(exactly = 1) { playbackManager.playNext(match { it.id == "t1" }, any()) }
@@ -633,6 +691,7 @@ class ArtistDetailViewModelTest {
     fun `addAllToQueue appends tracks in order`() = runTest(testDispatcher) {
         seedTracksForQueue()
         viewModel.addAllToQueue()
+        advanceUntilIdle()
         coVerify(exactly = 1) { playbackManager.addToQueue(match { it.id == "t1" }, any()) }
         coVerify(exactly = 1) { playbackManager.addToQueue(match { it.id == "t2" }, any()) }
     }
@@ -641,6 +700,7 @@ class ArtistDetailViewModelTest {
     fun `playNextAll and addAllToQueue are no-ops on empty track list`() = runTest(testDispatcher) {
         viewModel.playNextAll()
         viewModel.addAllToQueue()
+        advanceUntilIdle()
         coVerify(exactly = 0) { playbackManager.playNext(any(), any()) }
         coVerify(exactly = 0) { playbackManager.addToQueue(any(), any()) }
     }
@@ -988,7 +1048,7 @@ class ArtistDetailViewModelTest {
     @Test
     fun `playAll opens overwrite modal when queue blocks context start`() = runTest(testDispatcher) {
         seedTracksForQueue()
-        coEvery {
+        every {
             playbackManager.tryStartContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
         } returns false
 
@@ -999,13 +1059,14 @@ class ArtistDetailViewModelTest {
     }
 
     @Test
-    fun `shuffle opens overwrite modal when queue blocks`() = runTest(testDispatcher) {
+    fun `playAll shuffle mode opens overwrite modal when queue blocks`() = runTest(testDispatcher) {
         seedTracksForQueue()
-        coEvery {
+        every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns "shuffle"
+        every {
             playbackManager.tryShuffleContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
         } returns false
 
-        viewModel.shuffle()
+        viewModel.playAll()
         advanceUntilIdle()
 
         assertTrue(viewModel.showOverwriteModal.value)
@@ -1179,12 +1240,26 @@ class ArtistDetailViewModelTest {
     }
 
     @Test
-    fun `playAll and shuffle no-op on empty tracks`() = runTest(testDispatcher) {
+    fun `playAll no-op when artist id blank or catalog empty`() = runTest(testDispatcher) {
         viewModel.playAll()
-        viewModel.shuffle()
         advanceUntilIdle()
         assertFalse(viewModel.showOverwriteModal.value)
         coVerify(exactly = 0) { playbackManager.tryStartContext(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { playbackManager.tryShuffleContext(any(), any(), any(), any(), any()) }
+
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns "shuffle"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Empty")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns emptyList()
+        viewModel.loadArtist("ar-1")
+        viewModel.state.first { !it.isLoading && it.artistId == "ar-1" }
+
+        viewModel.playAll()
+        advanceUntilIdle()
         coVerify(exactly = 0) { playbackManager.tryShuffleContext(any(), any(), any(), any(), any()) }
     }
 

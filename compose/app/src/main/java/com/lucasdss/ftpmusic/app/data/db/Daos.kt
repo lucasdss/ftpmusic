@@ -317,6 +317,13 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id IN (:trackIds)")
     fun watchTracksByIds(trackIds: List<String>): Flow<List<TrackEntity>>
 
+    /** Full artist catalog for Play All (ADR-0141). Browse UI stays paginated. */
+    @Query("SELECT * FROM tracks WHERE artist_id = :artistId")
+    suspend fun getAllTracksByArtistId(artistId: String): List<TrackEntity>
+
+    @Query("SELECT COUNT(*) FROM tracks WHERE artist_id = :artistId")
+    suspend fun countTracksByArtistId(artistId: String): Int
+
     /** Cursor-paginated tracks for an artist. First page — ordered by title for
      *  a stable cursor. Uses the artist_id index. */
     @Query("SELECT * FROM tracks WHERE artist_id = :artistId ORDER BY title ASC, id ASC LIMIT :limit")

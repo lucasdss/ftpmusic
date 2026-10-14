@@ -66,6 +66,9 @@ data class SettingsUiState(
     /** ADR-0135: Add to Queue placement (Apple/Spotify vs YTM). */
     val addToQueuePlacement: com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement =
         com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.MANUAL_END,
+    /** ADR-0141: Artist Play All order (default Shuffle). */
+    val artistPlayOrder: com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder =
+        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE,
     // Library Metrics
     val albumCount: Int = 0,
     val artistCount: Int = 0,
@@ -232,6 +235,9 @@ class SettingsViewModel @Inject constructor(
             continuousPlayEnabled = resolvedContinuousPlay,
             addToQueuePlacement = com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement.fromKey(
                 storage.get(SecureStorage.KEY_ADD_TO_QUEUE_PLACEMENT),
+            ),
+            artistPlayOrder = com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.fromKey(
+                storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER),
             ),
             syncIntervalHours = syncHours,
             homeRecentTtlMinutes = savedHomeRecentTtl,
@@ -670,6 +676,12 @@ class SettingsViewModel @Inject constructor(
     fun setAddToQueuePlacement(placement: com.lucasdss.ftpmusic.app.playback.AddToQueuePlacement) {
         _state.value = _state.value.copy(addToQueuePlacement = placement)
         storage.put(SecureStorage.KEY_ADD_TO_QUEUE_PLACEMENT, placement.key)
+    }
+
+    /** ADR-0141: Artist Play All queue order. */
+    fun setArtistPlayOrder(order: com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder) {
+        _state.value = _state.value.copy(artistPlayOrder = order)
+        storage.put(SecureStorage.KEY_ARTIST_PLAY_ORDER, order.key)
     }
 
     fun setCoverArtQuota(mb: Int) {

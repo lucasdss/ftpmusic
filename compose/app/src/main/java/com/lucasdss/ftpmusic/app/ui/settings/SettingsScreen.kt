@@ -602,6 +602,63 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            // ═══ Artist Play All order (ADR-0141) ═══
+            SectionLabel("Artist Play All")
+            SectionCard {
+                Text(
+                    "Order when you tap Play All on an artist (default matches Symfonium / YouTube Music):",
+                    color = Color(0xFF888888),
+                    fontSize = textLabelS(),
+                    modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+                )
+                OverwriteBehaviorOption(
+                    label = "Shuffle",
+                    subtitle = "Play the full catalogue in random order",
+                    selected = state.artistPlayOrder ==
+                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE,
+                    onClick = {
+                        viewModel.setArtistPlayOrder(
+                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE,
+                        )
+                    },
+                )
+                OverwriteBehaviorOption(
+                    label = "Oldest albums first",
+                    subtitle = "By release year, then album name; unknown years last",
+                    selected = state.artistPlayOrder ==
+                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_ASC,
+                    onClick = {
+                        viewModel.setArtistPlayOrder(
+                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_ASC,
+                        )
+                    },
+                )
+                OverwriteBehaviorOption(
+                    label = "Newest albums first",
+                    subtitle = "By release year descending, then album name",
+                    selected = state.artistPlayOrder ==
+                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_DESC,
+                    onClick = {
+                        viewModel.setArtistPlayOrder(
+                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_DESC,
+                        )
+                    },
+                )
+                OverwriteBehaviorOption(
+                    label = "Song title A–Z",
+                    subtitle = "Alphabetical by track title (previous default)",
+                    selected = state.artistPlayOrder ==
+                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.TITLE_ASC,
+                    onClick = {
+                        viewModel.setArtistPlayOrder(
+                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.TITLE_ASC,
+                        )
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             // ═══ Network section ═══
             SectionLabel("NETWORK")
             SectionCard {

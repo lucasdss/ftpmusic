@@ -219,13 +219,13 @@ fun ArtistDetailScreen(
                         }
                     }
                 }
-                // Play controls — shared DetailActionRow (Spotify-style: full catalog)
+                // Play All only — order from Settings (ADR-0141); no artist Shuffle chrome
                 DetailActionRow(
                     playLabel = "Play All",
                     onPlay = { viewModel.playAll() },
-                    onShuffle = { viewModel.shuffle() },
+                    onShuffle = null,
                     onMore = { showArtistSheet = true },
-                    enabled = state.tracks.isNotEmpty(),
+                    enabled = state.tracks.isNotEmpty() && !state.isPreparingPlay,
                 )
                 if (state.showAddDesired) {
                     TextButton(
@@ -362,8 +362,9 @@ fun ArtistDetailScreen(
 
             // ═══ Artist Action Sheet ═══
             if (showArtistSheet) {
+                val catalogCount = state.catalogTrackCount.takeIf { it > 0 } ?: state.tracks.size
                 ArtistActionSheet(
-                    trackCount = state.tracks.size,
+                    trackCount = catalogCount,
                     onPlayNextAll = {
                         viewModel.playNextAll()
                         android.widget.Toast.makeText(
@@ -377,7 +378,7 @@ fun ArtistDetailScreen(
                         viewModel.addAllToQueue()
                         android.widget.Toast.makeText(
                             context,
-                            "${state.tracks.size} tracks added to queue",
+                            "$catalogCount tracks added to queue",
                             android.widget.Toast.LENGTH_SHORT,
                         ).show()
                         showArtistSheet = false
