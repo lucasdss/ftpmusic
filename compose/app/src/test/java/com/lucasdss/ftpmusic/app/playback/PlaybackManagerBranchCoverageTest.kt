@@ -330,6 +330,26 @@ class PlaybackManagerBranchCoverageTest {
         verify { mockPlayer.setMediaItems(any(), 1, 12L) }
     }
 
+    @Test
+    fun `syncDualQueueToPlayer prefers entryId when mediaIds duplicate`() {
+        val m = mgr()
+        m.playAlbum(listOf(track("a"), track("b")), listOf(url("a"), url("b")), skipPersistence = true)
+        m.addToQueue(track("a"), url("a")) // PRIORITY duplicate of mediaId a → merge a, a, b
+        val entryIds = m.entryIds()
+        assertEquals(3, entryIds.size)
+        assertEquals(entryIds.size, entryIds.toSet().size)
+        val priorityAEntryId = entryIds[1]
+        every { mockPlayer.currentMediaItem } returns
+            MediaItem.Builder().setMediaId("a").setUri(url("a")).build().withQueueEntryId(priorityAEntryId)
+        every { mockPlayer.currentPosition } returns 33L
+        clearMocks(mockPlayer, recordedCalls = true, answers = false)
+
+        m.syncDualQueueToPlayer()
+
+        // mediaId-only would map to index 0; entryId must keep playhead on PRIORITY a (1).
+        verify { mockPlayer.setMediaItems(any(), 1, 33L) }
+    }
+
     // ── enqueuePlayQueue catch ───────────────────────────────────────────
 
     @Test

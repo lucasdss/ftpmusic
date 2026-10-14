@@ -315,6 +315,17 @@ class DualQueueManagerTest {
     }
 
     @Test
+    fun `allocateNextEntryId advances uniquely unlike peek`() {
+        val first = manager.peekNextEntryId()
+        assertEquals(first, manager.peekNextEntryId())
+        val a = manager.allocateNextEntryId()
+        val b = manager.allocateNextEntryId()
+        assertEquals(first, a)
+        assertEquals(first + 1, b)
+        assertEquals(first + 2, manager.peekNextEntryId())
+    }
+
+    @Test
     fun `playNext after priority row inserts after that row`() {
         manager.setContext(listOf(item("a"), item("b")), startIndex = 0)
         manager.addToQueue(item("p1"))

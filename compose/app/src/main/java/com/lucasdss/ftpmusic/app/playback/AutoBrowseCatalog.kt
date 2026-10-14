@@ -43,10 +43,19 @@ class AutoBrowseCatalog(
     @Volatile
     private var cachedQueueSnapshot: AutoQueueBrowseSnapshot? = null
 
-    /** Prime from main-thread Dual snapshot before Queue browse (ADR-0138). */
+    /**
+     * Prime from main-thread Dual snapshot before Queue browse (ADR-0138).
+     * Same Dual revision can still change [AutoQueueBrowseSnapshot.currentIndex]
+     * on playhead advance — refresh so Up Next bands drop the now-playing row.
+     */
     fun primeQueueSnapshot(snapshot: AutoQueueBrowseSnapshot) {
         val cached = cachedQueueSnapshot
-        if (cached != null && cached.revision == snapshot.revision) return
+        if (cached != null &&
+            cached.revision == snapshot.revision &&
+            cached.currentIndex == snapshot.currentIndex
+        ) {
+            return
+        }
         cachedQueueSnapshot = snapshot
     }
 

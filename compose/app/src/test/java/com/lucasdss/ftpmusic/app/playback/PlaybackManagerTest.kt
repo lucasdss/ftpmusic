@@ -234,6 +234,38 @@ class PlaybackManagerTest {
     }
 
     @Test
+    fun `appendToContext batch assigns unique entry ids`() {
+        val manager =
+            PlaybackManager(
+                queueManager,
+                mockPersistenceManager,
+                mockOfflineModeManager,
+                mockDownloadManager,
+                castPreferences,
+                mockAppContext,
+                mockQueueJournalDao,
+            )
+        manager.playAlbum(
+            listOf(Track("c1", "C1")),
+            listOf("http://c1"),
+            skipPersistence = true,
+        )
+        val beforeIds = manager.entryIds()
+        assertEquals(1, beforeIds.size)
+
+        manager.appendToContext(
+            listOf(Track("n1", "N1"), Track("n2", "N2"), Track("n3", "N3")),
+            listOf("http://n1", "http://n2", "http://n3"),
+            asAutoplay = true,
+        )
+
+        val ids = manager.entryIds()
+        assertEquals(4, ids.size)
+        assertEquals(ids.size, ids.toSet().size)
+        assertTrue(ids.containsAll(beforeIds))
+    }
+
+    @Test
     fun `appendToContext during Cast persists the dual queue`() {
         PlayerHolder.isCasting = true
         val manager =

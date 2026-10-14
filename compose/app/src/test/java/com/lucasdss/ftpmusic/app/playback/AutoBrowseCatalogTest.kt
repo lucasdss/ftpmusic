@@ -232,6 +232,25 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
+    fun `primeQueueSnapshot refreshes when playhead advances same revision`() = runBlocking {
+        val rowsAt0 = listOf(
+            AutoQueueBrowseRow(2, "b", "B", null, isPriority = false, isLate = false, isAutoplay = false),
+            AutoQueueBrowseRow(3, "c", "C", null, isPriority = false, isLate = false, isAutoplay = false),
+        )
+        catalog.primeQueueSnapshot(AutoQueueBrowseSnapshot(revision = 5L, currentIndex = 0, rows = rowsAt0))
+        val before = catalog.children(AutoBrowseIds.QUEUE_CONTEXT, 0, 20).map { it.mediaId }
+        assertEquals(listOf(AutoBrowseIds.queueTrack(2), AutoBrowseIds.queueTrack(3)), before)
+
+        // Same Dual revision, playhead moved — Up Next drops former next row.
+        val rowsAt1 = listOf(
+            AutoQueueBrowseRow(3, "c", "C", null, isPriority = false, isLate = false, isAutoplay = false),
+        )
+        catalog.primeQueueSnapshot(AutoQueueBrowseSnapshot(revision = 5L, currentIndex = 1, rows = rowsAt1))
+        val after = catalog.children(AutoBrowseIds.QUEUE_CONTEXT, 0, 20).map { it.mediaId }
+        assertEquals(listOf(AutoBrowseIds.queueTrack(3)), after)
+    }
+
+    @Test
     fun `playable library track advertises queue commands`() = runBlocking {
         coEvery { trackDao.getStarred(any(), any()) } returns listOf(
             TrackEntity(id = "t1", title = "Song"),

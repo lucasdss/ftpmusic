@@ -1339,8 +1339,13 @@ class PlaybackManager @Inject constructor(
         emitClearAndPlayOrCommit(dualQueue.getMerged(), currentCanonicalIndex().coerceAtLeast(0))
     }
 
+    /**
+     * Stamp a unique Dual entry id. Must [DualQueueManager.allocateNextEntryId]
+     * (not peek) so batch maps (`appendToContext`, `addAllToQueue`, adopt) never
+     * collapse every row onto one id.
+     */
     private fun MediaItem.ensureEntryId(): MediaItem =
-        if (hasQueueEntryId()) this else withQueueEntryId(dualQueue.peekNextEntryId())
+        if (hasQueueEntryId()) this else withQueueEntryId(dualQueue.allocateNextEntryId())
 
     private fun emitCastOrCommit(action: () -> CastQueueAction) {
         if (PlayerHolder.isCasting) {
@@ -1449,8 +1454,17 @@ class PlaybackManager @Inject constructor(
             player.clearMediaItems()
             return
         }
-        val activeId = active?.currentMediaItem?.mediaId
-        val mappedIndex = activeId?.let { id -> merged.indexOfFirst { it.mediaId == id } } ?: -1
+        // Prefer entryId — same mediaId can appear twice (Play Next of current).
+        val activeItem = active?.currentMediaItem
+        val activeEntryId = activeItem?.queueEntryId() ?: 0
+        val mappedIndex = when {
+            activeEntryId > 0 -> merged.indexOfFirst { it.queueEntryId() == activeEntryId }
+
+            else -> {
+                val activeId = activeItem?.mediaId
+                activeId?.let { id -> merged.indexOfFirst { it.mediaId == id } } ?: -1
+            }
+        }
         val currentIdx = if (mappedIndex >= 0) mappedIndex else player.currentMediaItemIndex
         val currentPos = active?.currentPosition ?: player.currentPosition
         player.setMediaItems(merged, currentIdx.coerceIn(0, merged.lastIndex), currentPos)

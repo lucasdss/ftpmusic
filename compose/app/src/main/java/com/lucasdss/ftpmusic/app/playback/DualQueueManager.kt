@@ -409,6 +409,14 @@ class DualQueueManager @Inject constructor() {
 
     fun peekNextEntryId(): Int = nextEntryId
 
+    /**
+     * Allocate a unique entry id and advance the counter.
+     * Use from [PlaybackManager] batch stamps — [peekNextEntryId] alone must not
+     * be applied to every item in a list (duplicate ids).
+     */
+    @Synchronized
+    fun allocateNextEntryId(): Int = nextEntryId++
+
     @Synchronized
     fun adoptNextEntryId(value: Int) {
         if (value > nextEntryId) nextEntryId = value

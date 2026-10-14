@@ -34,3 +34,11 @@ deferred dual-band labels; drivers still need Up Next structure in the car.
 - HU browse shows phone dual-band structure without flattening honesty lies.
 - Queue-track play does not wipe PRIORITY via album-expand.
 - ADR-0131 Out list updated; market appendix marks labels shipped.
+
+## Amend — playhead freshness + unique entry stamps
+
+1. `AutoBrowseCatalog.primeQueueSnapshot` refreshes when `currentIndex` changes
+   even if Dual `revision` is unchanged (skip must update Up Next bands).
+2. Batch `ensureEntryId` uses `DualQueueManager.allocateNextEntryId()` (not
+   peek) so Continuous Play / `addAllToQueue` never share one entry id.
+3. `syncDualQueueToPlayer` prefers entryId over mediaId when mapping playhead.
