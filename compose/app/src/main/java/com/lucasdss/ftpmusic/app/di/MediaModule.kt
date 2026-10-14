@@ -69,6 +69,7 @@ object MediaModule {
         dailyMixRepository: DailyMixRepository,
         radioSource: AutoRadioStationsSource,
         offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
+        playbackManager: com.lucasdss.ftpmusic.app.playback.PlaybackManager,
     ): MediaSessionCallback = MediaSessionCallback(
         trackDao = trackDao,
         metadataDao = metadataDao,
@@ -84,10 +85,12 @@ object MediaModule {
         dailyMixRepository = dailyMixRepository,
         radioSource = radioSource,
         offlineModeManager = offlineModeManager,
+        playbackManager = playbackManager,
     )
 
     @Provides
     @Singleton
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun provideMediaSession(
         @ApplicationContext context: Context,
         callback: MediaSessionCallback,
@@ -105,6 +108,10 @@ object MediaModule {
         return MediaLibraryService.MediaLibrarySession.Builder(context, exoPlayer, callback)
             .setBitmapLoader(bitmapLoader)
             .setSessionActivity(sessionActivity)
+            // ADR-0137: per-item Play Next / Add on browse tracks.
+            .setCommandButtonsForMediaItems(
+                com.lucasdss.ftpmusic.app.playback.MediaSessionQueueCommands.buttons(),
+            )
             .build()
     }
 

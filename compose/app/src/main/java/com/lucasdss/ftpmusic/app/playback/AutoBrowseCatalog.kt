@@ -18,11 +18,13 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
+import com.lucasdss.ftpmusic.app.ui.player.QueueSheetGrouping
 import java.time.LocalDate
 
 /**
- * Local-first Android Auto browse tree (ADR-0091 / ADR-0131).
+ * Local-first Android Auto browse tree (ADR-0091 / ADR-0131 / ADR-0138).
  * Room for library nodes; radio uses [AutoRadioStationsSource] (network + bookmarks).
+ * Dual Up-Next via optional [queueSnapshotProvider].
  */
 class AutoBrowseCatalog(
     private val trackDao: TrackDao,
@@ -35,7 +37,19 @@ class AutoBrowseCatalog(
     private val genreMixDao: GenreMixDao? = null,
     private val dailyMixRepository: DailyMixRepository? = null,
     private val radioSource: AutoRadioStationsSource? = null,
+    private val queueSnapshotProvider: AutoQueueSnapshotProvider? = null,
 ) {
+    /** Revision-scoped Up-Next cache so page N matches page 0 (ADR-0138). */
+    @Volatile
+    private var cachedQueueSnapshot: AutoQueueBrowseSnapshot? = null
+
+    /** Prime from main-thread Dual snapshot before Queue browse (ADR-0138). */
+    fun primeQueueSnapshot(snapshot: AutoQueueBrowseSnapshot) {
+        val cached = cachedQueueSnapshot
+        if (cached != null && cached.revision == snapshot.revision) return
+        cachedQueueSnapshot = snapshot
+    }
+
     fun rootItem(): MediaItem = folder(
         mediaId = AutoBrowseIds.ROOT,
         title = "FTP Music",
@@ -74,6 +88,14 @@ class AutoBrowseCatalog(
 
             AutoBrowseIds.RADIO -> loadRadioStations().drop(offset).take(size).map { radioItem(it) }
 
+            AutoBrowseIds.QUEUE -> queueBandFolders()
+
+            AutoBrowseIds.QUEUE_PRIORITY,
+            AutoBrowseIds.QUEUE_CONTEXT,
+            AutoBrowseIds.QUEUE_AUTOPLAY,
+            AutoBrowseIds.QUEUE_LATE,
+            -> queueBandTracks(parentId, offset, size)
+
             else -> {
                 AutoBrowseIds.parsePlaylist(parentId)?.let { id ->
                     playlistTracks(id, offset, size)
@@ -93,15 +115,41 @@ class AutoBrowseCatalog(
     suspend fun item(mediaId: String): MediaItem? {
         when (mediaId) {
             AutoBrowseIds.ROOT -> return rootItem()
+
             AutoBrowseIds.RECENT -> return folder(AutoBrowseIds.RECENT, "Recently played", playable = false)
+
             AutoBrowseIds.OFFLINE -> return folder(AutoBrowseIds.OFFLINE, "Downloads", playable = false)
+
             AutoBrowseIds.FAVORITES -> return folder(AutoBrowseIds.FAVORITES, "Favorites", playable = false)
+
             AutoBrowseIds.MIXES -> return folder(AutoBrowseIds.MIXES, "Daily Mixes", playable = false)
+
             AutoBrowseIds.PLAYLISTS -> return folder(AutoBrowseIds.PLAYLISTS, "Playlists", playable = false)
+
             AutoBrowseIds.ALBUMS -> return folder(AutoBrowseIds.ALBUMS, "Albums", playable = false)
+
             AutoBrowseIds.ARTISTS -> return folder(AutoBrowseIds.ARTISTS, "Artists", playable = false)
+
             AutoBrowseIds.GENRES -> return folder(AutoBrowseIds.GENRES, "Genres", playable = false)
+
             AutoBrowseIds.RADIO -> return folder(AutoBrowseIds.RADIO, "Live Radio", playable = false)
+
+            AutoBrowseIds.QUEUE -> return folder(AutoBrowseIds.QUEUE, "Queue", playable = false)
+
+            AutoBrowseIds.QUEUE_PRIORITY -> return folder(
+                AutoBrowseIds.QUEUE_PRIORITY,
+                "Next in Queue",
+                playable = false,
+            )
+
+            AutoBrowseIds.QUEUE_CONTEXT -> return folder(AutoBrowseIds.QUEUE_CONTEXT, "Next from", playable = false)
+
+            AutoBrowseIds.QUEUE_AUTOPLAY -> return folder(AutoBrowseIds.QUEUE_AUTOPLAY, "Autoplay", playable = false)
+
+            AutoBrowseIds.QUEUE_LATE -> return folder(AutoBrowseIds.QUEUE_LATE, "Queued later", playable = false)
+        }
+        AutoBrowseIds.parseQueueTrack(mediaId)?.let { entryId ->
+            return queueTrackItem(entryId)
         }
         AutoBrowseIds.parsePlaylist(mediaId)?.let { id ->
             return playlistDao.getById(id)?.let { playlistFolder(it) }
@@ -191,6 +239,7 @@ class AutoBrowseCatalog(
 
     private fun rootChildren(): List<MediaItem> = listOf(
         folder(AutoBrowseIds.RECENT, "Recently played", playable = false),
+        folder(AutoBrowseIds.QUEUE, "Queue", playable = false),
         folder(AutoBrowseIds.OFFLINE, "Downloads", playable = false),
         folder(AutoBrowseIds.FAVORITES, "Favorites", playable = false),
         folder(AutoBrowseIds.MIXES, "Daily Mixes", playable = false),
@@ -199,6 +248,87 @@ class AutoBrowseCatalog(
         folder(AutoBrowseIds.ARTISTS, "Artists", playable = false),
         folder(AutoBrowseIds.GENRES, "Genres", playable = false),
         folder(AutoBrowseIds.RADIO, "Live Radio", playable = false),
+    )
+
+    private fun queueSnapshot(): AutoQueueBrowseSnapshot {
+        val cached = cachedQueueSnapshot
+        if (cached != null) return cached
+        val live = queueSnapshotProvider?.snapshot()
+            ?: return AutoQueueBrowseSnapshot(revision = 0L, currentIndex = -1, rows = emptyList())
+        cachedQueueSnapshot = live
+        return live
+    }
+
+    private fun queueBandFolders(): List<MediaItem> {
+        val bands = groupUpcoming(queueSnapshot())
+        return buildList {
+            if (bands.priority.isNotEmpty()) {
+                add(
+                    folder(
+                        AutoBrowseIds.QUEUE_PRIORITY,
+                        "Next in Queue",
+                        subtitle = "${bands.priority.size}",
+                        playable = false,
+                    ),
+                )
+            }
+            if (bands.continuePlaying.isNotEmpty()) {
+                add(
+                    folder(
+                        AutoBrowseIds.QUEUE_CONTEXT,
+                        "Next from",
+                        subtitle = "${bands.continuePlaying.size}",
+                        playable = false,
+                    ),
+                )
+            }
+            if (bands.autoplay.isNotEmpty()) {
+                add(
+                    folder(
+                        AutoBrowseIds.QUEUE_AUTOPLAY,
+                        "Autoplay",
+                        subtitle = "${bands.autoplay.size}",
+                        playable = false,
+                    ),
+                )
+            }
+            if (bands.late.isNotEmpty()) {
+                add(
+                    folder(
+                        AutoBrowseIds.QUEUE_LATE,
+                        "Queued later",
+                        subtitle = "${bands.late.size}",
+                        playable = false,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun queueBandTracks(bandId: String, offset: Int, size: Int): List<MediaItem> {
+        val bands = groupUpcoming(queueSnapshot())
+        val rows = when (bandId) {
+            AutoBrowseIds.QUEUE_PRIORITY -> bands.priority
+            AutoBrowseIds.QUEUE_CONTEXT -> bands.continuePlaying
+            AutoBrowseIds.QUEUE_AUTOPLAY -> bands.autoplay
+            AutoBrowseIds.QUEUE_LATE -> bands.late
+            else -> emptyList()
+        }
+        return rows.drop(offset.coerceAtLeast(0)).take(size).map { queueTrackMediaItem(it) }
+    }
+
+    private fun queueTrackItem(entryId: Int): MediaItem? {
+        val row = queueSnapshot().rows.firstOrNull { it.entryId == entryId } ?: return null
+        return queueTrackMediaItem(row)
+    }
+
+    /** Group Up Next with the same band rules as the phone queue sheet (ADR-0138). */
+    internal fun groupUpcoming(snapshot: AutoQueueBrowseSnapshot) = QueueSheetGrouping.groupUpcoming(
+        items = snapshot.rows,
+        isPriority = { it.isPriority },
+        isLate = { it.isLate },
+        isAutoplay = { it.isAutoplay },
+        include = { true },
     )
 
     private suspend fun loadRadioStations(): List<AutoRadioStation> = try {
@@ -337,6 +467,10 @@ class AutoBrowseCatalog(
             .setIsPlayable(uri != null)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
             .apply {
+                // ADR-0137: per-item Play Next / Add only when streamable.
+                if (uri != null) {
+                    setSupportedCommands(MediaSessionQueueCommands.SUPPORTED_COMMANDS)
+                }
                 artworkUriFor(track.coverArtUrl)?.let { setArtworkUri(it) }
                 setExtras(
                     Bundle().apply {
@@ -364,6 +498,9 @@ class AutoBrowseCatalog(
             .setIsPlayable(uri != null)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
             .apply {
+                if (uri != null) {
+                    setSupportedCommands(MediaSessionQueueCommands.SUPPORTED_COMMANDS)
+                }
                 artworkUriFor(track.coverArt)?.let { setArtworkUri(it) }
                 setExtras(
                     Bundle().apply {
@@ -377,6 +514,31 @@ class AutoBrowseCatalog(
             .build()
         return MediaItem.Builder()
             .setMediaId(track.id)
+            .apply { if (uri != null) setUri(uri) }
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
+    /** Queue-node row: playable jump target, no Play Next/Add buttons (ADR-0138). */
+    private fun queueTrackMediaItem(row: AutoQueueBrowseRow): MediaItem {
+        val uri = streamUriFor(row.mediaId)
+        val metadata = MediaMetadata.Builder()
+            .setTitle(row.title)
+            .setArtist(row.artist)
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+            .apply {
+                setExtras(
+                    Bundle().apply {
+                        putString("type", "music")
+                        putInt("queueEntryId", row.entryId)
+                    },
+                )
+            }
+            .build()
+        return MediaItem.Builder()
+            .setMediaId(AutoBrowseIds.queueTrack(row.entryId))
             .apply { if (uri != null) setUri(uri) }
             .setMediaMetadata(metadata)
             .build()

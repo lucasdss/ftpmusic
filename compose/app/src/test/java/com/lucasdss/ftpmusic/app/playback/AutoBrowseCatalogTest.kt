@@ -80,12 +80,13 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
-    fun `root has nine browse nodes`() = runBlocking {
+    fun `root has ten browse nodes with Queue after Recent`() = runBlocking {
         val kids = catalog.children(AutoBrowseIds.ROOT, page = 0, pageSize = 50)
-        assertEquals(9, kids.size)
+        assertEquals(10, kids.size)
         assertEquals(
             listOf(
                 AutoBrowseIds.RECENT,
+                AutoBrowseIds.QUEUE,
                 AutoBrowseIds.OFFLINE,
                 AutoBrowseIds.FAVORITES,
                 AutoBrowseIds.MIXES,
@@ -181,9 +182,65 @@ class AutoBrowseCatalogTest {
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.mix(1)))
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.genre("Rock")))
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.radio("s1")))
+        assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.QUEUE))
+        assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.queueTrack(42)))
+        assertTrue(AutoBrowseIds.isQueueTrack(AutoBrowseIds.queueTrack(42)))
+        assertEquals(42, AutoBrowseIds.parseQueueTrack(AutoBrowseIds.queueTrack(42)))
         assertTrue(AutoBrowseIds.isRadioMediaId(AutoBrowseIds.radio("s1")))
         assertTrue(AutoBrowseIds.isRadioMediaId("radio:123"))
         assertFalse(AutoBrowseIds.isBrowseNode("plain-track-id"))
+    }
+
+    @Test
+    fun `queue bands match QueueSheetGrouping and hide empty`() = runBlocking {
+        val snap = AutoQueueBrowseSnapshot(
+            revision = 1L,
+            currentIndex = 0,
+            rows = listOf(
+                AutoQueueBrowseRow(1, "a", "A", null, isPriority = true, isLate = false, isAutoplay = false),
+                AutoQueueBrowseRow(2, "b", "B", null, isPriority = false, isLate = false, isAutoplay = false),
+                AutoQueueBrowseRow(3, "c", "C", null, isPriority = false, isLate = false, isAutoplay = true),
+                AutoQueueBrowseRow(4, "d", "D", null, isPriority = false, isLate = true, isAutoplay = false),
+            ),
+        )
+        catalog.primeQueueSnapshot(snap)
+        val bands = catalog.groupUpcoming(snap)
+        assertEquals(listOf(1), bands.priority.map { it.entryId })
+        assertEquals(listOf(2), bands.continuePlaying.map { it.entryId })
+        assertEquals(listOf(3), bands.autoplay.map { it.entryId })
+        assertEquals(listOf(4), bands.late.map { it.entryId })
+
+        val folders = catalog.children(AutoBrowseIds.QUEUE, 0, 20)
+        assertEquals(
+            listOf(
+                AutoBrowseIds.QUEUE_PRIORITY,
+                AutoBrowseIds.QUEUE_CONTEXT,
+                AutoBrowseIds.QUEUE_AUTOPLAY,
+                AutoBrowseIds.QUEUE_LATE,
+            ),
+            folders.map { it.mediaId },
+        )
+        val pri = catalog.children(AutoBrowseIds.QUEUE_PRIORITY, 0, 20)
+        assertEquals(AutoBrowseIds.queueTrack(1), pri.single().mediaId)
+        assertTrue(pri.single().mediaMetadata.supportedCommands.isNullOrEmpty())
+    }
+
+    @Test
+    fun `empty queue has no band folders`() = runBlocking {
+        catalog.primeQueueSnapshot(AutoQueueBrowseSnapshot(1L, -1, emptyList()))
+        assertTrue(catalog.children(AutoBrowseIds.QUEUE, 0, 20).isEmpty())
+    }
+
+    @Test
+    fun `playable library track advertises queue commands`() = runBlocking {
+        coEvery { trackDao.getStarred(any(), any()) } returns listOf(
+            TrackEntity(id = "t1", title = "Song"),
+        )
+        val kids = catalog.children(AutoBrowseIds.FAVORITES, 0, 20)
+        assertEquals(
+            MediaSessionQueueCommands.SUPPORTED_COMMANDS,
+            kids.single().mediaMetadata.supportedCommands,
+        )
     }
 
     @Test

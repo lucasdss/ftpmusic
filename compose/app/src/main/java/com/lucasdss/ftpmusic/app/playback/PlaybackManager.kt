@@ -177,6 +177,37 @@ class PlaybackManager @Inject constructor(
     /** Media ids currently in Dual — for CP de-dupe while CastPlayer timeline is stale. */
     fun currentQueueMediaIds(): Set<String> = dualQueue.getMerged().mapNotNull { it.mediaId }.toSet()
 
+    /** Merged Dual MediaItems (entry ids intact) for Auto queue-track seek (ADR-0138). */
+    fun mergedMediaItems(): List<MediaItem> = dualQueue.getMerged()
+
+    fun indexOfQueueEntry(entryId: Int): Int = dualQueue.getMerged().indexOfFirst { it.queueEntryId() == entryId }
+
+    /**
+     * Up-Next snapshot for Auto browse Queue (ADR-0138). Call on main.
+     * Rows are merge indices strictly after [currentQueueIndex].
+     */
+    fun autoQueueBrowseSnapshot(): AutoQueueBrowseSnapshot {
+        val merged = dualQueue.getMerged()
+        val current = currentCanonicalIndex()
+        val priorityFlags = dualQueue.isUserQueueFlags()
+        val lateFlags = dualQueue.isLateFlags()
+        val rows = merged.mapIndexedNotNull { index, item ->
+            if (index <= current) return@mapIndexedNotNull null
+            val isLate = lateFlags.getOrElse(index) { false }
+            val isPriority = priorityFlags.getOrElse(index) { false } && !isLate
+            item.toAutoQueueBrowseRow(
+                isPriority = isPriority,
+                isLate = isLate,
+                isAutoplay = item.isAutoplay(),
+            )
+        }
+        return AutoQueueBrowseSnapshot(
+            revision = QueueRevisionTracker.revision.value,
+            currentIndex = current,
+            rows = rows,
+        )
+    }
+
     // ── Overwrite protection ─────────────────────────────────────────────────
     data class PendingPlayback(
         val tracks: List<Track>,

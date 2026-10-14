@@ -33,7 +33,8 @@ User lock: phone projection only (1A); maximal peer pack (2B).
    network aggregation on Auto click.
 7. **Mix expand** — Today → yesterday daily_mix row; `filterPlayableMixTrackIds`;
    no `generateAll` on browse click.
-8. **Out of scope** — AAOS, Car App Library, Wear, dual-band Auto labels.
+8. **Out of scope** — AAOS, Car App Library, Wear.
+   Dual-band Auto labels shipped later: ADR-0138. Play Next/Add: ADR-0137.
 
 ## Consequences
 

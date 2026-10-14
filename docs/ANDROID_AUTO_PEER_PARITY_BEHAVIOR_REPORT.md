@@ -46,16 +46,21 @@ Caveman. ADR-0131 + ADR-0132 hardening. Scope 1A+2B (phone projection).
 
 ## Out
 
-AAOS. Car App Library. Wear. Dual-band Auto labels. Discovery nodes.
+AAOS. Car App Library. Wear. Discovery nodes.
+
+## Follow-up shipped
+
+- ADR-0137 Play Next / Add per-item commands
+- ADR-0138 Dual-band browse Queue node
 
 ## Correctness follow-up
 
 ADR-0136 + `docs/ANDROID_AUTO_CORRECTNESS_REVIEW_BEHAVIOR_REPORT.md` —
 radio id unity, playable playlist/mix paging, LocalOnly search gate,
-radio resumption; market gaps deferred (doc appendix only).
+radio resumption.
 
 ## Coverage
 
-`AutoBrowseCatalogTest`, `MediaSessionCallback` browse/search/reaction,
-`AutoRadioStationsSourceTest`, Dual adopt unit tests.
+`AutoBrowseCatalogTest`, `MediaSessionCallback` browse/search/reaction/queue,
+`MediaSessionQueueCommandsTest`, `AutoRadioStationsSourceTest`, Dual adopt unit tests.
 

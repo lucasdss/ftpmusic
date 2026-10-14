@@ -11,8 +11,9 @@ not market-feature gaps: radio mediaId prefix skew, playlist/mix page
 offset vs dangling over-fetch, LocalOnly still calling `search3`, and
 process-death radio identity loss on resumption.
 
-Peer-parity browse (9 nodes + search) stays shipped; market extras
-(Play Next/Add on HU, dual-band labels, Discovery, AAOS) remain deferred.
+Peer-parity browse (9 nodes + search) stays shipped. Play Next/Add
+(ADR-0137) and dual-band Queue browse (ADR-0138) shipped in a later loop.
+Discovery / AAOS remain deferred.
 
 ## Decision
 

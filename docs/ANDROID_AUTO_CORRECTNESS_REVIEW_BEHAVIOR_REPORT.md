@@ -17,12 +17,12 @@ ADR-0136.
 9-node Room-first tree, in-Auto search, voice expand + single-track fallback,
 Dual adopt, radio reactions gated, local-only radio bookmarks.
 
-## Market gap appendix (defer — not this loop)
+## Market gap appendix
 
 | Gap | Severity | Notes |
 |-----|----------|-------|
-| Auto Play Next / Add custom actions | P1 market | Phone Dual only today |
-| Dual-band queue labels on HU | P1 market | ADR-0131 Out |
+| Auto Play Next / Add custom actions | Shipped | ADR-0137 |
+| Dual-band queue labels on HU | Shipped | ADR-0138 browse Queue node |
 | Voice ≠ browse search convergence | P1 product | ADR-0131 lock |
 | Discovery / Home feed nodes | P2 | Out |
 | AAOS / Car App Library / Wear | P2 | Out |

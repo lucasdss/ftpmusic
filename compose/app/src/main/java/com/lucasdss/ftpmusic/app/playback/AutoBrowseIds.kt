@@ -18,12 +18,20 @@ object AutoBrowseIds {
     const val GENRES = "auto_genres"
     const val RADIO = "auto_radio"
 
+    /** Dual Up-Next browse root (ADR-0138). */
+    const val QUEUE = "auto_queue"
+    const val QUEUE_PRIORITY = "auto_queue_priority"
+    const val QUEUE_CONTEXT = "auto_queue_context"
+    const val QUEUE_AUTOPLAY = "auto_queue_autoplay"
+    const val QUEUE_LATE = "auto_queue_late"
+
     private const val PLAYLIST_PREFIX = "auto_playlist:"
     private const val ALBUM_PREFIX = "auto_album:"
     private const val ARTIST_PREFIX = "auto_artist:"
     private const val MIX_PREFIX = "auto_mix:"
     private const val GENRE_PREFIX = "auto_genre:"
     private const val RADIO_PREFIX = "auto_radio:"
+    private const val QUEUE_TRACK_PREFIX = "auto_queue_track:"
 
     fun playlist(id: String): String = PLAYLIST_PREFIX + id
     fun album(id: String): String = ALBUM_PREFIX + id
@@ -31,6 +39,7 @@ object AutoBrowseIds {
     fun mix(id: Long): String = MIX_PREFIX + id
     fun genre(name: String): String = GENRE_PREFIX + Uri.encode(name)
     fun radio(stationId: String): String = RADIO_PREFIX + Uri.encode(stationId)
+    fun queueTrack(entryId: Int): String = QUEUE_TRACK_PREFIX + entryId
 
     fun parsePlaylist(mediaId: String): String? =
         mediaId.takeIf { it.startsWith(PLAYLIST_PREFIX) }?.removePrefix(PLAYLIST_PREFIX)
@@ -53,7 +62,19 @@ object AutoBrowseIds {
         ?.removePrefix(RADIO_PREFIX)
         ?.let { Uri.decode(it) }
 
+    fun parseQueueTrack(mediaId: String): Int? = mediaId.takeIf { it.startsWith(QUEUE_TRACK_PREFIX) }
+        ?.removePrefix(QUEUE_TRACK_PREFIX)
+        ?.toIntOrNull()
+
     fun isRadioMediaId(mediaId: String): Boolean = mediaId.startsWith(RADIO_PREFIX) || mediaId.startsWith("radio:")
+
+    fun isQueueTrack(mediaId: String): Boolean = mediaId.startsWith(QUEUE_TRACK_PREFIX)
+
+    fun isQueueBand(mediaId: String): Boolean = mediaId == QUEUE ||
+        mediaId == QUEUE_PRIORITY ||
+        mediaId == QUEUE_CONTEXT ||
+        mediaId == QUEUE_AUTOPLAY ||
+        mediaId == QUEUE_LATE
 
     fun isBrowseNode(mediaId: String): Boolean = mediaId == ROOT ||
         mediaId == RECENT ||
@@ -65,6 +86,8 @@ object AutoBrowseIds {
         mediaId == ARTISTS ||
         mediaId == GENRES ||
         mediaId == RADIO ||
+        isQueueBand(mediaId) ||
+        isQueueTrack(mediaId) ||
         mediaId.startsWith(PLAYLIST_PREFIX) ||
         mediaId.startsWith(ALBUM_PREFIX) ||
         mediaId.startsWith(ARTIST_PREFIX) ||

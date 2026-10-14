@@ -56,6 +56,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -961,6 +962,8 @@ class MediaService : MediaLibraryService() {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // ADR-0138: playhead advance changes Up Next bands even without Dual mutate.
+            handler.post { notifyAutoQueueBrowseChildren() }
             // CastPlayer handles Cast track loading automatically via RemoteCastPlayer
             // Capture previous track metadata NOW — currentMediaItem is still the old track at this point
             val previousMeta = PlayerHolder.player?.currentMediaItem?.mediaMetadata
@@ -1835,6 +1838,7 @@ class MediaService : MediaLibraryService() {
             notificationProvider = provider
             setMediaNotificationProvider(provider)
             wireReactionSurfaceUpdates()
+            wireAutoQueueBrowseUpdates()
 
             // Connect Player listener so UI reads Player state directly
             playbackProvider.connect()
@@ -1980,6 +1984,12 @@ class MediaService : MediaLibraryService() {
 
                             MediaSessionReactionCommands.ACTION_DISLIKE ->
                                 com.lucasdss.ftpmusic.app.R.drawable.ic_thumb_down
+
+                            MediaSessionQueueCommands.ACTION_PLAY_NEXT ->
+                                com.lucasdss.ftpmusic.app.R.drawable.ic_playlist_add
+
+                            MediaSessionQueueCommands.ACTION_ADD_TO_QUEUE ->
+                                com.lucasdss.ftpmusic.app.R.drawable.ic_queue_add
 
                             else ->
                                 if (button.iconResId != 0) {
@@ -4316,6 +4326,40 @@ class MediaService : MediaLibraryService() {
                     notificationProvider?.notifyChanged()
                 }
             }
+        }
+    }
+
+    /**
+     * ADR-0138: refresh Auto browse Queue (+ band folders + root) when Dual mutates.
+     * Debounce bursts from Play Next / Add / skip.
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private fun wireAutoQueueBrowseUpdates() {
+        scope.launch {
+            QueueRevisionTracker.revision
+                .debounce(150L)
+                .collect {
+                    withContext(Dispatchers.Main.immediate) {
+                        notifyAutoQueueBrowseChildren()
+                    }
+                }
+        }
+    }
+
+    /** ADR-0138: refresh Queue browse after Dual edits or playhead advance. */
+    private fun notifyAutoQueueBrowseChildren() {
+        try {
+            mediaSession.notifyChildrenChanged(AutoBrowseIds.ROOT, Int.MAX_VALUE, null)
+            mediaSession.notifyChildrenChanged(AutoBrowseIds.QUEUE, Int.MAX_VALUE, null)
+            mediaSession.notifyChildrenChanged(AutoBrowseIds.QUEUE_PRIORITY, Int.MAX_VALUE, null)
+            mediaSession.notifyChildrenChanged(AutoBrowseIds.QUEUE_CONTEXT, Int.MAX_VALUE, null)
+            mediaSession.notifyChildrenChanged(AutoBrowseIds.QUEUE_AUTOPLAY, Int.MAX_VALUE, null)
+            mediaSession.notifyChildrenChanged(AutoBrowseIds.QUEUE_LATE, Int.MAX_VALUE, null)
+        } catch (e: Exception) {
+            android.util.Log.w(
+                "ftpmusic",
+                "[MediaService] Auto queue notifyChildrenChanged failed: ${e.message}",
+            )
         }
     }
 

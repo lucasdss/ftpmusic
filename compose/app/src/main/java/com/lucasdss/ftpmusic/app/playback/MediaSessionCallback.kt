@@ -2,11 +2,13 @@ package com.lucasdss.ftpmusic.app.playback
 
 import android.net.Uri
 import android.os.Bundle
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Rating
 import androidx.media3.common.ThumbRating
 import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaConstants
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
@@ -15,6 +17,7 @@ import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
@@ -48,6 +51,12 @@ import kotlinx.coroutines.withContext
  * Like/dislike custom commands (ADR-0118): [onConnect] / [onCustomCommand] /
  * [onSetRating] via [CurrentTrackReactionController]. Radio gated (ADR-0131).
  *
+ * Play Next / Add to Queue (ADR-0137): per-item commands via
+ * [MediaSessionQueueCommands] → [PlaybackManager].
+ *
+ * Dual-band Queue browse (ADR-0138): `auto_queue*` nodes; queue-track seek via
+ * [onSetMediaItems] returning Dual merged timeline.
+ *
  * The requested track is placed first in the returned list so playback
  * starts at the correct position. The remaining album tracks follow in
  * their original order.
@@ -71,6 +80,7 @@ class MediaSessionCallback(
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository? = null,
     private val radioSource: AutoRadioStationsSource? = null,
     private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager? = null,
+    private val playbackManager: PlaybackManager? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MediaLibraryService.MediaLibrarySession.Callback {
@@ -125,6 +135,18 @@ class MediaSessionCallback(
         )
     }
 
+    /** Capture Dual Up-Next on main and prime catalog cache (ADR-0138). */
+    private suspend fun primeQueueSnapshotIfNeeded(parentOrItemId: String) {
+        val catalog = browseCatalog ?: return
+        val needsQueue = parentOrItemId == AutoBrowseIds.ROOT ||
+            AutoBrowseIds.isQueueBand(parentOrItemId) ||
+            AutoBrowseIds.isQueueTrack(parentOrItemId)
+        if (!needsQueue) return
+        val pm = playbackManager ?: return
+        val snap = withContext(mainDispatcher) { pm.autoQueueBrowseSnapshot() }
+        catalog.primeQueueSnapshot(snap)
+    }
+
     override fun onGetLibraryRoot(
         session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
@@ -147,6 +169,7 @@ class MediaSessionCallback(
             ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
         return scope.future {
             try {
+                primeQueueSnapshotIfNeeded(parentId)
                 val kids = catalog.children(parentId, page, pageSize)
                 LibraryResult.ofItemList(ImmutableList.copyOf(kids), params)
             } catch (e: Exception) {
@@ -165,6 +188,7 @@ class MediaSessionCallback(
             ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
         return scope.future {
             try {
+                primeQueueSnapshotIfNeeded(mediaId)
                 val item = catalog.item(mediaId)
                 if (item != null) {
                     LibraryResult.ofItem(item, null)
@@ -193,6 +217,10 @@ class MediaSessionCallback(
         ) {
             return Futures.immediateFuture(mediaItems)
         }
+        // Queue-track seek is handled in [onSetMediaItems] (ADR-0138).
+        if (AutoBrowseIds.isQueueTrack(mediaId)) {
+            return Futures.immediateFuture(mediaItems)
+        }
         return scope.future {
             try {
                 if (AutoBrowseIds.isBrowseNode(mediaId)) {
@@ -208,6 +236,56 @@ class MediaSessionCallback(
                 mediaItems
             }
         }
+    }
+
+    override fun onSetMediaItems(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        mediaItems: List<MediaItem>,
+        startIndex: Int,
+        startPositionMs: Long,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        val mediaId = mediaItems.singleOrNull()?.mediaId
+        if (mediaId != null && AutoBrowseIds.isQueueTrack(mediaId)) {
+            return scope.future {
+                val entryId = AutoBrowseIds.parseQueueTrack(mediaId)
+                    ?: throw IllegalArgumentException("Invalid queue track id: $mediaId")
+                val pm = playbackManager
+                    ?: throw IllegalStateException("PlaybackManager unavailable for queue seek")
+                withContext(mainDispatcher) {
+                    val index = pm.indexOfQueueEntry(entryId)
+                    if (index < 0) {
+                        // Stale tap — fail the future so Media3 does not
+                        // setMediaItems([]) and wipe the playing timeline.
+                        throw IllegalStateException("Queue entry $entryId no longer in Dual")
+                    }
+                    // Cast: Dual JumpTo only. Returning items would make Media3
+                    // call CastPlayer.setMediaItems and bypass itemId sync.
+                    if (PlayerHolder.isCasting) {
+                        pm.playQueueItem(index)
+                        throw IllegalStateException("Cast queue seek handled via JumpTo")
+                    }
+                    val merged = pm.mergedMediaItems()
+                    // Local: return Dual timeline at target index — Media3
+                    // setMediaItems with matching ids keeps Dual adopt as no-op.
+                    MediaSession.MediaItemsWithStartPosition(merged, index, C.TIME_UNSET)
+                }
+            }
+        }
+        return Futures.transformAsync(
+            onAddMediaItems(mediaSession, controller, mediaItems),
+            { items ->
+                val idx = when {
+                    items.isEmpty() -> 0
+                    startIndex == C.INDEX_UNSET -> 0
+                    else -> startIndex.coerceIn(0, items.lastIndex)
+                }
+                Futures.immediateFuture(
+                    MediaSession.MediaItemsWithStartPosition(items, idx, startPositionMs),
+                )
+            },
+            MoreExecutors.directExecutor(),
+        )
     }
 
     override fun onSearch(
@@ -686,6 +764,8 @@ class MediaSessionCallback(
             .buildUpon()
             .add(MediaSessionReactionCommands.LIKE_COMMAND)
             .add(MediaSessionReactionCommands.DISLIKE_COMMAND)
+            .add(MediaSessionQueueCommands.PLAY_NEXT_COMMAND)
+            .add(MediaSessionQueueCommands.ADD_TO_QUEUE_COMMAND)
             .add(SessionCommand.COMMAND_CODE_SESSION_SET_RATING)
             .build()
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -702,6 +782,9 @@ class MediaSessionCallback(
         args: Bundle,
     ): ListenableFuture<SessionResult> {
         val action = customCommand.customAction
+        if (MediaSessionQueueCommands.isQueueAction(action)) {
+            return handleQueueCustomCommand(session, action, args)
+        }
         if (action != MediaSessionReactionCommands.ACTION_LIKE &&
             action != MediaSessionReactionCommands.ACTION_DISLIKE
         ) {
@@ -731,6 +814,66 @@ class MediaSessionCallback(
                 SessionResult(SessionResult.RESULT_ERROR_UNKNOWN)
             }
         }
+    }
+
+    /** ADR-0137: Play Next / Add for browse-item mediaId in command args. */
+    private fun handleQueueCustomCommand(
+        session: MediaSession,
+        action: String,
+        args: Bundle,
+    ): ListenableFuture<SessionResult> {
+        val pm = playbackManager
+            ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        return scope.future {
+            val mediaId = args.getString(MediaConstants.EXTRA_KEY_MEDIA_ID)
+                ?.takeIf { it.isNotBlank() }
+                ?: withContext(mainDispatcher) { session.player.currentMediaItem?.mediaId }
+            if (mediaId.isNullOrBlank()) {
+                return@future SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)
+            }
+            if (AutoBrowseIds.isRadioMediaId(mediaId) ||
+                AutoBrowseIds.isBrowseNode(mediaId) ||
+                AutoBrowseIds.isQueueTrack(mediaId)
+            ) {
+                return@future SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
+            }
+            val entity = trackDao.getTrack(mediaId)
+                ?: return@future SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE)
+            val streamUri = streamUriForTrackId(mediaId)
+                ?: return@future SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE)
+            val track = entity.toPlaybackTrack()
+            try {
+                withContext(mainDispatcher) {
+                    val player = session.player
+                    val wasEmpty = player.mediaItemCount == 0
+                    when (action) {
+                        MediaSessionQueueCommands.ACTION_PLAY_NEXT ->
+                            pm.playNext(track, streamUri.toString())
+
+                        MediaSessionQueueCommands.ACTION_ADD_TO_QUEUE ->
+                            pm.addToQueue(track, streamUri.toString())
+                    }
+                    if (wasEmpty && player.mediaItemCount > 0) {
+                        player.prepare()
+                        player.play()
+                    }
+                }
+                SessionResult(SessionResult.RESULT_SUCCESS)
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic", "[MediaSessionCallback] queue command failed: ${e.message}")
+                SessionResult(SessionResult.RESULT_ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    private fun streamUriForTrackId(trackId: String): Uri? {
+        val username = SubsonicCredentials.username
+        val password = SubsonicCredentials.password
+        val baseUrl = DynamicBaseUrl.url.trimEnd('/')
+        if (username.isEmpty() || password.isEmpty() || !DynamicBaseUrl.isConfigured()) {
+            return null
+        }
+        return Uri.parse(authHelper.buildStreamUrl(baseUrl, trackId, username, password))
     }
 
     override fun onSetRating(
