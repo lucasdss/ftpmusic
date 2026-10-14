@@ -206,6 +206,51 @@ class PlaylistRepositoryTest {
     }
 
     @Test
+    fun `refreshImportedPlaylists refreshes local intersect and skips pending`() = runTest {
+        coEvery { api.getPlaylists(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlists" to mapOf(
+                    "playlist" to listOf(
+                        mapOf<String, Any?>("id" to "pl-ok", "name" to "OK", "songCount" to 1),
+                        mapOf<String, Any?>("id" to "pl-pending", "name" to "Pending", "songCount" to 1),
+                        mapOf<String, Any?>("id" to "pl-conflict", "name" to "Conflict", "songCount" to 1),
+                        mapOf<String, Any?>("id" to "pl-remote-only", "name" to "Remote", "songCount" to 1),
+                    ),
+                ),
+            ),
+        )
+        coEvery { playlistDao.getAll() } returns listOf(
+            PlaylistEntity(id = "pl-ok", name = "OK"),
+            PlaylistEntity(id = "pl-pending", name = "Pending"),
+            PlaylistEntity(id = "pl-conflict", name = "Conflict", isConflicted = true),
+            PlaylistEntity(id = "new-123", name = "Temp"),
+        )
+        coEvery { pendingChangeDao.pendingCountForPlaylist("pl-ok") } returns 0
+        coEvery { pendingChangeDao.pendingCountForPlaylist("pl-pending") } returns 1
+        coEvery { api.getPlaylist(any(), id = "pl-ok") } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "playlist" to mapOf(
+                    "id" to "pl-ok",
+                    "name" to "OK Updated",
+                    "songCount" to 1,
+                    "entry" to listOf(mapOf("id" to "t1", "title" to "Track")),
+                ),
+            ),
+        )
+
+        repo.refreshImportedPlaylists()
+
+        coVerify { api.getPlaylist(any(), id = "pl-ok") }
+        coVerify(exactly = 0) { api.getPlaylist(any(), id = "pl-pending") }
+        coVerify(exactly = 0) { api.getPlaylist(any(), id = "pl-conflict") }
+        coVerify(exactly = 0) { api.getPlaylist(any(), id = "pl-remote-only") }
+        coVerify(exactly = 0) { downloadManager.enqueue(any(), any(), priority = any()) }
+        coVerify { playlistDao.upsertAll(match { it[0].name == "OK Updated" }) }
+    }
+
+    @Test
     fun `loadServerPlaylists returns only non-imported playlists`() = runTest {
         val response = mapOf(
             "subsonic-response" to mapOf(

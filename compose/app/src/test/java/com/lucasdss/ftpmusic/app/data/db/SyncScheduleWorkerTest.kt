@@ -86,10 +86,27 @@ class SyncScheduleWorkerTest {
     }
 
     @Test
-    fun `doWork returns Success when sync skipped null Job`() = runBlocking {
+    fun `doWork returns Success when sync skipped already_running`() = runBlocking {
         every { metadataSyncWorker.syncNowAsync(any(), any()) } returns null
+        every { metadataSyncWorker.lastSkipReason() } returns "already_running"
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Success)
+    }
+
+    @Test
+    fun `doWork returns Retry when sync skipped for cooldown`() = runBlocking {
+        every { metadataSyncWorker.syncNowAsync(any(), any()) } returns null
+        every { metadataSyncWorker.lastSkipReason() } returns "cooldown"
+        val result = worker.doWork()
+        assertTrue(result is ListenableWorker.Result.Retry)
+    }
+
+    @Test
+    fun `doWork returns Retry when sync skipped for cellular_policy`() = runBlocking {
+        every { metadataSyncWorker.syncNowAsync(any(), any()) } returns null
+        every { metadataSyncWorker.lastSkipReason() } returns "cellular_policy"
+        val result = worker.doWork()
+        assertTrue(result is ListenableWorker.Result.Retry)
     }
 
     @Test

@@ -2089,3 +2089,20 @@ interface DesiredItemDao {
         }
     }
 }
+
+// ── Sync skip album queue (ADR-0139) ───────────────────────────────────────────
+
+@Dao
+interface SyncSkipAlbumDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: SyncSkipAlbumEntity)
+
+    @Query("DELETE FROM sync_skip_albums WHERE album_id = :albumId")
+    suspend fun delete(albumId: String)
+
+    @Query("SELECT album_id FROM sync_skip_albums ORDER BY failed_at ASC")
+    suspend fun getAllIds(): List<String>
+
+    @Query("SELECT COUNT(*) FROM sync_skip_albums")
+    suspend fun count(): Int
+}

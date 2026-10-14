@@ -53,10 +53,19 @@ class SyncScheduleWorkerBranchTest {
     }
 
     @Test
-    fun `doWork returns Success when sync skipped`() = runBlocking {
+    fun `doWork returns Success when sync skipped already_running`() = runBlocking {
         every { metadataSyncWorker.syncNowAsync(any(), any()) } returns null
+        every { metadataSyncWorker.lastSkipReason() } returns "already_running"
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Success)
+    }
+
+    @Test
+    fun `doWork returns Retry when sync skipped offline`() = runBlocking {
+        every { metadataSyncWorker.syncNowAsync(any(), any()) } returns null
+        every { metadataSyncWorker.lastSkipReason() } returns "offline"
+        val result = worker.doWork()
+        assertTrue(result is ListenableWorker.Result.Retry)
     }
 
     @Test

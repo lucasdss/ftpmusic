@@ -35,9 +35,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RadioFavoriteEntity::class,
         ListenEventEntity::class,
         DesiredItemEntity::class,
+        SyncSkipAlbumEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 65,
+    version = 66,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -58,6 +59,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun radioFavoriteDao(): RadioFavoriteDao
     abstract fun listenEventDao(): ListenEventDao
     abstract fun desiredItemDao(): DesiredItemDao
+    abstract fun syncSkipAlbumDao(): SyncSkipAlbumDao
     // search_fts via SearchFtsDao @Singleton (not Room @Dao) — ADR 0084
 
     companion object {
@@ -1179,6 +1181,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_65 = ALL_MIGRATIONS_64 + MIGRATION_64_65
+
+        /** ADR-0139: durable failed-album skip queue for uncapped track drain. */
+        val MIGRATION_65_66 = object : Migration(65, 66) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `sync_skip_albums` (
+                        `album_id` TEXT NOT NULL,
+                        `failed_at` INTEGER NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        PRIMARY KEY(`album_id`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+        val ALL_MIGRATIONS_66 = ALL_MIGRATIONS_65 + MIGRATION_65_66
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

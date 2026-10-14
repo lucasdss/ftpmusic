@@ -152,6 +152,111 @@ class PlaylistRepository @Inject constructor(
     }
 
     /**
+     * ADR-0139 / 1A: refresh already-imported playlists during metadata sync.
+     * Inventory via getPlaylists; intersect with local IDs; skip pending outbound
+     * and conflicted playlists. Silent refresh — no auto-download.
+     */
+    suspend fun refreshImportedPlaylists() {
+        val params = authParams()
+        val response = try {
+            api.getPlaylists(params)
+        } catch (e: Exception) {
+            Log.w("ftpmusic-playlist", "refreshImportedPlaylists inventory failed: ${e.message}")
+            return
+        }
+        if (!auth.checkResponseStatus(response)) return
+        val sr = response["subsonic-response"] as? Map<*, *> ?: return
+        val pls = sr["playlists"] as? Map<*, *> ?: return
+        val list = pls["playlist"] as? List<*> ?: return
+        val serverIds = list.mapNotNull { p ->
+            val m = p as? Map<*, *> ?: return@mapNotNull null
+            m["id"] as? String
+        }.toSet()
+        if (serverIds.isEmpty()) return
+
+        val local = try {
+            playlistDao.getAll()
+        } catch (e: Exception) {
+            Log.w("ftpmusic-playlist", "refreshImportedPlaylists local list failed: ${e.message}")
+            return
+        }
+        for (cached in local) {
+            if (cached.id.startsWith("new-")) continue
+            if (cached.id !in serverIds) continue
+            if (cached.isConflicted) continue
+            val pending = try {
+                pendingChangeDao.pendingCountForPlaylist(cached.id)
+            } catch (e: Exception) {
+                Log.w("ftpmusic-playlist", "pending check failed for ${cached.id}: ${e.message}")
+                continue
+            }
+            if (pending > 0) continue
+            try {
+                refreshImportedPlaylistSilent(cached.id, cached)
+            } catch (e: Exception) {
+                Log.w("ftpmusic-playlist", "refreshImported ${cached.id} failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Persist server playlist meta + entries without enqueueing downloads. */
+    private suspend fun refreshImportedPlaylistSilent(playlistId: String, cached: PlaylistEntity) {
+        val params = authParams()
+        val response = api.getPlaylist(params, id = playlistId)
+        if (!auth.checkResponseStatus(response)) return
+        val sr = response["subsonic-response"] as? Map<*, *> ?: return
+        val pl = sr["playlist"] as? Map<*, *> ?: return
+        val entries = pl["entry"] as? List<*>
+
+        val playlistMeta = cached.copy(
+            name = pl["name"] as? String ?: cached.name,
+            comment = pl["comment"] as? String ?: cached.comment,
+            owner = pl["owner"] as? String ?: cached.owner,
+            isPublic = (pl["public"] as? Boolean) ?: cached.isPublic,
+            trackCount = (pl["songCount"] as? Number)?.toInt() ?: cached.trackCount,
+            coverArt = pl["coverArt"] as? String ?: cached.coverArt,
+            lastSyncedAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+        )
+        playlistDao.upsertAll(listOf(playlistMeta))
+
+        val entryEntities = mutableListOf<PlaylistEntryEntity>()
+        val trackEntities = mutableListOf<TrackEntity>()
+        entries?.forEachIndexed { index, e ->
+            val m = e as? Map<*, *> ?: return@forEachIndexed
+            val tid = m["id"] as? String ?: return@forEachIndexed
+            entryEntities.add(PlaylistEntryEntity(playlistId = playlistId, trackId = tid, position = index))
+            trackEntities.add(
+                TrackEntity(
+                    id = tid,
+                    title = m["title"] as? String ?: tid,
+                    artist = m["artist"] as? String,
+                    albumId = m["albumId"] as? String,
+                    artistId = m["artistId"] as? String,
+                    durationSeconds = (m["duration"] as? Number)?.toInt(),
+                    trackNumber = (m["track"] as? Number)?.toInt(),
+                    discNumber = (m["discNumber"] as? Number)?.toInt(),
+                    bitrate = (m["bitRate"] as? Number)?.toInt(),
+                    suffix = m["suffix"] as? String,
+                    contentType = m["contentType"] as? String,
+                    coverArtUrl = m["coverArt"] as? String,
+                    path = m["path"] as? String,
+                ),
+            )
+        }
+        if (trackEntities.isNotEmpty()) trackDao.upsertAll(trackEntities)
+        if (entryEntities.isNotEmpty()) {
+            playlistDao.replaceEntries(playlistId, entryEntities)
+        } else {
+            playlistDao.clearEntries(playlistId)
+        }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playlist",
+            "refreshImported playlistId=$playlistId tracks=${entryEntities.size}",
+        )
+    }
+
+    /**
      * Fetch all server playlists and return only those not yet imported.
      */
     suspend fun loadServerPlaylists(): List<PlaylistView> {

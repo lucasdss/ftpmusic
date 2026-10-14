@@ -634,3 +634,11 @@ data class RecentListenRow(
     @ColumnInfo(name = "listened_at") val listenedAt: Long,
     @ColumnInfo(name = "listened_seconds") val listenedSeconds: Int,
 )
+
+/** Durable queue of albums whose getAlbum fetch failed — drained next sync (ADR-0139). */
+@Entity(tableName = "sync_skip_albums")
+data class SyncSkipAlbumEntity(
+    @PrimaryKey @ColumnInfo(name = "album_id") val albumId: String,
+    @ColumnInfo(name = "failed_at") val failedAt: Long = System.currentTimeMillis(),
+    val reason: String = "",
+)

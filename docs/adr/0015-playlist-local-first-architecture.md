@@ -33,6 +33,12 @@ save + `updatePlaylist(public=true)` + share deep link.
 ### 4. Background Refresh
 `PlaylistDetailViewModel.loadPlaylist()` uses a hybrid approach: reads from local DB first (optimistic UI), then fires `refreshFromServer()` in the background to silently update metadata and entries from the server.
 
+**ADR-0139 amend:** Metadata sync may also call
+`PlaylistRepository.refreshImportedPlaylists()` to silently refresh
+**already-imported** playlists (inventory ∩ local IDs; skip pending outbound /
+conflicted; no auto-download). Import picker remains the only path for
+unimported server playlists.
+
 ## Consequences
 - "Add to Playlist" pickers (Album Detail, Track Action Sheet) show the same local playlists as the Library tab
 - Playlist creation is instantaneous (no network wait) — temp ID is replaced with server ID asynchronously

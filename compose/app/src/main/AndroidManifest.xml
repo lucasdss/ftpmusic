@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- ADR-0071: car Bluetooth resume (legacy + runtime connect) -->
@@ -46,6 +47,12 @@
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
             </intent-filter>
         </service>
+
+        <!-- ADR-0139: long uncapped library metadata sync -->
+        <service
+            android:name=".data.sync.LibrarySyncService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Cast SDK: auto-reconnect after app restart / process death -->
         <service

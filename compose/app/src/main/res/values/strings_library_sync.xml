@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_sync_channel_name">Library sync</string>
+    <string name="library_sync_channel_desc">Progress while downloading library metadata from your server</string>
+    <string name="library_sync_notif_title">Syncing library</string>
+    <string name="library_sync_notif_body">Updating albums, tracks, and playlists…</string>
+    <string name="library_sync_notif_phase">Syncing: %1$s</string>
+</resources>

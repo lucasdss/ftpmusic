@@ -1,6 +1,6 @@
 # Library Sync Behavior Report
 
-Caveman terse. Code truth after ADR-0045 + ADR-0068 + ADR-0085 + ADR-0108 + ADR-0109.
+Caveman terse. Code truth after ADR-0045 + ADR-0068 + ADR-0085 + ADR-0108 + ADR-0109 + ADR-0139.
 
 ## FAQ — interval / background / Navidrome coverage
 
@@ -15,22 +15,26 @@ Enqueued: app start (`FtpmusicApp`) + interval / Wi‑Fi-only setting change.
 Caveats:
 
 - WM / Doze **defer** past wall-clock interval — not AlarmManager exact.
-- Skip (cooldown 5min / already_running / offline / cellular Wi‑Fi-only) → WM
-  `Result.success` → **no retry** until next period.
+- Skip: `already_running` → WM `Result.success`. Soft skips
+  (`offline` / `unreachable` / `cellular_policy` / `cooldown`) → WM
+  `Result.retry` (ADR-0139).
 - App-open `MetadataSyncWorker.start()` FULL **only** if `albumCount==0`; else WM
   (+ Home newest-id DELTA ADR-0109).
 
 ### Background?
 
 **Yes for library metadata** — WorkManager can start process for worker.
-Sync body = in-process coroutines (`MetadataSyncWorker`); **no sync FGS**.
+Sync body = in-process coroutines (`MetadataSyncWorker`) under
+`LibrarySyncService` **dataSync FGS** while a Job is running (ADR-0139).
+If OS blocks FGS start, sync continues best-effort without notification.
 
 | Path | Background? |
 |------|-------------|
-| Periodic library (`SyncScheduleWorker`) | Yes (WM) |
+| Periodic library (`SyncScheduleWorker`) | Yes (WM + FGS when allowed) |
 | Post-sync enrich (`MetadataEnrichScheduleWorker`) | Yes (WM one-shot) |
-| First-run FULL / manual Resync / Home DELTA | While app process alive |
-| Playlist (`PlaylistSyncWorker` ~15s loop) | Process-lifetime only — dies with process; **not** interval-tied. After **10** consecutive network failures loop `break`s → paused until process restart (pending flush can sit) |
+| First-run FULL / manual Resync / Home DELTA | FGS while Job runs |
+| Playlist outbound (`PlaylistSyncWorker` ~15s loop) | Process-lifetime only — dies with process; **not** interval-tied. After **10** consecutive network failures loop `break`s → paused until process restart (pending flush can sit) |
+| Playlist inbound (imported refresh) | Inside metadata sync phase (1A) |
 
 WM network: `UNMETERED` if sync Wi‑Fi-only else `CONNECTED`. No battery/charging/idle.
 
@@ -41,8 +45,9 @@ WM network: `UNMETERED` if sync Wi‑Fi-only else `CONNECTED`. No battery/chargi
 
 | In library sync | Not / partial |
 |-----------------|---------------|
-| Albums, artists, genres, cover **IDs**, starred | Playlists auto-pull **NO** (import on demand; Playlist worker = outbound) |
-| Songs **PARTIAL** (DELTA caps; drain 400; orphan budgets) | Lyrics bulk **NO** (player on-demand) |
+| Albums, artists, genres, cover **IDs**, starred | Unimported playlists — import picker only |
+| Songs (uncapped drain; skip-queue retry) | Lyrics bulk **NO** (player on-demand) |
+| Imported playlists refresh (1A; no auto-download) | Playlist worker = outbound only |
 | Ratings from `getStarred2` only | Cover **bytes**, radio, bookmarks, shares, play queue, similar songs, full catalog `userRating` |
 | Enrich bio/notes **PARTIAL** (capped async) | |
 
@@ -50,7 +55,7 @@ WM network: `UNMETERED` if sync Wi‑Fi-only else `CONNECTED`. No battery/chargi
 
 | Mode | Albums | Tracks | When |
 |------|--------|--------|------|
-| **DELTA** | `getAlbumList2(newest)` ≤3 pages; **upsert-preserve enrich** | New + field-diff only; drain cap 400 | WorkManager interval (default) |
+| **DELTA** | `getAlbumList2(newest)` all pages until short; **upsert-preserve enrich** | New + field-diff + skip-queue; full drain | WorkManager interval (default) |
 | **FULL** | `getAlbumList2(alphabeticalByName)` all pages; **diff-replace preserve enrich** | Incremental unless force / schema bump | Auto every **7 days**; empty DB |
 | **FULL+force** | Same as FULL | **All** albums | Settings Resync Library |
 
@@ -59,16 +64,15 @@ Identity = Subsonic `id` only. Batch `distinctBy { id }` before upsert/replace. 
 ## Phase order
 
 albums → artists → genres → **orphans** → stars → album-tracks → artist counts →
-daily-mix seed → populate `tracks` → FTS rebuild → **enqueue enrich** (async)
+daily-mix seed → populate `tracks` → FTS rebuild → **imported playlists refresh** (1A) →
+**enqueue enrich** (async) → desired reconcile → complete
 
 ## Orphan densify (ADR-0085)
 
 | Source | Behavior |
 |--------|----------|
-| Genre offset | When server songCount > local `cached_genre_songs`, page `getSongsByGenre` with offset |
-| Random songs | `getRandomSongs(size=500)` rounds → `tracks` (null album_id OK) |
-| DELTA budget | 3 genre pages + 2 random rounds |
-| FULL/force | 20 genre pages + 6 random rounds |
+| Genre offset | When server songCount > local `cached_genre_songs`, page until caught up (no budget) |
+| Random songs | `getRandomSongs(size=500)` until a round yields **no new** ids (max 50 rounds) |
 
 ## Enrich (async)
 
@@ -99,7 +103,8 @@ daily-mix seed → populate `tracks` → FTS rebuild → **enqueue enrich** (asy
 
 | End state | Result |
 |-----------|--------|
-| Job null (cooldown / CAS / offline) | `success` (skip) |
+| Job null + `already_running` | `success` |
+| Job null + soft skip (offline / cellular / cooldown / …) | `retry` |
 | Unreachable before start | `retry` |
 | `phase == "error"` after join | `retry` (fail after 3 attempts) |
 | `phase == "complete"` | `success` |
@@ -148,8 +153,8 @@ Track phase uses `AdaptiveSyncLimiter`:
 - Start concurrency **2**, delay **200ms**
 - Success streak → up to **4** / delay **100ms**
 - Failures → concurrency down to **2**; delay climbs **+150ms per failed batch**, capped **500ms**
-- Abort after **3** consecutive null fetches
-- Track-phase fail ratio: if failed fetches &gt; **5%** of pending albums → `phase="error"` → WM retry
+- Per-album null/`getAlbum` fail → upsert `sync_skip_albums`; success clears row
+- No consecutive-abort / no >5% track-phase `error` (ADR-0139); residual skips drain next run
 - OkHttp `maxRequestsPerHost=6`
 
 ## User controls
@@ -179,14 +184,14 @@ WM constraint: `UNMETERED` when sync Wi‑Fi-only else `CONNECTED`.
 - Duplicate ids in one fetch → collapsed before write
 - Enrich columns survive catalog refresh (preserve upsert)
 - `LibraryViewModel.resyncAll` = default DELTA, **no production UI caller**
-- Cooldown-skip → WM `success` → next attempt waits full period (up to 24h) — common “missed interval” read
+- Soft-skip → WM `retry` (ADR-0139); `already_running` stays success
 - `SyncScheduleWorker` reads shared `status.phase` after `join()` — concurrent manual Resync can race phase (narrow)
 - Playlist flush loop permanent pause after 10 consecutive network fails until process restart
+- Unimported playlists still require import picker (1A — no auto-import)
 
 ## Not in this pass
 
 - `getScanStatus` pause
-- PlaylistSyncWorker
+- Auto-import unimported server playlists
 - Semantic (name/artist) dedupe
-- Foreground/app-open DELTA
 - User-facing concurrency Settings

@@ -26,8 +26,8 @@
 | 15 | `getArtistInfo2` | ✅ Deferred enrich → biography / aliases + FTS | MetadataEnrichRunner.enrichSearchMetadata |
 | 15 | `getGenres` | Home genre chips | LibraryViewModel (throttled sync) |
 | 16 | `getSongsByGenre` | Genre detail screen | GenreDetailViewModel |
-| 17 | `getPlaylists` | Library Playlists tab, playlist picker | LibraryViewModel, AlbumDetailViewModel |
-| 18 | `getPlaylist` | Playlist detail | PlaylistDetailViewModel |
+| 17 | `getPlaylists` | Library Playlists tab, playlist picker, **metadata sync imported refresh (ADR-0139)** | LibraryViewModel, AlbumDetailViewModel, PlaylistRepository.refreshImportedPlaylists |
+| 18 | `getPlaylist` | Playlist detail + **silent imported refresh in metadata sync** | PlaylistDetailViewModel, PlaylistRepository |
 | 19 | `createPlaylist` | Create playlist dialog | LibraryViewModel |
 | 20 | `updatePlaylist` | Add tracks to playlist | LibraryViewModel, AlbumDetailViewModel |
 | 21* | `stream` | Audio playback (proxy) | PlaybackProxy (direct URL, not through Retrofit) |

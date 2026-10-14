@@ -150,6 +150,8 @@ class MetadataSyncWorker(
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder? = null,
     private val metadataEnrichRunner: MetadataEnrichRunner? = null,
     private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
+    private val syncSkipAlbumDao: SyncSkipAlbumDao? = null,
+    private val playlistRepository: com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository? = null,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
@@ -176,9 +178,6 @@ class MetadataSyncWorker(
         /** Auto FULL catalog heal cadence (ADR-0045). */
         const val FULL_SYNC_INTERVAL_MS = 7L * 24 * 60 * 60 * 1000
 
-        /** Cap newest pages for DELTA (500 × 3 = 1500 albums). */
-        private const val DELTA_MAX_PAGES = 3
-
         /** Bump when track schema changes so existing caches are re-fetched. */
         private const val METADATA_VERSION = 2
 
@@ -194,23 +193,11 @@ class MetadataSyncWorker(
         /** Top genres by song_count always warmed for local search (beyond mix picks). */
         private const val SEARCH_INDEX_WARM_GENRE_COUNT = 100
 
-        /** Cap pending album-track drain per non-force sync (Phase-7 densify). */
-        private const val SEARCH_CORPUS_ALBUM_DRAIN_CAP = 400
-
-        /** Genre offset pages per DELTA orphan densify (ADR-0085). */
-        private const val ORPHAN_GENRE_OFFSET_PAGES_DELTA = 3
-
-        /** Genre offset pages per FULL/force orphan densify. */
-        private const val ORPHAN_GENRE_OFFSET_PAGES_FULL = 20
-
         /** getRandomSongs size per round (Subsonic max commonly 500). */
         private const val ORPHAN_RANDOM_SONG_SIZE = 500
 
-        /** Random-song rounds per DELTA. */
-        private const val ORPHAN_RANDOM_ROUNDS_DELTA = 2
-
-        /** Random-song rounds per FULL/force. */
-        private const val ORPHAN_RANDOM_ROUNDS_FULL = 6
+        /** Safety ceiling so random densify cannot loop forever on a huge catalog. */
+        private const val ORPHAN_RANDOM_ROUNDS_MAX = 50
 
         /**
          * Choose periodic sync mode from watermark.
@@ -261,6 +248,10 @@ class MetadataSyncWorker(
 
     fun lastDeltaSyncMs(): Long = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         .getLong(PREF_LAST_DELTA_SYNC_MS, 0L)
+
+    /** Last soft-skip reason written by [recordSkipReason] (empty when sync ran). */
+    fun lastSkipReason(): String = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getString(PREF_LAST_SYNC_SKIP_REASON, "") ?: ""
 
     private fun recordSkipReason(reason: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
@@ -343,6 +334,8 @@ class MetadataSyncWorker(
             syncJobs.add(coroutineContext[kotlinx.coroutines.Job]!!)
             val startMs = System.currentTimeMillis()
             trackLimiter.reset()
+            // ADR-0139: long uncapped syncs need a dataSync FGS while the process is alive.
+            com.lucasdss.ftpmusic.app.data.sync.LibrarySyncService.start(context)
             // Emit initial status with all rows visible, totals set to what we know
             _status.value = SyncStatus(
                 albumsTotal = 1,
@@ -472,6 +465,16 @@ class MetadataSyncWorker(
                     if (e is CancellationException) throw e
                     Log.w(TAG, "FTS rebuild: ${e.message}")
                 }
+                // ADR-0139 / 1A: refresh already-imported playlists before async enrich.
+                try {
+                    _status.value = _status.value.copy(phase = "playlists")
+                    playlistRepository?.refreshImportedPlaylists()
+                    DiagnosticLog.d(TAG, "phase=playlists")
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "playlist inbound refresh: ${e.message}")
+                }
+                if (abortIfCellularPolicyViolated()) return@syncJob
                 // Defer MB/Last.fm/getArtistInfo2 — do not block sync UI / watermarks.
                 try {
                     metadataEnrichRunner?.enqueue()
@@ -526,6 +529,7 @@ class MetadataSyncWorker(
                 lastSyncFinishMs = System.currentTimeMillis()
                 isSyncing.set(false)
                 syncJobs.remove(coroutineContext[kotlinx.coroutines.Job]!!)
+                com.lucasdss.ftpmusic.app.data.sync.LibrarySyncService.stop(context)
                 val phase = _status.value.phase
                 DiagnosticLog.d(
                     TAG,
@@ -547,13 +551,13 @@ class MetadataSyncWorker(
         val params = authHelper.buildAuthParams(username, password)
 
         val listType = if (mode == LibrarySyncMode.DELTA) "newest" else "alphabeticalByName"
-        val maxPages = if (mode == LibrarySyncMode.DELTA) DELTA_MAX_PAGES else Int.MAX_VALUE
 
         val allAlbums = mutableListOf<CachedAlbumEntity>()
         var offset = 0
         var page = 0
         var listIncomplete = false
-        while (page < maxPages) {
+        // ADR-0139: DELTA and FULL both walk until a short page (no page cap).
+        while (true) {
             val response = api.getAlbumList2(
                 type = listType,
                 size = PAGE_SIZE,
@@ -922,26 +926,17 @@ class MetadataSyncWorker(
         val password = SubsonicCredentials.password
         if (username.isEmpty()) return
         val params = authHelper.buildAuthParams(username, password)
-        val pageBudget = if (force || mode == LibrarySyncMode.FULL) {
-            ORPHAN_GENRE_OFFSET_PAGES_FULL
-        } else {
-            ORPHAN_GENRE_OFFSET_PAGES_DELTA
-        }
-        val randomRounds = if (force || mode == LibrarySyncMode.FULL) {
-            ORPHAN_RANDOM_ROUNDS_FULL
-        } else {
-            ORPHAN_RANDOM_ROUNDS_DELTA
-        }
+        // force/mode retained for call-site API; densify is uncapped (ADR-0139).
+        if (force) Log.d(TAG, "Orphan densify force=$force mode=$mode")
 
-        var pagesUsed = 0
         val genres = try {
             genreMixDao.getTopGenres()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             emptyList()
         }
+        // ADR-0139: genre offset runs until each genre is caught up (no page budget).
         for (genre in genres) {
-            if (pagesUsed >= pageBudget) break
             val localCount = try {
                 genreMixDao.countSongsForGenre(genre.name)
             } catch (e: Exception) {
@@ -950,7 +945,7 @@ class MetadataSyncWorker(
             }
             if (genre.songCount <= localCount) continue
             var offset = localCount
-            while (pagesUsed < pageBudget && offset < genre.songCount) {
+            while (offset < genre.songCount) {
                 try {
                     delay(GENRE_FETCH_DELAY_MS)
                     val songsResp = api.getSongsByGenre(
@@ -962,7 +957,6 @@ class MetadataSyncWorker(
                     val songsSr = songsResp["subsonic-response"] as? Map<*, *>
                     val songsData = songsSr?.get("songsByGenre") as? Map<*, *>
                     val songList = songsData?.get("song") as? List<*>
-                    pagesUsed++
                     if (songList.isNullOrEmpty()) break
                     val songs = parseGenreSongs(songList, genre.name)
                     if (songs.isNotEmpty()) {
@@ -979,24 +973,35 @@ class MetadataSyncWorker(
             }
         }
 
+        // ADR-0139: random rounds until a round yields no new track ids (safety max).
         val randomBatch = mutableListOf<TrackEntity>()
-        repeat(randomRounds) { round ->
+        val seenIds = mutableSetOf<String>()
+        var round = 0
+        while (round < ORPHAN_RANDOM_ROUNDS_MAX) {
             try {
                 delay(GENRE_FETCH_DELAY_MS)
                 val response = api.getRandomSongs(params, size = ORPHAN_RANDOM_SONG_SIZE)
-                val sr = response["subsonic-response"] as? Map<*, *> ?: return@repeat
-                if (sr["status"] as? String == "failed") return@repeat
-                val randomSongs = sr["randomSongs"] as? Map<*, *> ?: return@repeat
-                val songList = randomSongs["song"] as? List<*> ?: return@repeat
+                val sr = response["subsonic-response"] as? Map<*, *> ?: break
+                if (sr["status"] as? String == "failed") break
+                val randomSongs = sr["randomSongs"] as? Map<*, *> ?: break
+                val songList = randomSongs["song"] as? List<*> ?: break
+                var newInRound = 0
                 for (s in songList) {
                     val m = s as? Map<*, *> ?: continue
-                    parseSongMapToTrack(m)?.let { randomBatch.add(it) }
+                    val track = parseSongMapToTrack(m) ?: continue
+                    if (track.id in seenIds) continue
+                    seenIds.add(track.id)
+                    randomBatch.add(track)
+                    newInRound++
                 }
-                Log.d(TAG, "Orphan densify random round=$round size=${songList.size}")
+                Log.d(TAG, "Orphan densify random round=$round size=${songList.size} new=$newInRound")
+                if (newInRound == 0) break
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.w(TAG, "getRandomSongs round failed: ${e.message}")
+                break
             }
+            round++
         }
         if (randomBatch.isNotEmpty()) {
             trackDao.upsertTracksPreserveCache(randomBatch.distinctBy { it.id })
@@ -1241,10 +1246,10 @@ class MetadataSyncWorker(
     }
 
     /**
-     * Background-sync album tracks with parallel batching (up to
-     * [MAX_CONCURRENT_TRACK_FETCHES] concurrent API calls per batch).
+     * Background-sync album tracks with adaptive parallel batching.
      * Skips albums that already have cached tracks, EXCEPT:
      * - albums whose metadata changed on the server (incremental staleness)
+     * - albums in the durable skip queue (ADR-0139 retry-on-skip)
      * - all albums when [force] is set (Resync Library button)
      * - all albums when METADATA_VERSION was bumped (schema change)
      * Falls back to lazy caching if the user opens an album before
@@ -1265,19 +1270,22 @@ class MetadataSyncWorker(
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val storedVersion = prefs.getInt("metadata_version", 0)
             val forceResync = force || storedVersion < METADATA_VERSION
+            val skipIds = try {
+                syncSkipAlbumDao?.getAllIds()?.toSet() ?: emptySet()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                emptySet()
+            }
 
             // Pre-filter: only albums that actually need syncing
             val pendingAlbumsAll = albums.filter { album ->
-                if (forceResync) return@filter true
+                if (forceResync || album.id in skipIds) return@filter true
                 val existing = metadataDao.getAlbumTracks(album.id)
                 !(existing.isNotEmpty() && album.id !in changedAlbumIds)
             }
-            // Phase-3: cap non-force drain so delta syncs make steady corpus progress
-            val pendingAlbums = if (forceResync) {
-                pendingAlbumsAll
-            } else {
-                pendingAlbumsAll.take(SEARCH_CORPUS_ALBUM_DRAIN_CAP)
-            }
+            // ADR-0139: prioritize durable skip-queue albums; drain full pending set (no cap).
+            val (retryFirst, rest) = pendingAlbumsAll.partition { it.id in skipIds }
+            val pendingAlbums = retryFirst + rest
             val pendingTotal = pendingAlbums.size
             _status.value = _status.value.copy(
                 phase = "tracks",
@@ -1289,9 +1297,7 @@ class MetadataSyncWorker(
 
             val count = AtomicInteger(0)
             val totalTracks = AtomicInteger(0)
-            val consecutiveFailures = AtomicInteger(0)
             val failedCount = AtomicInteger(0)
-            val aborted = AtomicBoolean(false)
 
             // Helper: fetch one album's tracks (called from parallel coroutines).
             // Pure network — DB writes are batched per chunk below so a full
@@ -1340,7 +1346,6 @@ class MetadataSyncWorker(
             // batch's fetched tracks are written in ONE transaction (ADR-0045).
             var index = 0
             while (index < pendingAlbums.size) {
-                if (aborted.get()) break
                 val batchSize = trackLimiter.concurrency
                 val end = minOf(index + batchSize, pendingAlbums.size)
                 val chunk = pendingAlbums.subList(index, end).toList()
@@ -1351,19 +1356,26 @@ class MetadataSyncWorker(
                         async {
                             val tracks = fetchAlbumTracks(album)
                             if (tracks == null) {
-                                consecutiveFailures.incrementAndGet()
                                 failedCount.incrementAndGet()
                                 batchFailures.incrementAndGet()
-                                if (consecutiveFailures.get() >= 3) {
-                                    aborted.set(true)
-                                    Log.w(
-                                        TAG,
-                                        "Aborting track sync after ${consecutiveFailures.get()} consecutive failures",
+                                try {
+                                    syncSkipAlbumDao?.upsert(
+                                        SyncSkipAlbumEntity(
+                                            albumId = album.id,
+                                            failedAt = System.currentTimeMillis(),
+                                            reason = "get_album_null",
+                                        ),
                                     )
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
                                 }
                                 emptyList<CachedAlbumTrackEntity>()
                             } else {
-                                consecutiveFailures.set(0)
+                                try {
+                                    syncSkipAlbumDao?.delete(album.id)
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                }
                                 tracks
                             }
                         }
@@ -1399,28 +1411,15 @@ class MetadataSyncWorker(
                     albumTracksProgress = count.get(),
                     trackCount = corpusCount,
                 )
-                if (!aborted.get() && index < pendingAlbums.size) {
+                if (index < pendingAlbums.size) {
                     delay(trackLimiter.batchDelayMs)
                 }
             }
 
-            // Failure threshold check
+            // ADR-0139: residual skip-queue rows retry next sync — do not fail the run.
             val f = failedCount.get()
-            if (f > 0 && pendingTotal > 0 && f.toDouble() / pendingTotal > 0.05) {
-                val corpusOnError = try {
-                    trackDao.trackCountAll()
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    totalTracks.get()
-                }
-                _status.value = _status.value.copy(
-                    isRunning = false,
-                    phase = "error",
-                    trackCount = corpusOnError,
-                    albumTracksProgress = count.get(),
-                )
-                Log.w(TAG, "Album track sync degraded — $f failures out of $pendingTotal pending")
-                return
+            if (f > 0) {
+                Log.w(TAG, "Album track sync deferred $f failures of $pendingTotal to skip queue")
             }
             val corpusCount = try {
                 trackDao.trackCountAll()

@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -455,24 +456,25 @@ class MetadataSyncWorkerBranchTest {
     }
 
     @Test
-    fun `syncAlbumTracks handles malformed album response as failure`() = runTest {
+    fun `syncAlbumTracks handles malformed album response without error phase`() = runTest {
         val w = makeWorker()
         coEvery { metadataDao.getAllAlbums() } returns listOf(CachedAlbumEntity(id = "al-1", name = "A"))
         coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
         coEvery { api.getAlbum(id = "al-1", any()) } returns
             mapOf("subsonic-response" to mapOf("status" to "ok")) // no "album" section
         w.syncAlbumTracks()
-        assertEquals("error", w.status.value.phase) // 1/1 failures > 5%
+        // ADR-0139: per-album fail → skip queue, not phase=error
+        assertNotEquals("error", w.status.value.phase)
     }
 
     @Test
-    fun `syncAlbumTracks handles missing subsonic-response as failure`() = runTest {
+    fun `syncAlbumTracks handles missing subsonic-response without error phase`() = runTest {
         val w = makeWorker()
         coEvery { metadataDao.getAllAlbums() } returns listOf(CachedAlbumEntity(id = "al-1", name = "A"))
         coEvery { metadataDao.getAlbumTracks(any()) } returns emptyList()
         coEvery { api.getAlbum(id = "al-1", any()) } returns emptyMap()
         w.syncAlbumTracks()
-        assertEquals("error", w.status.value.phase)
+        assertNotEquals("error", w.status.value.phase)
     }
 
     @Test

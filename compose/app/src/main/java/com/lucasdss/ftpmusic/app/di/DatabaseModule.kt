@@ -18,10 +18,12 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
+import com.lucasdss.ftpmusic.app.data.db.SyncSkipAlbumDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackWaveformDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder
 import dagger.Module
 import dagger.Provides
@@ -54,7 +56,7 @@ object DatabaseModule {
         // SupportSQLite path required: existing migrations only override
         // migrate(SupportSQLiteDatabase). BundledSQLiteDriver deferred until
         // all migrations dual-override migrate(SQLiteConnection) — ADR 0084.
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_65)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_66)
         .addCallback(AppDatabase.FTS5_CALLBACK)
         // NO fallbackToDestructiveMigration: all migrations registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
@@ -64,6 +66,8 @@ object DatabaseModule {
     @Provides fun provideTrackDao(db: AppDatabase): TrackDao = db.trackDao()
 
     @Provides fun provideGenreDao(db: AppDatabase): GenreDao = db.genreDao()
+
+    @Provides fun provideSyncSkipAlbumDao(db: AppDatabase): SyncSkipAlbumDao = db.syncSkipAlbumDao()
 
     @Provides fun provideCacheQueueDao(db: AppDatabase): CacheQueueDao = db.cacheQueueDao()
 
@@ -126,6 +130,8 @@ object DatabaseModule {
         searchIndexRebuilder: SearchIndexRebuilder,
         metadataEnrichRunner: com.lucasdss.ftpmusic.app.data.db.MetadataEnrichRunner,
         desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
+        syncSkipAlbumDao: SyncSkipAlbumDao,
+        playlistRepository: PlaylistRepository,
     ): MetadataSyncWorker = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager = offlineModeManager,
@@ -133,5 +139,7 @@ object DatabaseModule {
         searchIndexRebuilder = searchIndexRebuilder,
         metadataEnrichRunner = metadataEnrichRunner,
         desiredRepository = desiredRepository,
+        syncSkipAlbumDao = syncSkipAlbumDao,
+        playlistRepository = playlistRepository,
     )
 }
