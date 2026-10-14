@@ -276,7 +276,7 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
         // First page: 2 tracks (less than page size → hasMore=false)
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns listOf(
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns listOf(
             trackEntity("t1", "Alpha"),
             trackEntity("t2", "Beta"),
         )
@@ -299,10 +299,10 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
         // First page is FULL (50 tracks) → hasMore=true
         val firstPage = (1..50).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns firstPage
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns firstPage
         // Second page via cursor (title > "Track 050")
         val secondPage = (51..60).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
-        coEvery { trackDao.getTracksByArtistIdAfter("ar-1", "Track 050", 50) } returns secondPage
+        coEvery { trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", 50) } returns secondPage
 
         viewModel.loadArtist("ar-1")
         val loaded = viewModel.state.first { !it.isLoading && it.tracks.size == 50 }
@@ -316,7 +316,7 @@ class ArtistDetailViewModelTest {
         assertEquals("Track 051", more.tracks[50].title)
         assertEquals("Track 060", more.tracks[59].title)
         assertFalse("hasMoreTracks must be false after short page", more.hasMoreTracks)
-        coVerify { trackDao.getTracksByArtistIdAfter("ar-1", "Track 050", 50) }
+        coVerify { trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", 50) }
         // Reactions loaded for the new page (merge-always path)
         coVerify { trackDao.getTracksByIds(match { it.contains("t51") }) }
     }
@@ -330,8 +330,8 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
         val firstPage = (1..50).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
         val secondPage = (51..60).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns firstPage
-        coEvery { trackDao.getTracksByArtistIdAfter("ar-1", "Track 050", 50) } returns secondPage
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns firstPage
+        coEvery { trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", 50) } returns secondPage
         // Page1 reactions hang; page2 returns liked t51 quickly.
         coEvery { trackDao.getTracksByIds(match { ids -> ids.contains("t1") && ids.size == 50 }) } coAnswers {
             kotlinx.coroutines.delay(5_000)
@@ -363,7 +363,8 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns listOf(trackEntity("t1", "Only One"))
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns
+            listOf(trackEntity("t1", "Only One"))
 
         viewModel.loadArtist("ar-1")
         val loaded = viewModel.state.first { !it.isLoading && it.tracks.size == 1 }
@@ -373,8 +374,8 @@ class ArtistDetailViewModelTest {
         advanceUntilIdle()
 
         // No extra fetch — hasMoreTracks is false
-        coVerify(exactly = 1) { trackDao.getTracksByArtistId("ar-1", 50) }
-        coVerify(exactly = 0) { trackDao.getTracksByArtistIdAfter(any(), any(), any()) }
+        coVerify(exactly = 1) { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) }
+        coVerify(exactly = 0) { trackDao.getTracksForArtistViewAfter(any(), any(), any(), any()) }
     }
 
     @Test
@@ -385,15 +386,15 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns listOf(
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns listOf(
             trackEntity("t1", "Alpha"),
         )
-        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns listOf(
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns listOf(
             trackEntity("t1", "Alpha"),
             trackEntity("t2", "Beta"),
             trackEntity("t3", "Gamma"),
         )
-        coEvery { trackDao.countTracksByArtistId("ar-1") } returns 3
+        coEvery { trackDao.countTracksForArtistView("ar-1", "Test Artist") } returns 3
         coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
         every {
             playbackManager.tryShuffleContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
@@ -414,7 +415,7 @@ class ArtistDetailViewModelTest {
                 sourceName = "Test Artist",
             )
         }
-        coVerify { trackDao.getAllTracksByArtistId("ar-1") }
+        coVerify { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") }
     }
 
     @Test
@@ -425,12 +426,12 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns listOf(trackEntity("t2", "Beta"))
-        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns listOf(
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns listOf(trackEntity("t2", "Beta"))
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns listOf(
             trackEntity("t2", "Beta"),
             trackEntity("t1", "Alpha"),
         )
-        coEvery { trackDao.countTracksByArtistId("ar-1") } returns 2
+        coEvery { trackDao.countTracksForArtistView("ar-1", "Test Artist") } returns 2
         coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
         every {
             playbackManager.tryStartContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
@@ -467,7 +468,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
 
         viewModel.loadArtist("ar-1")
         val state = viewModel.state.first { !it.isLoading && it.artistId == "ar-1" }
@@ -489,7 +490,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
         coEvery { musicBrainzService.fetchArtistRating("Test Artist") } returns
             Pair(com.lucasdss.ftpmusic.app.data.network.MusicBrainzService.MusicBrainzRating(4.2, 45), "mbid-1")
         coEvery { metadataDao.setArtistPublicRating(any(), any(), any(), any()) } returns Unit
@@ -515,7 +516,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
 
         viewModel.loadArtist("ar-1")
         advanceUntilIdle()
@@ -539,7 +540,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
         // Simulate the real parser (org.json is stubbed in non-Robolectric tests)
         every { lastFmService.parseStoredJson(any()) } returns listOf(
             com.lucasdss.ftpmusic.app.data.network.LastFmService.SimilarArtist("Similar A", "mb-a", 0.9),
@@ -570,7 +571,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
         coEvery { lastFmService.fetchSimilarArtists("Test Artist") } returns listOf(
             com.lucasdss.ftpmusic.app.data.network.LastFmService.SimilarArtist("Similar A", "mb-a", 0.9),
         )
@@ -619,7 +620,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
 
         viewModel.loadArtist("ar-1")
         advanceUntilIdle()
@@ -642,7 +643,7 @@ class ArtistDetailViewModelTest {
             cachedAlbum("al-1", "Draw the Line", "Original Soundtrack", 1977),
             cachedAlbum("al-2", "Permanent Vacation", "Original Soundtrack", 1987),
         )
-        coEvery { trackDao.getTracksByArtistId("ar-aero", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-aero", any(), 50) } returns emptyList()
 
         viewModel.loadArtist("ar-aero")
         val state = viewModel.state.first { !it.isLoading && it.albums.isNotEmpty() }
@@ -667,9 +668,9 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getAlbumsByTrackArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
         val seeded = listOf(te("t1", "One"), te("t2", "Two"))
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns seeded
-        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns seeded
-        coEvery { trackDao.countTracksByArtistId("ar-1") } returns seeded.size
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns seeded
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns seeded
+        coEvery { trackDao.countTracksForArtistView("ar-1", "Test Artist") } returns seeded.size
         viewModel.loadArtist("ar-1")
         viewModel.state.first { it.tracks.size == 2 }
     }
@@ -763,7 +764,7 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getArtistById("ar-1") } returns
             CachedArtistEntity(id = "ar-1", name = "Daft Punk")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", any()) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", any(), any()) } returns emptyList()
 
         viewModel.loadArtist("ar-1")
         advanceUntilIdle()
@@ -1253,8 +1254,8 @@ class ArtistDetailViewModelTest {
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Empty")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
-        coEvery { trackDao.getAllTracksByArtistId("ar-1") } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns emptyList()
         viewModel.loadArtist("ar-1")
         viewModel.state.first { !it.isLoading && it.artistId == "ar-1" }
 
@@ -1336,7 +1337,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
         coEvery { musicBrainzService.fetchArtistRating("Test Artist") } returns
             Pair(com.lucasdss.ftpmusic.app.data.network.MusicBrainzService.MusicBrainzRating(null, null), null)
 
@@ -1358,7 +1359,7 @@ class ArtistDetailViewModelTest {
         )
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksByArtistId("ar-1", 50) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns emptyList()
         coEvery { lastFmService.fetchSimilarArtists("Test Artist") } returns emptyList()
 
         viewModel.loadArtist("ar-1")

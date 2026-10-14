@@ -44,5 +44,6 @@ Takeaway: default Shuffle matches Symfonium/YTM; album-year options match Apple 
 | Large catalog | Full load on IO; Play All disabled while preparing |
 | Process death | Preference in SecureStorage |
 | Overwrite modal | SHUFFLE → tryShuffleContext; ordered modes → tryStartContext |
-| Sheet / toast count | Uses `catalogTrackCount` (full Room count), not Songs-tab page size |
-| Download All / Add to Playlist | Still uses loaded Songs-tab pages (unchanged scope) |
+| Sheet / toast count | Uses `catalogTrackCount` (full artist-view count) |
+| Download All / Add to Playlist | Full artist-view catalog (ADR-0142) |
+| Artist-view membership | Same as Albums tab: track `artist_id` **or** track on merged albums (album id / name / track attribution) |

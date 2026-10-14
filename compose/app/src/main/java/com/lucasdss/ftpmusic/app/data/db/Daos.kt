@@ -324,6 +324,95 @@ interface TrackDao {
     @Query("SELECT COUNT(*) FROM tracks WHERE artist_id = :artistId")
     suspend fun countTracksByArtistId(artistId: String): Int
 
+    /**
+     * Artist-detail track membership (ADR-0141 follow-up) — mirrors album merge:
+     * direct track artist_id, OR track on album by album artist_id / name,
+     * OR track on album that has any cached_album_tracks row for this artist.
+     * Pass empty [artistName] to skip the name branch.
+     */
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE t.id IN (
+            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
+            UNION
+            SELECT t2.id FROM tracks t2
+            INNER JOIN cached_albums ca ON t2.album_id = ca.id
+            WHERE ca.artist_id = :artistId
+               OR (:artistName != '' AND ca.artist = :artistName)
+            UNION
+            SELECT t3.id FROM tracks t3
+            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            WHERE cat.artist_id = :artistId
+        )
+        """,
+    )
+    suspend fun getAllTracksForArtistView(artistId: String, artistName: String): List<TrackEntity>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM tracks t
+        WHERE t.id IN (
+            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
+            UNION
+            SELECT t2.id FROM tracks t2
+            INNER JOIN cached_albums ca ON t2.album_id = ca.id
+            WHERE ca.artist_id = :artistId
+               OR (:artistName != '' AND ca.artist = :artistName)
+            UNION
+            SELECT t3.id FROM tracks t3
+            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            WHERE cat.artist_id = :artistId
+        )
+        """,
+    )
+    suspend fun countTracksForArtistView(artistId: String, artistName: String): Int
+
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE t.id IN (
+            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
+            UNION
+            SELECT t2.id FROM tracks t2
+            INNER JOIN cached_albums ca ON t2.album_id = ca.id
+            WHERE ca.artist_id = :artistId
+               OR (:artistName != '' AND ca.artist = :artistName)
+            UNION
+            SELECT t3.id FROM tracks t3
+            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            WHERE cat.artist_id = :artistId
+        )
+        ORDER BY t.title ASC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistView(artistId: String, artistName: String, limit: Int): List<TrackEntity>
+
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE t.title > :cursor AND t.id IN (
+            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
+            UNION
+            SELECT t2.id FROM tracks t2
+            INNER JOIN cached_albums ca ON t2.album_id = ca.id
+            WHERE ca.artist_id = :artistId
+               OR (:artistName != '' AND ca.artist = :artistName)
+            UNION
+            SELECT t3.id FROM tracks t3
+            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            WHERE cat.artist_id = :artistId
+        )
+        ORDER BY t.title ASC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistViewAfter(
+        artistId: String,
+        artistName: String,
+        cursor: String,
+        limit: Int,
+    ): List<TrackEntity>
+
     /** Cursor-paginated tracks for an artist. First page — ordered by title for
      *  a stable cursor. Uses the artist_id index. */
     @Query("SELECT * FROM tracks WHERE artist_id = :artistId ORDER BY title ASC, id ASC LIMIT :limit")

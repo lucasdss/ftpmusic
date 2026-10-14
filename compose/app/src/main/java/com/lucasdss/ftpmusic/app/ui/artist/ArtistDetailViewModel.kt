@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.ui.artist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
+import com.lucasdss.ftpmusic.app.data.db.ArtistViewMembership
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
@@ -137,35 +138,29 @@ class ArtistDetailViewModel @Inject constructor(
                 // Both the artist list count and this page now come from the same
                 // source, so counts are always consistent.
                 val cachedArtist = metadataDao.getArtistById(artistId)
-                // Always merge all three queries: by artist_id, by artist name text,
-                // and by track-level artist_id. Some albums may have a NULL or
-                // DIFFERENT artist_id (e.g., compilations, or Navidrome attributing
-                // the album to "Original Soundtrack" while tracks are by the artist).
-                // Merging all three guarantees all albums appear regardless of
-                // attribution variance.
-                val byId = metadataDao.getAlbumsByArtistId(artistId)
-                val byName = if (cachedArtist !=
-                    null
-                ) {
-                    metadataDao.getAlbumsByArtistName(cachedArtist.name)
-                } else {
-                    emptyList()
-                }
-                val byTrackArtist = metadataDao.getAlbumsByTrackArtistId(artistId)
-                val cachedAlbums = (byId + byName + byTrackArtist).distinctBy { it.id }
+                val artistNameHint = cachedArtist?.name
+                // Shared album+track membership (ArtistViewMembership) — same rule for
+                // Albums tab, Songs tab, Play All, Download All, Add to Playlist.
+                val cachedAlbums = ArtistViewMembership.loadAlbums(metadataDao, artistId, artistNameHint)
                 val localAlbums = cachedAlbums.map { it.toAlbum() }
+                val nameForView = artistNameHint ?: localAlbums.firstOrNull()?.artist
 
-                // Load first page of tracks (cursor-based, local-first)
-                val firstPage = trackDao.getTracksByArtistId(artistId, TRACKS_PAGE_SIZE)
+                // Load first page of artist-view tracks (cursor-based, local-first)
+                val firstPage = ArtistViewMembership.loadTracksPage(
+                    trackDao = trackDao,
+                    artistId = artistId,
+                    artistName = nameForView,
+                    limit = TRACKS_PAGE_SIZE,
+                )
                 val localTracks = firstPage.map { it.toTrack() }
                 val catalogCount = try {
-                    trackDao.countTracksByArtistId(artistId)
+                    ArtistViewMembership.countTracks(trackDao, artistId, nameForView)
                 } catch (_: Exception) {
                     localTracks.size
                 }
 
                 if (localAlbums.isNotEmpty() || cachedArtist != null || localTracks.isNotEmpty()) {
-                    val name = cachedArtist?.name ?: localAlbums.firstOrNull()?.artist ?: "Unknown"
+                    val name = nameForView ?: "Unknown"
                     val emptyCatalog = localAlbums.isEmpty() && localTracks.isEmpty()
                     val isDesired = try {
                         desiredRepository.findMatchingDesired(
@@ -297,7 +292,7 @@ class ArtistDetailViewModel @Inject constructor(
         }
     }
 
-    /** Cursor-based pagination: load the next page of tracks for the artist. */
+    /** Cursor-based pagination: next page of artist-view tracks (same membership as Play All). */
     fun loadMoreTracks() {
         val state = _state.value
         if (state.isLoadingMoreTracks || !state.hasMoreTracks) return
@@ -305,11 +300,13 @@ class ArtistDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoadingMoreTracks = true)
             try {
                 val cursor = _state.value.tracks.lastOrNull()?.title
-                val newEntities = if (cursor == null) {
-                    trackDao.getTracksByArtistId(state.artistId, TRACKS_PAGE_SIZE)
-                } else {
-                    trackDao.getTracksByArtistIdAfter(state.artistId, cursor, TRACKS_PAGE_SIZE)
-                }
+                val newEntities = ArtistViewMembership.loadTracksPage(
+                    trackDao,
+                    state.artistId,
+                    state.name,
+                    TRACKS_PAGE_SIZE,
+                    titleCursor = cursor,
+                )
                 val newTracks = newEntities.map { it.toTrack() }
                 _state.value = _state.value.copy(
                     tracks = _state.value.tracks + newTracks,
@@ -428,35 +425,52 @@ class ArtistDetailViewModel @Inject constructor(
     }
 
     /**
-     * Loads full artist catalog, applies [ArtistPlayOrder], builds stream URLs.
-     * Returns null when empty / no artist id.
+     * Full artist-view catalog (same membership as Albums/Songs), ordered by preference.
+     * Used by Play All, Play Next All, Add All to Queue, Download All, Add to Playlist.
      */
     private suspend fun prepareOrderedCatalog(): Triple<List<Track>, List<String>, ArtistPlayOrder>? {
+        val catalog = loadFullArtistViewTracks() ?: return null
+        val order = ArtistPlayOrder.fromKey(storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER))
+        val albumIds = catalog.mapNotNull { it.albumId }.distinct()
+        val albumYearById = if (albumIds.isEmpty()) {
+            emptyMap()
+        } else {
+            try {
+                metadataDao.getAlbumYearRows(albumIds).associate { it.id to it.year }
+            } catch (_: Exception) {
+                emptyMap()
+            }
+        }
+        val ordered = ArtistPlayOrderer.order(catalog, order, albumYearById)
+        val urls = ordered.map { buildStreamUrl(it.id) }
+        return Triple(ordered, urls, order)
+    }
+
+    /** Loads every track in the artist-view membership set (no pagination). */
+    private suspend fun loadFullArtistViewTracks(): List<Track>? {
         val artistId = _state.value.artistId
         if (artistId.isBlank()) return null
         _state.value = _state.value.copy(isPreparingPlay = true)
         return try {
-            val order = ArtistPlayOrder.fromKey(storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER))
-            val entities = trackDao.getAllTracksByArtistId(artistId)
-            if (entities.isEmpty()) return null
-            val tracks = entities.map { it.toTrack() }
-            val albumIds = tracks.mapNotNull { it.albumId }.distinct()
-            val albumYearById = if (albumIds.isEmpty()) {
-                emptyMap()
-            } else {
-                metadataDao.getAlbumYearRows(albumIds).associate { it.id to it.year }
-            }
-            val ordered = ArtistPlayOrderer.order(tracks, order, albumYearById)
-            val urls = ordered.map { buildStreamUrl(it.id) }
-            Triple(ordered, urls, order)
+            val entities = ArtistViewMembership.loadAllTracks(
+                trackDao,
+                artistId,
+                _state.value.name.takeIf { it.isNotBlank() },
+            )
+            if (entities.isEmpty()) null else entities.map { it.toTrack() }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            android.util.Log.w("ftpmusic-artist", "prepareOrderedCatalog failed: ${e.message}")
+            android.util.Log.w("ftpmusic-artist", "loadFullArtistViewTracks failed: ${e.message}")
             null
         } finally {
             _state.value = _state.value.copy(isPreparingPlay = false)
         }
+    }
+
+    /** Track ids for Add to Playlist — full artist-view catalog. */
+    suspend fun catalogTrackIds(): List<String> = preparePlayMutex.withLock {
+        loadFullArtistViewTracks()?.map { it.id }.orEmpty()
     }
 
     /** Serializes Play All / queue-all so double-taps cannot race (ADR-0141). */
@@ -490,12 +504,13 @@ class ArtistDetailViewModel @Inject constructor(
         }
     }
 
-    /** Download all artist top tracks (skip already downloaded). */
+    /** Download full artist-view catalog (skip already downloaded). */
     fun downloadAll() {
-        val tracks = _state.value.tracks
-        if (tracks.isEmpty()) return
         viewModelScope.launch {
-            tracks.forEach { downloadTrackInternal(it) }
+            preparePlayMutex.withLock {
+                val tracks = loadFullArtistViewTracks() ?: return@withLock
+                tracks.forEach { downloadTrackInternal(it) }
+            }
         }
     }
 

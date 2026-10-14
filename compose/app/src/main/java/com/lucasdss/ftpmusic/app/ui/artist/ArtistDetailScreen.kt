@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,6 +74,7 @@ import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,6 +106,7 @@ fun ArtistDetailScreen(
     var showTrackSheet by remember { mutableStateOf<Int?>(null) }
     var showPlaylistPicker by remember { mutableStateOf(false) }
     var playlistTrackIds by remember { mutableStateOf(emptyList<String>()) }
+    val scope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize().background(Background)) {
         Column(Modifier.fillMaxSize()) {
@@ -384,9 +387,13 @@ fun ArtistDetailScreen(
                         showArtistSheet = false
                     },
                     onAddAllToPlaylist = {
-                        playlistTrackIds = state.tracks.map { it.id }
-                        showPlaylistPicker = true
                         showArtistSheet = false
+                        scope.launch {
+                            val ids = viewModel.catalogTrackIds()
+                            if (ids.isEmpty()) return@launch
+                            playlistTrackIds = ids
+                            showPlaylistPicker = true
+                        }
                     },
                     onDownloadAll = {
                         viewModel.downloadAll()
