@@ -62,7 +62,8 @@ class FavoritesViewModelTest {
         every { offlineModeManager.isOffline } returns kotlinx.coroutines.flow.MutableStateFlow(false)
         coEvery { desiredRepository.getAll() } returns emptyList()
         coEvery { desiredRepository.search(any()) } returns emptyList()
-        coEvery { desiredRepository.snapshotShareText() } returns "ftpmusic desired list\ncount=0"
+        coEvery { desiredRepository.snapshotShareText() } returns
+            """{"schema":"ftpmusic.desired.v2","count":0,"textSummary":"ftpmusic desired list\ncount=0"}"""
         every { authHelper.buildStreamUrl(any(), any(), any(), any()) } returns "http://stream"
         viewModel = FavoritesViewModel(
             trackDao,
@@ -636,6 +637,7 @@ class FavoritesViewModelTest {
         viewModel.shareDesired()
         advanceUntilIdle()
         assertEquals(1, events.size)
+        assertTrue(events[0].contains("ftpmusic.desired.v2"))
         assertTrue(events[0].contains("ftpmusic desired list"))
         job.cancel()
     }

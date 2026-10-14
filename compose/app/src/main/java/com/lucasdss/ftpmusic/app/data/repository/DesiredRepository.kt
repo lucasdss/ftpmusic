@@ -297,7 +297,7 @@ class DesiredRepository @Inject constructor(
         }
         .distinctUntilChanged()
 
-    /** Share payload: versioned JSON (ADR-0140) for backend + human textSummary. */
+    /** Share payload: versioned JSON (ADR-0144) for backend + human textSummary. */
     suspend fun snapshotShareText(): String = buildShareJson(desiredItemDao.getAll())
 
     fun buildShareText(items: List<DesiredItemEntity>): String {

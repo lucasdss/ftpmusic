@@ -1,4 +1,4 @@
-# ADR 0140 — Desired search enrichment (parity + share JSON)
+# ADR 0144 — Desired search enrichment (parity + share JSON)
 
 Date: 2026-10-14
 Status: Accepted

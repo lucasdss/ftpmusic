@@ -1,7 +1,7 @@
 # Desired Wishlist — Behavior Report
 
 Date: 2026-10-12
-Related: ADR 0129, ADR 0130, ADR 0020 (status note), ADR 0082 (amended)
+Related: ADR 0129, ADR 0130, ADR 0144, ADR 0020 (status note), ADR 0082 (amended)
 
 ## Intent
 
@@ -27,7 +27,7 @@ Favorites tab chips: **Liked | Disliked | Desired**.
 
 ## Storage
 
-`desired_items` (DB v64; enrichment columns v68 / ADR-0140):
+`desired_items` (DB v64; enrichment columns v68 / ADR-0144):
 
 - `id` UUID PK
 - `entity_type` ARTIST | ALBUM | TRACK
@@ -78,6 +78,10 @@ User removes manually — no auto-delete.
   Add hidden when already in library (parity with Search Discover)
 - Sections: Tracks → Artists → Albums
 - Saved rows show thumb + description when persisted
+- Desired subtitle: `artist · description` when description set, else
+  `artist · source`; matched rows keep `artist · In library`
+- Album catalog `inLibrary` requires non-blank artist (title-only match is
+  rejected — DAO null-artist is a wildcard)
 - Remove clears row
 - Empty: “Nothing desired yet”
 
@@ -85,7 +89,7 @@ User removes manually — no auto-delete.
 
 Toolbar Share on Desired mode → `ACTION_SEND` `text/plain` chooser.
 
-Body is versioned JSON (`schema: "ftpmusic.desired.v2"`, ADR-0140):
+Body is versioned JSON (`schema: "ftpmusic.desired.v2"`, ADR-0144):
 
 - `count`, `capturedAt`, `items[]` with full persisted fields (ids, imageUrl,
   description, matchedLocalId, extra, …)

@@ -9,7 +9,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Shared library membership resolve for Discover + Desired catalog-add (ADR-0140).
+ * Shared library membership resolve for Discover + Desired catalog-add (ADR-0144).
  */
 @Singleton
 class DiscoverLibraryResolver @Inject constructor(
@@ -30,10 +30,17 @@ class DiscoverLibraryResolver @Inject constructor(
         }
     }
 
-    suspend fun resolveAlbum(title: String, artistName: String?): CachedAlbumEntity? = try {
-        metadataDao.getAlbumByExactName(title, artistName)
-    } catch (_: Exception) {
-        null
+    /**
+     * Requires non-blank artist: [CachedMetadataDao.getAlbumByExactName] treats
+     * null artist as a title-only wildcard (false-positive In library).
+     */
+    suspend fun resolveAlbum(title: String, artistName: String?): CachedAlbumEntity? {
+        val artist = artistName?.takeIf { it.isNotBlank() } ?: return null
+        return try {
+            metadataDao.getAlbumByExactName(title, artist)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     suspend fun resolveTrack(mbid: String?, title: String, artistName: String?): TrackEntity? {

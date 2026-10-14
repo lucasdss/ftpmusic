@@ -587,9 +587,9 @@ data class DesiredItemEntity(
     /** Set when reconcile finds a library match; keep row (Bandcamp-style). */
     @ColumnInfo(name = "matched_local_id") val matchedLocalId: String? = null,
     val note: String? = null,
-    /** Snapshot thumb URL at add time (Deezer/Last.fm); ADR-0140. */
+    /** Snapshot thumb URL at add time (Deezer/Last.fm); ADR-0144. */
     @ColumnInfo(name = "image_url") val imageUrl: String? = null,
-    /** Short description / MB disambiguation at add time (ADR-0140). */
+    /** Short description / MB disambiguation at add time (ADR-0144). */
     val description: String? = null,
     /** Escape hatch JSON for backend share (listenCount, etc.). */
     @ColumnInfo(name = "extra_json") val extraJson: String? = null,

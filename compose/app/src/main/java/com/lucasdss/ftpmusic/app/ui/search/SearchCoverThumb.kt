@@ -22,9 +22,10 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 @Composable
 fun SearchCoverThumb(url: String?, contentDesc: String, circle: Boolean = false) {
     val shape = if (circle) CircleShape else RoundedCornerShape(6.dp)
-    if (url != null) {
+    val loadUrl = url?.takeIf { it.isNotBlank() }
+    if (loadUrl != null) {
         AsyncImage(
-            model = url,
+            model = loadUrl,
             contentDescription = contentDesc,
             modifier = Modifier.size(56.dp).clip(shape),
             contentScale = ContentScale.Crop,

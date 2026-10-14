@@ -1,7 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui.search
 
 /**
- * Shared Discover / Desired catalog-add hit models (ADR-0130, ADR-0140).
+ * Shared Discover / Desired catalog-add hit models (ADR-0130, ADR-0144).
  * Used by Search Discover and Favorites Desired “Add from catalog”.
  */
 data class DiscoverArtistHit(

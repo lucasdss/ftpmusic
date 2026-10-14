@@ -1275,14 +1275,12 @@ private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
                             append("In library")
                         }
 
-                        desc != null -> append(desc)
-
                         else -> {
-                            item.artistName?.let {
+                            item.artistName?.takeIf { it.isNotBlank() }?.let {
                                 append(it)
                                 append(" · ")
                             }
-                            append(item.source)
+                            append(desc ?: item.source)
                         }
                     }
                 },
