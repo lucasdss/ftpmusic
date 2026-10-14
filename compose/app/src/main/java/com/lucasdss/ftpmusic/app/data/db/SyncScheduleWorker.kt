@@ -10,6 +10,7 @@ import com.lucasdss.ftpmusic.app.data.update.AppUpdateProbe
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 
 /**
  * WorkManager CoroutineWorker that delegates to [MetadataSyncWorker]
@@ -62,11 +63,15 @@ class SyncScheduleWorker @AssistedInject constructor(
             // ADR-0140: piggyback Play update check; never fail WM on probe errors.
             try {
                 appUpdateProbe.probe()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w("ftpmusic-work", "Update probe after sync failed: ${e.message}")
                 DiagnosticLog.w("ftpmusic-work", "update probe failed: ${e.message}")
             }
             Result.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w("ftpmusic-work", "Sync work failed: ${e.message}", e)
             DiagnosticLog.e("ftpmusic-work", "periodic sync failed: ${e.message}", e)

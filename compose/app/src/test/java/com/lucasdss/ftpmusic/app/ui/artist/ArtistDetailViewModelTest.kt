@@ -300,9 +300,11 @@ class ArtistDetailViewModelTest {
         // First page is FULL (50 tracks) → hasMore=true
         val firstPage = (1..50).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
         coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns firstPage
-        // Second page via cursor (title > "Track 050")
+        // Second page via composite cursor (title, id) after last of page 1
         val secondPage = (51..60).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
-        coEvery { trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", 50) } returns secondPage
+        coEvery {
+            trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", "t50", 50)
+        } returns secondPage
 
         viewModel.loadArtist("ar-1")
         val loaded = viewModel.state.first { !it.isLoading && it.tracks.size == 50 }
@@ -316,7 +318,9 @@ class ArtistDetailViewModelTest {
         assertEquals("Track 051", more.tracks[50].title)
         assertEquals("Track 060", more.tracks[59].title)
         assertFalse("hasMoreTracks must be false after short page", more.hasMoreTracks)
-        coVerify { trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", 50) }
+        coVerify {
+            trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", "t50", 50)
+        }
         // Reactions loaded for the new page (merge-always path)
         coVerify { trackDao.getTracksByIds(match { it.contains("t51") }) }
     }
@@ -331,7 +335,9 @@ class ArtistDetailViewModelTest {
         val firstPage = (1..50).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
         val secondPage = (51..60).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
         coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns firstPage
-        coEvery { trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", 50) } returns secondPage
+        coEvery {
+            trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Track 050", "t50", 50)
+        } returns secondPage
         // Page1 reactions hang; page2 returns liked t51 quickly.
         coEvery { trackDao.getTracksByIds(match { ids -> ids.contains("t1") && ids.size == 50 }) } coAnswers {
             kotlinx.coroutines.delay(5_000)
@@ -357,6 +363,39 @@ class ArtistDetailViewModelTest {
     }
 
     @Test
+    fun `loadMoreTracks passes title and id when duplicate titles span pages`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        // Full page ends mid duplicate-title group (same title, ascending ids).
+        val firstPage = (1..50).map { i ->
+            trackEntity("intro-${i.toString().padStart(3, '0')}", "Intro")
+        }
+        val secondPage = listOf(
+            trackEntity("intro-051", "Intro"),
+            trackEntity("zebra-001", "Zebra"),
+        )
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns firstPage
+        coEvery {
+            trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Intro", "intro-050", 50)
+        } returns secondPage
+
+        viewModel.loadArtist("ar-1")
+        viewModel.state.first { !it.isLoading && it.tracks.size == 50 }
+        viewModel.loadMoreTracks()
+        val more = viewModel.state.first { !it.isLoadingMoreTracks && it.tracks.size == 52 }
+        advanceUntilIdle()
+
+        assertEquals("intro-051", more.tracks[50].id)
+        assertEquals("Zebra", more.tracks[51].title)
+        coVerify {
+            trackDao.getTracksForArtistViewAfter("ar-1", "Test Artist", "Intro", "intro-050", 50)
+        }
+    }
+
+    @Test
     fun `loadMoreTracks is a no-op when no more tracks`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
@@ -375,7 +414,9 @@ class ArtistDetailViewModelTest {
 
         // No extra fetch — hasMoreTracks is false
         coVerify(exactly = 1) { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) }
-        coVerify(exactly = 0) { trackDao.getTracksForArtistViewAfter(any(), any(), any(), any()) }
+        coVerify(exactly = 0) {
+            trackDao.getTracksForArtistViewAfter(any(), any(), any(), any(), any())
+        }
     }
 
     @Test

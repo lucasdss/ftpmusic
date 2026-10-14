@@ -4,6 +4,7 @@ import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -11,7 +12,7 @@ import kotlinx.coroutines.withTimeout
 /**
  * Probes Play for an available update and publishes into
  * [AppUpdateAvailabilityHolder] (ADR-0140). Fail-soft — never throws to callers
- * except [CancellationException].
+ * except cooperative [CancellationException] (not probe timeouts).
  *
  * In-process throttle avoids cold-start + immediate WorkManager double-hit noise.
  * Unavailable blips use a shorter backoff so Play is not hammered forever.
@@ -51,6 +52,10 @@ class AppUpdateProbe @Inject constructor(
                         lastFailureProbeMs = 0L
                     }
                 }
+            } catch (e: TimeoutCancellationException) {
+                // withTimeout uses CE subclass — treat as fail-soft, not job cancel.
+                lastFailureProbeMs = now
+                Log.w(TAG, "probe timed out after ${PROBE_TIMEOUT_MS}ms")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

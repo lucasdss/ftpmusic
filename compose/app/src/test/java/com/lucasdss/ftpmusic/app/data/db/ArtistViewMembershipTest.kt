@@ -41,11 +41,28 @@ class ArtistViewMembershipTest {
     }
 
     @Test
-    fun `loadTracksPage uses after-cursor variant when cursor set`() = runTest {
+    fun `loadTracksPage uses after-cursor variant when title and id cursors set`() = runTest {
         coEvery {
-            trackDao.getTracksForArtistViewAfter("ar-1", "X", "M", 50)
+            trackDao.getTracksForArtistViewAfter("ar-1", "X", "M", "id-m", 50)
         } returns emptyList()
+        ArtistViewMembership.loadTracksPage(
+            trackDao,
+            "ar-1",
+            "X",
+            50,
+            titleCursor = "M",
+            idCursor = "id-m",
+        )
+        coVerify { trackDao.getTracksForArtistViewAfter("ar-1", "X", "M", "id-m", 50) }
+    }
+
+    @Test
+    fun `loadTracksPage falls back to first page when id cursor missing`() = runTest {
+        coEvery { trackDao.getTracksForArtistView("ar-1", "X", 50) } returns emptyList()
         ArtistViewMembership.loadTracksPage(trackDao, "ar-1", "X", 50, titleCursor = "M")
-        coVerify { trackDao.getTracksForArtistViewAfter("ar-1", "X", "M", 50) }
+        coVerify { trackDao.getTracksForArtistView("ar-1", "X", 50) }
+        coVerify(exactly = 0) {
+            trackDao.getTracksForArtistViewAfter(any(), any(), any(), any(), any())
+        }
     }
 }

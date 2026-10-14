@@ -317,13 +317,6 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id IN (:trackIds)")
     fun watchTracksByIds(trackIds: List<String>): Flow<List<TrackEntity>>
 
-    /** Full artist catalog for Play All (ADR-0141). Browse UI stays paginated. */
-    @Query("SELECT * FROM tracks WHERE artist_id = :artistId")
-    suspend fun getAllTracksByArtistId(artistId: String): List<TrackEntity>
-
-    @Query("SELECT COUNT(*) FROM tracks WHERE artist_id = :artistId")
-    suspend fun countTracksByArtistId(artistId: String): Int
-
     /**
      * Artist-detail track membership (ADR-0141 follow-up) — mirrors album merge:
      * direct track artist_id, OR track on album by album artist_id / name,
@@ -388,10 +381,14 @@ interface TrackDao {
     )
     suspend fun getTracksForArtistView(artistId: String, artistName: String, limit: Int): List<TrackEntity>
 
+    /** Next Songs page after composite (title, id) keyset — id tiebreak for duplicate titles. */
     @Query(
         """
         SELECT t.* FROM tracks t
-        WHERE t.title > :cursor AND t.id IN (
+        WHERE (
+            t.title > :cursorTitle
+            OR (t.title = :cursorTitle AND t.id > :cursorId)
+        ) AND t.id IN (
             SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
             UNION
             SELECT t2.id FROM tracks t2
@@ -409,21 +406,10 @@ interface TrackDao {
     suspend fun getTracksForArtistViewAfter(
         artistId: String,
         artistName: String,
-        cursor: String,
+        cursorTitle: String,
+        cursorId: String,
         limit: Int,
     ): List<TrackEntity>
-
-    /** Cursor-paginated tracks for an artist. First page — ordered by title for
-     *  a stable cursor. Uses the artist_id index. */
-    @Query("SELECT * FROM tracks WHERE artist_id = :artistId ORDER BY title ASC, id ASC LIMIT :limit")
-    suspend fun getTracksByArtistId(artistId: String, limit: Int): List<TrackEntity>
-
-    /** Cursor-paginated tracks for an artist. Next page — resumes after :cursor
-     *  (last title seen). Stable for duplicate titles via id tiebreak. */
-    @Query(
-        "SELECT * FROM tracks WHERE artist_id = :artistId AND title > :cursor ORDER BY title ASC, id ASC LIMIT :limit",
-    )
-    suspend fun getTracksByArtistIdAfter(artistId: String, cursor: String, limit: Int): List<TrackEntity>
 
     @Query("SELECT * FROM tracks WHERE album_id IN (:albumIds)")
     suspend fun getTracksByAlbumIds(albumIds: List<String>): List<TrackEntity>

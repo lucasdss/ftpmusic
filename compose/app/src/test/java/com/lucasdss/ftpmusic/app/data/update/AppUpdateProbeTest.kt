@@ -4,7 +4,10 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 
@@ -34,6 +37,31 @@ class AppUpdateProbeTest {
 
         probe.probe(force = true)
 
+        verify(exactly = 0) { holder.publish(any()) }
+    }
+
+    @Test
+    fun `probe timeout is fail-soft and does not throw`() = runTest {
+        coEvery { checker.check() } coAnswers {
+            delay(AppUpdateProbe.PROBE_TIMEOUT_MS + 5_000L)
+            UpdateCheckResult.UpToDate
+        }
+
+        probe.probe(force = true)
+
+        verify(exactly = 0) { holder.publish(any()) }
+    }
+
+    @Test
+    fun `probe rethrows cooperative CancellationException`() = runTest {
+        coEvery { checker.check() } throws CancellationException("scope cancelled")
+
+        try {
+            probe.probe(force = true)
+            fail("expected CancellationException")
+        } catch (e: CancellationException) {
+            // expected — cooperative cancel must propagate
+        }
         verify(exactly = 0) { holder.publish(any()) }
     }
 

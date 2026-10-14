@@ -48,8 +48,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Play Console requires monotonically increasing versionCode per upload.
-        versionCode = 21
-        versionName = "1.13.1"
+        versionCode = 22
+        versionName = "1.14.0"
         // Release-safe Log.w tracing for image/config diagnostics. Keep false in
         // shipped builds; flip to true for a local diagnostic build when needed.
         buildConfigField("boolean", "IMAGE_DIAGNOSTICS", "false")

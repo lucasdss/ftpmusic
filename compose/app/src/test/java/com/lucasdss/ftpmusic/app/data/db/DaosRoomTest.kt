@@ -1120,4 +1120,32 @@ class DaosRoomTest {
         assertTrue(meta.getPendingUnstarArtistIds().contains("ar-pend"))
         assertFalse(meta.getPendingUnstarArtistIds().contains("ar-drop"))
     }
+
+    // ── Artist-view Songs keyset (ADR-0142 pagination) ─────────────────────
+
+    @Test
+    fun `getTracksForArtistViewAfter keeps duplicate titles via id tiebreak`() = runBlocking {
+        val tracks = db.trackDao()
+        // Three same-title rows + one later title; page size 2 ends mid-dupe group.
+        tracks.upsert(TrackEntity(id = "id-a", title = "Intro", artistId = "ar-1"))
+        tracks.upsert(TrackEntity(id = "id-b", title = "Intro", artistId = "ar-1"))
+        tracks.upsert(TrackEntity(id = "id-c", title = "Intro", artistId = "ar-1"))
+        tracks.upsert(TrackEntity(id = "id-z", title = "Zebra", artistId = "ar-1"))
+
+        val page1 = tracks.getTracksForArtistView("ar-1", "Artist", limit = 2)
+        assertEquals(listOf("id-a", "id-b"), page1.map { it.id })
+
+        val page2 = tracks.getTracksForArtistViewAfter(
+            artistId = "ar-1",
+            artistName = "Artist",
+            cursorTitle = page1.last().title,
+            cursorId = page1.last().id,
+            limit = 2,
+        )
+        assertEquals(
+            "remaining Intro + Zebra must not be skipped",
+            listOf("id-c", "id-z"),
+            page2.map { it.id },
+        )
+    }
 }

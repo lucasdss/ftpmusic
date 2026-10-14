@@ -10,6 +10,7 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -140,6 +141,8 @@ class FtpmusicApp : Application() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 appUpdateProbe.probe()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w("ftpmusic-update", "[App] update probe failed: ${e.message}")
             }

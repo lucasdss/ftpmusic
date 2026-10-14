@@ -40,12 +40,13 @@ object ArtistViewMembership {
         artistName: String?,
         limit: Int,
         titleCursor: String? = null,
+        idCursor: String? = null,
     ): List<TrackEntity> {
         val name = artistName.orEmpty()
-        return if (titleCursor == null) {
+        return if (titleCursor == null || idCursor == null) {
             trackDao.getTracksForArtistView(artistId, name, limit)
         } else {
-            trackDao.getTracksForArtistViewAfter(artistId, name, titleCursor, limit)
+            trackDao.getTracksForArtistViewAfter(artistId, name, titleCursor, idCursor, limit)
         }
     }
 }

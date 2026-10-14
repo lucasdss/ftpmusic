@@ -5,6 +5,7 @@ import androidx.work.ListenableWorker
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateProbe
 import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import io.mockk.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,6 +96,17 @@ class SyncScheduleWorkerTest {
         coEvery { appUpdateProbe.probe(any()) } throws RuntimeException("play boom")
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Success)
+    }
+
+    @Test
+    fun `doWork propagates CancellationException from update probe`() = runBlocking {
+        coEvery { appUpdateProbe.probe(any()) } throws CancellationException("cancelled")
+        try {
+            worker.doWork()
+            fail("expected CancellationException")
+        } catch (e: CancellationException) {
+            assertEquals("cancelled", e.message)
+        }
     }
 
     @Test

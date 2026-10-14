@@ -299,13 +299,14 @@ class ArtistDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoadingMoreTracks = true)
             try {
-                val cursor = _state.value.tracks.lastOrNull()?.title
+                val last = _state.value.tracks.lastOrNull()
                 val newEntities = ArtistViewMembership.loadTracksPage(
                     trackDao,
                     state.artistId,
                     state.name,
                     TRACKS_PAGE_SIZE,
-                    titleCursor = cursor,
+                    titleCursor = last?.title,
+                    idCursor = last?.id,
                 )
                 val newTracks = newEntities.map { it.toTrack() }
                 _state.value = _state.value.copy(
