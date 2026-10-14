@@ -2152,6 +2152,9 @@ interface DesiredItemDao {
                 desiredAt = minOf(existingStrong.desiredAt, winner.desiredAt),
                 matchedLocalId = existingStrong.matchedLocalId ?: winner.matchedLocalId,
                 note = winner.note ?: existingStrong.note,
+                imageUrl = winner.imageUrl ?: existingStrong.imageUrl,
+                description = winner.description ?: existingStrong.description,
+                extraJson = winner.extraJson ?: existingStrong.extraJson,
             )
             update(folded)
             if (winner.id != folded.id) deleteById(winner.id)

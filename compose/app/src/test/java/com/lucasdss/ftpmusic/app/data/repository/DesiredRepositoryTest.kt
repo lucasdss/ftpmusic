@@ -274,12 +274,36 @@ class DesiredRepositoryTest {
                 artistName = "Band",
                 musicbrainzId = "t1",
                 source = "musicbrainz",
+                imageUrl = "https://example.com/a.jpg",
+                description = "UK band",
             ),
         )
         val text = repo.snapshotShareText()
-        assertTrue(text.startsWith("ftpmusic desired list"))
-        assertTrue(text.contains("count=1"))
-        assertTrue(text.contains("[TRACK] Song — Band"))
+        val json = org.json.JSONObject(text)
+        assertEquals(DesiredRepository.SHARE_SCHEMA, json.getString("schema"))
+        assertEquals(1, json.getInt("count"))
+        assertTrue(json.getString("textSummary").contains("[TRACK] Song — Band"))
+        val item = json.getJSONArray("items").getJSONObject(0)
+        assertEquals("https://example.com/a.jpg", item.getString("imageUrl"))
+        assertEquals("UK band", item.getString("description"))
+    }
+
+    @Test
+    fun `addDesired persists image description and extraJson`() = runTest {
+        val captured = slot<DesiredItemEntity>()
+        coEvery { desiredItemDao.mergeReplace(capture(captured), emptyList()) } returns Unit
+        repo.addDesired(
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Ext",
+            musicbrainzId = "m1",
+            source = "musicbrainz",
+            imageUrl = "https://cdn/img.jpg",
+            description = "disambig",
+            extraJson = """{"listenCount":9}""",
+        )
+        assertEquals("https://cdn/img.jpg", captured.captured.imageUrl)
+        assertEquals("disambig", captured.captured.description)
+        assertEquals("""{"listenCount":9}""", captured.captured.extraJson)
     }
 
     @Test

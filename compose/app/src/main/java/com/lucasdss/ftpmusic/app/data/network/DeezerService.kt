@@ -30,9 +30,15 @@ class DeezerService @Inject constructor() {
         internal const val QUOTA_BACKOFF_MS = 2_000L
     }
 
-    data class ArtistHit(val id: String, val name: String)
-    data class AlbumHit(val id: String, val title: String, val artistName: String?)
-    data class TrackHit(val id: String, val title: String, val artistName: String?, val albumName: String?)
+    data class ArtistHit(val id: String, val name: String, val imageUrl: String? = null)
+    data class AlbumHit(val id: String, val title: String, val artistName: String?, val imageUrl: String? = null)
+    data class TrackHit(
+        val id: String,
+        val title: String,
+        val artistName: String?,
+        val albumName: String?,
+        val imageUrl: String? = null,
+    )
 
     class QuotaException(message: String) : Exception(message)
 
@@ -59,6 +65,7 @@ class DeezerService @Inject constructor() {
         ArtistHit(
             id = obj.optLong("id").toString(),
             name = obj.optString("name"),
+            imageUrl = optImageUrl(obj, "picture_medium", "picture"),
         ).takeIf { it.name.isNotBlank() && it.id != "0" }
     }
 
@@ -68,18 +75,28 @@ class DeezerService @Inject constructor() {
             id = obj.optLong("id").toString(),
             title = obj.optString("title"),
             artistName = artist,
+            imageUrl = optImageUrl(obj, "cover_medium", "cover"),
         ).takeIf { it.title.isNotBlank() && it.id != "0" }
     }
 
     suspend fun searchTracks(query: String, limit: Int = 8): List<TrackHit> = search("track", query, limit) { obj ->
         val artist = obj.optJSONObject("artist")?.optString("name")?.takeIf { it.isNotBlank() }
-        val album = obj.optJSONObject("album")?.optString("title")?.takeIf { it.isNotBlank() }
+        val albumObj = obj.optJSONObject("album")
+        val album = albumObj?.optString("title")?.takeIf { it.isNotBlank() }
         TrackHit(
             id = obj.optLong("id").toString(),
             title = obj.optString("title"),
             artistName = artist,
             albumName = album,
+            imageUrl = albumObj?.let { optImageUrl(it, "cover_medium", "cover") },
         ).takeIf { it.title.isNotBlank() && it.id != "0" }
+    }
+
+    /** Prefer medium size; fall back to smaller key when blank. */
+    internal fun optImageUrl(obj: JSONObject, primaryKey: String, fallbackKey: String): String? {
+        val primary = obj.optString(primaryKey).takeIf { it.isNotBlank() }
+        if (primary != null) return primary
+        return obj.optString(fallbackKey).takeIf { it.isNotBlank() }
     }
 
     private suspend fun <T> search(type: String, query: String, limit: Int, map: (JSONObject) -> T?): List<T> =

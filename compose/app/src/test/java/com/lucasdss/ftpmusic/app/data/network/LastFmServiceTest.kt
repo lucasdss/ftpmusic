@@ -125,7 +125,10 @@ class LastFmServiceTest {
     @Test
     fun `parseArtistSearch extracts names`() {
         val json = """{"results":{"artistmatches":{"artist":[
-            {"name":"Radiohead","mbid":"a1","listeners":"100"},
+            {"name":"Radiohead","mbid":"a1","listeners":"100","image":[
+              {"#text":"https://cdn/s.jpg","size":"small"},
+              {"#text":"https://cdn/xl.jpg","size":"extralarge"}
+            ]},
             {"name":"Radio","mbid":"","listeners":"10"}
         ]}}}"""
         val hits = service.parseArtistSearch(json, limit = 8)
@@ -133,7 +136,9 @@ class LastFmServiceTest {
         assertEquals("Radiohead", hits[0].name)
         assertEquals("a1", hits[0].mbid)
         assertEquals(100L, hits[0].listeners)
+        assertEquals("https://cdn/xl.jpg", hits[0].imageUrl)
         assertNull(hits[1].mbid)
+        assertNull(hits[1].imageUrl)
     }
 
     @Test

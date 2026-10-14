@@ -73,6 +73,7 @@ class FavoritesViewModelTest {
             mockk(relaxed = true), // deezer
             mockk(relaxed = true), // musicBrainz
             mockk(relaxed = true), // lastFm
+            mockk(relaxed = true), // discoverLibraryResolver
             offlineModeManager,
             storage,
             playbackManager,
@@ -349,6 +350,7 @@ class FavoritesViewModelTest {
             mockk(relaxed = true), // deezer
             mockk(relaxed = true), // musicBrainz
             mockk(relaxed = true), // lastFm
+            mockk(relaxed = true), // discoverLibraryResolver
             offlineModeManager,
             storage,
             playbackManager,
@@ -480,6 +482,7 @@ class FavoritesViewModelTest {
             mockk(relaxed = true), // deezer
             mockk(relaxed = true), // musicBrainz
             mockk(relaxed = true), // lastFm
+            mockk(relaxed = true), // discoverLibraryResolver
             offlineModeManager,
             storage,
             playbackManager,
@@ -669,6 +672,7 @@ class FavoritesViewModelTest {
             deezer,
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true), // discoverLibraryResolver
             offlineModeManager,
             storage,
             playbackManager,

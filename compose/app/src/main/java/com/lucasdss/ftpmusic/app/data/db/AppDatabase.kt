@@ -38,7 +38,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncSkipAlbumEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 67,
+    version = 68,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1208,6 +1208,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_67 = ALL_MIGRATIONS_66 + MIGRATION_66_67
+
+        /** ADR-0140: Desired wishlist enrichment (image, description, extra_json). */
+        val MIGRATION_67_68 = object : Migration(67, 68) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE desired_items ADD COLUMN image_url TEXT")
+                database.execSQL("ALTER TABLE desired_items ADD COLUMN description TEXT")
+                database.execSQL("ALTER TABLE desired_items ADD COLUMN extra_json TEXT")
+            }
+        }
+        val ALL_MIGRATIONS_68 = ALL_MIGRATIONS_67 + MIGRATION_67_68
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

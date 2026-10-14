@@ -1,0 +1,42 @@
+package com.lucasdss.ftpmusic.app.ui.search
+
+/**
+ * Shared Discover / Desired catalog-add hit models (ADR-0130, ADR-0140).
+ * Used by Search Discover and Favorites Desired “Add from catalog”.
+ */
+data class DiscoverArtistHit(
+    val name: String,
+    val mbid: String? = null,
+    val deezerId: String? = null,
+    /** MusicBrainz disambiguation — primary short description when present. */
+    val disambiguation: String? = null,
+    val source: String = "musicbrainz",
+    val inLibrary: Boolean = false,
+    val localArtistId: String? = null,
+    val listenCount: Long? = null,
+    /** Deezer / Last.fm thumb URL when available. */
+    val imageUrl: String? = null,
+)
+
+data class DiscoverTrackHit(
+    val title: String,
+    val artistName: String? = null,
+    val albumName: String? = null,
+    val mbid: String? = null,
+    val deezerId: String? = null,
+    val inLibrary: Boolean = false,
+    val localTrackId: String? = null,
+    val listenCount: Long? = null,
+    val imageUrl: String? = null,
+)
+
+data class DiscoverAlbumHit(
+    val title: String,
+    val artistName: String? = null,
+    val mbid: String? = null,
+    val deezerId: String? = null,
+    val source: String = "deezer",
+    val inLibrary: Boolean = false,
+    val localAlbumId: String? = null,
+    val imageUrl: String? = null,
+)

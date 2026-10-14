@@ -628,6 +628,14 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 67 to 68 adds desired enrichment columns`() {
+        run(AppDatabase.MIGRATION_67_68)
+        verify { db.execSQL(match { it.contains("desired_items") && it.contains("image_url") }) }
+        verify { db.execSQL(match { it.contains("desired_items") && it.contains("description") }) }
+        verify { db.execSQL(match { it.contains("desired_items") && it.contains("extra_json") }) }
+    }
+
+    @Test
     fun `migration chain 64 to 67 runs additive upgrades`() {
         run(AppDatabase.MIGRATION_64_65)
         run(AppDatabase.MIGRATION_65_66)
@@ -669,6 +677,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(65, AppDatabase.ALL_MIGRATIONS_65.last().endVersion)
         assertEquals(66, AppDatabase.ALL_MIGRATIONS_66.last().endVersion)
         assertEquals(67, AppDatabase.ALL_MIGRATIONS_67.last().endVersion)
+        assertEquals(68, AppDatabase.ALL_MIGRATIONS_68.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -700,8 +709,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_62, AppDatabase.ALL_MIGRATIONS_63,
             AppDatabase.ALL_MIGRATIONS_64, AppDatabase.ALL_MIGRATIONS_65,
             AppDatabase.ALL_MIGRATIONS_66, AppDatabase.ALL_MIGRATIONS_67,
+            AppDatabase.ALL_MIGRATIONS_68,
         )
-        assertEquals(58, all.size)
+        assertEquals(59, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

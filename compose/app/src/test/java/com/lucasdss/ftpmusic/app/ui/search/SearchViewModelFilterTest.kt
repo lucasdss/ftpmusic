@@ -55,7 +55,8 @@ class SearchViewModelFilterTest {
                 mockk(relaxed = true), // listenBrainz
                 mockk(relaxed = true), // desiredRepository
                 mockk(relaxed = true), // lyricsCache
-                mockk(relaxed = true), // favoriteRepository
+                mockk(relaxed = true), // favoriteRepository,
+                mockk(relaxed = true), // discoverLibraryResolver
             )
     }
 

@@ -27,7 +27,7 @@ Favorites tab chips: **Liked | Disliked | Desired**.
 
 ## Storage
 
-`desired_items` (DB v64):
+`desired_items` (DB v64; enrichment columns v68 / ADR-0140):
 
 - `id` UUID PK
 - `entity_type` ARTIST | ALBUM | TRACK
@@ -35,6 +35,8 @@ Favorites tab chips: **Liked | Disliked | Desired**.
 - `musicbrainz_id?`, `deezer_id?`
 - `source` musicbrainz | lastfm | deezer | manual | library
 - `desired_at`, `matched_local_id?`, `note?`
+- `image_url?`, `description?` (MB disambiguation / short text at add)
+- `extra_json?` (e.g. listenCount for backend)
 
 ### Identity / upsert (cross-key merge)
 
@@ -72,7 +74,10 @@ User removes manually — no auto-delete.
   `filterQuery` — hide the field so it is not a fake filter)
 - Desired filter searches the full local set (Room LIKE via `search`)
 - Catalog add debounced ≥300ms; offline → short tip, no network calls
+- Catalog rows: thumb, In library / disambiguation / Not in library · source;
+  Add hidden when already in library (parity with Search Discover)
 - Sections: Tracks → Artists → Albums
+- Saved rows show thumb + description when persisted
 - Remove clears row
 - Empty: “Nothing desired yet”
 
@@ -80,7 +85,11 @@ User removes manually — no auto-delete.
 
 Toolbar Share on Desired mode → `ACTION_SEND` `text/plain` chooser.
 
-Format:
+Body is versioned JSON (`schema: "ftpmusic.desired.v2"`, ADR-0140):
+
+- `count`, `capturedAt`, `items[]` with full persisted fields (ids, imageUrl,
+  description, matchedLocalId, extra, …)
+- `textSummary` — human line format for choosers that show raw text:
 
 ```
 ftpmusic desired list
@@ -92,7 +101,8 @@ capturedAt=<ISO>
 [ARTIST] Name …
 ```
 
-No upload. Same Intent pattern as diagnostics (ADR 0048).
+No upload. Same Intent pattern as diagnostics (ADR 0048). Lidarr metadata API
+out of scope.
 
 ## Discover providers (ADR 0130)
 

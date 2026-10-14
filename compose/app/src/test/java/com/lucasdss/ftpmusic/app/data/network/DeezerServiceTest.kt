@@ -16,17 +16,19 @@ class DeezerServiceTest {
     @Test
     fun `parseHits maps artist data`() {
         val body = """
-            {"data":[{"id":27,"name":"Daft Punk","type":"artist"}],"total":1}
+            {"data":[{"id":27,"name":"Daft Punk","type":"artist","picture_medium":"https://cdn/a.jpg"}],"total":1}
         """.trimIndent()
         val hits = service.parseHits(body) { obj ->
             DeezerService.ArtistHit(
                 id = obj.optLong("id").toString(),
                 name = obj.optString("name"),
+                imageUrl = service.optImageUrl(obj, "picture_medium", "picture"),
             ).takeIf { it.name.isNotBlank() }
         }
         assertEquals(1, hits.size)
         assertEquals("27", hits[0].id)
         assertEquals("Daft Punk", hits[0].name)
+        assertEquals("https://cdn/a.jpg", hits[0].imageUrl)
     }
 
     @Test(expected = DeezerService.QuotaException::class)

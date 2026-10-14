@@ -1529,7 +1529,7 @@ fun SearchScreen(
                                 .heightIn(min = 48.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            SearchCoverThumb(null, hit.name, circle = true)
+                            SearchCoverThumb(hit.imageUrl, hit.name, circle = true)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
@@ -1595,7 +1595,7 @@ fun SearchScreen(
                                 .heightIn(min = 48.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            SearchCoverThumb(null, hit.title, circle = false)
+                            SearchCoverThumb(hit.imageUrl, hit.title, circle = false)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
@@ -1673,7 +1673,7 @@ fun SearchScreen(
                                 .heightIn(min = 48.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            SearchCoverThumb(null, hit.title, circle = false)
+                            SearchCoverThumb(hit.imageUrl, hit.title, circle = false)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
@@ -1807,31 +1807,6 @@ private fun highlightQuery(text: String, query: String): androidx.compose.ui.tex
             append(text.substring(idx, idx + q.length))
         }
         append(text.substring(idx + q.length))
-    }
-}
-
-@Composable
-private fun SearchCoverThumb(url: String?, contentDesc: String, circle: Boolean = false) {
-    val shape = if (circle) CircleShape else RoundedCornerShape(6.dp)
-    if (url != null) {
-        AsyncImage(
-            model = url,
-            contentDescription = contentDesc,
-            modifier = Modifier.size(56.dp).clip(shape),
-            contentScale = ContentScale.Crop,
-        )
-    } else {
-        Box(
-            Modifier.size(56.dp).clip(shape).background(Color(0xFF1E1E1E)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                if (circle) Icons.Default.Person else Icons.Default.MusicNote,
-                null,
-                tint = NavUnselected,
-                modifier = Modifier.size(22.dp),
-            )
-        }
     }
 }
 

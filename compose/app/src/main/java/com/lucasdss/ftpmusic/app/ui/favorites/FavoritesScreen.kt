@@ -94,6 +94,7 @@ class FavoritesViewModel @Inject constructor(
     private val deezerService: com.lucasdss.ftpmusic.app.data.network.DeezerService,
     private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
     private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
+    private val discoverLibraryResolver: com.lucasdss.ftpmusic.app.ui.search.DiscoverLibraryResolver,
     private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
     private val storage: SecureStorage,
     private val playbackManager: PlaybackManager,
@@ -353,43 +354,84 @@ class FavoritesViewModel @Inject constructor(
                 }
                 val artists = LinkedHashMap<String, DiscoverArtistHit>()
                 for (a in mbArtists) {
+                    val local = discoverLibraryResolver.resolveArtist(a.mbid, a.name)
                     artists[a.name.lowercase()] = DiscoverArtistHit(
                         name = a.name,
                         mbid = a.mbid,
+                        disambiguation = a.disambiguation,
                         source = "musicbrainz",
+                        inLibrary = local != null,
+                        localArtistId = local?.id,
                     )
                 }
                 for (a in lastFm) {
-                    artists.putIfAbsent(
-                        a.name.lowercase(),
-                        DiscoverArtistHit(name = a.name, mbid = a.mbid, source = "lastfm"),
+                    val key = a.name.lowercase()
+                    val existing = artists[key]
+                    if (existing != null) {
+                        if (existing.imageUrl.isNullOrBlank() && !a.imageUrl.isNullOrBlank()) {
+                            artists[key] = existing.copy(imageUrl = a.imageUrl)
+                        }
+                        continue
+                    }
+                    val local = discoverLibraryResolver.resolveArtist(a.mbid, a.name)
+                    artists[key] = DiscoverArtistHit(
+                        name = a.name,
+                        mbid = a.mbid,
+                        source = "lastfm",
+                        inLibrary = local != null,
+                        localArtistId = local?.id,
+                        imageUrl = a.imageUrl,
                     )
                 }
                 for (a in dzArtists) {
                     val key = a.name.lowercase()
                     val existing = artists[key]
                     if (existing != null) {
-                        artists[key] = existing.copy(deezerId = a.id)
+                        var merged = existing
+                        if (merged.deezerId.isNullOrBlank()) {
+                            merged = merged.copy(deezerId = a.id)
+                        }
+                        if (merged.imageUrl.isNullOrBlank() && !a.imageUrl.isNullOrBlank()) {
+                            merged = merged.copy(imageUrl = a.imageUrl)
+                        }
+                        artists[key] = merged
                     } else {
-                        artists[key] = DiscoverArtistHit(name = a.name, deezerId = a.id, source = "deezer")
+                        val local = discoverLibraryResolver.resolveArtist(null, a.name)
+                        artists[key] = DiscoverArtistHit(
+                            name = a.name,
+                            deezerId = a.id,
+                            source = "deezer",
+                            inLibrary = local != null,
+                            localArtistId = local?.id,
+                            imageUrl = a.imageUrl,
+                        )
                     }
                 }
                 if (_state.value.filterQuery.trim() != q) return@launch
                 _state.value = _state.value.copy(
                     catalogArtists = artists.values.take(6).toList(),
                     catalogAlbums = dzAlbums.map {
+                        val local = discoverLibraryResolver.resolveAlbum(it.title, it.artistName)
                         DiscoverAlbumHit(
                             title = it.title,
                             artistName = it.artistName,
                             deezerId = it.id,
                             source = "deezer",
+                            inLibrary = local != null,
+                            localAlbumId = local?.id,
+                            imageUrl = it.imageUrl,
                         )
                     },
                     catalogTracks = dzTracks.map {
+                        val local = discoverLibraryResolver.resolveTrack(null, it.title, it.artistName)
                         DiscoverTrackHit(
                             title = it.title,
                             artistName = it.artistName,
+                            albumName = it.albumName,
                             deezerId = it.id,
+                            inLibrary = local != null,
+                            localTrackId = local?.id,
+                            imageUrl = it.imageUrl,
                         )
                     },
                     isCatalogLoading = false,
@@ -402,6 +444,7 @@ class FavoritesViewModel @Inject constructor(
     }
 
     fun addCatalogArtistDesired(hit: DiscoverArtistHit) {
+        if (hit.inLibrary) return
         viewModelScope.launch {
             desiredRepository.addDesired(
                 entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
@@ -409,12 +452,16 @@ class FavoritesViewModel @Inject constructor(
                 musicbrainzId = hit.mbid,
                 deezerId = hit.deezerId,
                 source = hit.source,
+                imageUrl = hit.imageUrl,
+                description = hit.disambiguation,
+                matchedLocalId = hit.localArtistId,
             )
             refreshDesiredList()
         }
     }
 
     fun addCatalogAlbumDesired(hit: DiscoverAlbumHit) {
+        if (hit.inLibrary) return
         viewModelScope.launch {
             desiredRepository.addDesired(
                 entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ALBUM,
@@ -423,17 +470,21 @@ class FavoritesViewModel @Inject constructor(
                 musicbrainzId = hit.mbid,
                 deezerId = hit.deezerId,
                 source = hit.source,
+                imageUrl = hit.imageUrl,
+                matchedLocalId = hit.localAlbumId,
             )
             refreshDesiredList()
         }
     }
 
     fun addCatalogTrackDesired(hit: DiscoverTrackHit) {
+        if (hit.inLibrary) return
         viewModelScope.launch {
             desiredRepository.addDesired(
                 entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_TRACK,
                 title = hit.title,
                 artistName = hit.artistName,
+                albumName = hit.albumName,
                 musicbrainzId = hit.mbid,
                 deezerId = hit.deezerId,
                 source = when {
@@ -441,6 +492,8 @@ class FavoritesViewModel @Inject constructor(
                     !hit.deezerId.isNullOrBlank() -> "deezer"
                     else -> "manual"
                 },
+                imageUrl = hit.imageUrl,
+                matchedLocalId = hit.localTrackId,
             )
             refreshDesiredList()
         }
@@ -1131,9 +1184,17 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
                 }
             }
             items(state.catalogArtists, key = { "cat-ar-${it.mbid ?: it.deezerId ?: it.name}" }) { hit ->
+                val sub = when {
+                    hit.inLibrary -> "In library"
+                    !hit.disambiguation.isNullOrBlank() -> hit.disambiguation
+                    else -> "Not in library · ${hit.source}"
+                }
                 CatalogAddRow(
                     title = hit.name,
-                    subtitle = "Artist · ${hit.source}",
+                    subtitle = sub,
+                    imageUrl = hit.imageUrl,
+                    circle = true,
+                    showAdd = !hit.inLibrary,
                     onAdd = { viewModel.addCatalogArtistDesired(hit) },
                 )
             }
@@ -1143,7 +1204,15 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
             ) { hit ->
                 CatalogAddRow(
                     title = hit.title,
-                    subtitle = listOfNotNull(hit.artistName, "Album · ${hit.source}").joinToString(" · "),
+                    subtitle = buildString {
+                        hit.artistName?.let {
+                            append(it)
+                            append(" · ")
+                        }
+                        append(if (hit.inLibrary) "In library" else "Not in library · ${hit.source}")
+                    },
+                    imageUrl = hit.imageUrl,
+                    showAdd = !hit.inLibrary,
                     onAdd = { viewModel.addCatalogAlbumDesired(hit) },
                 )
             }
@@ -1153,7 +1222,15 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
             ) { hit ->
                 CatalogAddRow(
                     title = hit.title,
-                    subtitle = listOfNotNull(hit.artistName, "Track").joinToString(" · "),
+                    subtitle = buildString {
+                        hit.artistName?.let {
+                            append(it)
+                            append(" · ")
+                        }
+                        append(if (hit.inLibrary) "In library" else "Not in library")
+                    },
+                    imageUrl = hit.imageUrl,
+                    showAdd = !hit.inLibrary,
                     onAdd = { viewModel.addCatalogTrackDesired(hit) },
                 )
             }
@@ -1171,6 +1248,12 @@ private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
             .testTag("desired_item_${item.id}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        com.lucasdss.ftpmusic.app.ui.search.SearchCoverThumb(
+            url = item.imageUrl,
+            contentDesc = item.title,
+            circle = item.entityType == com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+        )
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 item.title,
@@ -1182,16 +1265,31 @@ private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
             )
             Text(
                 buildString {
-                    item.artistName?.let {
-                        append(it)
-                        append(" · ")
+                    val desc = item.description?.takeIf { it.isNotBlank() }
+                    when {
+                        !item.matchedLocalId.isNullOrBlank() -> {
+                            item.artistName?.let {
+                                append(it)
+                                append(" · ")
+                            }
+                            append("In library")
+                        }
+
+                        desc != null -> append(desc)
+
+                        else -> {
+                            item.artistName?.let {
+                                append(it)
+                                append(" · ")
+                            }
+                            append(item.source)
+                        }
                     }
-                    append(item.source)
-                    if (!item.matchedLocalId.isNullOrBlank()) append(" · In library")
                 },
                 color = Color(0xFF888888),
                 fontSize = textLabelM(),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         IconButton(onClick = onRemove) {
@@ -1205,7 +1303,14 @@ private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
 }
 
 @Composable
-private fun CatalogAddRow(title: String, subtitle: String, onAdd: () -> Unit) {
+private fun CatalogAddRow(
+    title: String,
+    subtitle: String,
+    imageUrl: String? = null,
+    circle: Boolean = false,
+    showAdd: Boolean = true,
+    onAdd: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -1213,6 +1318,12 @@ private fun CatalogAddRow(title: String, subtitle: String, onAdd: () -> Unit) {
             .heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        com.lucasdss.ftpmusic.app.ui.search.SearchCoverThumb(
+            url = imageUrl,
+            contentDesc = title,
+            circle = circle,
+        )
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
@@ -1222,10 +1333,18 @@ private fun CatalogAddRow(title: String, subtitle: String, onAdd: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(subtitle, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
+            Text(
+                subtitle,
+                color = Color(0xFF888888),
+                fontSize = textLabelM(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        TextButton(onClick = onAdd) {
-            Text("Add", color = BrandTeal, fontWeight = FontWeight.SemiBold)
+        if (showAdd) {
+            TextButton(onClick = onAdd) {
+                Text("Add", color = BrandTeal, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
     HorizontalDivider(

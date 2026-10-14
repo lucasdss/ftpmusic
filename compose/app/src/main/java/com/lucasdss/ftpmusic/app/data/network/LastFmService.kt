@@ -33,7 +33,12 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
     data class SimilarArtist(val name: String, val mbid: String?, val match: Double?)
 
     /** Live Discover / tag browse hit (Phase-5). */
-    data class SearchArtistHit(val name: String, val mbid: String?, val listeners: Long? = null)
+    data class SearchArtistHit(
+        val name: String,
+        val mbid: String?,
+        val listeners: Long? = null,
+        val imageUrl: String? = null,
+    )
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -138,7 +143,7 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
                 val name = a.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val mbid = a.optString("mbid").takeIf { it.isNotBlank() }
                 val listeners = a.optString("listeners").toLongOrNull()
-                SearchArtistHit(name, mbid, listeners)
+                SearchArtistHit(name, mbid, listeners, largestImageUrl(a.optJSONArray("image")))
             }
         } catch (_: Exception) {
             emptyList()
@@ -154,11 +159,29 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
                 val a = artists.getJSONObject(i)
                 val name = a.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val mbid = a.optString("mbid").takeIf { it.isNotBlank() }
-                SearchArtistHit(name, mbid, null)
+                SearchArtistHit(name, mbid, null, largestImageUrl(a.optJSONArray("image")))
             }
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    /** Prefer extralarge → large → medium → small; skip empty/#text placeholders. */
+    internal fun largestImageUrl(images: org.json.JSONArray?): String? {
+        if (images == null || images.length() == 0) return null
+        val bySize = linkedMapOf<String, String>()
+        for (i in 0 until images.length()) {
+            val img = images.optJSONObject(i) ?: continue
+            val url = img.optString("#text").takeIf { it.isNotBlank() } ?: continue
+            val size = img.optString("size").ifBlank { "unknown" }
+            bySize[size] = url
+        }
+        return bySize["extralarge"]
+            ?: bySize["mega"]
+            ?: bySize["large"]
+            ?: bySize["medium"]
+            ?: bySize["small"]
+            ?: bySize.values.firstOrNull()
     }
 
     internal fun parseTopTags(json: String, limit: Int = 8): List<String> {

@@ -31,6 +31,7 @@ class DesiredRepository @Inject constructor(
         const val TYPE_ARTIST = "ARTIST"
         const val TYPE_ALBUM = "ALBUM"
         const val TYPE_TRACK = "TRACK"
+        const val SHARE_SCHEMA = "ftpmusic.desired.v2"
 
         fun identityKey(
             entityType: String,
@@ -167,6 +168,10 @@ class DesiredRepository @Inject constructor(
         deezerId: String? = null,
         source: String = "manual",
         note: String? = null,
+        imageUrl: String? = null,
+        description: String? = null,
+        extraJson: String? = null,
+        matchedLocalId: String? = null,
     ): DesiredItemEntity = writeMutex.withLock {
         val type = entityType.uppercase()
         val cleanTitle = title.trim()
@@ -174,6 +179,10 @@ class DesiredRepository @Inject constructor(
         val cleanAlbum = albumName?.trim()?.takeIf { it.isNotEmpty() }
         val cleanMbid = musicbrainzId?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
         val cleanDz = deezerId?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanImage = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanDesc = description?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanExtra = extraJson?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanMatched = matchedLocalId?.trim()?.takeIf { it.isNotEmpty() }
 
         val matches = collectMatches(type, cleanTitle, cleanArtist, cleanMbid, cleanDz)
         val strongestKey = identityKey(type, cleanTitle, cleanArtist, cleanMbid, cleanDz)
@@ -190,7 +199,11 @@ class DesiredRepository @Inject constructor(
                 deezerId = cleanDz,
                 source = source,
                 desiredAt = System.currentTimeMillis(),
+                matchedLocalId = cleanMatched,
                 note = note,
+                imageUrl = cleanImage,
+                description = cleanDesc,
+                extraJson = cleanExtra,
             )
             desiredItemDao.mergeReplace(entity, emptyList())
             return@withLock entity
@@ -217,8 +230,11 @@ class DesiredRepository @Inject constructor(
             deezerId = mergedDz,
             source = matches.firstOrNull { it.source != "manual" }?.source ?: source,
             desiredAt = matches.minOf { it.desiredAt },
-            matchedLocalId = matches.firstNotNullOfOrNull { it.matchedLocalId },
+            matchedLocalId = cleanMatched ?: matches.firstNotNullOfOrNull { it.matchedLocalId },
             note = note ?: matches.firstNotNullOfOrNull { it.note },
+            imageUrl = cleanImage ?: matches.firstNotNullOfOrNull { it.imageUrl },
+            description = cleanDesc ?: matches.firstNotNullOfOrNull { it.description },
+            extraJson = cleanExtra ?: matches.firstNotNullOfOrNull { it.extraJson },
         )
         val losers = matches.map { it.id }.filter { it != keepId }
         desiredItemDao.mergeReplace(winner, losers)
@@ -281,7 +297,8 @@ class DesiredRepository @Inject constructor(
         }
         .distinctUntilChanged()
 
-    suspend fun snapshotShareText(): String = buildShareText(desiredItemDao.getAll())
+    /** Share payload: versioned JSON (ADR-0140) for backend + human textSummary. */
+    suspend fun snapshotShareText(): String = buildShareJson(desiredItemDao.getAll())
 
     fun buildShareText(items: List<DesiredItemEntity>): String {
         val sb = StringBuilder()
@@ -298,10 +315,52 @@ class DesiredRepository @Inject constructor(
                 item.musicbrainzId?.let { add("mbid=$it") }
                 item.deezerId?.let { add("deezer=$it") }
                 item.matchedLocalId?.let { add("inLibrary=$it") }
+                item.description?.takeIf { it.isNotBlank() }?.let {
+                    add("desc=${sanitizeShareField(it)}")
+                }
             }.joinToString(" ")
             sb.appendLine("[${item.entityType}] $title$artist ($ids)")
         }
         return sb.toString().trimEnd()
+    }
+
+    fun buildShareJson(items: List<DesiredItemEntity>): String {
+        val sorted = items.sortedByDescending { it.desiredAt }
+        val root = org.json.JSONObject()
+        root.put("schema", SHARE_SCHEMA)
+        root.put("count", sorted.size)
+        root.put("capturedAt", Instant.now().toString())
+        root.put("textSummary", buildShareText(sorted))
+        val arr = org.json.JSONArray()
+        for (item in sorted) {
+            val obj = org.json.JSONObject()
+            obj.put("id", item.id)
+            obj.put("identityKey", item.identityKey)
+            obj.put("entityType", item.entityType)
+            obj.put("title", item.title)
+            obj.put("artistName", item.artistName ?: org.json.JSONObject.NULL)
+            obj.put("albumName", item.albumName ?: org.json.JSONObject.NULL)
+            obj.put("musicbrainzId", item.musicbrainzId ?: org.json.JSONObject.NULL)
+            obj.put("deezerId", item.deezerId ?: org.json.JSONObject.NULL)
+            obj.put("source", item.source)
+            obj.put("desiredAt", item.desiredAt)
+            obj.put("matchedLocalId", item.matchedLocalId ?: org.json.JSONObject.NULL)
+            obj.put("note", item.note ?: org.json.JSONObject.NULL)
+            obj.put("imageUrl", item.imageUrl ?: org.json.JSONObject.NULL)
+            obj.put("description", item.description ?: org.json.JSONObject.NULL)
+            if (!item.extraJson.isNullOrBlank()) {
+                try {
+                    obj.put("extra", org.json.JSONObject(item.extraJson))
+                } catch (_: Exception) {
+                    obj.put("extraJson", item.extraJson)
+                }
+            } else {
+                obj.put("extra", org.json.JSONObject.NULL)
+            }
+            arr.put(obj)
+        }
+        root.put("items", arr)
+        return root.toString()
     }
 
     private suspend fun collectMatches(
