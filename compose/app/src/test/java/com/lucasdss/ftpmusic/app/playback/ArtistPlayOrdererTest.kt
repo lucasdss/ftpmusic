@@ -27,18 +27,7 @@ class ArtistPlayOrdererTest {
 
     @Test
     fun `empty list returns empty`() {
-        assertTrue(ArtistPlayOrderer.order(emptyList(), ArtistPlayOrder.SHUFFLE).isEmpty())
-    }
-
-    @Test
-    fun `title asc sorts by title then id`() {
-        val tracks = listOf(
-            track("2", "Beta"),
-            track("1", "Alpha"),
-            track("3", "alpha"), // same lowercase as Alpha → id tiebreak after case fold
-        )
-        val ordered = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.TITLE_ASC)
-        assertEquals(listOf("1", "3", "2"), ordered.map { it.id })
+        assertTrue(ArtistPlayOrderer.order(emptyList(), ArtistPlayOrder.SHUFFLE_ALBUMS).isEmpty())
     }
 
     @Test
@@ -95,20 +84,79 @@ class ArtistPlayOrdererTest {
     }
 
     @Test
-    fun `shuffle permutes with seeded random`() {
-        val tracks = (1..20).map { track("t$it", "T$it") }
-        val a = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE, random = Random(1))
-        val b = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE, random = Random(1))
-        val c = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE, random = Random(2))
+    fun `album name asc and desc order album blocks`() {
+        val tracks = listOf(
+            track("z2", "B", album = "Zebra", albumId = "z", trackNum = 2),
+            track("z1", "A", album = "Zebra", albumId = "z", trackNum = 1),
+            track("a1", "X", album = "Alpha", albumId = "a", trackNum = 1),
+        )
+        val asc = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.ALBUM_NAME_ASC)
+        assertEquals(listOf("a1", "z1", "z2"), asc.map { it.id })
+        val desc = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.ALBUM_NAME_DESC)
+        assertEquals(listOf("z1", "z2", "a1"), desc.map { it.id })
+    }
+
+    @Test
+    fun `shuffle albums keeps within-album track order`() {
+        val tracks = listOf(
+            track("a2", "A2", album = "A", albumId = "a", disc = 1, trackNum = 2),
+            track("a1", "A1", album = "A", albumId = "a", disc = 1, trackNum = 1),
+            track("b2", "B2", album = "B", albumId = "b", disc = 1, trackNum = 2),
+            track("b1", "B1", album = "B", albumId = "b", disc = 1, trackNum = 1),
+        )
+        val ordered = ArtistPlayOrderer.order(
+            tracks,
+            ArtistPlayOrder.SHUFFLE_ALBUMS,
+            random = Random(42),
+        )
+        val aBlock = ordered.filter { it.albumId == "a" }.map { it.id }
+        val bBlock = ordered.filter { it.albumId == "b" }.map { it.id }
+        assertEquals(listOf("a1", "a2"), aBlock)
+        assertEquals(listOf("b1", "b2"), bBlock)
+        // Album blocks stay contiguous
+        val ids = ordered.map { it.id }
+        val aStart = ids.indexOf("a1")
+        val bStart = ids.indexOf("b1")
+        assertEquals(listOf("a1", "a2"), ids.subList(aStart, aStart + 2))
+        assertEquals(listOf("b1", "b2"), ids.subList(bStart, bStart + 2))
+    }
+
+    @Test
+    fun `shuffle albums permutes album blocks with seeded random`() {
+        val tracks = listOf(
+            track("a1", "A1", album = "A", albumId = "a", trackNum = 1),
+            track("b1", "B1", album = "B", albumId = "b", trackNum = 1),
+            track("c1", "C1", album = "C", albumId = "c", trackNum = 1),
+            track("d1", "D1", album = "D", albumId = "d", trackNum = 1),
+            track("e1", "E1", album = "E", albumId = "e", trackNum = 1),
+        )
+        val a = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE_ALBUMS, random = Random(1))
+        val b = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE_ALBUMS, random = Random(1))
+        val c = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE_ALBUMS, random = Random(2))
         assertEquals(a.map { it.id }, b.map { it.id })
         assertNotEquals(a.map { it.id }, c.map { it.id })
         assertEquals(tracks.map { it.id }.toSet(), a.map { it.id }.toSet())
     }
 
     @Test
-    fun `fromKey defaults to shuffle`() {
-        assertEquals(ArtistPlayOrder.SHUFFLE, ArtistPlayOrder.fromKey(null))
-        assertEquals(ArtistPlayOrder.SHUFFLE, ArtistPlayOrder.fromKey("bogus"))
-        assertEquals(ArtistPlayOrder.TITLE_ASC, ArtistPlayOrder.fromKey("title_asc"))
+    fun `shuffle songs permutes with seeded random`() {
+        val tracks = (1..20).map { track("t$it", "T$it") }
+        val a = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE_SONGS, random = Random(1))
+        val b = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE_SONGS, random = Random(1))
+        val c = ArtistPlayOrderer.order(tracks, ArtistPlayOrder.SHUFFLE_SONGS, random = Random(2))
+        assertEquals(a.map { it.id }, b.map { it.id })
+        assertNotEquals(a.map { it.id }, c.map { it.id })
+        assertEquals(tracks.map { it.id }.toSet(), a.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `fromKey defaults to shuffle albums and migrates legacy title_asc`() {
+        assertEquals(ArtistPlayOrder.SHUFFLE_ALBUMS, ArtistPlayOrder.fromKey(null))
+        assertEquals(ArtistPlayOrder.SHUFFLE_ALBUMS, ArtistPlayOrder.fromKey("bogus"))
+        assertEquals(ArtistPlayOrder.SHUFFLE_SONGS, ArtistPlayOrder.fromKey("shuffle"))
+        assertEquals(ArtistPlayOrder.ALBUM_NAME_ASC, ArtistPlayOrder.fromKey("title_asc"))
+        assertEquals(ArtistPlayOrder.ALBUM_NAME_DESC, ArtistPlayOrder.fromKey("album_name_desc"))
+        assertTrue(ArtistPlayOrder.ALBUM_YEAR_ASC.withAscending(false) == ArtistPlayOrder.ALBUM_YEAR_DESC)
+        assertTrue(ArtistPlayOrder.ALBUM_NAME_DESC.withAscending(true) == ArtistPlayOrder.ALBUM_NAME_ASC)
     }
 }

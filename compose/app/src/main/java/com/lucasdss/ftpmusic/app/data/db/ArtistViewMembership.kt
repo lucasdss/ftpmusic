@@ -1,15 +1,14 @@
 package com.lucasdss.ftpmusic.app.data.db
 
 /**
- * Single definition of “what belongs on this artist detail page” (ADR-0142).
+ * Artist detail membership (ADR-0142 albums / ADR-0145 tracks).
  *
- * Albums match the three-way merge used by artist detail:
- * album `artist_id`, album artist name, or any track on the album tagged with this artist.
+ * **Albums tab** — three-way merge: album `artist_id`, album artist name, or any
+ * `cached_album_tracks` row tagged with this artist (so VA/OST albums still appear).
  *
- * Tracks = every row in `tracks` that either:
- * - has `artist_id` = this artist, or
- * - lives on an album in that merged set
- *   (so album-artist / name / OST attribution quirks stay consistent with the Albums tab).
+ * **Songs / Play All / Download All / catalog count** — own albums contribute every
+ * track; foreign albums contribute only rows attributed to this artist (track
+ * `artist_id` or matching `cached_album_tracks.id`). See [TrackDao.getAllTracksForArtistView].
  */
 object ArtistViewMembership {
 

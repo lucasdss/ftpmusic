@@ -1148,4 +1148,94 @@ class DaosRoomTest {
             page2.map { it.id },
         )
     }
+
+    // ── Artist-view membership split (ADR-0145) ───────────────────────────
+
+    @Test
+    fun `getAllTracksForArtistView includes guest on own album excludes coartist on VA`() = runBlocking {
+        val tracks = db.trackDao()
+        val meta = db.cachedMetadataDao()
+
+        meta.upsertAlbums(
+            listOf(
+                CachedAlbumEntity(
+                    id = "own",
+                    name = "Studio",
+                    artist = "Caetano",
+                    artistId = "ar-cae",
+                ),
+                CachedAlbumEntity(
+                    id = "va",
+                    name = "OST",
+                    artist = "Original Soundtrack",
+                    artistId = "ar-ost",
+                ),
+            ),
+        )
+        meta.upsertAlbumTracks(
+            listOf(
+                CachedAlbumTrackEntity(
+                    id = "cae-own",
+                    albumId = "own",
+                    title = "Own Song",
+                    artistId = "ar-cae",
+                ),
+                CachedAlbumTrackEntity(
+                    id = "guest-own",
+                    albumId = "own",
+                    title = "Guest Song",
+                    artistId = "ar-guest",
+                ),
+                CachedAlbumTrackEntity(
+                    id = "cae-va",
+                    albumId = "va",
+                    title = "Caetano VA",
+                    artistId = "ar-cae",
+                ),
+                CachedAlbumTrackEntity(
+                    id = "other-va",
+                    albumId = "va",
+                    title = "Other VA",
+                    artistId = "ar-other",
+                ),
+            ),
+        )
+        tracks.upsert(
+            TrackEntity(
+                id = "cae-own",
+                title = "Own Song",
+                albumId = "own",
+                artistId = "ar-cae",
+            ),
+        )
+        tracks.upsert(
+            TrackEntity(
+                id = "guest-own",
+                title = "Guest Song",
+                albumId = "own",
+                artistId = "ar-guest",
+            ),
+        )
+        tracks.upsert(
+            TrackEntity(
+                id = "cae-va",
+                title = "Caetano VA",
+                albumId = "va",
+                artistId = "ar-cae",
+            ),
+        )
+        tracks.upsert(
+            TrackEntity(
+                id = "other-va",
+                title = "Other VA",
+                albumId = "va",
+                artistId = "ar-other",
+            ),
+        )
+
+        val ids = tracks.getAllTracksForArtistView("ar-cae", "Caetano").map { it.id }.toSet()
+        assertEquals(setOf("cae-own", "guest-own", "cae-va"), ids)
+        assertFalse(ids.contains("other-va"))
+        assertEquals(3, tracks.countTracksForArtistView("ar-cae", "Caetano"))
+    }
 }

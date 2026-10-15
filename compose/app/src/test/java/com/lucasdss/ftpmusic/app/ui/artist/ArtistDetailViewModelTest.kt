@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui.artist
 
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
+import com.lucasdss.ftpmusic.app.data.db.AlbumYearRow
 import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -420,7 +421,7 @@ class ArtistDetailViewModelTest {
     }
 
     @Test
-    fun `playAll default shuffle uses full catalog via tryShuffleContext`() = runTest(testDispatcher) {
+    fun `playAll default shuffle albums uses full catalog via tryStartContext`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns null
@@ -438,7 +439,7 @@ class ArtistDetailViewModelTest {
         coEvery { trackDao.countTracksForArtistView("ar-1", "Test Artist") } returns 3
         coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
         every {
-            playbackManager.tryShuffleContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
+            playbackManager.tryStartContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
         } returns true
 
         viewModel.loadArtist("ar-1")
@@ -448,7 +449,7 @@ class ArtistDetailViewModelTest {
         advanceUntilIdle()
 
         verify {
-            playbackManager.tryShuffleContext(
+            playbackManager.tryStartContext(
                 match { it.size == 3 },
                 match { it.size == 3 },
                 sourceType = "artist",
@@ -456,24 +457,32 @@ class ArtistDetailViewModelTest {
                 sourceName = "Test Artist",
             )
         }
+        verify(exactly = 0) {
+            playbackManager.tryShuffleContext(any(), any(), any(), any(), any())
+        }
         coVerify { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") }
     }
 
     @Test
-    fun `playAll title order uses tryStartContext with sorted catalog`() = runTest(testDispatcher) {
+    fun `playAll album year order uses tryStartContext with sorted catalog`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
-        every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns "title_asc"
+        every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns "album_year_asc"
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
         coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
-        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns listOf(trackEntity("t2", "Beta"))
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns listOf(
+            trackEntity("t2", "Beta").copy(albumId = "new", album = "New", trackNumber = 1),
+        )
         coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns listOf(
-            trackEntity("t2", "Beta"),
-            trackEntity("t1", "Alpha"),
+            trackEntity("t2", "Beta").copy(albumId = "new", album = "New", trackNumber = 1),
+            trackEntity("t1", "Alpha").copy(albumId = "old", album = "Old", trackNumber = 1),
         )
         coEvery { trackDao.countTracksForArtistView("ar-1", "Test Artist") } returns 2
-        coEvery { metadataDao.getAlbumYearRows(any()) } returns emptyList()
+        coEvery { metadataDao.getAlbumYearRows(any()) } returns listOf(
+            AlbumYearRow(id = "old", year = 1990),
+            AlbumYearRow(id = "new", year = 2020),
+        )
         every {
             playbackManager.tryStartContext(any(), any(), sourceType = "artist", sourceId = any(), sourceName = any())
         } returns true

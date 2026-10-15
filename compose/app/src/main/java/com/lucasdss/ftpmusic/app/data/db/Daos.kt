@@ -318,10 +318,12 @@ interface TrackDao {
     fun watchTracksByIds(trackIds: List<String>): Flow<List<TrackEntity>>
 
     /**
-     * Artist-detail track membership (ADR-0141 follow-up) — mirrors album merge:
-     * direct track artist_id, OR track on album by album artist_id / name,
-     * OR track on album that has any cached_album_tracks row for this artist.
-     * Pass empty [artistName] to skip the name branch.
+     * Artist Songs / Play All membership (ADR-0145) — split from Albums tab:
+     * - track `artist_id` = this artist, OR
+     * - track on an album owned by this artist (album `artist_id` / name) → whole album, OR
+     * - track row in `cached_album_tracks` attributed to this artist (foreign/VA/OST →
+     *   this artist's tracks only; join on track id, not album id).
+     * Pass empty [artistName] to skip the album-name branch.
      */
     @Query(
         """
@@ -335,7 +337,7 @@ interface TrackDao {
                OR (:artistName != '' AND ca.artist = :artistName)
             UNION
             SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
             WHERE cat.artist_id = :artistId
         )
         """,
@@ -354,7 +356,7 @@ interface TrackDao {
                OR (:artistName != '' AND ca.artist = :artistName)
             UNION
             SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
             WHERE cat.artist_id = :artistId
         )
         """,
@@ -373,7 +375,7 @@ interface TrackDao {
                OR (:artistName != '' AND ca.artist = :artistName)
             UNION
             SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
             WHERE cat.artist_id = :artistId
         )
         ORDER BY t.title ASC, t.id ASC LIMIT :limit
@@ -397,7 +399,7 @@ interface TrackDao {
                OR (:artistName != '' AND ca.artist = :artistName)
             UNION
             SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.album_id = cat.album_id
+            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
             WHERE cat.artist_id = :artistId
         )
         ORDER BY t.title ASC, t.id ASC LIMIT :limit

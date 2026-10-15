@@ -4,16 +4,16 @@ import com.lucasdss.ftpmusic.app.data.model.Track
 import kotlin.random.Random
 
 /**
- * Pure artist-catalog ordering for Play All (ADR-0141).
+ * Pure artist-catalog ordering for Play All (ADR-0141 / ADR-0145).
  *
- * Chronological: year → album name → disc → track → title → id.
- * Null years sort after dated albums; among nulls, album name A–Z.
+ * Album-aware modes group by album, sort tracks within each album by
+ * disc → track → title → id, then order (or shuffle) the album blocks.
  */
 object ArtistPlayOrderer {
 
     /**
      * @param albumYearById map of albumId → year (missing / null → unknown year)
-     * @param random used only for [ArtistPlayOrder.SHUFFLE] (inject for tests)
+     * @param random used for [ArtistPlayOrder.SHUFFLE_ALBUMS] and [ArtistPlayOrder.SHUFFLE_SONGS]
      */
     fun order(
         tracks: List<Track>,
@@ -23,20 +23,61 @@ object ArtistPlayOrderer {
     ): List<Track> {
         if (tracks.isEmpty()) return tracks
         return when (order) {
-            ArtistPlayOrder.SHUFFLE -> tracks.shuffled(random)
-            ArtistPlayOrder.TITLE_ASC -> tracks.sortedWith(titleComparator)
-            ArtistPlayOrder.ALBUM_YEAR_ASC -> tracks.sortedWith(albumYearComparator(albumYearById, ascending = true))
-            ArtistPlayOrder.ALBUM_YEAR_DESC -> tracks.sortedWith(albumYearComparator(albumYearById, ascending = false))
+            ArtistPlayOrder.SHUFFLE_SONGS -> tracks.shuffled(random)
+
+            ArtistPlayOrder.SHUFFLE_ALBUMS -> orderByAlbumGroups(tracks) { groups ->
+                groups.shuffled(random)
+            }
+
+            ArtistPlayOrder.ALBUM_YEAR_ASC -> orderByAlbumGroups(tracks) { groups ->
+                groups.sortedWith(albumGroupYearComparator(albumYearById, ascending = true))
+            }
+
+            ArtistPlayOrder.ALBUM_YEAR_DESC -> orderByAlbumGroups(tracks) { groups ->
+                groups.sortedWith(albumGroupYearComparator(albumYearById, ascending = false))
+            }
+
+            ArtistPlayOrder.ALBUM_NAME_ASC -> orderByAlbumGroups(tracks) { groups ->
+                groups.sortedWith(compareBy { albumSortName(it.first()) })
+            }
+
+            ArtistPlayOrder.ALBUM_NAME_DESC -> orderByAlbumGroups(tracks) { groups ->
+                groups.sortedWith(compareByDescending { albumSortName(it.first()) })
+            }
         }
     }
 
-    private val titleComparator: Comparator<Track> =
-        compareBy<Track> { it.title.lowercase() }.thenBy { it.id }
+    private val withinAlbumComparator: Comparator<Track> =
+        compareBy<Track> { it.discNumber ?: Int.MAX_VALUE }
+            .thenBy { it.trackNumber ?: Int.MAX_VALUE }
+            .thenBy { it.title.lowercase() }
+            .thenBy { it.id }
 
-    private fun albumYearComparator(albumYearById: Map<String, Int?>, ascending: Boolean): Comparator<Track> {
-        val yearCmp = Comparator<Track> { a, b ->
-            val ya = resolveYear(a, albumYearById)
-            val yb = resolveYear(b, albumYearById)
+    private fun orderByAlbumGroups(
+        tracks: List<Track>,
+        orderGroups: (List<List<Track>>) -> List<List<Track>>,
+    ): List<Track> {
+        // Preserve first-seen album order for stable grouping keys; orphan tracks
+        // (no albumId) each get their own group so they are not glued together.
+        val groups = linkedMapOf<String, MutableList<Track>>()
+        var orphanSeq = 0
+        for (track in tracks) {
+            val key = track.albumId?.takeIf { it.isNotBlank() } ?: "__orphan_${orphanSeq++}_${track.id}"
+            groups.getOrPut(key) { mutableListOf() }.add(track)
+        }
+        val sortedWithin = groups.values.map { group ->
+            group.sortedWith(withinAlbumComparator)
+        }
+        return orderGroups(sortedWithin).flatten()
+    }
+
+    private fun albumGroupYearComparator(
+        albumYearById: Map<String, Int?>,
+        ascending: Boolean,
+    ): Comparator<List<Track>> {
+        val yearCmp = Comparator<List<Track>> { a, b ->
+            val ya = resolveYear(a.first(), albumYearById)
+            val yb = resolveYear(b.first(), albumYearById)
             when {
                 ya == null && yb == null -> 0
 
@@ -50,12 +91,7 @@ object ArtistPlayOrderer {
                 else -> yb.compareTo(ya)
             }
         }
-        return yearCmp
-            .thenBy { albumSortName(it) }
-            .thenBy { it.discNumber ?: Int.MAX_VALUE }
-            .thenBy { it.trackNumber ?: Int.MAX_VALUE }
-            .thenBy { it.title.lowercase() }
-            .thenBy { it.id }
+        return yearCmp.thenBy { albumSortName(it.first()) }
     }
 
     private fun resolveYear(track: Track, albumYearById: Map<String, Int?>): Int? {

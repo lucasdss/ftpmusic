@@ -44,6 +44,7 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 
 @Composable
 fun SettingsScreen(
@@ -602,59 +603,113 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // ═══ Artist Play All order (ADR-0141) ═══
+            // ═══ Artist Play All order (ADR-0145) ═══
             SectionLabel("Artist Play All")
             SectionCard {
                 Text(
-                    "Order when you tap Play All on an artist (default matches Symfonium / YouTube Music):",
+                    "Order when you tap Play All on an artist. Default matches Apple Music “Shuffle Albums”. " +
+                        "Within albums, tracks always play in track order (1…N), except Shuffle all songs.",
                     color = Color(0xFF888888),
                     fontSize = textLabelS(),
                     modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
                 )
+                val playOrder = state.artistPlayOrder
                 OverwriteBehaviorOption(
-                    label = "Shuffle",
-                    subtitle = "Play the full catalogue in random order",
-                    selected = state.artistPlayOrder ==
-                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE,
+                    label = "Shuffle albums",
+                    subtitle = "Random album order; tracks stay in album order",
+                    selected = playOrder ==
+                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE_ALBUMS,
                     onClick = {
                         viewModel.setArtistPlayOrder(
-                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE,
+                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE_ALBUMS,
                         )
                     },
                 )
                 OverwriteBehaviorOption(
-                    label = "Oldest albums first",
-                    subtitle = "By release year, then album name; unknown years last",
-                    selected = state.artistPlayOrder ==
-                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_ASC,
+                    label = "Shuffle all songs",
+                    subtitle = "Fully random track order across the catalogue",
+                    selected = playOrder ==
+                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE_SONGS,
                     onClick = {
                         viewModel.setArtistPlayOrder(
-                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_ASC,
+                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE_SONGS,
                         )
                     },
                 )
                 OverwriteBehaviorOption(
-                    label = "Newest albums first",
-                    subtitle = "By release year descending, then album name",
-                    selected = state.artistPlayOrder ==
-                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_DESC,
+                    label = "Albums by year",
+                    subtitle = "Chronological by release year; unknown years last",
+                    selected = playOrder.usesYear,
                     onClick = {
-                        viewModel.setArtistPlayOrder(
-                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_DESC,
-                        )
+                        if (!playOrder.usesYear) {
+                            viewModel.setArtistPlayOrder(
+                                com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_YEAR_ASC,
+                            )
+                        }
                     },
                 )
+                if (playOrder.usesYear) {
+                    SegmentedChipRow {
+                        SegmentedChip(
+                            label = "Oldest first",
+                            selected = playOrder.isAscending,
+                            onClick = {
+                                viewModel.setArtistPlayOrder(
+                                    playOrder.withAscending(true),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        SegmentedChip(
+                            label = "Newest first",
+                            selected = !playOrder.isAscending,
+                            onClick = {
+                                viewModel.setArtistPlayOrder(
+                                    playOrder.withAscending(false),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    SectionDivider()
+                }
                 OverwriteBehaviorOption(
-                    label = "Song title A–Z",
-                    subtitle = "Alphabetical by track title (previous default)",
-                    selected = state.artistPlayOrder ==
-                        com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.TITLE_ASC,
+                    label = "Albums by name",
+                    subtitle = "Alphabetical by album title",
+                    selected = playOrder.usesName,
                     onClick = {
-                        viewModel.setArtistPlayOrder(
-                            com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.TITLE_ASC,
-                        )
+                        if (!playOrder.usesName) {
+                            viewModel.setArtistPlayOrder(
+                                com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.ALBUM_NAME_ASC,
+                            )
+                        }
                     },
                 )
+                if (playOrder.usesName) {
+                    SegmentedChipRow {
+                        SegmentedChip(
+                            label = "A–Z",
+                            selected = playOrder.isAscending,
+                            onClick = {
+                                viewModel.setArtistPlayOrder(
+                                    playOrder.withAscending(true),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        SegmentedChip(
+                            label = "Z–A",
+                            selected = !playOrder.isAscending,
+                            onClick = {
+                                viewModel.setArtistPlayOrder(
+                                    playOrder.withAscending(false),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    SectionDivider()
+                }
             }
 
             Spacer(Modifier.height(24.dp))

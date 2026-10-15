@@ -157,7 +157,11 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         /** ADR-0135: Add to Queue placement — manual_end (default) | session_end. */
         const val KEY_ADD_TO_QUEUE_PLACEMENT = "add_to_queue_placement"
 
-        /** ADR-0141: Artist Play All order — shuffle (default) | album_year_asc | album_year_desc | title_asc. */
+        /**
+         * ADR-0145: Artist Play All order —
+         * shuffle_albums (default) | shuffle | album_year_asc | album_year_desc |
+         * album_name_asc | album_name_desc.
+         */
         const val KEY_ARTIST_PLAY_ORDER = "artist_play_order"
         const val KEY_CUSTOM_HEADERS = "custom_headers"
         const val KEY_AUTO_DOWNLOAD_PLAYLISTS = "auto_download_playlists"

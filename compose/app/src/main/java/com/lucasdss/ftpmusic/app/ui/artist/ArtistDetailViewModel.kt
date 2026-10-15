@@ -366,7 +366,9 @@ class ArtistDetailViewModel @Inject constructor(
                 val prepared = prepareOrderedCatalog() ?: return@withLock
                 val (tracks, urls, order) = prepared
                 val state = _state.value
-                val started = if (order == ArtistPlayOrder.SHUFFLE) {
+                // Song shuffle may reshuffle via shuffleAlbum; album-aware modes must
+                // keep within-album track order from ArtistPlayOrderer (ADR-0145).
+                val started = if (order.isSongShuffle) {
                     playbackManager.tryShuffleContext(
                         tracks,
                         urls,

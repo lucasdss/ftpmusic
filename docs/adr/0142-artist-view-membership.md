@@ -1,8 +1,9 @@
 # 0142 — Artist View Membership (Albums ↔ Tracks)
 
-Status: Accepted
+Status: Accepted (track whole-album rule superseded by ADR-0145)
 Date: 2026-10-14
 Extends: ADR-0141 (artist Play All order), ADR-0069 (artist albums-first)
+See also: ADR-0145 (Songs / Play All filter foreign albums to this artist only)
 
 ## Context
 
@@ -27,6 +28,6 @@ Download All / Add to Playlist used the paginated Songs page (often 50).
 
 ## Consequences
 
-- OST / VA albums that appear via track attribution contribute **all** tracks on
-  that album to Play All (album-list consistency), not only this artist’s rows.
+- ~~OST / VA albums contribute all tracks to Play All~~ — superseded by ADR-0145
+  (foreign albums → this artist’s tracks only; Albums tab still merges).
 - Large catalogs: full-set actions may hitch; `isPreparingPlay` gates chrome.
