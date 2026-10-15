@@ -476,7 +476,7 @@ class FavoritesViewModel @Inject constructor(
         viewModelScope.launch {
             val stubId = hit.localArtistId
                 ?: hit.mbid?.let { "mb:$it" }
-                ?: "ext:${hit.name.lowercase().hashCode()}"
+                ?: "ext:${com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer.normalize(hit.name).hashCode()}"
             try {
                 metadataDao.upsertArtistsPreserveEnrich(
                     listOf(

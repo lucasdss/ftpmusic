@@ -215,7 +215,7 @@ class DesiredRepositoryTest {
             source = "deezer",
         )
         coEvery {
-            desiredItemDao.getByNormalizedTitleArtist("ARTIST", "Daft Punk", "")
+            desiredItemDao.getByNormalizedTitleArtist("ARTIST", "daft punk", "")
         } returns listOf(dz)
 
         val found = repo.findMatchingDesired(
@@ -224,6 +224,39 @@ class DesiredRepositoryTest {
         )
         assertNotNull(found)
         assertEquals("dz:ARTIST:27", found!!.identityKey)
+    }
+
+    @Test
+    fun `findMatchingDesired bridges curly apostrophe title to straight nm key`() = runTest {
+        val curly = DesiredItemEntity(
+            id = "curly-1",
+            identityKey = "nm:ARTIST:guns n\u2019 roses|",
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Guns N\u2019 Roses",
+            source = "manual",
+        )
+        coEvery {
+            desiredItemDao.getByNormalizedTitleArtist("ARTIST", "guns n' roses", "")
+        } returns listOf(curly)
+
+        val found = repo.findMatchingDesired(
+            entityType = DesiredRepository.TYPE_ARTIST,
+            title = "Guns N' Roses",
+        )
+        assertNotNull(found)
+        assertEquals("curly-1", found!!.id)
+    }
+
+    @Test
+    fun `identityKey folds curly apostrophe`() {
+        assertEquals(
+            "nm:ARTIST:guns n' roses|",
+            DesiredRepository.identityKey("ARTIST", "Guns N\u2019 Roses", null, null, null),
+        )
+        assertEquals(
+            DesiredRepository.identityKey("ARTIST", "Guns N' Roses", null, null, null),
+            DesiredRepository.identityKey("ARTIST", "Guns N\u2019 Roses", null, null, null),
+        )
     }
 
     @Test

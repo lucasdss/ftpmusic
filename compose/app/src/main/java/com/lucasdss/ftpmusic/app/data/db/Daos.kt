@@ -1196,20 +1196,37 @@ interface CachedMetadataDao {
 
     /**
      * Match after [com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer]
-     * fold (apostrophe variants). SQL REPLACE mirrors the Kotlin fold.
+     * fold (apostrophe variants). SQL REPLACE mirrors the Kotlin fold
+     * (’ ‘ ʼ ＇ ` ´ → ').
      */
     @Query(
         """
         SELECT * FROM cached_artists
         WHERE LOWER(
-            REPLACE(REPLACE(REPLACE(REPLACE(name, '’', ''''), '‘', ''''), '`', ''''), '´', '''')
+            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                name, '’', ''''), '‘', ''''), 'ʼ', ''''), '＇', ''''), '`', ''''), '´', '''')
         ) = :normalizedName
         LIMIT 1
         """,
     )
     suspend fun getArtistByNormalizedName(normalizedName: String): CachedArtistEntity?
 
-    /** Alias token match (space-joined search_aliases from MB enrich). */
+    /**
+     * Alias LIKE prefilter (pipe- or legacy space-joined [search_aliases]).
+     * Caller must filter with [ArtistNameNormalizer.aliasMatches] — do not
+     * trust LIMIT alone (tribute / multi-candidate).
+     */
+    @Query(
+        """
+        SELECT * FROM cached_artists
+        WHERE search_aliases IS NOT NULL AND search_aliases != ''
+          AND LOWER(search_aliases) LIKE '%' || :needle || '%' ESCAPE '\'
+        LIMIT 32
+        """,
+    )
+    suspend fun getArtistsByAliasContains(needle: String): List<CachedArtistEntity>
+
+    /** @deprecated Prefer [getArtistsByAliasContains] + aliasMatches filter. */
     @Query(
         """
         SELECT * FROM cached_artists
@@ -2098,13 +2115,21 @@ interface DesiredItemDao {
     /**
      * Cross-key bridge: find rows that share display title/artist even when
      * identity_key is dz:/mb: (detail surfaces often lack the external id).
+     * Apostrophe fold mirrors [ArtistNameNormalizer] so curly/straight match.
+     * Pass already-normalized [title]/[artistName] from Kotlin when possible.
      */
     @Query(
         """
         SELECT * FROM desired_items
         WHERE entity_type = :entityType
-          AND LOWER(TRIM(title)) = LOWER(TRIM(:title))
-          AND IFNULL(LOWER(TRIM(artist_name)), '') = LOWER(TRIM(:artistName))
+          AND LOWER(TRIM(
+            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                title, '’', ''''), '‘', ''''), 'ʼ', ''''), '＇', ''''), '`', ''''), '´', '''')
+          )) = LOWER(TRIM(:title))
+          AND IFNULL(LOWER(TRIM(
+            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                IFNULL(artist_name, ''), '’', ''''), '‘', ''''), 'ʼ', ''''), '＇', ''''), '`', ''''), '´', '''')
+          )), '') = LOWER(TRIM(:artistName))
         LIMIT 8
         """,
     )

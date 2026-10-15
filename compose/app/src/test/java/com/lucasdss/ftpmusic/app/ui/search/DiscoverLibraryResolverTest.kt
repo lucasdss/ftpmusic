@@ -89,7 +89,7 @@ class DiscoverLibraryResolverTest {
         coEvery { metadataDao.getArtistByExactName("Guns N\u2019 Roses") } returns null
         coEvery { metadataDao.getArtistByNormalizedName("guns n' roses") } returns artist
         assertEquals(artist, resolver.resolveArtist(null, "Guns N\u2019 Roses"))
-        coVerify(exactly = 0) { metadataDao.getArtistByAliasContains(any()) }
+        coVerify(exactly = 0) { metadataDao.getArtistsByAliasContains(any()) }
     }
 
     @Test
@@ -97,12 +97,45 @@ class DiscoverLibraryResolverTest {
         val artist = CachedArtistEntity(
             id = "ar3",
             name = "Canonical",
-            searchAliases = "guns n' roses aka",
+            searchAliases = "guns n' roses|gnr",
         )
         coEvery { metadataDao.getArtistByMbid(any()) } returns null
         coEvery { metadataDao.getArtistByExactName(any()) } returns null
         coEvery { metadataDao.getArtistByNormalizedName(any()) } returns null
-        coEvery { metadataDao.getArtistByAliasContains("guns n' roses") } returns artist
+        coEvery { metadataDao.getArtistsByAliasContains("guns n' roses") } returns listOf(artist)
         assertEquals(artist, resolver.resolveArtist(null, "Guns N' Roses"))
+    }
+
+    @Test
+    fun `resolveArtist skips tribute alias candidate`() = runTest {
+        val tribute = CachedArtistEntity(
+            id = "tribute",
+            name = "Australian Pink Floyd Show",
+            searchAliases = "australian pink floyd show",
+        )
+        coEvery { metadataDao.getArtistByMbid(any()) } returns null
+        coEvery { metadataDao.getArtistByExactName(any()) } returns null
+        coEvery { metadataDao.getArtistByNormalizedName(any()) } returns null
+        coEvery { metadataDao.getArtistsByAliasContains("pink floyd") } returns listOf(tribute)
+        assertNull(resolver.resolveArtist(null, "Pink Floyd"))
+    }
+
+    @Test
+    fun `resolveArtist picks matching alias among multiple LIKE hits`() = runTest {
+        val tribute = CachedArtistEntity(
+            id = "tribute",
+            name = "Australian Pink Floyd Show",
+            searchAliases = "australian pink floyd show",
+        )
+        val real = CachedArtistEntity(
+            id = "pf",
+            name = "Pink Floyd",
+            searchAliases = "pink floyd|the pink floyd",
+        )
+        coEvery { metadataDao.getArtistByMbid(any()) } returns null
+        coEvery { metadataDao.getArtistByExactName(any()) } returns null
+        coEvery { metadataDao.getArtistByNormalizedName(any()) } returns null
+        coEvery { metadataDao.getArtistsByAliasContains("pink floyd") } returns listOf(tribute, real)
+        assertEquals(real, resolver.resolveArtist(null, "Pink Floyd"))
     }
 }

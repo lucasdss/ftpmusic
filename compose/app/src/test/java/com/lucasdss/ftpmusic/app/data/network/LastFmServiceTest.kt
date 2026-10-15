@@ -170,7 +170,19 @@ class LastFmServiceTest {
             "content":"Longer unused"
         }}}"""
         val bio = service.parseArtistInfoBio(json, maxChars = 200)
-        assertEquals("American hard rock band. Read more", bio)
+        assertEquals("American hard rock band.", bio)
+    }
+
+    @Test
+    fun `stripTrailingReadMore drops lastfm cta`() {
+        assertEquals(
+            "American hard rock band.",
+            service.stripTrailingReadMore("American hard rock band. Read more on Last.fm"),
+        )
+        assertEquals(
+            "Short bio",
+            service.stripTrailingReadMore("Short bio Read more"),
+        )
     }
 
     @Test

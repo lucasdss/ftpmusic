@@ -6,6 +6,9 @@ package com.lucasdss.ftpmusic.app.data.search
  */
 object ArtistNameNormalizer {
 
+    /** Delimiter for [search_aliases] written by MetadataEnrichWorker. */
+    const val ALIAS_DELIMITER = '|'
+
     fun normalize(value: String): String = value.trim()
         .replace('\u2019', '\'') // ’
         .replace('\u2018', '\'') // ‘
@@ -17,16 +20,28 @@ object ArtistNameNormalizer {
         .replace(Regex("\\s+"), " ")
 
     /**
-     * True when [needle] appears as a whole-token sequence inside space-joined
-     * [aliases] (after [normalize]). Avoids `%guns%` matching tribute bands
-     * when the SQL LIKE is only a coarse prefilter.
+     * True when [needle] equals one whole alias entry after [normalize].
+     *
+     * Pipe-delimited ([ALIAS_DELIMITER]) entries are preferred (writer uses
+     * [joinAliases]). Legacy space-joined blobs without `|` only match when
+     * the **entire** string equals the needle — never a token subsequence —
+     * so tribute supersets ("Australian Pink Floyd Show") cannot match
+     * "Pink Floyd". Re-enrich rewrites aliases with `|`.
      */
     fun aliasMatches(aliases: String?, needle: String): Boolean {
         val n = normalize(needle)
         if (n.isEmpty()) return false
-        val a = normalize(aliases.orEmpty())
-        if (a.isEmpty()) return false
-        if (a == n) return true
-        return Regex("(^|\\s)${Regex.escape(n)}(\\s|$)").containsMatchIn(a)
+        val raw = aliases.orEmpty()
+        if (raw.isBlank()) return false
+        val entries = if (raw.indexOf(ALIAS_DELIMITER) >= 0) {
+            raw.split(ALIAS_DELIMITER)
+        } else {
+            listOf(raw)
+        }
+        return entries.any { normalize(it) == n }
     }
+
+    /** Join MB alias list for persistence (pipe-delimited). */
+    fun joinAliases(aliases: Iterable<String>): String = aliases.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        .joinToString(ALIAS_DELIMITER.toString())
 }

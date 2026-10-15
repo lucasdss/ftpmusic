@@ -34,13 +34,10 @@ class DiscoverLibraryResolver @Inject constructor(
             val normalized = ArtistNameNormalizer.normalize(name)
             if (normalized.isEmpty()) return null
             metadataDao.getArtistByNormalizedName(normalized)?.let { return it }
-            // Alias: SQL LIKE prefilter, then whole-token verify (no tribute false hits).
+            // Alias: SQL LIKE prefilter → whole-entry equality (no tribute supersets).
             val needle = SearchQueryNormalizer.escapeLike(normalized)
-            val aliasHit = metadataDao.getArtistByAliasContains(needle)
-            if (aliasHit != null && ArtistNameNormalizer.aliasMatches(aliasHit.searchAliases, normalized)) {
-                aliasHit
-            } else {
-                null
+            metadataDao.getArtistsByAliasContains(needle).firstOrNull { candidate ->
+                ArtistNameNormalizer.aliasMatches(candidate.searchAliases, normalized)
             }
         } catch (_: Exception) {
             null

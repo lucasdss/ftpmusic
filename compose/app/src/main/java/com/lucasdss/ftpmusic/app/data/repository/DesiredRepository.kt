@@ -145,11 +145,12 @@ class DesiredRepository @Inject constructor(
         val nmKey = identityKey(type, title, artistName, null, null)
         desiredItemDao.getByIdentityKey(nmKey)?.let { candidates.add(it) }
         // Title bridge: Deezer/MB rows may not share nm: identity_key with detail.
+        // Pass folded title/artist so curly pre-upgrade rows match straight keys.
         if (title.isNotBlank()) {
             desiredItemDao.getByNormalizedTitleArtist(
                 type,
-                title.trim(),
-                artistName?.trim().orEmpty(),
+                normalize(title),
+                normalize(artistName.orEmpty()),
             ).forEach { candidates.add(it) }
         }
         return candidates.minByOrNull { strengthRank(it.identityKey) }
@@ -389,8 +390,8 @@ class DesiredRepository @Inject constructor(
         if (title.isNotBlank()) {
             desiredItemDao.getByNormalizedTitleArtist(
                 type,
-                title.trim(),
-                artistName?.trim().orEmpty(),
+                normalize(title),
+                normalize(artistName.orEmpty()),
             ).forEach { add(it) }
         }
         return found.values.toList()
@@ -417,17 +418,12 @@ class DesiredRepository @Inject constructor(
             if (normalized.isEmpty()) return null
             metadataDao.getArtistByNormalizedName(normalized)?.id?.let { return it }
             val needle = com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer.escapeLike(normalized)
-            val aliasHit = metadataDao.getArtistByAliasContains(needle)
-            if (aliasHit != null &&
+            metadataDao.getArtistsByAliasContains(needle).firstOrNull { candidate ->
                 com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer.aliasMatches(
-                    aliasHit.searchAliases,
+                    candidate.searchAliases,
                     normalized,
                 )
-            ) {
-                aliasHit.id
-            } else {
-                null
-            }
+            }?.id
         } catch (_: Exception) {
             null
         }

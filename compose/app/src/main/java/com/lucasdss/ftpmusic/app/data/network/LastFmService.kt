@@ -104,24 +104,43 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
             if (apiKey.isEmpty()) return@withContext null
             if (artistName.isBlank() && mbid.isNullOrBlank()) return@withContext null
             try {
-                val url = buildString {
-                    append("$BASE?method=artist.getInfo&api_key=$apiKey&format=json")
-                    if (!mbid.isNullOrBlank()) {
-                        append("&mbid=").append(java.net.URLEncoder.encode(mbid, "UTF-8"))
-                    } else {
-                        append("&artist=").append(java.net.URLEncoder.encode(artistName, "UTF-8"))
+                if (!mbid.isNullOrBlank()) {
+                    fetchArtistInfoOnce(apiKey, artistName = null, mbid = mbid, maxChars = maxChars)
+                        ?.let { return@withContext it }
+                    // MBID miss / error → retry by display name when available.
+                    if (artistName.isNotBlank()) {
+                        return@withContext fetchArtistInfoOnce(
+                            apiKey,
+                            artistName = artistName,
+                            mbid = null,
+                            maxChars = maxChars,
+                        )
                     }
+                    return@withContext null
                 }
-                val request = Request.Builder().url(url).build()
-                val body = client.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) return@withContext null
-                    resp.body?.string() ?: return@withContext null
-                }
-                parseArtistInfoBio(body, maxChars)
+                fetchArtistInfoOnce(apiKey, artistName = artistName, mbid = null, maxChars = maxChars)
             } catch (_: Exception) {
                 null
             }
         }
+
+    private fun fetchArtistInfoOnce(apiKey: String, artistName: String?, mbid: String?, maxChars: Int): String? {
+        val url = buildString {
+            append("$BASE?method=artist.getInfo&api_key=$apiKey&format=json")
+            if (!mbid.isNullOrBlank()) {
+                append("&mbid=").append(java.net.URLEncoder.encode(mbid, "UTF-8"))
+            } else {
+                val name = artistName?.takeIf { it.isNotBlank() } ?: return null
+                append("&artist=").append(java.net.URLEncoder.encode(name, "UTF-8"))
+            }
+        }
+        val request = Request.Builder().url(url).build()
+        val body = client.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) return null
+            resp.body?.string() ?: return null
+        }
+        return parseArtistInfoBio(body, maxChars)
+    }
 
     /** Live artist.search for Discover (Phase-5). */
     suspend fun searchArtists(query: String, limit: Int = 8): List<SearchArtistHit> = withContext(Dispatchers.IO) {
@@ -174,11 +193,18 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
             val raw = bio.optString("summary").takeIf { it.isNotBlank() }
                 ?: bio.optString("content").takeIf { it.isNotBlank() }
                 ?: return null
-            stripHtml(raw).take(maxChars).trim().takeIf { it.isNotBlank() }
+            stripTrailingReadMore(stripHtml(raw)).take(maxChars).trim()
+                .takeIf { it.isNotBlank() }
         } catch (_: Exception) {
             null
         }
     }
+
+    /** Drop Last.fm wiki CTA left after HTML strip ("Read more on Last.fm"). */
+    internal fun stripTrailingReadMore(text: String): String = text.replace(
+        Regex("""\s*Read more(?:\s+on\s+Last\.fm)?\.?\s*$""", RegexOption.IGNORE_CASE),
+        "",
+    ).trim()
 
     internal fun stripHtml(raw: String): String {
         // Drop tags + collapse whitespace; keep apostrophes/punctuation.

@@ -129,7 +129,10 @@ class MetadataEnrichRunner @Inject constructor(
                 }
                 val aliases = musicBrainzService.fetchArtistAliases(mbid)
                 if (aliases.isNotEmpty()) {
-                    metadataDao.setArtistSearchAliases(artist.id, aliases.joinToString(" "))
+                    metadataDao.setArtistSearchAliases(
+                        artist.id,
+                        com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer.joinAliases(aliases),
+                    )
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
