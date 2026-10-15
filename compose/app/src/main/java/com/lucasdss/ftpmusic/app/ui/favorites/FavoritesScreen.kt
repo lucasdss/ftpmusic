@@ -95,6 +95,8 @@ class FavoritesViewModel @Inject constructor(
     private val musicBrainzService: com.lucasdss.ftpmusic.app.data.network.MusicBrainzService,
     private val lastFmService: com.lucasdss.ftpmusic.app.data.network.LastFmService,
     private val discoverLibraryResolver: com.lucasdss.ftpmusic.app.ui.search.DiscoverLibraryResolver,
+    private val discoverArtistBioEnricher: com.lucasdss.ftpmusic.app.ui.search.DiscoverArtistBioEnricher,
+    private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder,
     private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
     private val storage: SecureStorage,
     private val playbackManager: PlaybackManager,
@@ -408,8 +410,10 @@ class FavoritesViewModel @Inject constructor(
                     }
                 }
                 if (_state.value.filterQuery.trim() != q) return@launch
+                val catalogArtistList = discoverArtistBioEnricher.enrich(artists.values.take(6).toList())
+                if (_state.value.filterQuery.trim() != q) return@launch
                 _state.value = _state.value.copy(
-                    catalogArtists = artists.values.take(6).toList(),
+                    catalogArtists = catalogArtistList,
                     catalogAlbums = dzAlbums.map {
                         val local = discoverLibraryResolver.resolveAlbum(it.title, it.artistName)
                         DiscoverAlbumHit(
@@ -453,11 +457,75 @@ class FavoritesViewModel @Inject constructor(
                 deezerId = hit.deezerId,
                 source = hit.source,
                 imageUrl = hit.imageUrl,
-                description = hit.disambiguation,
+                description = hit.descriptionText(),
                 matchedLocalId = hit.localArtistId,
             )
             refreshDesiredList()
         }
+    }
+
+    /**
+     * Navigate to artist detail from Desired catalog / saved artist row.
+     * Library → local id; else soft-cache stub (parity with Search Discover).
+     */
+    fun onDesiredArtistTap(hit: DiscoverArtistHit, onNavigate: (String) -> Unit) {
+        if (hit.inLibrary && !hit.localArtistId.isNullOrBlank()) {
+            onNavigate(hit.localArtistId)
+            return
+        }
+        viewModelScope.launch {
+            val stubId = hit.localArtistId
+                ?: hit.mbid?.let { "mb:$it" }
+                ?: "ext:${hit.name.lowercase().hashCode()}"
+            try {
+                metadataDao.upsertArtistsPreserveEnrich(
+                    listOf(
+                        com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity(
+                            id = stubId,
+                            name = hit.name,
+                            musicbrainzId = hit.mbid,
+                            biography = hit.biography,
+                        ),
+                    ),
+                )
+                if (!hit.biography.isNullOrBlank()) {
+                    try {
+                        metadataDao.setArtistBiography(stubId, hit.biography)
+                    } catch (_: Exception) {
+                    }
+                }
+                searchIndexRebuilder.indexArtistStub(stubId, hit.name, hit.mbid)
+                searchIndexRebuilder.scheduleRebuild(debounceMs = 3_000L)
+            } catch (_: Exception) {
+            }
+            onNavigate(stubId)
+        }
+    }
+
+    fun onDesiredItemArtistTap(item: DesiredItemEntity, onNavigate: (String) -> Unit) {
+        val matched = item.matchedLocalId?.takeIf { it.isNotBlank() }
+        if (matched != null) {
+            onNavigate(matched)
+            return
+        }
+        if (item.entityType !=
+            com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST
+        ) {
+            return
+        }
+        onDesiredArtistTap(
+            DiscoverArtistHit(
+                name = item.title,
+                mbid = item.musicbrainzId,
+                deezerId = item.deezerId,
+                disambiguation = item.description,
+                biography = item.description,
+                source = item.source,
+                inLibrary = false,
+                imageUrl = item.imageUrl,
+            ),
+            onNavigate,
+        )
     }
 
     fun addCatalogAlbumDesired(hit: DiscoverAlbumHit) {
@@ -911,6 +979,8 @@ fun FavoritesScreen(
     viewModel: FavoritesViewModel = hiltViewModel(),
     onAlbumClick: (AlbumEntity) -> Unit = {},
     onArtistClick: (ArtistEntity) -> Unit = {},
+    /** Desired catalog / saved artist rows navigate by artist id (local or stub). */
+    onDesiredArtistClick: (String) -> Unit = {},
     onRadioStationClick: (RadioFavoriteEntity) -> Unit = {},
     currentTrackId: String? = null,
     currentAlbumId: String? = null,
@@ -1059,7 +1129,11 @@ fun FavoritesScreen(
                         isPlaying = isPlaying,
                     )
 
-                    FavoritesMode.DESIRED -> DesiredFavoritesList(state = state, viewModel = viewModel)
+                    FavoritesMode.DESIRED -> DesiredFavoritesList(
+                        state = state,
+                        viewModel = viewModel,
+                        onDesiredArtistClick = onDesiredArtistClick,
+                    )
                 }
             }
         }
@@ -1131,7 +1205,11 @@ private fun FavoritesModeChips(selected: FavoritesMode, onSelect: (FavoritesMode
 }
 
 @Composable
-private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesViewModel) {
+private fun DesiredFavoritesList(
+    state: FavoritesState,
+    viewModel: FavoritesViewModel,
+    onDesiredArtistClick: (String) -> Unit,
+) {
     val listState = rememberLazyListState()
     LazyColumn(
         state = listState,
@@ -1147,7 +1225,13 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
         if (state.desiredArtists.isNotEmpty()) {
             item { FavoriteSectionHeader("Artists", Icons.Outlined.BookmarkBorder) }
             items(state.desiredArtists, key = { it.id }) { item ->
-                DesiredItemRow(item = item, onRemove = { viewModel.removeDesired(item.id) })
+                DesiredItemRow(
+                    item = item,
+                    onRemove = { viewModel.removeDesired(item.id) },
+                    onClick = {
+                        viewModel.onDesiredItemArtistTap(item) { id -> onDesiredArtistClick(id) }
+                    },
+                )
             }
         }
         if (state.desiredAlbums.isNotEmpty()) {
@@ -1184,18 +1268,17 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
                 }
             }
             items(state.catalogArtists, key = { "cat-ar-${it.mbid ?: it.deezerId ?: it.name}" }) { hit ->
-                val sub = when {
-                    hit.inLibrary -> "In library"
-                    !hit.disambiguation.isNullOrBlank() -> hit.disambiguation
-                    else -> "Not in library · ${hit.source}"
-                }
                 CatalogAddRow(
                     title = hit.name,
-                    subtitle = sub,
+                    subtitle = hit.originSubtitle(),
+                    description = hit.descriptionText(),
                     imageUrl = hit.imageUrl,
                     circle = true,
                     showAdd = !hit.inLibrary,
                     onAdd = { viewModel.addCatalogArtistDesired(hit) },
+                    onClick = {
+                        viewModel.onDesiredArtistTap(hit) { id -> onDesiredArtistClick(id) }
+                    },
                 )
             }
             items(
@@ -1227,7 +1310,13 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
                             append(it)
                             append(" · ")
                         }
-                        append(if (hit.inLibrary) "In library" else "Not in library")
+                        append(
+                            if (hit.inLibrary) {
+                                "In library"
+                            } else {
+                                "Not in library · deezer"
+                            },
+                        )
                     },
                     imageUrl = hit.imageUrl,
                     showAdd = !hit.inLibrary,
@@ -1239,10 +1328,35 @@ private fun DesiredFavoritesList(state: FavoritesState, viewModel: FavoritesView
 }
 
 @Composable
-private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
+private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit, onClick: (() -> Unit)? = null) {
+    val isArtist =
+        item.entityType == com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST
+    val originLine = buildString {
+        when {
+            !item.matchedLocalId.isNullOrBlank() -> {
+                item.artistName?.takeIf { it.isNotBlank() }?.let {
+                    append(it)
+                    append(" · ")
+                }
+                append("In library · ")
+                append(item.source)
+            }
+
+            else -> {
+                item.artistName?.takeIf { it.isNotBlank() }?.let {
+                    append(it)
+                    append(" · ")
+                }
+                append("Not in library · ")
+                append(item.source)
+            }
+        }
+    }
+    val desc = item.description?.takeIf { it.isNotBlank() }
     Row(
         Modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = spacingL(), vertical = spacingM())
             .heightIn(min = 48.dp)
             .testTag("desired_item_${item.id}"),
@@ -1251,7 +1365,7 @@ private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
         com.lucasdss.ftpmusic.app.ui.search.SearchCoverThumb(
             url = item.imageUrl,
             contentDesc = item.title,
-            circle = item.entityType == com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+            circle = isArtist,
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -1264,31 +1378,22 @@ private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                buildString {
-                    val desc = item.description?.takeIf { it.isNotBlank() }
-                    when {
-                        !item.matchedLocalId.isNullOrBlank() -> {
-                            item.artistName?.let {
-                                append(it)
-                                append(" · ")
-                            }
-                            append("In library")
-                        }
-
-                        else -> {
-                            item.artistName?.takeIf { it.isNotBlank() }?.let {
-                                append(it)
-                                append(" · ")
-                            }
-                            append(desc ?: item.source)
-                        }
-                    }
-                },
+                originLine,
                 color = Color(0xFF888888),
                 fontSize = textLabelM(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (desc != null) {
+                Text(
+                    desc,
+                    color = Color(0xFF666666),
+                    fontSize = textLabelM(),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
         IconButton(onClick = onRemove) {
             Icon(Icons.Filled.Close, contentDescription = "Remove desired", tint = Color(0xFF888888))
@@ -1304,14 +1409,17 @@ private fun DesiredItemRow(item: DesiredItemEntity, onRemove: () -> Unit) {
 private fun CatalogAddRow(
     title: String,
     subtitle: String,
+    description: String? = null,
     imageUrl: String? = null,
     circle: Boolean = false,
     showAdd: Boolean = true,
     onAdd: () -> Unit,
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = spacingL(), vertical = spacingM())
             .heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1338,6 +1446,16 @@ private fun CatalogAddRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (!description.isNullOrBlank()) {
+                Text(
+                    description,
+                    color = Color(0xFF666666),
+                    fontSize = textLabelM(),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
         if (showAdd) {
             TextButton(onClick = onAdd) {

@@ -222,6 +222,33 @@ fun ArtistDetailScreen(
                         }
                     }
                 }
+                state.biography?.takeIf { it.isNotBlank() }?.let { bio ->
+                    var expanded by remember(bio) { mutableStateOf(false) }
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacingL(), vertical = spacingS())
+                            .clickable { expanded = !expanded }
+                            .testTag("artist_biography"),
+                    ) {
+                        Text(
+                            bio,
+                            color = Color(0xFFBBBBBB),
+                            fontSize = textLabelM(),
+                            maxLines = if (expanded) Int.MAX_VALUE else 4,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (bio.length > 160) {
+                            Text(
+                                if (expanded) "Show less" else "Read more",
+                                color = BrandTeal,
+                                fontSize = textLabelM(),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
+                }
                 // Play All only — order from Settings (ADR-0141); no artist Shuffle chrome
                 DetailActionRow(
                     playLabel = "Play All",

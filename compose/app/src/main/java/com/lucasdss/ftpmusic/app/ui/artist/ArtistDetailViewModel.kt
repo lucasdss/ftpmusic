@@ -49,6 +49,8 @@ data class ArtistDetailState(
     val publicRating: Double? = null,
     val publicRatingVotes: Int? = null,
     val similarArtists: List<com.lucasdss.ftpmusic.app.data.network.LastFmService.SimilarArtist> = emptyList(),
+    /** Navidrome/Last.fm biography for readable detail (Desired/Discover). */
+    val biography: String? = null,
     val error: String? = null,
     /** Stub / empty catalog — show Add Desired (ADR-0129). */
     val showAddDesired: Boolean = false,
@@ -180,6 +182,7 @@ class ArtistDetailViewModel @Inject constructor(
                         publicRating = cachedArtist?.publicRating,
                         publicRatingVotes = cachedArtist?.publicRatingVotes,
                         similarArtists = lastFmService.parseStoredJson(cachedArtist?.similarArtistsJson),
+                        biography = cachedArtist?.biography?.takeIf { it.isNotBlank() },
                         isLoading = false,
                         showAddDesired = emptyCatalog,
                         isDesired = isDesired,
@@ -193,6 +196,14 @@ class ArtistDetailViewModel @Inject constructor(
                     // Lazy: fetch similar artists from last.fm if not yet cached
                     if (cachedArtist?.similarArtistsJson == null && !offlineModeManager.isOffline.value) {
                         fetchSimilarArtists(artistId, cachedArtist?.name ?: localAlbums.firstOrNull()?.artist)
+                    }
+                    // Lazy: biography for stubs / unenriched library artists
+                    if (cachedArtist?.biography.isNullOrBlank() && !offlineModeManager.isOffline.value) {
+                        fetchBiography(
+                            artistId,
+                            cachedArtist?.name ?: name,
+                            cachedArtist?.musicbrainzId,
+                        )
                     }
                     return@launch
                 }
@@ -272,6 +283,25 @@ class ArtistDetailViewModel @Inject constructor(
                 }
             } catch (_: Exception) {
                 // Network/parsing failure — retry next open
+            }
+        }
+    }
+
+    private fun fetchBiography(artistId: String, artistName: String?, mbid: String?) {
+        if (artistName.isNullOrBlank()) return
+        viewModelScope.launch {
+            try {
+                val bio = lastFmService.fetchArtistInfo(artistName, mbid)
+                if (!bio.isNullOrBlank()) {
+                    try {
+                        metadataDao.setArtistBiography(artistId, bio)
+                    } catch (_: Exception) {
+                    }
+                    if (_state.value.artistId == artistId) {
+                        _state.value = _state.value.copy(biography = bio)
+                    }
+                }
+            } catch (_: Exception) {
             }
         }
     }

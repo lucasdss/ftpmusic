@@ -57,6 +57,7 @@ class SearchViewModelFilterTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
     }
 

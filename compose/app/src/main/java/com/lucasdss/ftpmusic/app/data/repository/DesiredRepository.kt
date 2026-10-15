@@ -52,7 +52,8 @@ class DesiredRepository @Inject constructor(
             return "nm:$type:$t|$a"
         }
 
-        fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
+        fun normalize(value: String): String =
+            com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer.normalize(value)
 
         /**
          * All scheme keys a Desired row can answer to for O(1) Discover badge
@@ -408,8 +409,25 @@ class DesiredRepository @Inject constructor(
             } catch (_: Exception) {
             }
         }
+        val title = item.title
+        if (title.isBlank()) return null
         return try {
-            metadataDao.getArtistByExactName(item.title)?.id
+            metadataDao.getArtistByExactName(title)?.id?.let { return it }
+            val normalized = normalize(title)
+            if (normalized.isEmpty()) return null
+            metadataDao.getArtistByNormalizedName(normalized)?.id?.let { return it }
+            val needle = com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer.escapeLike(normalized)
+            val aliasHit = metadataDao.getArtistByAliasContains(needle)
+            if (aliasHit != null &&
+                com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer.aliasMatches(
+                    aliasHit.searchAliases,
+                    normalized,
+                )
+            ) {
+                aliasHit.id
+            } else {
+                null
+            }
         } catch (_: Exception) {
             null
         }

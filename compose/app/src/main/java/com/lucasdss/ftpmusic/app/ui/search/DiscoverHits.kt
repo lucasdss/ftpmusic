@@ -8,15 +8,26 @@ data class DiscoverArtistHit(
     val name: String,
     val mbid: String? = null,
     val deezerId: String? = null,
-    /** MusicBrainz disambiguation — primary short description when present. */
+    /** MusicBrainz disambiguation — short label when present. */
     val disambiguation: String? = null,
+    /**
+     * Readable bio: library getArtistInfo2 cache or Last.fm artist.getInfo
+     * fanout (ADR-0144 amend). Prefer over [disambiguation] for display/persist.
+     */
+    val biography: String? = null,
     val source: String = "musicbrainz",
     val inLibrary: Boolean = false,
     val localArtistId: String? = null,
     val listenCount: Long? = null,
     /** Deezer / Last.fm thumb URL when available. */
     val imageUrl: String? = null,
-)
+) {
+    /** Persist / secondary line: bio then MB disambiguation. */
+    fun descriptionText(): String? = biography?.takeIf { it.isNotBlank() } ?: disambiguation?.takeIf { it.isNotBlank() }
+
+    /** Always includes origin (library vs catalog + provider source). */
+    fun originSubtitle(): String = if (inLibrary) "In library · $source" else "Not in library · $source"
+}
 
 data class DiscoverTrackHit(
     val title: String,

@@ -162,6 +162,44 @@ class LastFmServiceTest {
         assertTrue(svc.searchArtists("radio").isEmpty())
         assertTrue(svc.fetchTagTopArtists("chill").isEmpty())
     }
+
+    @Test
+    fun `parseArtistInfoBio strips html and prefers summary`() {
+        val json = """{"artist":{"name":"X","bio":{
+            "summary":"<p>American <b>hard rock</b> band.</p> <a href=\"https://www.last.fm\">Read more</a>",
+            "content":"Longer unused"
+        }}}"""
+        val bio = service.parseArtistInfoBio(json, maxChars = 200)
+        assertEquals("American hard rock band. Read more", bio)
+    }
+
+    @Test
+    fun `parseArtistInfoBio falls back to content and respects maxChars`() {
+        val json = """{"artist":{"bio":{"summary":"","content":"<p>One two three four five</p>"}}}"""
+        val bio = service.parseArtistInfoBio(json, maxChars = 7)
+        assertEquals("One two", bio)
+    }
+
+    @Test
+    fun `stripHtml decodes entities`() {
+        assertEquals("A & B's \"x\"", service.stripHtml("A &amp; B&#39;s &quot;x&quot;"))
+    }
+
+    @Test
+    fun `parseArtistInfoBio returns null on error payload`() {
+        val json = """{"error":6,"message":"Artist not found"}"""
+        assertNull(service.parseArtistInfoBio(json))
+    }
+
+    @Test
+    fun `fetchArtistInfo short-circuits without key`() = kotlinx.coroutines.test.runTest {
+        val storage = io.mockk.mockk<com.lucasdss.ftpmusic.app.data.security.SecureStorage>(relaxed = true)
+        io.mockk.every {
+            storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LASTFM_API_KEY)
+        } returns ""
+        val svc = LastFmService(storage)
+        assertNull(svc.fetchArtistInfo("Guns N' Roses"))
+    }
 }
 
 /** Access the private parse method through the real service instance. */

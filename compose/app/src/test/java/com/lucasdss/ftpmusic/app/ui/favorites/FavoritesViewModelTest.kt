@@ -75,6 +75,8 @@ class FavoritesViewModelTest {
             mockk(relaxed = true), // musicBrainz
             mockk(relaxed = true), // lastFm
             mockk(relaxed = true), // discoverLibraryResolver
+            mockk(relaxed = true), // discoverArtistBioEnricher
+            mockk(relaxed = true), // searchIndexRebuilder
             offlineModeManager,
             storage,
             playbackManager,
@@ -352,6 +354,8 @@ class FavoritesViewModelTest {
             mockk(relaxed = true), // musicBrainz
             mockk(relaxed = true), // lastFm
             mockk(relaxed = true), // discoverLibraryResolver
+            mockk(relaxed = true), // discoverArtistBioEnricher
+            mockk(relaxed = true), // searchIndexRebuilder
             offlineModeManager,
             storage,
             playbackManager,
@@ -484,6 +488,8 @@ class FavoritesViewModelTest {
             mockk(relaxed = true), // musicBrainz
             mockk(relaxed = true), // lastFm
             mockk(relaxed = true), // discoverLibraryResolver
+            mockk(relaxed = true), // discoverArtistBioEnricher
+            mockk(relaxed = true), // searchIndexRebuilder
             offlineModeManager,
             storage,
             playbackManager,
@@ -675,6 +681,8 @@ class FavoritesViewModelTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true), // discoverLibraryResolver
+            mockk(relaxed = true), // discoverArtistBioEnricher
+            mockk(relaxed = true), // searchIndexRebuilder
             offlineModeManager,
             storage,
             playbackManager,
@@ -688,5 +696,120 @@ class FavoritesViewModelTest {
         assertTrue(viewModel.state.value.catalogArtists.isEmpty())
         coVerify(exactly = 0) { deezer.searchArtists(any(), any()) }
         com.lucasdss.ftpmusic.app.di.NetworkAvailabilityHolder.resetForTests(true)
+    }
+
+    @Test
+    fun `addCatalogArtistDesired skips when in library`() = runTest {
+        viewModel.addCatalogArtistDesired(
+            com.lucasdss.ftpmusic.app.ui.search.DiscoverArtistHit(
+                name = "Guns N' Roses",
+                source = "deezer",
+                inLibrary = true,
+                localArtistId = "ar-gnr",
+            ),
+        )
+        advanceUntilIdle()
+        coVerify(exactly = 0) {
+            desiredRepository.addDesired(
+                entityType = any(),
+                title = any(),
+                artistName = any(),
+                albumName = any(),
+                musicbrainzId = any(),
+                deezerId = any(),
+                source = any(),
+                note = any(),
+                imageUrl = any(),
+                description = any(),
+                extraJson = any(),
+                matchedLocalId = any(),
+            )
+        }
+    }
+
+    @Test
+    fun `addCatalogArtistDesired persists biography as description`() = runTest {
+        coEvery { desiredRepository.getAll() } returns emptyList()
+        viewModel.addCatalogArtistDesired(
+            com.lucasdss.ftpmusic.app.ui.search.DiscoverArtistHit(
+                name = "New Band",
+                mbid = "mb-1",
+                source = "musicbrainz",
+                inLibrary = false,
+                biography = "A long bio",
+                disambiguation = "UK",
+            ),
+        )
+        advanceUntilIdle()
+        coVerify {
+            desiredRepository.addDesired(
+                entityType = DesiredRepository.TYPE_ARTIST,
+                title = "New Band",
+                artistName = null,
+                albumName = null,
+                musicbrainzId = "mb-1",
+                deezerId = null,
+                source = "musicbrainz",
+                note = null,
+                imageUrl = null,
+                description = "A long bio",
+                extraJson = null,
+                matchedLocalId = null,
+            )
+        }
+    }
+
+    @Test
+    fun `onDesiredArtistTap navigates local library id`() = runTest {
+        val navigated = mutableListOf<String>()
+        viewModel.onDesiredArtistTap(
+            com.lucasdss.ftpmusic.app.ui.search.DiscoverArtistHit(
+                name = "Local",
+                inLibrary = true,
+                localArtistId = "ar-local",
+                source = "library",
+            ),
+        ) { navigated.add(it) }
+        advanceUntilIdle()
+        assertEquals(listOf("ar-local"), navigated)
+        coVerify(exactly = 0) { metadataDao.upsertArtistsPreserveEnrich(any()) }
+    }
+
+    @Test
+    fun `onDesiredArtistTap stubs external then navigates`() = runTest {
+        val rebuilder = mockk<com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder>(relaxed = true)
+        viewModel = FavoritesViewModel(
+            trackDao,
+            favoriteRepository,
+            metadataDao,
+            radioFavoriteDao,
+            desiredRepository,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            rebuilder,
+            offlineModeManager,
+            storage,
+            playbackManager,
+            authHelper,
+        )
+        val navigated = mutableListOf<String>()
+        viewModel.onDesiredArtistTap(
+            com.lucasdss.ftpmusic.app.ui.search.DiscoverArtistHit(
+                name = "Ext",
+                mbid = "mb-ext",
+                source = "musicbrainz",
+                biography = "Bio text",
+            ),
+        ) { navigated.add(it) }
+        advanceUntilIdle()
+        assertEquals(listOf("mb:mb-ext"), navigated)
+        coVerify {
+            metadataDao.upsertArtistsPreserveEnrich(match { it.single().id == "mb:mb-ext" })
+        }
+        coVerify { metadataDao.setArtistBiography("mb:mb-ext", "Bio text") }
+        coVerify { rebuilder.indexArtistStub("mb:mb-ext", "Ext", "mb-ext") }
     }
 }

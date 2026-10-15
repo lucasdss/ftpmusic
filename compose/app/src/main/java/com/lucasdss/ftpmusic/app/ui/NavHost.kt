@@ -701,6 +701,7 @@ fun FtpmusicNavHost() {
                             isPlaying = playbackState.isPlaying,
                             onAlbumClick = { album -> navController.navigate("album/${album.id}") },
                             onArtistClick = { artist -> navController.navigate("artist/${artist.id}") },
+                            onDesiredArtistClick = { id -> navController.navigate("artist/$id") },
                             onRadioStationClick = { station ->
                                 playbackViewModel.playStream(station.streamUrl, station.name)
                             },

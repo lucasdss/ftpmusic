@@ -81,4 +81,28 @@ class DiscoverLibraryResolverTest {
         coEvery { metadataDao.getArtistByExactName("Band") } returns artist
         assertEquals(artist, resolver.resolveArtist("missing", "Band"))
     }
+
+    @Test
+    fun `resolveArtist curly apostrophe matches normalized library name`() = runTest {
+        val artist = CachedArtistEntity(id = "gnr", name = "Guns N' Roses")
+        coEvery { metadataDao.getArtistByMbid(any()) } returns null
+        coEvery { metadataDao.getArtistByExactName("Guns N\u2019 Roses") } returns null
+        coEvery { metadataDao.getArtistByNormalizedName("guns n' roses") } returns artist
+        assertEquals(artist, resolver.resolveArtist(null, "Guns N\u2019 Roses"))
+        coVerify(exactly = 0) { metadataDao.getArtistByAliasContains(any()) }
+    }
+
+    @Test
+    fun `resolveArtist falls back to search aliases`() = runTest {
+        val artist = CachedArtistEntity(
+            id = "ar3",
+            name = "Canonical",
+            searchAliases = "guns n' roses aka",
+        )
+        coEvery { metadataDao.getArtistByMbid(any()) } returns null
+        coEvery { metadataDao.getArtistByExactName(any()) } returns null
+        coEvery { metadataDao.getArtistByNormalizedName(any()) } returns null
+        coEvery { metadataDao.getArtistByAliasContains("guns n' roses") } returns artist
+        assertEquals(artist, resolver.resolveArtist(null, "Guns N' Roses"))
+    }
 }

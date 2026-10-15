@@ -94,6 +94,35 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
         }
     }
 
+    /**
+     * artist.getInfo wiki bio (ADR-0144 amend — limited Discover/Desired fanout).
+     * Prefers mbid when present; strips HTML; caps length.
+     */
+    suspend fun fetchArtistInfo(artistName: String, mbid: String? = null, maxChars: Int = 2000): String? =
+        withContext(Dispatchers.IO) {
+            val apiKey = currentApiKey()
+            if (apiKey.isEmpty()) return@withContext null
+            if (artistName.isBlank() && mbid.isNullOrBlank()) return@withContext null
+            try {
+                val url = buildString {
+                    append("$BASE?method=artist.getInfo&api_key=$apiKey&format=json")
+                    if (!mbid.isNullOrBlank()) {
+                        append("&mbid=").append(java.net.URLEncoder.encode(mbid, "UTF-8"))
+                    } else {
+                        append("&artist=").append(java.net.URLEncoder.encode(artistName, "UTF-8"))
+                    }
+                }
+                val request = Request.Builder().url(url).build()
+                val body = client.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext null
+                    resp.body?.string() ?: return@withContext null
+                }
+                parseArtistInfoBio(body, maxChars)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
     /** Live artist.search for Discover (Phase-5). */
     suspend fun searchArtists(query: String, limit: Int = 8): List<SearchArtistHit> = withContext(Dispatchers.IO) {
         val apiKey = currentApiKey()
@@ -130,6 +159,37 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * Parse artist.getInfo wiki summary/content. Prefers summary; strips HTML tags
+     * and trailing "Read more on Last.fm" style links.
+     */
+    internal fun parseArtistInfoBio(json: String, maxChars: Int = 2000): String? {
+        return try {
+            val root = JSONObject(json)
+            if (root.has("error")) return null
+            val artist = root.optJSONObject("artist") ?: return null
+            val bio = artist.optJSONObject("bio") ?: return null
+            val raw = bio.optString("summary").takeIf { it.isNotBlank() }
+                ?: bio.optString("content").takeIf { it.isNotBlank() }
+                ?: return null
+            stripHtml(raw).take(maxChars).trim().takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    internal fun stripHtml(raw: String): String {
+        // Drop tags + collapse whitespace; keep apostrophes/punctuation.
+        val noTags = raw.replace(Regex("<[^>]+>"), " ")
+        return noTags
+            .replace(Regex("&nbsp;?", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("&amp;"), "&")
+            .replace(Regex("&quot;"), "\"")
+            .replace(Regex("&#39;|&apos;"), "'")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     internal fun parseArtistSearch(json: String, limit: Int = 8): List<SearchArtistHit> {

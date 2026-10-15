@@ -57,8 +57,9 @@ repository Mutex.
 ### Fulfillment (v1)
 
 Bandcamp-style: reconcile after metadata sync sets `matched_local_id` when
-library match found (MBID then exact name). UI shows **In library** badge.
-User removes manually — no auto-delete.
+library match found (MBID → exact name → apostrophe-normalized name →
+`search_aliases`). UI shows **In library · {source}**. User removes manually —
+no auto-delete.
 
 ## Surfaces
 
@@ -74,12 +75,14 @@ User removes manually — no auto-delete.
   `filterQuery` — hide the field so it is not a fake filter)
 - Desired filter searches the full local set (Room LIKE via `search`)
 - Catalog add debounced ≥300ms; offline → short tip, no network calls
-- Catalog rows: thumb, In library / disambiguation / Not in library · source;
-  Add hidden when already in library (parity with Search Discover)
+- Catalog / Discover artist rows: thumb; origin always
+  `In library · {source}` or `Not in library · {source}`; up to 3 lines of
+  biography (library cache or Last.fm fanout for top 3 hits); Add/bookmark
+  hidden when in library; VM also rejects add when `inLibrary`
+- Artist catalog + saved Desired artist rows are clickable → artist detail
+  (local id or soft stub with bio)
 - Sections: Tracks → Artists → Albums
-- Saved rows show thumb + description when persisted
-- Desired subtitle: `artist · description` when description set, else
-  `artist · source`; matched rows keep `artist · In library`
+- Saved rows show thumb + origin + description when persisted
 - Album catalog `inLibrary` requires non-blank artist (title-only match is
   rejected — DAO null-artist is a wildcard)
 - Remove clears row
@@ -128,7 +131,8 @@ never treated as empty success. Clearing local results also clears
 - Offline: Desired list + filter work; Add from catalog / Discover add skip with explained empty
 - Process death: Room truth
 - Double-tap / name→MBID / Deezer→MBID: transactional merge, one row
-- Deezer without MBID: library match fuzzy name — false “not in library” possible
+- Deezer without MBID: library match via normalized name / aliases; residual
+  false “not in library” only when spelling differs beyond apostrophe fold
 - Device loss: list local-only; share text is backup path
 - Album offline with empty tracks: `showAddDesired` still offered
 

@@ -71,6 +71,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
     }
 
@@ -120,6 +121,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
@@ -354,6 +356,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         // Force NetworkAvailability so LocalOnlyPolicy treats offline as local-only.
         NetworkAvailabilityHolder.resetForTests(false)
@@ -410,6 +413,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -455,6 +459,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         assertTrue(viewModel.isLocalOnly())
         viewModel.onQueryChanged("air")
@@ -513,6 +518,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("mid")
         viewModel.search()
@@ -552,6 +558,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         advanceUntilIdle()
         assertFalse(viewModel.isLocalOnly())
@@ -581,6 +588,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         advanceUntilIdle()
         NetworkAvailabilityHolder.resetForTests(false)
@@ -615,6 +623,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.setFilterDownloaded(true)
         viewModel.setFilterDownloaded(false)
@@ -649,6 +658,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("test")
         viewModel.search()
@@ -716,6 +726,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("test")
         viewModel.setFilterDownloaded(true)
@@ -753,6 +764,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("more")
         viewModel.loadMoreSearchResults()
@@ -799,6 +811,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         // Seed state via search failure path with empty results
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
@@ -834,6 +847,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("ab")
         viewModel.search()
@@ -884,6 +898,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("rare")
         viewModel.search()
@@ -919,6 +934,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         val navigated = mutableListOf<String>()
         val hit = DiscoverArtistHit(
@@ -932,7 +948,7 @@ class SearchViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf("mb:mbid-1"), navigated)
         coVerify {
-            metadataDao.upsertArtists(match { it.single().id == "mb:mbid-1" })
+            metadataDao.upsertArtistsPreserveEnrich(match { it.single().id == "mb:mbid-1" })
         }
         coVerify { rebuilder.indexArtistStub("mb:mbid-1", "Ext Artist", "mbid-1") }
     }
@@ -976,6 +992,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("strong")
         viewModel.search()
@@ -1029,6 +1046,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1072,6 +1090,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1113,6 +1132,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1160,6 +1180,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1206,6 +1227,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("so")
         viewModel.search()
@@ -1291,6 +1313,7 @@ class SearchViewModelTest {
                 mockk(relaxed = true), // lyricsCache
                 mockk(relaxed = true), // favoriteRepository,
                 mockk(relaxed = true), // discoverLibraryResolver
+                mockk(relaxed = true), // discoverArtistBioEnricher
             )
         viewModel.onQueryChanged("aa")
         viewModel.search()
@@ -1323,6 +1346,7 @@ class SearchViewModelTest {
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), desiredRepo, mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), // discoverLibraryResolver
+            mockk(relaxed = true), // discoverArtistBioEnricher
         )
         NetworkAvailabilityHolder.resetForTests(false)
         viewModel.onQueryChanged("so")
@@ -1360,6 +1384,64 @@ class SearchViewModelTest {
                 note = null,
                 imageUrl = null,
                 description = null,
+                extraJson = null,
+                matchedLocalId = null,
+            )
+        }
+    }
+
+    @Test
+    fun `addDiscoverArtistDesired skips when in library`() = runTest(testDispatcher) {
+        viewModel.addDiscoverArtistDesired(
+            DiscoverArtistHit(
+                name = "Guns N' Roses",
+                source = "deezer",
+                inLibrary = true,
+                localArtistId = "ar-1",
+            ),
+        )
+        advanceUntilIdle()
+        coVerify(exactly = 0) {
+            desiredRepo.addDesired(
+                entityType = any(),
+                title = any(),
+                artistName = any(),
+                albumName = any(),
+                musicbrainzId = any(),
+                deezerId = any(),
+                source = any(),
+                note = any(),
+                imageUrl = any(),
+                description = any(),
+                extraJson = any(),
+                matchedLocalId = any(),
+            )
+        }
+    }
+
+    @Test
+    fun `addDiscoverArtistDesired prefers biography over disambiguation`() = runTest(testDispatcher) {
+        viewModel.addDiscoverArtistDesired(
+            DiscoverArtistHit(
+                name = "Band",
+                source = "musicbrainz",
+                biography = "Full bio",
+                disambiguation = "short",
+            ),
+        )
+        advanceUntilIdle()
+        coVerify {
+            desiredRepo.addDesired(
+                entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
+                title = "Band",
+                artistName = null,
+                albumName = null,
+                musicbrainzId = null,
+                deezerId = null,
+                source = "musicbrainz",
+                note = null,
+                imageUrl = null,
+                description = "Full bio",
                 extraJson = null,
                 matchedLocalId = null,
             )

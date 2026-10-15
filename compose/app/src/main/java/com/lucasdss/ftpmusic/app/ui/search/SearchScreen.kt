@@ -1541,12 +1541,23 @@ fun SearchScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                val sub = when {
-                                    hit.inLibrary -> "In library"
-                                    !hit.disambiguation.isNullOrBlank() -> hit.disambiguation
-                                    else -> "Not in library · ${hit.source}"
+                                Text(
+                                    hit.originSubtitle(),
+                                    color = Color(0xFF888888),
+                                    fontSize = textLabelM(),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                hit.descriptionText()?.let { desc ->
+                                    Text(
+                                        desc,
+                                        color = Color(0xFF666666),
+                                        fontSize = textLabelM(),
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
                                 }
-                                Text(sub, color = Color(0xFF888888), fontSize = textLabelM(), maxLines = 1)
                             }
                             if (!hit.inLibrary) {
                                 IconButton(

@@ -5,6 +5,8 @@ import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
+import com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer
+import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,6 +18,9 @@ class DiscoverLibraryResolver @Inject constructor(
     private val metadataDao: CachedMetadataDao,
     private val trackDao: TrackDao,
 ) {
+    /**
+     * MBID → exact name → apostrophe-normalized name → search_aliases token.
+     */
     suspend fun resolveArtist(mbid: String?, name: String): CachedArtistEntity? {
         if (!mbid.isNullOrBlank()) {
             try {
@@ -23,8 +28,20 @@ class DiscoverLibraryResolver @Inject constructor(
             } catch (_: Exception) {
             }
         }
+        if (name.isBlank()) return null
         return try {
-            metadataDao.getArtistByExactName(name)
+            metadataDao.getArtistByExactName(name)?.let { return it }
+            val normalized = ArtistNameNormalizer.normalize(name)
+            if (normalized.isEmpty()) return null
+            metadataDao.getArtistByNormalizedName(normalized)?.let { return it }
+            // Alias: SQL LIKE prefilter, then whole-token verify (no tribute false hits).
+            val needle = SearchQueryNormalizer.escapeLike(normalized)
+            val aliasHit = metadataDao.getArtistByAliasContains(needle)
+            if (aliasHit != null && ArtistNameNormalizer.aliasMatches(aliasHit.searchAliases, normalized)) {
+                aliasHit
+            } else {
+                null
+            }
         } catch (_: Exception) {
             null
         }

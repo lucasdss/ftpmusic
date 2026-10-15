@@ -1194,6 +1194,32 @@ interface CachedMetadataDao {
     @Query("SELECT * FROM cached_artists WHERE LOWER(name) = LOWER(:name) LIMIT 1")
     suspend fun getArtistByExactName(name: String): CachedArtistEntity?
 
+    /**
+     * Match after [com.lucasdss.ftpmusic.app.data.search.ArtistNameNormalizer]
+     * fold (apostrophe variants). SQL REPLACE mirrors the Kotlin fold.
+     */
+    @Query(
+        """
+        SELECT * FROM cached_artists
+        WHERE LOWER(
+            REPLACE(REPLACE(REPLACE(REPLACE(name, '’', ''''), '‘', ''''), '`', ''''), '´', '''')
+        ) = :normalizedName
+        LIMIT 1
+        """,
+    )
+    suspend fun getArtistByNormalizedName(normalizedName: String): CachedArtistEntity?
+
+    /** Alias token match (space-joined search_aliases from MB enrich). */
+    @Query(
+        """
+        SELECT * FROM cached_artists
+        WHERE search_aliases IS NOT NULL AND search_aliases != ''
+          AND LOWER(search_aliases) LIKE '%' || :needle || '%' ESCAPE '\'
+        LIMIT 1
+        """,
+    )
+    suspend fun getArtistByAliasContains(needle: String): CachedArtistEntity?
+
     @Query("SELECT * FROM cached_albums WHERE musicbrainz_id = :mbid LIMIT 1")
     suspend fun getAlbumByMbid(mbid: String): CachedAlbumEntity?
 

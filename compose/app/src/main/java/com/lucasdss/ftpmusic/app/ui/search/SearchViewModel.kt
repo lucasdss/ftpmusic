@@ -119,6 +119,7 @@ class SearchViewModel @Inject constructor(
     private val lyricsCacheDao: com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao,
     private val favoriteRepository: FavoriteRepository,
     private val discoverLibraryResolver: DiscoverLibraryResolver,
+    private val discoverArtistBioEnricher: DiscoverArtistBioEnricher,
 ) : ViewModel() {
 
     private val trackReactions = TrackListReactionCoordinator(favoriteRepository)
@@ -1116,8 +1117,10 @@ class SearchViewModel @Inject constructor(
                     .toList()
 
                 if (_state.value.query.trim() != query) return@launch
+                val artistsWithBio = discoverArtistBioEnricher.enrich(rankedArtists)
+                if (_state.value.query.trim() != query) return@launch
                 _state.value = _state.value.copy(
-                    discoverArtists = rankedArtists,
+                    discoverArtists = artistsWithBio,
                     discoverAlbums = albumHits.take(DISCOVER_LIMIT),
                     discoverTracks = rankedTracks,
                     isDiscoverLoading = false,
@@ -1187,6 +1190,7 @@ class SearchViewModel @Inject constructor(
         )
 
     fun addDiscoverArtistDesired(hit: DiscoverArtistHit) {
+        if (hit.inLibrary) return
         viewModelScope.launch {
             desiredRepository.addDesired(
                 entityType = com.lucasdss.ftpmusic.app.data.repository.DesiredRepository.TYPE_ARTIST,
@@ -1195,7 +1199,7 @@ class SearchViewModel @Inject constructor(
                 deezerId = hit.deezerId,
                 source = hit.source,
                 imageUrl = hit.imageUrl,
-                description = hit.disambiguation,
+                description = hit.descriptionText(),
                 extraJson = hit.listenCount?.let { """{"listenCount":$it}""" },
                 matchedLocalId = hit.localArtistId,
             )
@@ -1291,15 +1295,23 @@ class SearchViewModel @Inject constructor(
                 ?: hit.mbid?.let { "mb:$it" }
                 ?: "ext:${hit.name.lowercase().hashCode()}"
             try {
-                metadataDao.upsertArtists(
+                // PreserveEnrich — never REPLACE-wipe bio/aliases on stub reopen.
+                metadataDao.upsertArtistsPreserveEnrich(
                     listOf(
                         CachedArtistEntity(
                             id = stubId,
                             name = hit.name,
                             musicbrainzId = hit.mbid,
+                            biography = hit.biography,
                         ),
                     ),
                 )
+                if (!hit.biography.isNullOrBlank()) {
+                    try {
+                        metadataDao.setArtistBiography(stubId, hit.biography)
+                    } catch (_: Exception) {
+                    }
+                }
                 searchIndexRebuilder.indexArtistStub(stubId, hit.name, hit.mbid)
                 searchIndexRebuilder.scheduleRebuild(debounceMs = 3_000L)
             } catch (_: Exception) {
