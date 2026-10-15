@@ -96,7 +96,16 @@ fun HomeScreen(
         }
     }
 
-    Column(Modifier.background(Background)) {
+    // ADR-0114: opaque Background rides under overlay AppHeader so Settings/Cast
+    // stay readable on reveal (parity with Library/Favorites). Header clearance is
+    // Column pad via clip-host; Lazy top pad is local spacing only. ADR-0143 mini
+    // bottom pad kept on Lazy so idle mini reveal does not clip list end.
+    val headerPad = LocalAppHeaderContentPadding.current
+    val headerOffset = LocalAppHeaderOffsetPx.current
+    val headerPadPx = with(LocalDensity.current) { headerPad.toPx() }
+    Column(
+        Modifier.appHeaderRidingClipHost(headerPad),
+    ) {
         // Server issues: AppHeader IssueStatusIcon + sheet (ADR-0120).
         // Data-first: the full-screen spinner only shows until the first
         // content render; a stalled loader must never leave Home spinning.
@@ -118,405 +127,423 @@ fun HomeScreen(
             )
             val scrollInProgress = listState.isScrollInProgress
             val cardDecode = albumCardWidth()
-            val headerPad = LocalAppHeaderContentPadding.current
             val miniBottomPad = LocalMiniPlayerBottomContentPadding.current
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.testTag("home_scroll"),
-                contentPadding = PaddingValues(top = headerPad, bottom = miniBottomPad),
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .appHeaderRidingContent(
+                        offsetPx = { headerOffset.offsetPx() },
+                        maxOffsetPx = headerPadPx,
+                    )
+                    .background(Background),
             ) {
-                // ── Surprise Me hero card ──
-                item(contentType = "hero") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = spacingL(), vertical = spacingM())
-                            .height(100.dp)
-                            .clip(RoundedCornerShape(cornerM()))
-                            .background(Color(0xFF1E1E2E))
-                            .border(
-                                2.dp,
-                                Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
-                                RoundedCornerShape(cornerM()),
-                            )
-                            .clickable { viewModel.playSurpriseMe() },
-                    ) {
-                        Row(
-                            Modifier.fillMaxSize().padding(spacingS()),
-                            verticalAlignment = Alignment.CenterVertically,
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("home_scroll"),
+                    contentPadding = PaddingValues(top = spacingS(), bottom = miniBottomPad),
+                ) {
+                    // ── Surprise Me hero card ──
+                    item(contentType = "hero") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacingL(), vertical = spacingM())
+                                .height(100.dp)
+                                .clip(RoundedCornerShape(cornerM()))
+                                .background(Color(0xFF1E1E2E))
+                                .border(
+                                    2.dp,
+                                    Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
+                                    RoundedCornerShape(cornerM()),
+                                )
+                                .clickable { viewModel.playSurpriseMe() },
                         ) {
-                            // Inset image — rounded square (button affordance)
-                            Image(
-                                painter = painterResource(R.drawable.random),
-                                contentDescription = null,
+                            Row(
+                                Modifier.fillMaxSize().padding(spacingS()),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // Inset image — rounded square (button affordance)
+                                Image(
+                                    painter = painterResource(R.drawable.random),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(cornerM())),
+                                    contentScale = ContentScale.Crop,
+                                )
+                                Spacer(Modifier.width(spacingL()))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "Surprise Me",
+                                        color = Color.White,
+                                        fontSize = textHeadingL(),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Spacer(Modifier.height(spacingXS()))
+                                    Text(
+                                        "Random music from your library",
+                                        color = Color.White.copy(alpha = 0.8f),
+                                        fontSize = textLabelL(),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Daily Mixes ──
+                    if (state.mixCards.isNotEmpty()) {
+                        item(contentType = "section_header") {
+                            HomeSectionHeader(
+                                title = "Daily Mixes",
+                                leadingIcon = Icons.Default.AutoAwesome,
+                                trailing = HomeSectionTrailing.Refresh(
+                                    onClick = { viewModel.refreshAllMixes() },
+                                    contentDescription = "Refresh mixes",
+                                ),
+                            )
+                        }
+                        item(contentType = "lazy_row_mix") {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(spacingM()),
+                                contentPadding = PaddingValues(horizontal = spacingL()),
                                 modifier = Modifier
-                                    .fillMaxHeight()
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(cornerM())),
-                                contentScale = ContentScale.Crop,
-                            )
-                            Spacer(Modifier.width(spacingL()))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "Surprise Me",
-                                    color = Color.White,
-                                    fontSize = textHeadingL(),
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(spacingXS()))
-                                Text(
-                                    "Random music from your library",
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = textLabelL(),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ── Daily Mixes ──
-                if (state.mixCards.isNotEmpty()) {
-                    item(contentType = "section_header") {
-                        HomeSectionHeader(
-                            title = "Daily Mixes",
-                            leadingIcon = Icons.Default.AutoAwesome,
-                            trailing = HomeSectionTrailing.Refresh(
-                                onClick = { viewModel.refreshAllMixes() },
-                                contentDescription = "Refresh mixes",
-                            ),
-                        )
-                    }
-                    item(contentType = "lazy_row_mix") {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
-                            contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier
-                                .padding(bottom = spacingM())
-                                .semantics { testTag = "daily_mix_row" },
-                        ) {
-                            items(state.mixCards, key = { it.id }, contentType = { "mix" }) { mix ->
-                                GenreMixCard(
-                                    mix = mix,
-                                    decodeSize = cardDecode,
-                                    onClick = { onMixClick(mix.id) },
-                                    modifier = Modifier.semantics { testTag = "daily_mix_card_${mix.id}" },
-                                )
-                            }
-                        }
-                    }
-                } else if (state.isResyncing || state.isGeneratingMixes) {
-                    item(contentType = "placeholder") {
-                        Text(
-                            "Building your Daily Mixes…",
-                            color = Color(0xFF666666),
-                            fontSize = textBodyM(),
-                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
-                        )
-                    }
-                } else {
-                    // No mixes exist yet
-                    item(contentType = "placeholder") {
-                        Text(
-                            "Daily Mixes will appear after sync completes",
-                            color = NavUnselected,
-                            fontSize = textBodyM(),
-                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
-                        )
-                    }
-                }
-
-                // ── Playlists (synced only) ──
-                if (state.showPlaylistsOnHome && syncedPlaylists.isNotEmpty()) {
-                    item(contentType = "section_header") {
-                        HomeSectionHeader(
-                            title = "Playlists",
-                            leadingIcon = Icons.AutoMirrored.Filled.QueueMusic,
-                            trailing = HomeSectionTrailing.SeeAll(
-                                onClick = onPlaylistsClick,
-                                contentDescription = "See all playlists",
-                            ),
-                        )
-                    }
-                    item(contentType = "lazy_row_playlist") {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
-                            contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier
-                                .padding(bottom = spacingM())
-                                .semantics { testTag = "home_playlists_row" },
-                        ) {
-                            items(syncedPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
-                                HomePlaylistCard(
-                                    playlist = pl,
-                                    montageCovers = state.playlistMontages[pl.id].orEmpty(),
-                                    decodeSize = cardDecode,
-                                    onClick = { onPlaylistClick(pl.id) },
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ── Favorite Artists ──
-                if (state.showFavArtistsSection && state.starredArtists.isNotEmpty()) {
-                    item(contentType = "section_header") {
-                        HomeSectionHeader(
-                            title = "Favorite Artists",
-                            leadingIcon = Icons.Default.ThumbUp,
-                            trailing = HomeSectionTrailing.SeeAll(
-                                onClick = onFavoritesClick,
-                                contentDescription = "See all favorite artists",
-                            ),
-                        )
-                    }
-                    item(contentType = "lazy_row_artist") {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
-                            contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier
-                                .padding(bottom = spacingM())
-                                .semantics { testTag = "home_fav_artists_row" },
-                        ) {
-                            items(state.starredArtists, key = { it.id }, contentType = { "artist" }) { artist ->
-                                Column(
-                                    Modifier.width(albumCardWidth()).clickable { onArtistClick(artist.id) },
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    // Avatar sized like the Album/Daily Mix art box (user request)
-                                    ArtistAvatar(
-                                        artistName = artist.name,
-                                        coverArtId = artist.coverArtUrl,
-                                        size = albumCardWidth(),
-                                    )
-                                    Spacer(Modifier.height(spacingBelowArt()))
-                                    Text(
-                                        artist.name,
-                                        color = Color.White,
-                                        fontSize = textBodyM(),
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── Favorite Albums ──
-                if (state.showFavAlbumsSection && state.starredAlbums.isNotEmpty()) {
-                    item(contentType = "section_header") {
-                        HomeSectionHeader(
-                            title = "Favorite Albums",
-                            leadingIcon = Icons.Default.ThumbUp,
-                            trailing = HomeSectionTrailing.SeeAll(
-                                onClick = onFavoritesClick,
-                                contentDescription = "See all favorite albums",
-                            ),
-                        )
-                    }
-                    item(contentType = "lazy_row_album") {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
-                            contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier
-                                .padding(bottom = spacingM())
-                                .semantics { testTag = "home_fav_albums_row" },
-                        ) {
-                            items(state.starredAlbums, key = { it.id }, contentType = { "album" }) { album ->
-                                Column(
-                                    Modifier.width(albumCardWidth()).clickable { onAlbumClick(album.id) },
-                                ) {
-                                    Box(
-                                        Modifier.width(albumCardWidth()).aspectRatio(1f)
-                                            .clip(RoundedCornerShape(cornerM())).background(Color(0xFF1E1E1E)),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        val url = rememberPreferredCoverArt(
-                                            coverArtId = album.coverArtUrl,
-                                            artist = album.artist,
-                                            album = album.name,
-                                            size = 300,
-                                        )
-                                        if (url != null) {
-                                            CoverArtImage(
-                                                url = url,
-                                                contentDescription = album.name,
-                                                modifier = Modifier.fillMaxSize(),
-                                                fallbackArtist = album.artist,
-                                                fallbackAlbum = album.name,
-                                                decodeSize = cardDecode,
-                                            )
-                                        } else {
-                                            Icon(
-                                                Icons.Default.Album,
-                                                null,
-                                                tint = Color(0xFF444444),
-                                                modifier = Modifier.size(36.dp),
-                                            )
-                                        }
-                                    }
-                                    Spacer(Modifier.height(spacingBelowArt()))
-                                    Text(
-                                        album.name,
-                                        color = Color.White,
-                                        fontSize = textBodyM(),
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        album.artist ?: "Unknown artist",
-                                        color = NavUnselected,
-                                        fontSize = textLabelM(),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── Favorite Radio ──
-                if (state.showFavRadioSection && state.bookmarkedRadio.isNotEmpty()) {
-                    item(contentType = "section_header") {
-                        HomeSectionHeader(
-                            title = "Favorite Radio",
-                            leadingIcon = Icons.Default.Bookmark,
-                            trailing = HomeSectionTrailing.SeeAll(
-                                onClick = onFavoritesClick,
-                                contentDescription = "See all favorite radio",
-                            ),
-                        )
-                    }
-                    item(contentType = "lazy_row_radio") {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
-                            contentPadding = PaddingValues(horizontal = spacingL()),
-                            modifier = Modifier
-                                .padding(bottom = spacingM())
-                                .semantics { testTag = "home_fav_radio_row" },
-                        ) {
-                            items(state.bookmarkedRadio, key = { it.stationId }, contentType = { "radio" }) { station ->
-                                HomeRadioPill(
-                                    name = station.name,
-                                    onClick = {
-                                        onRadioStationClick(
-                                            RadioStation(
-                                                id = station.stationId,
-                                                name = station.name,
-                                                streamUrl = station.streamUrl,
-                                                homePageUrl = station.homePageUrl,
-                                            ),
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ── Tuned In genres ──
-                if (state.genres.isNotEmpty()) {
-                    item(contentType = "section_header") {
-                        HomeSectionHeader(
-                            title = "Tuned In",
-                            leadingIcon = Icons.Default.Tune,
-                        )
-                    }
-                    item(contentType = "tuned_in") {
-                        FlowRow(
-                            modifier = Modifier.padding(
-                                start = spacingL(),
-                                end = spacingL(),
-                                top = spacingXS(),
-                                bottom = spacingM(),
-                            ),
-                            horizontalArrangement = Arrangement.spacedBy(spacingS()),
-                            verticalArrangement = Arrangement.spacedBy(spacingS()),
-                        ) {
-                            val genreColors = listOf(
-                                BrandTeal,
-                                BrandPurple,
-                                Color(0xFF5B8DEE),
-                                Color(0xFFE84090),
-                                Color(0xFFF0A040),
-                            )
-                            for ((i, genre) in state.genres.withIndex()) {
-                                val color = genreColors[i % genreColors.size]
-                                Row(
-                                    Modifier
-                                        .border(1.dp, color.copy(alpha = 0.33f), RoundedCornerShape(50))
-                                        .clip(RoundedCornerShape(50))
-                                        .background(color.copy(alpha = 0.13f))
-                                        .clickable { onGenreClick(genre) }
-                                        .padding(horizontal = spacingS(), vertical = spacingXS()),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(Icons.Filled.PlayArrow, null, tint = color, modifier = Modifier.size(adp(10f)))
-                                    Spacer(Modifier.width(spacingXS()))
-                                    Text(
-                                        genre,
-                                        color = color,
-                                        fontSize = textBodyM(),
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── Recently Added albums ──
-                if (recentAlbums.isNotEmpty()) {
-                    item(contentType = "section_header") {
-                        HomeSectionHeader(
-                            title = "Recently Added",
-                            leadingIcon = Icons.Default.NewReleases,
-                            trailing = HomeSectionTrailing.SeeAll(
-                                onClick = onRecentlyAddedClick,
-                                contentDescription = "See all recently added",
-                            ),
-                        )
-                    }
-                    item(contentType = "row_recent") {
-                        // Fixed ≤10 cards — plain Row avoids nested LazyRow Subcompose tax (Pass 7).
-                        Row(
-                            Modifier
-                                .padding(bottom = spacingM())
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = spacingL()),
-                            horizontalArrangement = Arrangement.spacedBy(spacingM()),
-                        ) {
-                            recentAlbums.forEach { album ->
-                                key(album.id) {
-                                    val isActive =
-                                        currentAlbumId != null && album.id == currentAlbumId && isPlaying
-                                    AlbumCardDesign(
-                                        album,
-                                        isActive = isActive,
-                                        scrollInProgress = scrollInProgress,
+                                    .padding(bottom = spacingM())
+                                    .semantics { testTag = "daily_mix_row" },
+                            ) {
+                                items(state.mixCards, key = { it.id }, contentType = { "mix" }) { mix ->
+                                    GenreMixCard(
+                                        mix = mix,
                                         decodeSize = cardDecode,
-                                        downloadStatus =
-                                            state.downloadStatusByAlbumId[album.id] ?: "none",
-                                        onClick = { onAlbumClick(album.id) },
-                                        onLongClick = { showAlbumSheet = album },
+                                        onClick = { onMixClick(mix.id) },
+                                        modifier = Modifier.semantics { testTag = "daily_mix_card_${mix.id}" },
+                                    )
+                                }
+                            }
+                        }
+                    } else if (state.isResyncing || state.isGeneratingMixes) {
+                        item(contentType = "placeholder") {
+                            Text(
+                                "Building your Daily Mixes…",
+                                color = Color(0xFF666666),
+                                fontSize = textBodyM(),
+                                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+                            )
+                        }
+                    } else {
+                        // No mixes exist yet
+                        item(contentType = "placeholder") {
+                            Text(
+                                "Daily Mixes will appear after sync completes",
+                                color = NavUnselected,
+                                fontSize = textBodyM(),
+                                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+                            )
+                        }
+                    }
+
+                    // ── Playlists (synced only) ──
+                    if (state.showPlaylistsOnHome && syncedPlaylists.isNotEmpty()) {
+                        item(contentType = "section_header") {
+                            HomeSectionHeader(
+                                title = "Playlists",
+                                leadingIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                                trailing = HomeSectionTrailing.SeeAll(
+                                    onClick = onPlaylistsClick,
+                                    contentDescription = "See all playlists",
+                                ),
+                            )
+                        }
+                        item(contentType = "lazy_row_playlist") {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(spacingM()),
+                                contentPadding = PaddingValues(horizontal = spacingL()),
+                                modifier = Modifier
+                                    .padding(bottom = spacingM())
+                                    .semantics { testTag = "home_playlists_row" },
+                            ) {
+                                items(syncedPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
+                                    HomePlaylistCard(
+                                        playlist = pl,
+                                        montageCovers = state.playlistMontages[pl.id].orEmpty(),
+                                        decodeSize = cardDecode,
+                                        onClick = { onPlaylistClick(pl.id) },
                                     )
                                 }
                             }
                         }
                     }
-                }
 
-                item(contentType = "spacer") { Spacer(Modifier.height(spacingL())) }
-            }
+                    // ── Favorite Artists ──
+                    if (state.showFavArtistsSection && state.starredArtists.isNotEmpty()) {
+                        item(contentType = "section_header") {
+                            HomeSectionHeader(
+                                title = "Favorite Artists",
+                                leadingIcon = Icons.Default.ThumbUp,
+                                trailing = HomeSectionTrailing.SeeAll(
+                                    onClick = onFavoritesClick,
+                                    contentDescription = "See all favorite artists",
+                                ),
+                            )
+                        }
+                        item(contentType = "lazy_row_artist") {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(spacingM()),
+                                contentPadding = PaddingValues(horizontal = spacingL()),
+                                modifier = Modifier
+                                    .padding(bottom = spacingM())
+                                    .semantics { testTag = "home_fav_artists_row" },
+                            ) {
+                                items(state.starredArtists, key = { it.id }, contentType = { "artist" }) { artist ->
+                                    Column(
+                                        Modifier.width(albumCardWidth()).clickable { onArtistClick(artist.id) },
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        // Avatar sized like the Album/Daily Mix art box (user request)
+                                        ArtistAvatar(
+                                            artistName = artist.name,
+                                            coverArtId = artist.coverArtUrl,
+                                            size = albumCardWidth(),
+                                        )
+                                        Spacer(Modifier.height(spacingBelowArt()))
+                                        Text(
+                                            artist.name,
+                                            color = Color.White,
+                                            fontSize = textBodyM(),
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Favorite Albums ──
+                    if (state.showFavAlbumsSection && state.starredAlbums.isNotEmpty()) {
+                        item(contentType = "section_header") {
+                            HomeSectionHeader(
+                                title = "Favorite Albums",
+                                leadingIcon = Icons.Default.ThumbUp,
+                                trailing = HomeSectionTrailing.SeeAll(
+                                    onClick = onFavoritesClick,
+                                    contentDescription = "See all favorite albums",
+                                ),
+                            )
+                        }
+                        item(contentType = "lazy_row_album") {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(spacingM()),
+                                contentPadding = PaddingValues(horizontal = spacingL()),
+                                modifier = Modifier
+                                    .padding(bottom = spacingM())
+                                    .semantics { testTag = "home_fav_albums_row" },
+                            ) {
+                                items(state.starredAlbums, key = { it.id }, contentType = { "album" }) { album ->
+                                    Column(
+                                        Modifier.width(albumCardWidth()).clickable { onAlbumClick(album.id) },
+                                    ) {
+                                        Box(
+                                            Modifier.width(albumCardWidth()).aspectRatio(1f)
+                                                .clip(RoundedCornerShape(cornerM())).background(Color(0xFF1E1E1E)),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            val url = rememberPreferredCoverArt(
+                                                coverArtId = album.coverArtUrl,
+                                                artist = album.artist,
+                                                album = album.name,
+                                                size = 300,
+                                            )
+                                            if (url != null) {
+                                                CoverArtImage(
+                                                    url = url,
+                                                    contentDescription = album.name,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    fallbackArtist = album.artist,
+                                                    fallbackAlbum = album.name,
+                                                    decodeSize = cardDecode,
+                                                )
+                                            } else {
+                                                Icon(
+                                                    Icons.Default.Album,
+                                                    null,
+                                                    tint = Color(0xFF444444),
+                                                    modifier = Modifier.size(36.dp),
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.height(spacingBelowArt()))
+                                        Text(
+                                            album.name,
+                                            color = Color.White,
+                                            fontSize = textBodyM(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            album.artist ?: "Unknown artist",
+                                            color = NavUnselected,
+                                            fontSize = textLabelM(),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Favorite Radio ──
+                    if (state.showFavRadioSection && state.bookmarkedRadio.isNotEmpty()) {
+                        item(contentType = "section_header") {
+                            HomeSectionHeader(
+                                title = "Favorite Radio",
+                                leadingIcon = Icons.Default.Bookmark,
+                                trailing = HomeSectionTrailing.SeeAll(
+                                    onClick = onFavoritesClick,
+                                    contentDescription = "See all favorite radio",
+                                ),
+                            )
+                        }
+                        item(contentType = "lazy_row_radio") {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(spacingM()),
+                                contentPadding = PaddingValues(horizontal = spacingL()),
+                                modifier = Modifier
+                                    .padding(bottom = spacingM())
+                                    .semantics { testTag = "home_fav_radio_row" },
+                            ) {
+                                items(state.bookmarkedRadio, key = {
+                                    it.stationId
+                                }, contentType = { "radio" }) { station ->
+                                    HomeRadioPill(
+                                        name = station.name,
+                                        onClick = {
+                                            onRadioStationClick(
+                                                RadioStation(
+                                                    id = station.stationId,
+                                                    name = station.name,
+                                                    streamUrl = station.streamUrl,
+                                                    homePageUrl = station.homePageUrl,
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Tuned In genres ──
+                    if (state.genres.isNotEmpty()) {
+                        item(contentType = "section_header") {
+                            HomeSectionHeader(
+                                title = "Tuned In",
+                                leadingIcon = Icons.Default.Tune,
+                            )
+                        }
+                        item(contentType = "tuned_in") {
+                            FlowRow(
+                                modifier = Modifier.padding(
+                                    start = spacingL(),
+                                    end = spacingL(),
+                                    top = spacingXS(),
+                                    bottom = spacingM(),
+                                ),
+                                horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                                verticalArrangement = Arrangement.spacedBy(spacingS()),
+                            ) {
+                                val genreColors = listOf(
+                                    BrandTeal,
+                                    BrandPurple,
+                                    Color(0xFF5B8DEE),
+                                    Color(0xFFE84090),
+                                    Color(0xFFF0A040),
+                                )
+                                for ((i, genre) in state.genres.withIndex()) {
+                                    val color = genreColors[i % genreColors.size]
+                                    Row(
+                                        Modifier
+                                            .border(1.dp, color.copy(alpha = 0.33f), RoundedCornerShape(50))
+                                            .clip(RoundedCornerShape(50))
+                                            .background(color.copy(alpha = 0.13f))
+                                            .clickable { onGenreClick(genre) }
+                                            .padding(horizontal = spacingS(), vertical = spacingXS()),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.PlayArrow,
+                                            null,
+                                            tint = color,
+                                            modifier = Modifier.size(adp(10f)),
+                                        )
+                                        Spacer(Modifier.width(spacingXS()))
+                                        Text(
+                                            genre,
+                                            color = color,
+                                            fontSize = textBodyM(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Recently Added albums ──
+                    if (recentAlbums.isNotEmpty()) {
+                        item(contentType = "section_header") {
+                            HomeSectionHeader(
+                                title = "Recently Added",
+                                leadingIcon = Icons.Default.NewReleases,
+                                trailing = HomeSectionTrailing.SeeAll(
+                                    onClick = onRecentlyAddedClick,
+                                    contentDescription = "See all recently added",
+                                ),
+                            )
+                        }
+                        item(contentType = "row_recent") {
+                            // Fixed ≤10 cards — plain Row avoids nested LazyRow Subcompose tax (Pass 7).
+                            Row(
+                                Modifier
+                                    .padding(bottom = spacingM())
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = spacingL()),
+                                horizontalArrangement = Arrangement.spacedBy(spacingM()),
+                            ) {
+                                recentAlbums.forEach { album ->
+                                    key(album.id) {
+                                        val isActive =
+                                            currentAlbumId != null && album.id == currentAlbumId && isPlaying
+                                        AlbumCardDesign(
+                                            album,
+                                            isActive = isActive,
+                                            scrollInProgress = scrollInProgress,
+                                            decodeSize = cardDecode,
+                                            downloadStatus =
+                                                state.downloadStatusByAlbumId[album.id] ?: "none",
+                                            onClick = { onAlbumClick(album.id) },
+                                            onLongClick = { showAlbumSheet = album },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item(contentType = "spacer") { Spacer(Modifier.height(spacingL())) }
+                }
+            } // riding content Column
         }
     }
 

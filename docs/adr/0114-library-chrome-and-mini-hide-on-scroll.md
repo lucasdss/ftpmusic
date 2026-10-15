@@ -1,9 +1,9 @@
 # ADR 0114 — Library Chrome Translate + Mini Hide-on-Scroll
 
 Date: 2026-10-10  
-Status: Accepted (amended 2026-10-14)  
-Related: ADR-0097, ADR-0107, ADR-0070  
-Behavior: `docs/LIBRARY_SCROLL_CHROME_BEHAVIOR_REPORT.md`
+Status: Accepted (amended 2026-10-15)  
+Related: ADR-0097, ADR-0107, ADR-0070, ADR-0143  
+Behavior: `docs/LIBRARY_SCROLL_CHROME_BEHAVIOR_REPORT.md`, `docs/HOME_MINI_REVEAL_BEHAVIOR_REPORT.md`
 
 ## Context
 
@@ -25,12 +25,14 @@ Library tabs. Clip **must precede** top padding (`appHeaderRidingClipHost`).
 
 1. **Chrome + list translate** — Keep fixed `LocalAppHeaderContentPadding`. Expose
    `LocalAppHeaderOffsetPx` (stable reader over `AppHeaderScrollState.offsetPx`).
-   Library chips/search and Favorites mode chips **plus** the list body share
+   Library chips/search, Favorites mode chips, **and Home list body** share
    `Modifier.appHeaderRidingContent`: measure child at `H + maxHeaderPx` (fixed from
    header pad), report layout `H`, `graphicsLayer { translationY = -offset }`, parent
    `appHeaderRidingClipHost` (`clipToBounds` **before** `padding(top)`). Occupies
    collapsed header band without per-frame Lazy remasure, no mid/top Background gap,
-   **and no bottom paint strip**.
+   **and no bottom paint strip**. Opaque `Background` under the ride also keeps
+   overlay AppHeader Settings/Cast readable on enterAlways reveal (Home had
+   list-through-chrome before this amend).
 2. **Mini hide-on-scroll** — Shell `MiniPlayerScrollVisibility`: any vertical
    nested-scroll activity hides the mini slot (discrete height animation);
    **200ms** idle debounce reveals it. Route change forces visible. Bottom nav
@@ -41,13 +43,13 @@ Library tabs. Clip **must precede** top padding (`appHeaderRidingClipHost`).
 
 ## Consequences
 
-- Library/Favorites regain YTM-like chrome reclaim without Pass-4 hitch.
+- Library/Favorites/Home regain YTM-like chrome reclaim without Pass-4 hitch.
 - Mid-row, top, and bottom Background gaps under translated chrome are avoided
   when clip precedes header pad.
 - Scaffold bottom padding is scroll-stable (not tied to header offset); mini
   show/hide `AnimatedVisibility` may remeasure during its short tween only.
-  Primary-tab lists with top-only header pad (Home/Search) also reserve mini
-  height in Lazy `contentPadding.bottom` while a track is loaded — ADR-0143.
+  Home keeps ADR-0143 Lazy `contentPadding.bottom` mini reserve while a track
+  is loaded; Search still uses top-only header pad + that bottom reserve.
 - Horizontal nested scroll ignored for mini (same rule as header).
 - Lazy viewport height is `H + maxHeaderPx` constantly while header pad is set —
   still stable during fling (extra not tied to live `offsetPx`).

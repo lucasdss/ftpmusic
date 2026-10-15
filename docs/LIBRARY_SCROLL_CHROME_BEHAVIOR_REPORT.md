@@ -1,8 +1,8 @@
 # Library Scroll Chrome — Behavior Report
 
-Date: 2026-10-10 (amended 2026-10-14)  
+Date: 2026-10-10 (amended 2026-10-15)  
 Status: Delivered  
-Related: ADR-0114, ADR-0097, ADR-0107  
+Related: ADR-0114, ADR-0097, ADR-0107, ADR-0143  
 Market: `docs/SCROLL_FLUIDITY_MARKET_RESEARCH.md`
 
 ## Verdict (Caveman)
@@ -23,13 +23,15 @@ Spotify/YTM keep mini — we diverge on purpose (more list space).
 
 ## Contracts
 
-### Library / Favorites chrome
+### Library / Favorites / Home chrome
 
 - Outer `Column` uses `Modifier.appHeaderRidingClipHost(headerPad)`:
   `fillMaxSize` → `clipToBounds` → `background(Background)` → `padding(top)`.
   **Clip before pad** is required — clip after pad discards top reclaim.
-- Chips + search (Library) / mode chips (Favorites) **and** list body share
+- Chips + search (Library) / mode chips (Favorites) / Home list body share
   `Modifier.appHeaderRidingContent` via `LocalAppHeaderOffsetPx`.
+  Home has no secondary chips; ride keeps opaque `Background` under overlay
+  AppHeader so Settings stays readable on enterAlways reveal.
 - Measure height = viewport `H` + fixed header-pad px; layout reports `H`;
   paint translate `-offsetPx` (ADR-0107: size stable during fling).
 - Collapsed: brand AppHeader off-screen; library nav chips + search visible in

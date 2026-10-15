@@ -92,7 +92,7 @@ fun appHeaderRidingMeasureHeight(constraintsMaxHeight: Int, maxOffsetPx: Float):
 }
 
 /**
- * Outer host for Library/Favorites riding chrome (ADR-0114).
+ * Outer host for Library/Favorites/Home riding chrome (ADR-0114).
  *
  * **Order is load-bearing:** `clipToBounds` must precede `padding(top = headerPad)`.
  * Clip after padding excludes the header band and discards upward chrome paint
@@ -107,7 +107,7 @@ fun Modifier.appHeaderRidingClipHost(headerPad: Dp): Modifier = this
     .padding(top = headerPad)
 
 /**
- * Library/Favorites chrome+list ride: measure child at `H + maxOffsetPx` (fixed;
+ * Library/Favorites/Home chrome+list ride: measure child at `H + maxOffsetPx` (fixed;
  * changes only when header pad changes), report layout `H`, paint-translate by
  * `-offsetPx`. Pair with [appHeaderRidingClipHost] (clip **before** top padding)
  * so reclaim paints into the header band and offset=0 overhang never paints over
