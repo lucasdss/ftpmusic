@@ -2,6 +2,7 @@
 
 Date: 2026-10-11
 Status: Accepted
+Superseded in part by: ADR-0148 (Resume-prompt warning copy now FGS-deny/null-mac only)
 Related: ADR-0072, ADR-0087, ADR-0088, ADR-0101, ADR-0117,
 `docs/BT_CONNECT_AUTOPLAY_MARKET_BEHAVIOR_REPORT.md`
 Toolchain: compileSdk/targetSdk 36; Android 17 via SDK_INT ≥ 37 gates

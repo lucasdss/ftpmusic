@@ -1,7 +1,7 @@
 # BT Deep-Sleep Media Resume — Behavior Report
 
 Date: 2026-10-09
-Related: ADR-0101, ADR-0088, ADR-0087, ADR-0072, ADR-0019, ADR-0043
+Related: ADR-0101, ADR-0088, ADR-0087, ADR-0072, ADR-0019, ADR-0043, ADR-0148 (seat-only)
 Compat: Android 16 (API 36) toolchain; Android 17 runtime via SDK_INT ≥ 37 guards
 
 ## Problem

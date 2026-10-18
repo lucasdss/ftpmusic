@@ -2,6 +2,7 @@
 
 Date: 2026-10-13
 Status: Accepted
+Superseded in part by: ADR-0148 (happy-path WIU notif removed; tap plumbing kept for FGS-deny/null-mac)
 Related: ADR-0088 (A17 WIU seat), ADR-0101 (offline seat), ADR-0117 (no audible flash)
 Field: `docs/BT_TAP_RESUME_WIU_LOOP_BEHAVIOR_REPORT.md`
 

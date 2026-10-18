@@ -2,6 +2,7 @@
 
 Date: 2026-10-09
 Status: Accepted
+Superseded in part by: ADR-0148 (empty/offline → informational; null-mac keeps Resume)
 Related: ADR-0088 (A17 WIU), ADR-0087 (resumption), ADR-0072 (A2DP resume), ADR-0043 (unreachable)
 Toolchain: compileSdk/targetSdk 36; Android 17 via SDK_INT ≥ 37 guards
 

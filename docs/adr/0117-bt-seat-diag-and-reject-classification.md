@@ -2,6 +2,7 @@
 
 Date: 2026-10-11  
 Status: Accepted  
+Superseded in part by: ADR-0148 (no pause + Resume notif on API ≥37; seat-only)
 Related: ADR-0087, ADR-0088, ADR-0101, ADR-0110, ADR-0048, ADR-0060  
 Source: `/tmp/ftpmusic-phone.logs` (1.10.0 / Pixel 8 Pro / sdk=37)
 

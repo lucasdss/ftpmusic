@@ -34,6 +34,7 @@ class MediaServiceFgsReassertTest {
 
     @Before
     fun setUp() {
+        BtResumeEvents.clear()
         service = spyk(MediaService())
         // startForeground is final on Service (not interceptable on Robolectric
         // android.jar classes) — stub the internal indirection instead.
@@ -54,6 +55,7 @@ class MediaServiceFgsReassertTest {
     @After
     fun tearDown() {
         PlayerHolder.isCasting = false
+        BtResumeEvents.clear()
     }
 
     // ── reassertForegroundIfNeeded (wiring) ─────────────────────────────
@@ -229,9 +231,10 @@ class MediaServiceFgsReassertTest {
     }
 
     @Test
-    fun `applyBtPlayAfterSeat A17 posts WIU notif after offline seek`() {
+    fun `applyBtPlayAfterSeat A17 offline cache-hit seats only — no WIU notif`() {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
         var wiu = 0
+        var cancelled = 0
         service.applyBtPlayAfterSeat(
             player = player,
             sdkInt = 37,
@@ -240,10 +243,34 @@ class MediaServiceFgsReassertTest {
             isCached = { it == "a" },
             postWiuNotif = { wiu++ },
             postOfflineNotif = { error("current is cached") },
+            cancelResumeNotif = { cancelled++ },
         )
-        assertEquals(1, wiu)
+        assertEquals(0, wiu)
+        assertEquals(1, cancelled)
         verify { player.pause() }
         verify(exactly = 0) { player.seekTo(any(), any()) }
+        assertTrue(BtResumeEvents.recent().any { it.contains("seat_only") })
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat A17 offline empty posts informational notif`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
+        var info = 0
+        var wiu = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            userInitiated = false,
+            networkBlocked = true,
+            isCached = { false },
+            postOfflineNotif = { info++ },
+            postWiuNotif = { wiu++ },
+        )
+        assertEquals(1, info)
+        assertEquals(0, wiu)
+        verify { player.pause() }
+        verify(exactly = 0) { player.play() }
+        assertTrue(BtResumeEvents.recent().any { it.contains("offline_empty") })
     }
 
     @Test
@@ -267,7 +294,7 @@ class MediaServiceFgsReassertTest {
     }
 
     @Test
-    fun `applyBtPlayAfterSeat A17 background without tap still posts WIU`() {
+    fun `applyBtPlayAfterSeat A17 background without tap seats only — no WIU notif`() {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
         var wiu = 0
         var cancelled = 0
@@ -279,10 +306,11 @@ class MediaServiceFgsReassertTest {
             postWiuNotif = { wiu++ },
             cancelResumeNotif = { cancelled++ },
         )
-        assertEquals(1, wiu)
-        assertEquals(0, cancelled)
+        assertEquals(0, wiu)
+        assertEquals(1, cancelled)
         verify { player.pause() }
         verify(exactly = 0) { player.play() }
+        assertTrue(BtResumeEvents.recent().any { it.contains("seat_only") })
     }
 
     private fun mockOfflineQueuePlayer(currentIndex: Int, ids: List<String>): Player {

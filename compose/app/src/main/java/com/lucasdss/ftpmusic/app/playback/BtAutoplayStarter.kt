@@ -9,14 +9,20 @@ import android.os.Build
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.lucasdss.ftpmusic.app.MainActivity
 
 /**
  * Starts [MediaService] with [MediaServiceStartRequest.ACTION_BT_AUTOPLAY].
  * On FGS background-start denial, posts a high-priority tap-to-resume notification.
+ * Empty-queue / offline-no-cache post a DEFAULT-priority informational notice instead.
  */
 object BtAutoplayStarter {
     const val RESUME_CHANNEL_ID = "ftpmusic_bt_resume"
     const val RESUME_NOTIFICATION_ID = 1002
+
+    /** ADR-0148: informational channel (empty queue / offline-no-cache) — never HIGH. */
+    const val INFO_CHANNEL_ID = "ftpmusic_bt_info"
+    const val INFO_NOTIFICATION_ID = 1003
 
     fun startAutoplay(context: Context): StartResult = startAutoplay(
         context = context,
@@ -91,6 +97,21 @@ object BtAutoplayStarter {
         manager.createNotificationChannel(channel)
     }
 
+    fun ensureInfoChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (manager.getNotificationChannel(INFO_CHANNEL_ID) != null) return
+        val channel = NotificationChannel(
+            INFO_CHANNEL_ID,
+            context.getString(com.lucasdss.ftpmusic.app.R.string.bt_info_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = context.getString(com.lucasdss.ftpmusic.app.R.string.bt_info_channel_desc)
+            setShowBadge(false)
+        }
+        manager.createNotificationChannel(channel)
+    }
+
     /** True when the OS will deliver app notifications (ADR-0101). */
     fun notificationsEnabled(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -146,6 +167,31 @@ object BtAutoplayStarter {
             .build()
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(RESUME_NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * ADR-0148: informational notice for empty-queue / offline-no-cache.
+     * No "Resume" action; content intent opens the app. Uses a DEFAULT-priority
+     * channel (never [RESUME_CHANNEL_ID]) so it cannot recreate the friction the
+     * seat-only change removes.
+     */
+    fun postInformationalNotification(context: Context, @StringRes titleRes: Int, @StringRes bodyRes: Int) {
+        ensureInfoChannel(context)
+        val launch = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val pending = PendingIntent.getActivity(context, INFO_NOTIFICATION_ID, launch, flags)
+        val notification = NotificationCompat.Builder(context, INFO_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(context.getString(titleRes))
+            .setContentText(context.getString(bodyRes))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .build()
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(INFO_NOTIFICATION_ID, notification)
     }
 
     enum class StartResult {

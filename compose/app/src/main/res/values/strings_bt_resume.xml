@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="bt_resume_channel_name">Bluetooth resume</string>
-    <string name="bt_resume_channel_desc">Prompts to resume playback when Bluetooth audio connects and background start is blocked</string>
+    <string name="bt_resume_channel_desc">Prompts to resume playback when a background start is blocked or the Bluetooth device can\u0027t be verified</string>
     <string name="bt_resume_notif_title">Resume playback</string>
     <string name="bt_resume_notif_body">Tap to continue your last queue</string>
     <string name="bt_resume_notif_body_empty">No saved queue — open the app to play</string>
-    <string name="bt_resume_notif_body_offline">No downloaded tracks available offline — tap to retry or open the app</string>
+    <string name="bt_resume_notif_body_offline">No downloaded tracks available offline — open the app</string>
     <string name="bt_resume_notif_body_mac_unknown">Bluetooth connected — tap to resume (device identity unavailable)</string>
     <string name="bt_resume_notif_action">Resume</string>
     <string name="bt_resume_section_label">Bluetooth</string>
     <string name="bt_resume_toggle">Resume on Bluetooth</string>
-    <string name="bt_resume_subtitle">When a Bluetooth audio device connects, restore the last queue and play</string>
-    <string name="bt_resume_doze_note">After long sleep, unrestricted battery and notification permission improve auto-resume. Play on the headset still works via system media resumption.</string>
+    <string name="bt_resume_subtitle">When a Bluetooth audio device connects, restore the last queue. On Android 17, playback readies for the headset instead of auto-playing.</string>
+    <string name="bt_resume_doze_note">After long sleep, unrestricted battery improves auto-resume. On Android 17, resume via the headset play button or the media notification.</string>
     <string name="bt_resume_battery_cta">Unrestricted battery</string>
     <string name="bt_resume_battery_cta_ok">Battery unrestricted — background resume after sleep is allowed</string>
     <string name="bt_resume_battery_cta_needed">Open system Settings and set battery usage to Unrestricted for reliable Bluetooth resume after deep sleep</string>
-    <string name="bt_resume_notif_warning">Notifications are off — Resume prompts will not appear. Headset Play still works via media resumption; enable notifications for tap-to-resume after Doze.</string>
-    <string name="bt_resume_notif_denied_toast">Notifications denied — enable them in Settings for Resume prompts after Bluetooth connect</string>
+    <string name="bt_resume_notif_warning">Notifications are off — resume prompts (after a blocked start or unverified device) will not appear. Headset play still works via system media resumption.</string>
+    <string name="bt_resume_notif_denied_toast">Notifications denied — enable them in Settings for resume prompts</string>
     <string name="bt_resume_mode_any">Any audio device</string>
     <string name="bt_resume_mode_any_subtitle">Headphones, speakers, car — any A2DP sink</string>
     <string name="bt_resume_mode_selected">Selected devices</string>
@@ -27,4 +27,9 @@
     <string name="bt_resume_default_music_app">Set as default music app</string>
     <string name="bt_resume_default_music_app_subtitle">Prefer FTP Music for system media controls and Bluetooth play</string>
     <string name="bt_resume_default_music_app_held">FTP Music is the default music app</string>
+    <!-- ADR-0148: informational notices (empty queue / offline) -->
+    <string name="bt_info_channel_name">Bluetooth updates</string>
+    <string name="bt_info_channel_desc">Informational notices when playback cannot resume after a Bluetooth connection</string>
+    <string name="bt_info_notif_title_empty">Nothing to resume</string>
+    <string name="bt_info_notif_title_offline">No offline tracks</string>
 </resources>

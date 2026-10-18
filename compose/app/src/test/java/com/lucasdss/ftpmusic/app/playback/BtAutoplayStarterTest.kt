@@ -1,6 +1,8 @@
 package com.lucasdss.ftpmusic.app.playback
 
 import android.content.Context
+import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,15 +97,76 @@ class BtAutoplayStarterRobolectricTest {
     }
 
     @Test
-    fun `postResumeNotification offline body still creates channel`() {
+    fun `postInformationalNotification creates info channel with default priority`() {
         val ctx = RuntimeEnvironment.getApplication()
-        BtAutoplayStarter.postResumeNotification(
+        BtAutoplayStarter.postInformationalNotification(
             ctx,
+            com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_empty,
+            com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_empty,
+        )
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val channel = nm.getNotificationChannel(BtAutoplayStarter.INFO_CHANNEL_ID)
+        org.junit.Assert.assertNotNull(channel)
+        org.junit.Assert.assertEquals(
+            android.app.NotificationManager.IMPORTANCE_DEFAULT,
+            channel!!.importance,
+        )
+    }
+
+    @Test
+    fun `postInformationalNotification opens app with no Resume action`() {
+        val ctx = RuntimeEnvironment.getApplication()
+        BtAutoplayStarter.postInformationalNotification(
+            ctx,
+            com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_offline,
             com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_offline,
         )
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        org.junit.Assert.assertNotNull(nm.getNotificationChannel(BtAutoplayStarter.RESUME_CHANNEL_ID))
-        assertTrue(BtAutoplayStarter.notificationsEnabled(ctx))
+
+        @Suppress("DEPRECATION")
+        val notif = nm.activeNotifications
+            .firstOrNull { it.id == BtAutoplayStarter.INFO_NOTIFICATION_ID }
+            ?.notification
+        org.junit.Assert.assertNotNull(notif)
+        org.junit.Assert.assertEquals(0, notif!!.actions?.size ?: 0)
+        val contentIntent = notif.contentIntent
+        org.junit.Assert.assertNotNull(contentIntent)
+        val intent = org.robolectric.Shadows.shadowOf(contentIntent).savedIntent
+        org.junit.Assert.assertNotEquals(MediaServiceStartRequest.ACTION_BT_AUTOPLAY, intent.action)
+        org.junit.Assert.assertTrue(intent.component?.className?.endsWith("MainActivity") == true)
+    }
+
+    @Test
+    fun `selected_null_mac posts actionable Resume via production default`() {
+        val ctx = RuntimeEnvironment.getApplication()
+        BtConnectionReceiver.debounceMap.clear()
+        val storage = mockk<SecureStorage>()
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "selected"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns """["11:22:33:44:55:66"]"""
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
+        BtConnectionReceiver.dispatchBtConnect(
+            context = ctx,
+            storage = storage,
+            deviceMac = null,
+            casting = false,
+            nowMs = System.currentTimeMillis(),
+            starter = { BtAutoplayStarter.StartResult.Started },
+        )
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+        @Suppress("DEPRECATION")
+        val notif = nm.activeNotifications
+            .firstOrNull { it.id == BtAutoplayStarter.RESUME_NOTIFICATION_ID }
+            ?.notification
+        org.junit.Assert.assertNotNull(notif)
+        val contentIntent = notif!!.contentIntent
+        val intent = org.robolectric.Shadows.shadowOf(contentIntent).savedIntent
+        org.junit.Assert.assertEquals(MediaServiceStartRequest.ACTION_BT_AUTOPLAY, intent.action)
+        org.junit.Assert.assertTrue(
+            intent.getBooleanExtra(MediaServiceStartRequest.EXTRA_USER_INITIATED_RESUME, false),
+        )
     }
 
     @Test

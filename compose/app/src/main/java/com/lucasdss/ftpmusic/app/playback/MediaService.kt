@@ -2257,15 +2257,16 @@ class MediaService : MediaLibraryService() {
                 persistenceManager.restore()
             }
             if (saved == null) {
-                // ADR-0101: empty Room must not be silent on BT wake.
+                // ADR-0148: empty Room — informational notice (no Resume action).
                 MediaServiceStartRequest.clearBtAutoplayFlags()
-                BtAutoplayStarter.postResumeNotification(
+                BtAutoplayStarter.postInformationalNotification(
                     this,
+                    com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_empty,
                     com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_empty,
                 )
                 android.util.Log.w(
                     "ftpmusic-bt",
-                    "BT seat — empty Room queue; Resume notif posted",
+                    "BT seat — empty Room queue; informational notif posted",
                 )
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                     "ftpmusic-bt",
@@ -2332,13 +2333,14 @@ class MediaService : MediaLibraryService() {
                 if (saved == null) {
                     if (btResume) {
                         MediaServiceStartRequest.clearBtAutoplayFlags()
-                        BtAutoplayStarter.postResumeNotification(
+                        BtAutoplayStarter.postInformationalNotification(
                             this@MediaService,
+                            com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_empty,
                             com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_empty,
                         )
                         android.util.Log.w(
                             "ftpmusic-bt",
-                            "BT async restore — empty Room queue; Resume notif posted",
+                            "BT async restore — empty Room queue; informational notif posted",
                         )
                         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                             "ftpmusic-bt",
@@ -2375,8 +2377,8 @@ class MediaService : MediaLibraryService() {
     private fun applyRestoredQueue(saved: SavedQueueState, userInitiatedPlayback: Boolean) {
         val p = PlayerHolder.player
         val resumeForBt = MediaServiceStartRequest.btAutoplayRequested
-        // ADR-0117: BT owns play/WIU after seat — never eager-play then pause (audible flash).
-        // Non-BT cold restore also seats paused unless the user already asked to play.
+        // ADR-0117/0148: BT owns play/seat decision after seat — never eager-play then
+        // pause (audible flash). Non-BT cold restore seats paused unless user asked to play.
         val seatPlayWhenReady = !resumeForBt && userInitiatedPlayback
         val restored = playbackManager.restoreQueue(
             saved.tracks,
@@ -2427,9 +2429,9 @@ class MediaService : MediaLibraryService() {
     }
 
     /**
-     * ADR-0088: API ≤36 autoplay; API ≥37 seat metadata + Resume notif (WIU).
-     * ADR-0101: when network blocked, prefer fully-cached index before play/WIU.
-     * ADR-0133: Resume notif tap ([userInitiated]) forces play() on API ≥37.
+     * ADR-0088/0148: API ≤36 autoplay; API ≥37 seats then pauses (no app Resume notif).
+     * ADR-0101: when network blocked, prefer fully-cached index before play/info.
+     * ADR-0133: a Resume-notification tap ([userInitiated]) forces play() on API ≥37.
      */
     @VisibleForTesting
     internal fun applyBtPlayAfterSeat(
@@ -2438,8 +2440,9 @@ class MediaService : MediaLibraryService() {
         userInitiated: Boolean = false,
         postWiuNotif: (android.content.Context) -> Unit = { BtAutoplayStarter.postResumeNotification(it) },
         postOfflineNotif: (android.content.Context) -> Unit = {
-            BtAutoplayStarter.postResumeNotification(
+            BtAutoplayStarter.postInformationalNotification(
                 it,
+                com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_offline,
                 com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_offline,
             )
         },
@@ -2508,17 +2511,20 @@ class MediaService : MediaLibraryService() {
             )
             BtResumeEvents.record(resultToken, "sdk=$sdkInt")
         } else {
+            // ADR-0148: API ≥37 seat-only. No app-specific Resume (ID 1002) — the paused
+            // media notification, System UI resumption, and head-unit AVRCP PLAY all
+            // provide user-initiated resume. Cancel any stale Resume 1002 (prior null-mac).
             player?.pause()
-            postWiuNotif(this)
+            cancelResumeNotif(this)
             android.util.Log.i(
                 "ftpmusic",
-                "[MediaService] BT seat only (A17 WIU) — Resume notif posted sdk=$sdkInt",
+                "[MediaService] BT seat_only — no Resume notif sdk=$sdkInt",
             )
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-bt",
-                "result=wiu sdk=$sdkInt",
+                "result=seat_only sdk=$sdkInt",
             )
-            BtResumeEvents.record("wiu", "sdk=$sdkInt")
+            BtResumeEvents.record("seat_only", "sdk=$sdkInt")
         }
     }
 
@@ -2532,8 +2538,8 @@ class MediaService : MediaLibraryService() {
     )
 
     /**
-     * ADR-0071/0088: when car-BT resume is pending and a player already has media,
-     * start playback (or WIU notif on API≥37) and clear the flag.
+     * ADR-0071/0088/0148: when BT resume is pending and a player already has media,
+     * start playback (API≤36) or seat-only (API≥37) and clear the flag.
      * ADR-0133: Resume notif tap sets [MediaServiceStartRequest.userInitiatedResume].
      */
     @VisibleForTesting

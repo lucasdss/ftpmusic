@@ -1,7 +1,7 @@
 # BT Connect + Auto-Play — Market Behavior Report
 
 Date: 2026-10-11  
-Status: research + hardening shipped (ADR-0119)  
+Status: research + hardening shipped (ADR-0119); updated by ADR-0148 (API ≥37 seat-only, no app Resume notif)  
 Related: [ADR-0119](adr/0119-bt-connect-autoplay-market-hardening.md),
 [ADR-0088](adr/0088-bt-resume-correctness-and-android17-wiu.md),
 [ADR-0101](adr/0101-bt-a17-silent-wake-and-offlan-cache-seat.md),

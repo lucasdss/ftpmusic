@@ -87,8 +87,8 @@ class QueueManager @Inject constructor(private val authHelper: SubsonicAuthHelpe
      * Uses atomic [Player.setMediaItems] (list, index, position) so metadata and
      * the decoder period never briefly bind to index 0 during restore.
      * When [playWhenReady] is false, prepare only — BT/A17 restore uses this so
-     * [MediaService.applyBtPlayAfterSeat] can pause + WIU without an audible flash
-     * (ADR-0117).
+     * [MediaService.applyBtPlayAfterSeat] can pause (seat-only on API ≥37) without
+     * an audible flash (ADR-0117/0148).
      */
     fun playAll(items: List<MediaItem>, startIndex: Int = 0, positionMs: Long = 0L, playWhenReady: Boolean = true) {
         val p = player ?: run {

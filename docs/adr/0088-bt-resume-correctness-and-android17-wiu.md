@@ -2,6 +2,7 @@
 
 Date: 2026-10-07
 Status: Accepted
+Superseded in part by: ADR-0148 (API ≥37 seat-only, no app Resume notif)
 Related: ADR-0087 (playback resumption), ADR-0072 (A2DP resume), ADR-0019 (FGS)
 Toolchain: compileSdk/targetSdk 36; runtime Android 17 via SDK_INT guards
 

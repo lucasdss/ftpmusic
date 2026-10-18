@@ -25,7 +25,8 @@ object PlaybackResumptionMapper {
 
     /**
      * API ≤36: background A2DP `play()` is OK.
-     * API ≥37: BFSL FGS often lacks WIU — rely on media-key / Resume notif instead.
+     * API ≥37: BFSL FGS often lacks WIU — rely on media-key / media-notif Play /
+     * System UI resumption instead (no app Resume notif on the happy path).
      */
     fun shouldBackgroundAutoplay(sdkInt: Int): Boolean = sdkInt < ANDROID_17_API
 
