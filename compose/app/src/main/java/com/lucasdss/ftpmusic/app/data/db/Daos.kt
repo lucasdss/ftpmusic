@@ -2003,17 +2003,16 @@ interface ListenEventDao {
                e.listened_seconds AS listened_seconds
         FROM listen_events e
         INNER JOIN (
-            SELECT track_id, MAX(listened_at) AS max_at
+            SELECT track_id, MAX(id) AS max_id
             FROM listen_events
             WHERE (:includeBackfill = 1 OR is_backfill = 0)
               AND (:startMs IS NULL OR listened_at >= :startMs)
               AND (:endMs IS NULL OR listened_at < :endMs)
             GROUP BY track_id
-        ) latest ON e.track_id = latest.track_id AND e.listened_at = latest.max_at
+        ) latest ON e.id = latest.max_id
         WHERE (:includeBackfill = 1 OR e.is_backfill = 0)
           AND (:startMs IS NULL OR e.listened_at >= :startMs)
           AND (:endMs IS NULL OR e.listened_at < :endMs)
-        GROUP BY e.track_id
         ORDER BY e.listened_at DESC
         LIMIT :limit
         """,
@@ -2025,11 +2024,12 @@ interface ListenEventDao {
         limit: Int = 20,
     ): List<RecentListenRow>
 
-    /** Distinct local calendar days (yyyy-MM-dd) that have ≥1 listen, newest first. */
+    /** Distinct local calendar days (yyyy-MM-dd) that have ≥1 honest listen, newest first. */
     @Query(
         """
         SELECT DISTINCT date(listened_at / 1000, 'unixepoch', 'localtime') AS day
         FROM listen_events
+        WHERE is_backfill = 0
         ORDER BY day DESC
         LIMIT :limit
         """,

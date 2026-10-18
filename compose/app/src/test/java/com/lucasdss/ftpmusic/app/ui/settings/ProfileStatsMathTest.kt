@@ -72,6 +72,15 @@ class ProfileStatsMathTest {
     }
 
     @Test
+    fun `formatListeningTime distinguishes empty from sub-minute`() {
+        assertEquals("0m", ProfileStatsMath.formatListeningTime(0L))
+        assertEquals("<1m", ProfileStatsMath.formatListeningTime(45L))
+        assertEquals("1m", ProfileStatsMath.formatListeningTime(60L))
+        assertEquals("2h", ProfileStatsMath.formatListeningTime(7200L))
+        assertEquals("1h 30m", ProfileStatsMath.formatListeningTime(5400L))
+    }
+
+    @Test
     fun `fillDailySeries zero fills week`() {
         // Wednesday 2023-11-15 → Mon–Wed with one day having data
         val now = LocalDate.of(2023, 11, 15).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()

@@ -27,26 +27,6 @@ class ProfileScreenTest {
     }
 
     @Test
-    fun `formatListeningTime returns 0m for zero`() {
-        assertEquals("0m", formatListeningTime(0))
-    }
-
-    @Test
-    fun `formatListeningTime returns minutes for less than 60`() {
-        assertEquals("45m", formatListeningTime(45))
-    }
-
-    @Test
-    fun `formatListeningTime returns hours for 60 plus`() {
-        assertEquals("2h", formatListeningTime(120))
-    }
-
-    @Test
-    fun `formatListeningTime returns hours and minutes`() {
-        assertEquals("2h 30m", formatListeningTime(150))
-    }
-
-    @Test
     fun `formatDuration formats seconds correctly`() {
         assertEquals("3:05", formatDuration(185))
     }

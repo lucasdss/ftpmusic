@@ -246,7 +246,7 @@ class PlaylistDetailViewModel @Inject constructor(
                     contentType = t.contentType,
                 )
             }
-            if (trackEntities.isNotEmpty()) trackDao.upsertAll(trackEntities)
+            if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
 
             // Update UI with fresh server data, clearing any conflict state
             _state.value = _state.value.copy(
@@ -330,7 +330,7 @@ class PlaylistDetailViewModel @Inject constructor(
                     }
                 }
                 // Batch save track entities
-                if (trackEntities.isNotEmpty()) trackDao.upsertAll(trackEntities)
+                if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
                 // Persist entries for offline access
                 playlistDao.clearEntries(playlistId)
                 val entryEntities = tracks.mapIndexed { index, track ->
@@ -961,7 +961,7 @@ class PlaylistDetailViewModel @Inject constructor(
                             contentType = t.contentType,
                         )
                     }
-                    if (trackEntities.isNotEmpty()) trackDao.upsertAll(trackEntities)
+                    if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
                     // Enqueue full track sync
                     val trackIds = tracks.joinToString(",") { it.id }
                     pendingChangeDao.insert(

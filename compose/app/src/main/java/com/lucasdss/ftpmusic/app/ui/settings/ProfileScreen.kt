@@ -91,11 +91,11 @@ fun ProfileScreen(
                 ) {
                     StatCard(
                         Icons.Filled.Schedule,
-                        ProfileStatsMath.formatListeningMinutes(s.listeningMinutes),
+                        ProfileStatsMath.formatListeningTime(s.listeningSeconds),
                         "listening",
                     )
                     StatCard(Icons.Filled.MusicNote, s.plays.toString(), "plays")
-                    StatCard(Icons.Filled.Audiotrack, s.songCount.toString(), "songs")
+                    StatCard(Icons.Filled.Audiotrack, s.songCount.toString(), "tracks played")
                     StatCard(Icons.Filled.Groups, s.artistCount.toString(), "artists")
                 }
             }
@@ -290,8 +290,6 @@ private fun RowScope.StatCard(icon: ImageVector, value: String, label: String) {
         Text(label, color = Muted, fontSize = textLabelM())
     }
 }
-
-internal fun formatListeningTime(minutes: Int): String = ProfileStatsMath.formatListeningMinutes(minutes)
 
 internal fun formatDuration(seconds: Int): String {
     val m = seconds / 60

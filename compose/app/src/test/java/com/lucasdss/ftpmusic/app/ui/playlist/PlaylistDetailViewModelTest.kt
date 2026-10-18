@@ -644,7 +644,7 @@ class PlaylistDetailViewModelTest {
         coEvery { playlistDao.upsertAll(any()) } returns Unit
         coEvery { playlistDao.clearEntries(any()) } returns Unit
         coEvery { playlistDao.upsertEntries(any()) } returns Unit
-        coEvery { trackDao.upsertAll(any()) } returns Unit
+        coEvery { trackDao.upsertTracksPreserveCache(any()) } returns Unit
 
         viewModel.loadPlaylist("pl-1")
         advanceUntilIdle()
@@ -675,12 +675,12 @@ class PlaylistDetailViewModelTest {
         coEvery { playlistDao.upsertAll(any()) } returns Unit
         coEvery { playlistDao.clearEntries(any()) } returns Unit
         coEvery { playlistDao.upsertEntries(any()) } returns Unit
-        coEvery { trackDao.upsertAll(any()) } returns Unit
+        coEvery { trackDao.upsertTracksPreserveCache(any()) } returns Unit
 
         viewModel.copyPlaylist()
         advanceUntilIdle()
 
-        coVerify { trackDao.upsertAll(match { it.size == 2 && it[0].id == "t1" && it[1].id == "t2" }) }
+        coVerify { trackDao.upsertTracksPreserveCache(match { it.size == 2 && it[0].id == "t1" && it[1].id == "t2" }) }
     }
 
     @Test
@@ -711,7 +711,7 @@ class PlaylistDetailViewModelTest {
         coEvery { playlistDao.upsertEntries(any()) } returns Unit
         coEvery { playlistDao.upsertAll(any()) } returns Unit
         coEvery { playlistDao.getById(any()) } returns null
-        coEvery { trackDao.upsertAll(any()) } returns Unit
+        coEvery { trackDao.upsertTracksPreserveCache(any()) } returns Unit
 
         viewModel.syncFromServer()
         advanceUntilIdle()

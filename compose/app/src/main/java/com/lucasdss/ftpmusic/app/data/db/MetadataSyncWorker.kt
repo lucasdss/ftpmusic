@@ -1178,7 +1178,9 @@ class MetadataSyncWorker(
                 if (rating > 0) trackDao.setRating(id, rating)
             }
             if (starredEntities.isNotEmpty()) {
-                trackDao.upsertAll(starredEntities)
+                // Preserve local weight (play_count / last_played_at / star / cache)
+                // — bare upsertAll(REPLACE) would zero them (ADR-0128 / Fix 0).
+                trackDao.upsertTracksPreserveCache(starredEntities)
             }
             val localTrackIds = trackDao.getStarredIds().map { it.id }.toSet()
             val pendingUnstarTracks = trackDao.getPendingUnstarIds().toSet()

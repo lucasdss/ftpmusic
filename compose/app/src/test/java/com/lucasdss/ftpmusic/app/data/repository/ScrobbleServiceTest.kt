@@ -250,6 +250,35 @@ class ScrobbleServiceTest {
         )
     }
 
+    @Test
+    fun `ensureTrackRow preserves cache download star dislike and lastPlayed`() = runTest(testDispatcher) {
+        coEvery { trackDao.getTrack("t-weight") } returns TrackEntity(
+            id = "t-weight",
+            title = "Weighted",
+            cachedFilePath = "/cache/t-weight.mp3",
+            isDownloaded = true,
+            isAutoCached = false,
+            cacheSizeBytes = 1234,
+            starredAt = 1700000000000L,
+            lastPlayedAt = 1600000000000L,
+            isDisliked = true,
+            dislikedAt = 1550000000000L,
+            playCount = 7,
+        )
+        service.nowPlaying("t-weight", "Weighted", "Artist")
+
+        val slot = slot<TrackEntity>()
+        coVerify(timeout = 5000) { trackDao.upsert(capture(slot)) }
+        // Fix 0: a bare REPLACE with a sparse entity must not zero local weight.
+        assertEquals("/cache/t-weight.mp3", slot.captured.cachedFilePath)
+        assertTrue(slot.captured.isDownloaded)
+        assertEquals(1234, slot.captured.cacheSizeBytes)
+        assertEquals(1700000000000L, slot.captured.starredAt)
+        assertEquals(1600000000000L, slot.captured.lastPlayedAt)
+        assertTrue(slot.captured.isDisliked)
+        assertEquals(7, slot.captured.playCount)
+    }
+
     // ── Integer overflow safeguard ───────────────────────────────────────
 
     @Test

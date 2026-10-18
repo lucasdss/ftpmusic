@@ -92,6 +92,20 @@ object ProfileStatsMath {
         }
     }
 
+    /**
+     * 3-state headline formatter (ADR-0128): no listens → "0m", sub-minute
+     * listen → "<1m", else hour/minute. Unlike [formatListeningMinutes], this
+     * takes raw seconds so an empty Profile and a sub-minute listen are
+     * distinguishable.
+     */
+    fun formatListeningTime(seconds: Long): String = when {
+        seconds <= 0L -> "0m"
+
+        seconds < 60L -> "<1m"
+
+        else -> formatListeningMinutes((seconds / 60L).toInt())
+    }
+
     fun daysBetween(a: LocalDate, b: LocalDate): Long = ChronoUnit.DAYS.between(a, b)
 
     data class ActivityPoint(val label: String, val seconds: Long)

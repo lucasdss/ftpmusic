@@ -87,7 +87,6 @@ fun HomeScreen(
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.refreshRecentlyPlayed()
-            viewModel.loadStats()
             viewModel.loadGenres()
             viewModel.loadDailyMixes()
             viewModel.refreshHomePrefs()

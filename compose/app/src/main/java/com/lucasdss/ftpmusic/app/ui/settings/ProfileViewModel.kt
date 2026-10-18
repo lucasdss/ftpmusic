@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 
 data class ProfileSummary(
     val listeningMinutes: Int = 0,
+    val listeningSeconds: Long = 0L,
     val plays: Int = 0,
     val songCount: Int = 0,
     val artistCount: Int = 0,
@@ -71,6 +72,7 @@ class ProfileViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     summary = ProfileSummary(
                         listeningMinutes = (seconds / 60L).toInt(),
+                        listeningSeconds = seconds,
                         plays = plays,
                         songCount = songs,
                         artistCount = artists,

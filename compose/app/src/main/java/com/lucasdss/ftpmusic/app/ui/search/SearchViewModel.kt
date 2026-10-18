@@ -1340,7 +1340,7 @@ class SearchViewModel @Inject constructor(
                         path = t.path,
                     )
                 }
-                trackDao.upsertAll(entities)
+                trackDao.upsertTracksPreserveCache(entities)
             }
             // Persist albums so offline search finds them via metadataDao.searchAlbums
             if (results.albums.isNotEmpty()) {

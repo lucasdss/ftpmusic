@@ -69,6 +69,9 @@ class ScrobbleService @Inject constructor(
     /**
      * Report a completed listen: Subsonic scrobble (if online), increment play_count,
      * and insert a [ListenEventEntity] with honest [listenedSeconds] (ADR-0047 / 0128).
+     *
+     * Sole **incremental** play-count writer — `incrementPlayCount` is invoked only
+     * from here. (Densify / REPLACE upserts may set the column, but never increment.)
      */
     fun scrobble(
         trackId: String,
@@ -141,25 +144,37 @@ class ScrobbleService @Inject constructor(
         genre: String? = null,
         album: String? = null,
     ) {
-        // Always upsert — CacheService may have created a stub row with title=trackId
+        // Always upsert — CacheService may have created a stub row with title=trackId.
         // PlaybackState metadata from the server is authoritative when present.
-        // CRITICAL: null-preserving coalesce — REPLACE must not wipe denorm fields
-        // (album/genre/artist) when extras are sparse (ADR-0128).
+        // Preserve ALL local-weight fields (play_count, last_played_at, starred_at,
+        // is_disliked, cached_file_path, is_downloaded, …) via copy() — a bare
+        // REPLACE with a sparse entity would zero them (ADR-0128).
         val existing = trackDao.getTrack(trackId)
-        trackDao.upsert(
+        val entity = if (existing == null) {
             TrackEntity(
                 id = trackId,
-                title = title ?: existing?.title ?: trackId,
-                artist = artist ?: existing?.artist,
-                album = album ?: existing?.album,
-                genre = genre ?: existing?.genre,
-                albumId = albumId ?: existing?.albumId,
-                artistId = artistId ?: existing?.artistId,
-                durationSeconds = durationSeconds ?: existing?.durationSeconds,
-                coverArtUrl = coverArtUrl ?: existing?.coverArtUrl,
-                playCount = existing?.playCount ?: 0,
-            ),
-        )
+                title = title ?: trackId,
+                artist = artist,
+                album = album,
+                genre = genre,
+                albumId = albumId,
+                artistId = artistId,
+                durationSeconds = durationSeconds,
+                coverArtUrl = coverArtUrl,
+            )
+        } else {
+            existing.copy(
+                title = title ?: existing.title,
+                artist = artist ?: existing.artist,
+                album = album ?: existing.album,
+                genre = genre ?: existing.genre,
+                albumId = albumId ?: existing.albumId,
+                artistId = artistId ?: existing.artistId,
+                durationSeconds = durationSeconds ?: existing.durationSeconds,
+                coverArtUrl = coverArtUrl ?: existing.coverArtUrl,
+            )
+        }
+        trackDao.upsert(entity)
     }
 
     /** Save the play queue to the Subsonic server (fire-and-forget). */
@@ -172,13 +187,6 @@ class ScrobbleService @Inject constructor(
             ) {
                 android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
             }
-        }
-    }
-
-    /** Track a play: increment local count and update timestamp (no listen_event). */
-    fun trackPlay(trackId: String) {
-        scope.launch {
-            trackDao.incrementPlayCount(trackId)
         }
     }
 

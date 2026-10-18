@@ -26,7 +26,7 @@ Settings → Profile. Dedicated `ProfileViewModel`.
 | Tops | GROUP BY; rank `playCount DESC, honestSeconds DESC` LIMIT 5; UI shows plays + minutes |
 | Activity chart | honest seconds by day (W/M) or month (Y / All-time 12m) |
 | Genre mix | Top Genres share strip + share bars |
-| Recently played | distinct tracks in period by max(`listened_at`); seconds from that row |
+| Recently played | distinct tracks in period by max(`id`) (deterministic latest); seconds from that row |
 
 ## Write path (Last.fm — ADR-0128)
 
@@ -39,6 +39,12 @@ speed). Scrobble when:
 
 Then `ScrobbleService.scrobble` → Subsonic API (if online) → null-preserving
 `ensureTrackRow` → `incrementPlayCount` → insert `listen_events` (`is_backfill=0`).
+
+`ensureTrackRow` preserves **all** local-weight fields (`play_count`,
+`last_played_at`, `starred_at`, `is_disliked`, `cached_file_path`,
+`is_downloaded`, …) via `copy()`; track upserts in starred-sync, search cache,
+and playlist flows use `upsertTracksPreserveCache` (not bare REPLACE) so a play
+never zeroes the aggregate counters (Fix 0, 2026-10-18).
 
 ## Backfill
 

@@ -176,13 +176,7 @@ class ScrobbleServiceBranchTest {
         coVerify(timeout = 2000) { api.savePlayQueue(any(), "t1", null, null) }
     }
 
-    // ── trackPlay + authParams edge ─────────────────────────────────────────
-
-    @Test
-    fun `trackPlay increments play count`() = runTest(testDispatcher) {
-        service.trackPlay("t9")
-        coVerify(timeout = 2000) { trackDao.incrementPlayCount("t9", any()) }
-    }
+    // ── authParams edge ─────────────────────────────────────────────────────
 
     @Test
     fun `authParams falls back to empty strings for missing credentials`() = runTest(testDispatcher) {

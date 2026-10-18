@@ -59,13 +59,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-data class HomeStats(
-    val totalPlays: Int = 0,
-    val listeningMinutes: Int = 0,
-    val artistCount: Int = 0,
-    val trackCount: Int = 0,
-)
-
 data class PlaylistView(
     val id: String,
     val name: String,
@@ -93,7 +86,6 @@ data class LibraryState(
     val playlists: List<PlaylistView> = emptyList(),
     val alphaLetters: List<String> = emptyList(),
     val radioStations: List<RadioStation> = emptyList(),
-    val stats: HomeStats = HomeStats(),
     val isLoading: Boolean = false,
     /** True once any DB-backed loader produced data — the full-screen loading
      *  spinner only shows until the first content render (data-first). */
@@ -757,27 +749,6 @@ class LibraryViewModel @Inject constructor(
 
     fun refreshRecentlyPlayed() {
         loadRecentlyPlayed()
-    }
-
-    fun loadStats() {
-        viewModelScope.launch {
-            try {
-                val plays = trackDao.getTotalPlays()
-                val secs = trackDao.getTotalListeningSeconds()
-                val artists = trackDao.getArtistCount()
-                val tracks = trackDao.getTrackCount()
-                _state.value = _state.value.copy(
-                    stats = HomeStats(
-                        totalPlays = plays,
-                        listeningMinutes = secs / 60,
-                        artistCount = artists,
-                        trackCount = tracks,
-                    ),
-                )
-            } catch (e: Exception) {
-                android.util.Log.w("ftpmusic-library", "loadStats: ${e.message}")
-            }
-        }
     }
 
     fun loadGenres() {

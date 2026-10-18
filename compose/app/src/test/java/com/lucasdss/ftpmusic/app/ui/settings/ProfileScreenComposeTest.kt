@@ -34,6 +34,7 @@ class ProfileScreenComposeTest {
             ProfileState(
                 summary = ProfileSummary(
                     listeningMinutes = 90,
+                    listeningSeconds = 5400L,
                     plays = 10,
                     songCount = 7,
                     artistCount = 3,
@@ -53,7 +54,7 @@ class ProfileScreenComposeTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("My Listening").assertIsDisplayed()
         composeRule.onNodeWithText("Activity").assertIsDisplayed()
-        composeRule.onNodeWithText("songs").assertIsDisplayed()
+        composeRule.onNodeWithText("tracks played").assertIsDisplayed()
         // Below the fold once Activity chart is present — existence is enough.
         composeRule.onNodeWithText("2-day streak").assertExists()
         composeRule.onNodeWithText("Week").assertIsDisplayed()
