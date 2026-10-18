@@ -154,7 +154,10 @@ class MediaSessionCallback(
     ): ListenableFuture<LibraryResult<MediaItem>> {
         val catalog = browseCatalog
             ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
-        return Futures.immediateFuture(LibraryResult.ofItem(catalog.rootItem(), params))
+        // ADR-0146: list content-style so Auto HUs render browse tree (not phone Activity fallback).
+        return Futures.immediateFuture(
+            LibraryResult.ofItem(catalog.rootItem(), autoLibraryRootParams(params)),
+        )
     }
 
     override fun onGetChildren(
@@ -171,7 +174,8 @@ class MediaSessionCallback(
             try {
                 primeQueueSnapshotIfNeeded(parentId)
                 val kids = catalog.children(parentId, page, pageSize)
-                LibraryResult.ofItemList(ImmutableList.copyOf(kids), params)
+                // ADR-0146: same list content-style at each browse level.
+                LibraryResult.ofItemList(ImmutableList.copyOf(kids), autoLibraryRootParams(params))
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic", "[MediaSessionCallback] onGetChildren failed: ${e.message}")
                 LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
@@ -432,6 +436,31 @@ class MediaSessionCallback(
         is String -> raw.takeIf { it.isNotBlank() }
         is Number -> raw.toString()
         else -> null
+    }
+
+    /**
+     * ADR-0146: Auto content-style hints — list for browsable + playable nodes.
+     * Echo client recent/offline/suggested + extras; overlay CONTENT_STYLE keys.
+     */
+    private fun autoLibraryRootParams(
+        client: MediaLibraryService.LibraryParams?,
+    ): MediaLibraryService.LibraryParams {
+        val extras = Bundle(client?.extras ?: Bundle.EMPTY).apply {
+            putInt(
+                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
+                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            )
+            putInt(
+                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
+                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            )
+        }
+        return MediaLibraryService.LibraryParams.Builder()
+            .setRecent(client?.isRecent == true)
+            .setOffline(client?.isOffline == true)
+            .setSuggested(client?.isSuggested == true)
+            .setExtras(extras)
+            .build()
     }
 
     /** ADR-0136: align Auto/voice search with phone LocalOnly (radio source already gates). */
