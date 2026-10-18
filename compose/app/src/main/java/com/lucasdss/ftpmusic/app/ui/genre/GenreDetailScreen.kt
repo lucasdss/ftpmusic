@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.genre
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +10,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,7 +40,7 @@ import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GenreDetailScreen(
     genre: String = "",
@@ -116,7 +118,9 @@ fun GenreDetailScreen(
                             Text("No albums found", color = Color(0xFF666666), fontSize = textBodyM())
                         }
                     } else {
-                        val gridState = rememberLazyGridState()
+                        val gridState = rememberLazyGridState(
+                            cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+                        )
                         val hasMore = state.hasMore
                         LaunchedEffect(gridState) {
                             snapshotFlow {
@@ -141,7 +145,7 @@ fun GenreDetailScreen(
                                         Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(cornerM())),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        val url = rememberCoverArtUrl(album.coverArt, 300)
+                                        val url = rememberCoverArtUrl(album.coverArt, 160)
                                         if (url != null) {
                                             CoverArtImage(
                                                 url = url,
@@ -203,7 +207,9 @@ fun GenreDetailScreen(
                             Text("No artists found", color = Color(0xFF666666), fontSize = textBodyM())
                         }
                     } else {
-                        val listState = rememberLazyListState()
+                        val listState = rememberLazyListState(
+                            cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+                        )
                         val hasMore = state.hasMore
                         LaunchedEffect(listState) {
                             snapshotFlow {

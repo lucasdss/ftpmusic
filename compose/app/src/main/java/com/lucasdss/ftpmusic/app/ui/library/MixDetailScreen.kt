@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -101,7 +102,9 @@ fun MixDetailScreen(
     var showMixSheet by remember { mutableStateOf(false) }
     var showTrackSheet by remember { mutableStateOf<GenreMixTrack?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
     val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
     val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
     val nowPlayingLazyIndex = remember(trackIds, currentTrackId) {

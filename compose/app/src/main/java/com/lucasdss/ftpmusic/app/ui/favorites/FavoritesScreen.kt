@@ -1,11 +1,13 @@
 package com.lucasdss.ftpmusic.app.ui.favorites
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,7 +61,6 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.SurfaceChip
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
-import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.RadioBookmarkIcon
 import com.lucasdss.ftpmusic.app.ui.components.ReactionGlyphButton
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
@@ -77,6 +78,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -613,23 +615,20 @@ class FavoritesViewModel @Inject constructor(
                     if (moreAlbums.isNotEmpty()) loadedLikedAlbums += moreAlbums.size
                     if (moreArtists.isNotEmpty()) loadedLikedArtists += moreArtists.size
                     val s = _state.value
+                    val existingTrackIds = s.tracks.mapTo(mutableSetOf()) { it.id }
+                    val existingAlbumIds = s.albums.mapTo(mutableSetOf()) { it.id }
+                    val existingArtistIds = s.artists.mapTo(mutableSetOf()) { it.id }
                     val tracks =
                         applyTrackPendingLiked(
-                            s.tracks + moreTracks.filter {
-                                it.id !in s.tracks.map { t -> t.id }.toSet()
-                            },
+                            s.tracks + moreTracks.filter { it.id !in existingTrackIds },
                         )
                     val albums =
                         applyAlbumPendingLiked(
-                            s.albums + moreAlbums.filter {
-                                it.id !in s.albums.map { a -> a.id }.toSet()
-                            },
+                            s.albums + moreAlbums.filter { it.id !in existingAlbumIds },
                         )
                     val artists =
                         applyArtistPendingLiked(
-                            s.artists + moreArtists.filter {
-                                it.id !in s.artists.map { a -> a.id }.toSet()
-                            },
+                            s.artists + moreArtists.filter { it.id !in existingArtistIds },
                         )
                     _state.value = s.copy(
                         tracks = tracks,
@@ -676,16 +675,17 @@ class FavoritesViewModel @Inject constructor(
                     if (moreAlbums.isNotEmpty()) loadedDislikedAlbums += moreAlbums.size
                     if (moreArtists.isNotEmpty()) loadedDislikedArtists += moreArtists.size
                     val s = _state.value
+                    val existingTrackIds = s.dislikedTracks.mapTo(mutableSetOf()) { it.id }
+                    val existingAlbumIds = s.dislikedAlbums.mapTo(mutableSetOf()) { it.id }
+                    val existingArtistIds = s.dislikedArtists.mapTo(mutableSetOf()) { it.id }
                     val tracks = applyTrackPendingDisliked(
-                        s.dislikedTracks + moreTracks.filter { it.id !in s.dislikedTracks.map { t -> t.id }.toSet() },
+                        s.dislikedTracks + moreTracks.filter { it.id !in existingTrackIds },
                     )
                     val albums = applyAlbumPendingDisliked(
-                        s.dislikedAlbums + moreAlbums.filter { it.id !in s.dislikedAlbums.map { a -> a.id }.toSet() },
+                        s.dislikedAlbums + moreAlbums.filter { it.id !in existingAlbumIds },
                     )
                     val artists = applyArtistPendingDisliked(
-                        s.dislikedArtists + moreArtists.filter {
-                            it.id !in s.dislikedArtists.map { a -> a.id }.toSet()
-                        },
+                        s.dislikedArtists + moreArtists.filter { it.id !in existingArtistIds },
                     )
                     _state.value = s.copy(
                         dislikedTracks = tracks,
@@ -1205,12 +1205,15 @@ private fun FavoritesModeChips(selected: FavoritesMode, onSelect: (FavoritesMode
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun DesiredFavoritesList(
     state: FavoritesState,
     viewModel: FavoritesViewModel,
     onDesiredArtistClick: (String) -> Unit,
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().testTag("favorites_desired_list"),
@@ -1470,6 +1473,7 @@ private fun CatalogAddRow(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun LikedFavoritesList(
     state: FavoritesState,
     viewModel: FavoritesViewModel,
@@ -1480,7 +1484,9 @@ private fun LikedFavoritesList(
     currentAlbumId: String?,
     isPlaying: Boolean,
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
     // Re-key on loaded sizes so near-end stays true after append still triggers another loadMore.
     LaunchedEffect(
         listState,
@@ -1495,7 +1501,7 @@ private fun LikedFavoritesList(
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = info.totalItemsCount
             total > 0 && last >= total - 3
-        }.collect { nearEnd ->
+        }.distinctUntilChanged().collect { nearEnd ->
             if (nearEnd && state.hasMoreLiked && !state.isLoadingMoreLiked) {
                 viewModel.loadMore()
             }
@@ -1577,6 +1583,7 @@ private fun LikedFavoritesList(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun DislikedFavoritesList(
     state: FavoritesState,
     viewModel: FavoritesViewModel,
@@ -1587,7 +1594,9 @@ private fun DislikedFavoritesList(
     isPlaying: Boolean,
 ) {
     val dislikeTint = Color(0xFFE84040)
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
     LaunchedEffect(
         listState,
         state.hasMoreDisliked,
@@ -1601,7 +1610,7 @@ private fun DislikedFavoritesList(
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = info.totalItemsCount
             total > 0 && last >= total - 3
-        }.collect { nearEnd ->
+        }.distinctUntilChanged().collect { nearEnd ->
             if (nearEnd && state.hasMoreDisliked && !state.isLoadingMoreDisliked) {
                 viewModel.loadMore()
             }
@@ -1682,7 +1691,7 @@ private fun TrackFavoriteRow(
     onRowClick: () -> Unit,
     onAction: () -> Unit,
 ) {
-    val trackCoverUrl = rememberCoverArtUrl(track.coverArtUrl, 200)
+    val trackCoverUrl = rememberCoverArtUrl(track.coverArtUrl, 48)
     val ds = downloadStatus(track.isDownloaded, false, track.cachedFilePath != null)
     // Meta: cache; duration on title line (ADR-0104). Mode-specific trailing thumb
     // gated by list chrome prefs — Now Playing keeps reactions always.
@@ -1755,11 +1764,12 @@ private fun ArtistFavoriteRow(
         ArtistAvatar(artistName = artist.name, coverArtId = artist.coverArtUrl, size = 48.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            FittingText(
+            Text(
                 text = artist.name,
                 color = Color.White,
                 fontSize = textBodyM(),
-                minFontSize = textMicro(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
             Text("Artist", color = Color(0xFF888888), fontSize = textLabelM())
@@ -1796,7 +1806,7 @@ private fun AlbumFavoriteRow(
             Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF1E1E1E)),
             contentAlignment = Alignment.Center,
         ) {
-            val url = rememberCoverArtUrl(album.coverArtUrl, 200)
+            val url = rememberCoverArtUrl(album.coverArtUrl, 48)
             if (url != null) {
                 CoverArtImage(
                     url = url,
@@ -1881,11 +1891,12 @@ private fun RadioFavoriteRow(station: RadioFavoriteEntity, onRowClick: () -> Uni
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            FittingText(
+            Text(
                 text = station.name,
                 color = Color.White,
                 fontSize = textBodyM(),
-                minFontSize = textMicro(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1896,11 +1907,12 @@ private fun RadioFavoriteRow(station: RadioFavoriteEntity, onRowClick: () -> Uni
                     modifier = Modifier.size(10.dp),
                 )
                 Spacer(Modifier.width(4.dp))
-                FittingText(
+                Text(
                     text = station.streamUrl,
                     color = Color(0xFF888888),
                     fontSize = textLabelM(),
-                    minFontSize = textMicro(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
             }

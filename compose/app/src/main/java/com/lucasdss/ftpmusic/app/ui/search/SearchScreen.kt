@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.ui.search
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -74,7 +76,7 @@ private val GENRE_COLORS = listOf(
     Color(0xFFFF9100), // orange
 )
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(
     initialQuery: String = "",
@@ -149,13 +151,15 @@ fun SearchScreen(
     Scaffold(
         containerColor = Background,
     ) { padding ->
-        val listState = rememberLazyListState()
+        val listState = rememberLazyListState(
+            cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+        )
         LaunchedEffect(listState) {
             snapshotFlow {
                 val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                 val total = listState.layoutInfo.totalItemsCount
                 lastVisible >= total - 6
-            }.collect { nearEnd ->
+            }.distinctUntilChanged().collect { nearEnd ->
                 if (nearEnd && state.query.isNotEmpty()) viewModel.loadMoreSearchResults()
             }
         }
@@ -1044,19 +1048,21 @@ fun SearchScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                FittingText(
+                                Text(
                                     text = genre.name,
                                     color = Color.White,
                                     fontSize = textHeadingS(),
-                                    minFontSize = textMicro(),
                                     fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                FittingText(
+                                Text(
                                     text = "${genre.songCount} songs · ${genre.albumCount} albums",
                                     color = Color(0xFF888888),
                                     fontSize = textLabelM(),
-                                    minFontSize = textMicro(),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -1184,20 +1190,22 @@ fun SearchScreen(
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    FittingText(
+                                    Text(
                                         text = a.name,
                                         color = Color.White,
                                         fontSize = textHeadingS(),
-                                        minFontSize = textMicro(),
                                         fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                     a.albumCount?.let {
-                                        FittingText(
+                                        Text(
                                             text = "$it albums",
                                             color = Color(0xFF888888),
                                             fontSize = textLabelM(),
-                                            minFontSize = textMicro(),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                     }

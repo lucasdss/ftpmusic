@@ -454,6 +454,29 @@ class FavoritesViewModelTest {
     }
 
     @Test
+    fun `loadMoreLiked dedups overlapping page append`() = runTest {
+        val page0 = (1..50).map { TrackEntity(id = "t$it", title = "T$it") }
+        coEvery { trackDao.getStarred(50, 0) } returns page0
+        coEvery { trackDao.getStarred(1, 50) } returns listOf(TrackEntity(id = "probe", title = "P"))
+        viewModel.load()
+        advanceUntilIdle()
+        assertEquals(50, viewModel.state.value.tracks.size)
+
+        // Defensive: overlapping next page re-emits t50 plus new t51 — no dup.
+        coEvery { trackDao.getStarred(50, 50) } returns listOf(
+            TrackEntity(id = "t50", title = "T50"),
+            TrackEntity(id = "t51", title = "T51"),
+        )
+        viewModel.loadMore()
+        advanceUntilIdle()
+
+        val ids = viewModel.state.value.tracks.map { it.id }
+        assertEquals(1, ids.count { it == "t50" })
+        assertEquals(51, ids.size)
+        assertEquals("t51", ids.last())
+    }
+
+    @Test
     fun `per-entity hasMore albums full tracks short`() = runTest {
         val albums = (1..50).map {
             com.lucasdss.ftpmusic.app.data.db.AlbumEntity(id = "a$it", name = "A$it")

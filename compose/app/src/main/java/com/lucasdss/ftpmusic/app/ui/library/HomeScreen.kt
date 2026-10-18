@@ -358,7 +358,9 @@ fun HomeScreen(
                                                 coverArtId = album.coverArtUrl,
                                                 artist = album.artist,
                                                 album = album.name,
-                                                size = 300,
+                                                size = with(LocalDensity.current) {
+                                                    cardDecode.roundToPx().coerceAtLeast(1)
+                                                },
                                             )
                                             if (url != null) {
                                                 CoverArtImage(
@@ -368,6 +370,7 @@ fun HomeScreen(
                                                     fallbackArtist = album.artist,
                                                     fallbackAlbum = album.name,
                                                     decodeSize = cardDecode,
+                                                    allowFallbackFetch = !scrollInProgress,
                                                 )
                                             } else {
                                                 Icon(

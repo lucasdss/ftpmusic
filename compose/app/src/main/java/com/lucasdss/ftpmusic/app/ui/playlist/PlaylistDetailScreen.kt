@@ -21,6 +21,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -106,7 +107,9 @@ fun PlaylistDetailScreen(
     }
     val availablePlaylists by viewModel.availablePlaylists.collectAsStateWithLifecycle()
 
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
     val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
     val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
     // cover + optional actions + divider before track rows

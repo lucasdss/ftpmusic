@@ -17,7 +17,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -556,6 +558,7 @@ fun ArtistDetailScreen(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun TracksTab(
     state: ArtistDetailState,
     viewModel: ArtistDetailViewModel,
@@ -563,7 +566,9 @@ private fun TracksTab(
     currentTrackId: String? = null,
     isPlaying: Boolean = false,
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
     val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
     val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
     val nowPlayingLazyIndex = remember(trackIds, currentTrackId) {
@@ -906,6 +911,7 @@ private fun ArtistSheetAction(label: String, subtitle: String, icon: ImageVector
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun AlbumsTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel, onAlbumClick: (String) -> Unit) {
     val albums = state.albums
     if (albums.isEmpty()) {
@@ -914,7 +920,11 @@ private fun AlbumsTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
         }
         return
     }
+    val gridState = rememberLazyGridState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(2),
         modifier = Modifier.fillMaxSize().padding(horizontal = spacingM()),
         contentPadding = PaddingValues(vertical = spacingS()),
@@ -928,7 +938,7 @@ private fun AlbumsTab(state: ArtistDetailState, viewModel: ArtistDetailViewModel
                     Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(cornerM())),
                     contentAlignment = Alignment.Center,
                 ) {
-                    val coverUrl = rememberCoverArtUrl(album.coverArt, 300)
+                    val coverUrl = rememberCoverArtUrl(album.coverArt, 160)
                     if (coverUrl != null) {
                         CoverArtImage(
                             url = coverUrl,

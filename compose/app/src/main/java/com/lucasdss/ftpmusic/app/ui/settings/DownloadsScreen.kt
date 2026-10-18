@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -305,17 +307,20 @@ class DownloadsViewModel @Inject constructor(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun DownloadsScreen(onBack: () -> Unit, viewModel: DownloadsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
+    )
 
     LaunchedEffect(listState) {
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
             last to info.totalItemsCount
-        }.collect { (last, total) ->
+        }.distinctUntilChanged().collect { (last, total) ->
             if (total > 0 && last >= total - 3) viewModel.loadMore()
         }
     }
@@ -438,7 +443,7 @@ private fun DownloadRow(
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
 ) {
-    val coverUrl = rememberCoverArtUrl(track.coverArtUrl)
+    val coverUrl = rememberCoverArtUrl(track.coverArtUrl, 48)
     val subtitle = buildString {
         append(listOfNotNull(track.artist, track.album).joinToString(" · "))
         if (stale) {
