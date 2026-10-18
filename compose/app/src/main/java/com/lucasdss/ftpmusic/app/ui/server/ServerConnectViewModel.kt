@@ -63,17 +63,19 @@ class ServerConnectViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isConnecting = true, error = null)
             try {
-                // Probe the candidate server without mutating the active config,
-                // then persist atomically only after it verifies.
+                // Probe (auth-aware) without mutating active config, then persist
+                // only after status=ok. Fail → stay on credentials page, no set().
                 serverProbe.ping(input.url, input.username, input.password)
                 serverConfigStore.set(input.url, input.username, input.password)
-                _state.value = _state.value.copy(isConnecting = false, connected = true)
+                _state.value = _state.value.copy(isConnecting = false, connected = true, error = null)
                 onSuccess()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                val detail = e.message?.trim()?.takeIf { it.isNotEmpty() }?.take(160)
                 _state.value = _state.value.copy(
                     isConnecting = false,
                     connected = false,
-                    error = "Unable to connect. Check the server address and credentials.",
+                    error = detail
+                        ?: "Unable to connect. Check the server address and credentials.",
                 )
             }
         }

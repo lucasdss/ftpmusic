@@ -101,4 +101,15 @@ class SubsonicAuthHelper @Inject constructor() {
         val error = sr["error"] as? Map<*, *> ?: return "Unknown error"
         return "${error["code"]}: ${error["message"]}"
     }
+
+    /**
+     * Subsonic returns HTTP 200 even for auth failures — the truth is in
+     * `subsonic-response.status`. Throw when status is failed so callers
+     * (Connect / Settings Test) never treat a rejected login as success.
+     */
+    fun requireOk(response: Map<String, Any>) {
+        if (!checkResponseStatus(response)) {
+            throw IllegalStateException(getResponseError(response))
+        }
+    }
 }

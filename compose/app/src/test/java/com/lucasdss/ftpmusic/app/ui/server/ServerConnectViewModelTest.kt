@@ -67,8 +67,28 @@ class ServerConnectViewModelTest {
 
         vm.connect {}
         advanceUntilIdle()
-        assertNotNull(vm.state.value.error)
+        assertEquals("timeout", vm.state.value.error)
         assertFalse(vm.state.value.connected)
+        verify(exactly = 0) { serverConfigStore.set(any(), any(), any()) }
+    }
+
+    @Test
+    fun `connect surfaces Subsonic auth error and does not persist`() = runTest {
+        coEvery { serverProbe.ping(any(), any(), any()) } throws
+            IllegalStateException("40: Wrong username or password")
+
+        val vm = ServerConnectViewModel(serverConfigStore, serverProbe)
+        vm.onUrlChanged("https://music.example.com")
+        vm.onUsernameChanged("user")
+        vm.onPasswordChanged("wrong")
+
+        var callbackCalled = false
+        vm.connect { callbackCalled = true }
+        advanceUntilIdle()
+
+        assertFalse(callbackCalled)
+        assertFalse(vm.state.value.connected)
+        assertEquals("40: Wrong username or password", vm.state.value.error)
         verify(exactly = 0) { serverConfigStore.set(any(), any(), any()) }
     }
 

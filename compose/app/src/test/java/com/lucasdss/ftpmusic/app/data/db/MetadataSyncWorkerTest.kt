@@ -194,9 +194,9 @@ class MetadataSyncWorkerTest {
 
         try {
             worker.syncAlbums()
-            fail("expected AlbumListIncompleteException")
-        } catch (_: AlbumListIncompleteException) {
-            // expected — first-page fail is also fail-closed
+            fail("expected SubsonicApiException")
+        } catch (_: SubsonicApiException) {
+            // expected — status=failed is typed API error, not truncated walk
         }
 
         coVerify(exactly = 0) { metadataDao.clearAlbums() }
@@ -1148,9 +1148,9 @@ class MetadataSyncWorkerTest {
 
         try {
             worker.syncAlbums(LibrarySyncMode.FULL)
-            fail("expected AlbumListIncompleteException")
-        } catch (_: AlbumListIncompleteException) {
-            // expected — ADR-0068 fail-closed
+            fail("expected SubsonicApiException")
+        } catch (_: SubsonicApiException) {
+            // expected — mid-walk status=failed is typed API error
         }
 
         coVerify(exactly = 0) { metadataDao.replaceAlbumsDiffPreserveEnrich(any()) }
@@ -1174,9 +1174,9 @@ class MetadataSyncWorkerTest {
 
         try {
             worker.syncAlbums(LibrarySyncMode.DELTA)
-            fail("expected AlbumListIncompleteException")
-        } catch (_: AlbumListIncompleteException) {
-            // expected — ADR-0068 fail-closed
+            fail("expected SubsonicApiException")
+        } catch (_: SubsonicApiException) {
+            // expected — mid-walk status=failed is typed API error
         }
 
         coVerify(exactly = 0) { metadataDao.upsertAlbumsPreserveEnrich(any()) }

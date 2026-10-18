@@ -598,9 +598,12 @@ class MetadataSyncWorker(
             )
             val sr = response["subsonic-response"] as? Map<*, *>
             if (sr?.get("status") as? String == "failed") {
-                // ADR-0068: fail-closed — never replace/upsert from a truncated page walk.
-                listIncomplete = true
-                break
+                // Auth / API error — not a truncated walk. Fail-closed with typed error.
+                val errMap = sr["error"] as? Map<*, *>
+                val code = errMap?.get("code")
+                val msg = authHelper.getResponseError(response)
+                DiagnosticLog.e(TAG, "album list API failed: $msg")
+                throw SubsonicApiException(msg, code)
             }
             val albumList = sr?.get("albumList2") as? Map<*, *>
             val albums = albumList?.get("album") as? List<*>

@@ -139,6 +139,8 @@ class SyncingViewModel @Inject constructor(
 
     private fun beginSync(userTriggered: Boolean, rebuildOnly: Boolean, allowCellularOverride: Boolean) {
         syncJob?.cancel()
+        _isDone.value = false
+        _isError.value = false
         syncJob = viewModelScope.launch {
             val existing = metadataDao.albumCount()
             // rebuildOnly: just regenerate Daily Mixes, no server sync
@@ -412,6 +414,12 @@ fun SyncingScreen(
                 ).show()
                 return@LaunchedEffect
             }
+            // First-login: never claim success on error; keep user on this screen
+            // with Retry/Continue (see below) instead of auto-navigating home.
+            if (isError) {
+                Toast.makeText(context, "Sync failed — check connection", Toast.LENGTH_SHORT).show()
+                return@LaunchedEffect
+            }
             Toast.makeText(context, "Sync complete — navigating…", Toast.LENGTH_SHORT).show()
             delay(3000)
             onComplete()
@@ -473,7 +481,7 @@ fun SyncingScreen(
                     }
                 }
             } else {
-                if (userTriggered) {
+                if (userTriggered || isError) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         if (isError) {
                             Text(
@@ -489,6 +497,27 @@ fun SyncingScreen(
                                 fontSize = textBodyM(),
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             )
+                            Spacer(Modifier.height(16.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(
+                                    onClick = { viewModel.startSync(userTriggered, rebuildOnly) },
+                                    shape = RoundedCornerShape(12.dp),
+                                ) {
+                                    Text("Retry", fontSize = textHeadingS(), fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = onComplete,
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
+                                    shape = RoundedCornerShape(12.dp),
+                                ) {
+                                    Text(
+                                        if (userTriggered) "OK" else "Continue",
+                                        color = Color.White,
+                                        fontSize = textHeadingS(),
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
                         } else {
                             Text(
                                 "Ready! 🎵",
@@ -496,14 +525,14 @@ fun SyncingScreen(
                                 fontSize = textHeadingM(),
                                 fontWeight = FontWeight.SemiBold,
                             )
-                        }
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = onComplete,
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Text("OK", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = onComplete,
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text("OK", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

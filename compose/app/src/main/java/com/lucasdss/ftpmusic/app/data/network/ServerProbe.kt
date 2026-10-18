@@ -29,7 +29,10 @@ class ServerProbe @Inject constructor() {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(SubsonicApi::class.java)
-        val auth = SubsonicAuthHelper().buildAuthParams(username, password)
-        api.ping(username, auth["t"]!!, auth["s"]!!)
+        val authHelper = SubsonicAuthHelper()
+        val auth = authHelper.buildAuthParams(username, password)
+        // Subsonic auth failures are HTTP 200 + status=failed — must read body.
+        val response = api.ping(username, auth["t"]!!, auth["s"]!!)
+        authHelper.requireOk(response)
     }
 }
