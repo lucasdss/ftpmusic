@@ -177,6 +177,17 @@ object BtAutoplayStarter {
      */
     fun postInformationalNotification(context: Context, @StringRes titleRes: Int, @StringRes bodyRes: Int) {
         ensureInfoChannel(context)
+        if (!notificationsEnabled(context)) {
+            android.util.Log.w(
+                "ftpmusic-bt",
+                "Info notif blocked — POST_NOTIFICATIONS / notifications disabled",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-bt",
+                "result=info_notif_disabled",
+            )
+            BtResumeEvents.record("info_notif_disabled")
+        }
         val launch = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }

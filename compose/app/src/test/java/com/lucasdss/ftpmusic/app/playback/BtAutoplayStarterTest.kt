@@ -207,4 +207,18 @@ class BtAutoplayStarterRobolectricTest {
             nm.activeNotifications.any { it.id == BtAutoplayStarter.RESUME_NOTIFICATION_ID },
         )
     }
+
+    @Test
+    fun `postInformationalNotification records info_notif_disabled when notifs off`() {
+        BtResumeEvents.clear()
+        val ctx = RuntimeEnvironment.getApplication()
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        org.robolectric.Shadows.shadowOf(nm).setNotificationsEnabled(false)
+        BtAutoplayStarter.postInformationalNotification(
+            ctx,
+            com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_empty,
+            com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_empty,
+        )
+        assertTrue(BtResumeEvents.recent().any { it.contains("info_notif_disabled") })
+    }
 }

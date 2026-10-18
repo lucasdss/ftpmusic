@@ -83,6 +83,20 @@ class ServerReachabilityMonitorTest {
     }
 
     @Test
+    fun `probeOnce Subsonic status failed marks unreachable`() = runTest(testDispatcher) {
+        ReachabilityStateHolder.onApiSuccess()
+        coEvery { api.ping(any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "failed",
+                "error" to mapOf("code" to 40, "message" to "Wrong username or password"),
+            ),
+        )
+
+        assertFalse(monitor.probeOnce())
+        assertFalse(ReachabilityStateHolder.isReachable.first())
+    }
+
+    @Test
     fun `probeOnce skips when offline mode enabled`() = runTest(testDispatcher) {
         every { offlineModeManager.isOfflineEnabled() } returns true
         ReachabilityStateHolder.onApiFailure()

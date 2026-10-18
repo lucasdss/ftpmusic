@@ -16,8 +16,8 @@ object BtResumeEvents {
     /**
      * Record a connect-path outcome. [reason] is a short token, e.g.
      * `allow`, `skip`, `selected_null_mac`, `Started`, `NotificationFallback`,
-     * `notif_disabled`, `warm_a2dp`, `seat_only`, `tap_play`, `autoplay`,
-     * `empty_queue`, `offline_empty`.
+     * `notif_disabled`, `info_notif_disabled`, `warm_a2dp`, `seat_only`,
+     * `tap_play`, `autoplay`, `empty_queue`, `offline_empty`.
      */
     fun record(reason: String, extras: String = "") {
         val safeReason = reason.replace('\n', ' ').take(48)

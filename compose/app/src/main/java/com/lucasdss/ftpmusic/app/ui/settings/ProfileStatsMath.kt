@@ -100,9 +100,7 @@ object ProfileStatsMath {
      */
     fun formatListeningTime(seconds: Long): String = when {
         seconds <= 0L -> "0m"
-
         seconds < 60L -> "<1m"
-
         else -> formatListeningMinutes((seconds / 60L).toInt())
     }
 

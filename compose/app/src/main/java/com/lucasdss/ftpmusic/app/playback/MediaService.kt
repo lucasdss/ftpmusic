@@ -2259,6 +2259,7 @@ class MediaService : MediaLibraryService() {
             if (saved == null) {
                 // ADR-0148: empty Room — informational notice (no Resume action).
                 MediaServiceStartRequest.clearBtAutoplayFlags()
+                BtAutoplayStarter.cancelResumeNotification(this)
                 BtAutoplayStarter.postInformationalNotification(
                     this,
                     com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_empty,
@@ -2333,6 +2334,7 @@ class MediaService : MediaLibraryService() {
                 if (saved == null) {
                     if (btResume) {
                         MediaServiceStartRequest.clearBtAutoplayFlags()
+                        BtAutoplayStarter.cancelResumeNotification(this@MediaService)
                         BtAutoplayStarter.postInformationalNotification(
                             this@MediaService,
                             com.lucasdss.ftpmusic.app.R.string.bt_info_notif_title_empty,
@@ -2461,6 +2463,8 @@ class MediaService : MediaLibraryService() {
             )
             if (cachedIdx == null) {
                 player.pause()
+                // Drop stale Resume 1002 (prior null-mac / FGS-deny) before info 1003.
+                cancelResumeNotif(this)
                 postOfflineNotif(this)
                 android.util.Log.w(
                     "ftpmusic-bt",

@@ -186,7 +186,9 @@ class ServerReachabilityMonitor(
         return@withLock try {
             withTimeout(PROBE_TIMEOUT_MS) {
                 val params = auth.buildAuthParams(username, password)
-                api.ping(username, params.getValue("t"), params.getValue("s"))
+                val response = api.ping(username, params.getValue("t"), params.getValue("s"))
+                // Subsonic HTTP 200 + status=failed must not mark reachable (connect parity).
+                auth.requireOk(response)
             }
             ReachabilityStateHolder.onApiSuccess()
             true

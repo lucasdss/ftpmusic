@@ -32,7 +32,8 @@ not missing ExoPlayer API. Silent autoplay after sleep with zero gesture
 1. **API ≥31 FGS background start** — denied → `ForegroundServiceStartNotAllowedException`
    unless exemption (notif tap, media button, battery unrestricted, etc.).
 2. **API ≥37 WIU / AudioHardening** — A2DP-started FGS often BFSL without WIU;
-   background `play()` may silence. App gate: seat + Resume notif / HU Play.
+   background `play()` may silence. App gate (ADR-0148): seat-only; HU /
+   media-notif Play; Resume `1002` only for null-mac / FGS-deny.
 3. **API ≥15 BOOT_COMPLETED** — cannot start `mediaPlayback` FGS from boot receiver.
 4. **BAL** — no Activity launch from A2DP MAC alone.
 5. **A2DP broadcast** — best-effort accelerator; not a Play-guaranteed autoplay API.
@@ -66,8 +67,11 @@ not missing ExoPlayer API. Silent autoplay after sleep with zero gesture
 A2DP CONNECTED → BtConnectionReceiver → BtResumePolicy
   → BtAutoplayStarter.startForegroundService(ACTION_BT_AUTOPLAY)
   → MediaService seat (playWhenReady=false)
-  → SDK <37: play() | SDK ≥37: Resume notif
-FGS deny → Resume notif
+  → SDK <37: play() + cancel Resume 1002
+  → SDK ≥37: seat_only pause + cancel Resume 1002 (no app Resume)
+  → offline no-cache / empty Room → cancel 1002 + info notif 1003 (open app)
+SELECTED + null MAC → Resume notif 1002 (actionable)
+FGS deny → Resume notif 1002
 MEDIA_BUTTON → MediaButtonReceiver → onPlaybackResumption → play (WIU)
 Warm service → AudioDeviceCallback A2DP add → same policy path
 ```
@@ -82,7 +86,8 @@ Warm service → AudioDeviceCallback A2DP add → same policy path
 ## Device checklist
 
 1. Long deep sleep → A2DP → logcat `ftpmusic-bt` + diagnostics `btResumeEvents`.
-2. API ≤36: autoplay after seat. API ≥37: Resume notif or HU Play.
+2. API ≤36: autoplay after seat. API ≥37: seat-only; Play on HU / media notif.
 3. Battery unrestricted improves FGS start after Doze.
 4. Notifs off → warning in Settings; HU Play still viable if seat succeeded.
 5. SELECTED without CONNECT → Resume notif (`selected_null_mac`), no silent skip.
+6. Empty / offline-no-cache → info `1003` only (stale Resume `1002` cancelled).

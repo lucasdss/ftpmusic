@@ -497,7 +497,8 @@ class PlaylistDetailViewModelTest {
             ),
         )
         val createResponse = mapOf("subsonic-response" to mapOf("playlist" to mapOf("id" to "pl-copy")))
-        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns createResponse
+        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns
+            createResponse
 
         viewModel.copyPlaylist()
         advanceUntilIdle()
@@ -671,7 +672,8 @@ class PlaylistDetailViewModelTest {
             ),
         )
         val createResponse = mapOf("subsonic-response" to mapOf("playlist" to mapOf("id" to "pl-copy")))
-        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns createResponse
+        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns
+            createResponse
         coEvery { playlistDao.upsertAll(any()) } returns Unit
         coEvery { playlistDao.clearEntries(any()) } returns Unit
         coEvery { playlistDao.upsertEntries(any()) } returns Unit

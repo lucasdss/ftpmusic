@@ -1113,10 +1113,34 @@ class DaosRoomTest {
         val meta = db.cachedMetadataDao()
         meta.upsertAlbumTracks(
             listOf(
-                CachedAlbumTrackEntity(id = "t21", albumId = "al-multi", title = "D2 T1", discNumber = 2, trackNumber = 1),
-                CachedAlbumTrackEntity(id = "t12", albumId = "al-multi", title = "D1 T2", discNumber = 1, trackNumber = 2),
-                CachedAlbumTrackEntity(id = "t11", albumId = "al-multi", title = "D1 T1", discNumber = 1, trackNumber = 1),
-                CachedAlbumTrackEntity(id = "tnull", albumId = "al-multi", title = "No Disc", discNumber = null, trackNumber = 0),
+                CachedAlbumTrackEntity(
+                    id = "t21",
+                    albumId = "al-multi",
+                    title = "D2 T1",
+                    discNumber = 2,
+                    trackNumber = 1,
+                ),
+                CachedAlbumTrackEntity(
+                    id = "t12",
+                    albumId = "al-multi",
+                    title = "D1 T2",
+                    discNumber = 1,
+                    trackNumber = 2,
+                ),
+                CachedAlbumTrackEntity(
+                    id = "t11",
+                    albumId = "al-multi",
+                    title = "D1 T1",
+                    discNumber = 1,
+                    trackNumber = 1,
+                ),
+                CachedAlbumTrackEntity(
+                    id = "tnull",
+                    albumId = "al-multi",
+                    title = "No Disc",
+                    discNumber = null,
+                    trackNumber = 0,
+                ),
             ),
         )
 

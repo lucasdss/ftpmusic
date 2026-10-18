@@ -442,9 +442,7 @@ class MediaSessionCallback(
      * ADR-0146: Auto content-style hints — list for browsable + playable nodes.
      * Echo client recent/offline/suggested + extras; overlay CONTENT_STYLE keys.
      */
-    private fun autoLibraryRootParams(
-        client: MediaLibraryService.LibraryParams?,
-    ): MediaLibraryService.LibraryParams {
+    private fun autoLibraryRootParams(client: MediaLibraryService.LibraryParams?): MediaLibraryService.LibraryParams {
         val extras = Bundle(client?.extras ?: Bundle.EMPTY).apply {
             putInt(
                 MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,

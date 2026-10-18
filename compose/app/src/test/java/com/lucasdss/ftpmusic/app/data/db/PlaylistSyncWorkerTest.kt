@@ -126,7 +126,9 @@ class PlaylistSyncWorkerTest {
         worker.flushNow()
         advanceUntilIdle()
 
-        coVerify { api.updatePlaylist(any(), "pl-3", removeIndices = listOf(0, 1, 2, 3, 4), addIds = listOf("t1", "t2", "t3")) }
+        coVerify {
+            api.updatePlaylist(any(), "pl-3", removeIndices = listOf(0, 1, 2, 3, 4), addIds = listOf("t1", "t2", "t3"))
+        }
         coVerify { playlistDao.upsertAll(match { it.any { e -> e.trackCount == 3 } }) }
         coVerify { pendingDao.markFlushed(3) }
     }

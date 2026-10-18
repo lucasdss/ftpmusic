@@ -1593,7 +1593,9 @@ interface CachedMetadataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAlbumTracks(tracks: List<CachedAlbumTrackEntity>)
 
-    @Query("SELECT * FROM cached_album_tracks WHERE album_id = :albumId ORDER BY COALESCE(disc_number, 2147483647), COALESCE(track_number, 2147483647), title COLLATE NOCASE")
+    @Query(
+        "SELECT * FROM cached_album_tracks WHERE album_id = :albumId ORDER BY COALESCE(disc_number, 2147483647), COALESCE(track_number, 2147483647), title COLLATE NOCASE",
+    )
     suspend fun getAlbumTracks(albumId: String): List<CachedAlbumTrackEntity>
 
     @Query("DELETE FROM cached_album_tracks WHERE album_id = :albumId")

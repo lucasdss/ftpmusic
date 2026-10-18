@@ -217,6 +217,7 @@ class MediaServiceFgsReassertTest {
     fun `applyBtPlayAfterSeat offline with no cache posts offline notif`() {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
         var offline = 0
+        var cancelled = 0
         service.applyBtPlayAfterSeat(
             player = player,
             sdkInt = 36,
@@ -224,8 +225,11 @@ class MediaServiceFgsReassertTest {
             isCached = { false },
             postOfflineNotif = { offline++ },
             postWiuNotif = { error("no WIU when offline empty") },
+            // Spy has no attached Context — stub cancel (production cancels Resume 1002).
+            cancelResumeNotif = { cancelled++ },
         )
         assertEquals(1, offline)
+        assertEquals(1, cancelled)
         verify { player.pause() }
         verify(exactly = 0) { player.play() }
     }
@@ -257,6 +261,7 @@ class MediaServiceFgsReassertTest {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
         var info = 0
         var wiu = 0
+        var cancelled = 0
         service.applyBtPlayAfterSeat(
             player = player,
             sdkInt = 37,
@@ -265,9 +270,11 @@ class MediaServiceFgsReassertTest {
             isCached = { false },
             postOfflineNotif = { info++ },
             postWiuNotif = { wiu++ },
+            cancelResumeNotif = { cancelled++ },
         )
         assertEquals(1, info)
         assertEquals(0, wiu)
+        assertEquals(1, cancelled)
         verify { player.pause() }
         verify(exactly = 0) { player.play() }
         assertTrue(BtResumeEvents.recent().any { it.contains("offline_empty") })

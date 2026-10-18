@@ -21,7 +21,7 @@ the current item is not fully cached.
 | Post-Doze FGS deny on A2DP | Service never starts; phone Resume notif |
 | Android 17 BFSL FGS without WIU | `play()` silently silenced (`AudioHardening`) |
 | SELECTED + null MAC (CONNECT deny) (ADR-0101) | Policy hard-skip before starter → **total silence** |
-| Empty Room on BT seat (ADR-0101) | Flag cleared; no notif |
+| Empty Room on BT seat (ADR-0148) | Flag cleared; info notif `1003` (open app) |
 | `POST_NOTIFICATIONS` denied | `notify()` no-op; seat still required for HU Play |
 | Off-LAN + uncached current (ADR-0101) | Fail-fast IOException → stop / skip cascade |
 
@@ -40,11 +40,11 @@ A2DP STATE_CONNECTED
   → MediaService early startForeground
   → sync Room restore → seat MediaItems
   → if unreachable/offline: resolveOfflineStartIndex (prefer full cache)
-       none cached → offline hint notif; no doomed play()
-  → API ≤36: play()
-  → API ≥37: Resume notif (WIU) + MediaButton path; no silent-only play
-  → if FGS blocked → high-pri “Resume playback” notif
-  → empty Room → empty-queue Resume notif
+       none cached → cancel Resume 1002 + info notif 1003; no doomed play()
+  → API ≤36: play() + cancel Resume 1002
+  → API ≥37: seat_only pause + cancel Resume 1002 (ADR-0148); HU / media-notif Play
+  → if FGS blocked → high-pri Resume notif 1002
+  → empty Room → cancel 1002 + info notif 1003 (open app)
 ```
 
 ### Media button / System UI resumption (ADR-0087/0088)
@@ -66,7 +66,7 @@ MEDIA_BUTTON or System UI resume
 - If player already has items, restore/resumption skip overwrite.
 - `repeatMode` / `shuffleEnabled` applied on Main.
 - DI singleton coroutine scopes survive service destroy.
-- Empty Room queue → Resume notif; no crash; no fake media.
+- Empty Room queue → info notif `1003`; cancel stale Resume `1002`; no crash; no fake media.
 - Casting → A2DP resume skipped (ADR-0072).
 - SELECTED + unreadable MAC → Resume notif (ADR-0101); no autoplay without MAC match.
 - Off-LAN BT seat prefers fully cached index; partial cache ≠ playable.
@@ -76,10 +76,10 @@ MEDIA_BUTTON or System UI resume
 
 1. Long deep sleep → BT connect → logcat `ftpmusic-bt` + optional `AudioHardening`.
 2. HU shows last track metadata without opening the phone.
-3. API ≤36: autoplay starts. API ≥37: Play on HU or tap Resume notif if needed.
+3. API ≤36: autoplay starts. API ≥37: seat-only; Play on HU / media notif (no happy-path Resume).
 4. SELECTED without CONNECT: phone shows Resume notif (not silence).
 5. Off LAN with some downloads: starts on first fully cached track at/after current.
-6. Off LAN with zero downloads: offline hint notif; no play-then-die.
+6. Off LAN with zero downloads: info `1003`; stale Resume cancelled; no play-then-die.
 
 ## Settings note
 
