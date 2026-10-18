@@ -39,7 +39,6 @@ class PlaylistSyncWorker(
     companion object {
         private const val TAG = "ftpmusic-sync"
         private const val FLUSH_INTERVAL_MS = 15_000L
-        private const val MAX_CONSECUTIVE_FAILURES = 10
         private const val CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
     }
 
@@ -54,10 +53,6 @@ class PlaylistSyncWorker(
     fun start() {
         flushJob = scope.launch {
             while (true) {
-                if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                    Log.w(TAG, "Max retries reached ($MAX_CONSECUTIVE_FAILURES). Pausing flush loop.")
-                    break
-                }
                 try {
                     flushMutex.withLock { flushPending() }
                     cleanupFlushedIfNeeded()
@@ -113,7 +108,10 @@ class PlaylistSyncWorker(
     private suspend fun flushPending() {
         // Software offline mode: hold all pending changes locally; they are
         // flushed when the user toggles offline off or the process restarts.
-        if (offlineModeManager.isOfflineEnabled()) return
+        if (offlineModeManager.isOfflineEnabled()) {
+            consecutiveFailures = 0 // idle — do not inflate backoff
+            return
+        }
         val pending = pendingDao.getPending()
         if (pending.isEmpty()) {
             consecutiveFailures = 0 // no work = success
@@ -122,7 +120,10 @@ class PlaylistSyncWorker(
 
         val username = SubsonicCredentials.username
         val password = SubsonicCredentials.password
-        if (username.isEmpty() || password.isEmpty()) return
+        if (username.isEmpty() || password.isEmpty()) {
+            consecutiveFailures = 0 // idle — do not inflate backoff
+            return
+        }
 
         val params = authHelper.buildAuthParams(username, password)
         var anyNetworkFailure = false
@@ -153,7 +154,26 @@ class PlaylistSyncWorker(
                         val sr = response["subsonic-response"] as? Map<*, *>
                         val pl = sr?.get("playlist") as? Map<*, *>
                         val serverId = pl?.get("id") as? String
-                        if (serverId != null && serverId != change.playlistId) {
+                        if (serverId == null) {
+                            // Fail-closed: ok status without a server id would leave the
+                            // playlist on its temp id forever. Surface as conflict; do not
+                            // retry-create (would duplicate on the server).
+                            Log.w(TAG, "create returned ok status without server id for ${change.playlistId}")
+                            pendingDao.markFlushed(change.id)
+                            val current = playlistDao.getById(change.playlistId)
+                            if (current != null) {
+                                playlistDao.upsertAll(
+                                    listOf(
+                                        current.copy(
+                                            isConflicted = true,
+                                            conflictMessage = "Server create returned no id",
+                                        ),
+                                    ),
+                                )
+                            }
+                            continue
+                        }
+                        if (serverId != change.playlistId) {
                             // Preserve local fixed cover across temp→server id remap.
                             val prior = playlistDao.getById(change.playlistId)
                             // Replace temp local ID with server-assigned ID
@@ -179,7 +199,7 @@ class PlaylistSyncWorker(
                             // Remap all pending changes that reference the temp ID
                             pendingDao.remapPlaylistId(change.playlistId, serverId)
                             idRemaps[change.playlistId] = serverId
-                        } else if (serverId != null) {
+                        } else {
                             idRemaps[change.playlistId] = serverId
                         }
                     }
@@ -205,9 +225,20 @@ class PlaylistSyncWorker(
                             anyNetworkFailure = true
                             continue
                         }
-                        val serverCount = (serverList["songCount"] as? Number)?.toInt() ?: 0
-                        val removeIndices = if (serverCount > 0) (0 until serverCount).joinToString(",") else ""
-                        val addIds = entries.joinToString(",") { it.trackId }
+                        val sr = serverList["subsonic-response"] as? Map<*, *>
+                        val pl = sr?.get("playlist") as? Map<*, *>
+                        val plSongCount = (pl?.get("songCount") as? Number)?.toInt()
+                        val entryCount = (pl?.get("entry") as? List<*>)?.size
+                        val serverCount = plSongCount ?: entryCount
+                        // Fail-closed: unknown server count cannot compute remove indices
+                        // safely. Never append-only on a full-replace intent.
+                        if (serverCount == null) {
+                            Log.w(TAG, "sync_tracks malformed playlist envelope for $playlistId — retry")
+                            anyNetworkFailure = true
+                            continue
+                        }
+                        val removeIndices = if (serverCount > 0) (0 until serverCount).toList() else emptyList()
+                        val addIds = entries.map { it.trackId }
                         val response = api.updatePlaylist(
                             params,
                             playlistId = playlistId,
@@ -229,7 +260,7 @@ class PlaylistSyncWorker(
                     }
 
                     "add_tracks" -> {
-                        val trackIds = change.payload
+                        val trackIds = change.payload.split(",").filter { it.isNotBlank() }
                         val response = api.updatePlaylist(params, playlistId = playlistId, addIds = trackIds)
                         if (!authHelper.checkResponseStatus(response)) {
                             Log.w(TAG, "add_tracks failed status for $playlistId")
@@ -239,7 +270,7 @@ class PlaylistSyncWorker(
                     }
 
                     "remove_tracks" -> {
-                        val indices = change.payload
+                        val indices = change.payload.split(',', ';').mapNotNull { it.trim().toIntOrNull() }
                         val response =
                             api.updatePlaylist(params, playlistId = playlistId, removeIndices = indices)
                         if (!authHelper.checkResponseStatus(response)) {

@@ -819,7 +819,7 @@ interface PendingPlaylistChangeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(change: PendingPlaylistChangeEntity)
 
-    @Query("SELECT * FROM pending_playlist_changes WHERE flushed = 0 ORDER BY created_at ASC")
+    @Query("SELECT * FROM pending_playlist_changes WHERE flushed = 0 ORDER BY created_at ASC, id ASC")
     suspend fun getPending(): List<PendingPlaylistChangeEntity>
 
     @Query("UPDATE pending_playlist_changes SET flushed = 1 WHERE id = :id")

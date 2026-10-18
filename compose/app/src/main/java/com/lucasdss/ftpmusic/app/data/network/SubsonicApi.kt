@@ -117,7 +117,7 @@ interface SubsonicApi {
     suspend fun createPlaylist(
         @QueryMap params: Map<String, String>,
         @Query("name") name: String,
-        @Query("songId") songIds: String = "",
+        @Query("songId") songIds: List<String> = emptyList(),
     ): Map<String, Any>
 
     @GET("rest/updatePlaylist")
@@ -125,8 +125,8 @@ interface SubsonicApi {
         @QueryMap params: Map<String, String>,
         @Query("playlistId") playlistId: String,
         @Query("name") name: String = "",
-        @Query("songIndexToRemove") removeIndices: String = "",
-        @Query("songIdToAdd") addIds: String = "",
+        @Query("songIndexToRemove") removeIndices: List<Int> = emptyList(),
+        @Query("songIdToAdd") addIds: List<String> = emptyList(),
         /** Subsonic/Navidrome: "true" / "false"; empty omits (leave unchanged). */
         @Query("public") publicFlag: String = "",
     ): Map<String, Any>

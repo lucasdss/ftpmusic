@@ -452,8 +452,6 @@ class PlaylistDetailViewModel @Inject constructor(
         val playlist = _state.value.playlist ?: return
         viewModelScope.launch {
             try {
-                // Capture position BEFORE state update
-                val position = _state.value.tracks.indexOfFirst { it.id == trackId }
                 playlistDao.removeEntry(playlist.id, trackId)
                 // Update local state
                 val updatedTracks = _state.value.tracks.filter { it.id != trackId }
@@ -466,18 +464,19 @@ class PlaylistDetailViewModel @Inject constructor(
                     playlist = updatedMeta,
                     tracks = updatedTracks,
                 )
-                // Enqueue background sync
+                // Full-replace sync (matches moveTrack): immune to index drift
+                // because the server order is rebuilt from local entries.
                 pendingChangeDao.insert(
                     PendingPlaylistChangeEntity(
                         playlistId = playlist.id,
-                        changeType = "remove_tracks",
-                        payload = position.toString(),
+                        changeType = "sync_tracks",
+                        payload = updatedTracks.joinToString(",") { it.id },
                     ),
                 )
                 syncWorker.flushNow()
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                     "ftpmusic-playlist",
-                    "removeFromPlaylist playlistId=${playlist.id} position=$position",
+                    "removeFromPlaylist playlistId=${playlist.id} trackId=$trackId",
                 )
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "removeFromPlaylist failed: ${e.message}")
@@ -917,7 +916,7 @@ class PlaylistDetailViewModel @Inject constructor(
                 val response = api.createPlaylist(
                     params,
                     name = copyName,
-                    songIds = tracks.joinToString(",") { it.id },
+                    songIds = tracks.map { it.id },
                 )
                 if (!auth.checkResponseStatus(response)) {
                     android.util.Log.w(

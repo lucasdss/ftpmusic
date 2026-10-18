@@ -34,3 +34,12 @@ The existing `CacheDataSource` with `SimpleCache` already provides continuous of
 - WorkManager sync is more battery-friendly (Doze-aware)
 - Conflict resolution provides clear user feedback (conflicted playlists)
 - No architectural changes to the production-proven CacheDataSource or DownloadManager
+
+## Amend (2026-10-18)
+
+§4 superseded for removals: `removeFromPlaylist` now enqueues a full
+`sync_tracks` replacement (server playlist rebuilt from local entries) instead
+of index-based `remove_tracks`, removing index-drift risk. `songIdToAdd` /
+`songIndexToRemove` are sent as **repeated** query parameters (one key per
+value) per the Subsonic/OpenSubsonic spec, not comma-joined strings. See
+`docs/SYNC_CONSISTENCY_REVIEW_BEHAVIOR_REPORT.md`.

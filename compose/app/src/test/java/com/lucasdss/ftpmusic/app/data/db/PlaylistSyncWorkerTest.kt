@@ -119,13 +119,14 @@ class PlaylistSyncWorkerTest {
             PlaylistEntryEntity(playlistId = "pl-3", trackId = "t2", position = 1),
             PlaylistEntryEntity(playlistId = "pl-3", trackId = "t3", position = 2),
         )
-        coEvery { api.getPlaylist(any(), id = "pl-3") } returns mapOf("songCount" to 5)
+        coEvery { api.getPlaylist(any(), id = "pl-3") } returns
+            mapOf("subsonic-response" to mapOf("playlist" to mapOf("songCount" to 5)))
         coEvery { playlistDao.getById("pl-3") } returns PlaylistEntity(id = "pl-3", name = "Test")
 
         worker.flushNow()
         advanceUntilIdle()
 
-        coVerify { api.updatePlaylist(any(), "pl-3", removeIndices = "0,1,2,3,4", addIds = "t1,t2,t3") }
+        coVerify { api.updatePlaylist(any(), "pl-3", removeIndices = listOf(0, 1, 2, 3, 4), addIds = listOf("t1", "t2", "t3")) }
         coVerify { playlistDao.upsertAll(match { it.any { e -> e.trackCount == 3 } }) }
         coVerify { pendingDao.markFlushed(3) }
     }
@@ -139,7 +140,7 @@ class PlaylistSyncWorkerTest {
         worker.flushNow()
         advanceUntilIdle()
 
-        coVerify { api.updatePlaylist(any(), "pl-4", addIds = "t4,t5") }
+        coVerify { api.updatePlaylist(any(), "pl-4", addIds = listOf("t4", "t5")) }
         coVerify { pendingDao.markFlushed(4) }
     }
 
@@ -152,7 +153,7 @@ class PlaylistSyncWorkerTest {
         worker.flushNow()
         advanceUntilIdle()
 
-        coVerify { api.updatePlaylist(any(), "pl-5", removeIndices = "0;2") }
+        coVerify { api.updatePlaylist(any(), "pl-5", removeIndices = listOf(0, 2)) }
         coVerify { pendingDao.markFlushed(5) }
     }
 
@@ -320,7 +321,7 @@ class PlaylistSyncWorkerTest {
         val change =
             PendingPlaylistChangeEntity(id = 50, playlistId = "pl-50", changeType = "add_tracks", payload = "t1,t2")
         coEvery { pendingDao.getPending() } returns listOf(change)
-        coEvery { api.updatePlaylist(any(), "pl-50", addIds = "t1,t2") } returns mapOf(
+        coEvery { api.updatePlaylist(any(), "pl-50", addIds = listOf("t1", "t2")) } returns mapOf(
             "subsonic-response" to mapOf("status" to "failed"),
         )
 
@@ -344,5 +345,41 @@ class PlaylistSyncWorkerTest {
 
         coVerify(exactly = 0) { pendingDao.markFlushed(51) }
         coVerify(exactly = 0) { playlistDao.delete(any()) }
+    }
+
+    @Test
+    fun `sync_tracks malformed envelope is not flushed`() = runTest {
+        val change =
+            PendingPlaylistChangeEntity(id = 60, playlistId = "pl-mal", changeType = "sync_tracks", payload = "t1")
+        coEvery { pendingDao.getPending() } returns listOf(change)
+        coEvery { playlistDao.getEntries("pl-mal") } returns
+            listOf(PlaylistEntryEntity(playlistId = "pl-mal", trackId = "t1", position = 0))
+        // Status ok but no playlist envelope → cannot determine server count.
+        coEvery { api.getPlaylist(any(), id = "pl-mal") } returns
+            mapOf("subsonic-response" to mapOf("status" to "ok"))
+
+        worker.flushNow()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { api.updatePlaylist(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { pendingDao.markFlushed(60) }
+    }
+
+    @Test
+    fun `create ok without server id marks conflicted without remap`() = runTest {
+        val change =
+            PendingPlaylistChangeEntity(id = 61, playlistId = "new-61", changeType = "create", payload = "name=NoId")
+        coEvery { pendingDao.getPending() } returns listOf(change)
+        coEvery { api.createPlaylist(any(), name = "NoId") } returns
+            mapOf("subsonic-response" to mapOf("status" to "ok"))
+        coEvery { playlistDao.getById("new-61") } returns PlaylistEntity(id = "new-61", name = "NoId")
+
+        worker.flushNow()
+        advanceUntilIdle()
+
+        coVerify { pendingDao.markFlushed(61) }
+        coVerify(exactly = 0) { playlistDao.delete(any()) }
+        coVerify(exactly = 0) { pendingDao.remapPlaylistId(any(), any()) }
+        coVerify { playlistDao.upsertAll(match { it.any { e -> e.isConflicted } }) }
     }
 }

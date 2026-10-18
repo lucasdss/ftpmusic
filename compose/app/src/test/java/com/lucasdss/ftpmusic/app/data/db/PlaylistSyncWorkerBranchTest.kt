@@ -152,12 +152,13 @@ class PlaylistSyncWorkerBranchTest {
         coEvery { playlistDao.getEntries("pl-0") } returns listOf(
             PlaylistEntryEntity(playlistId = "pl-0", trackId = "t1", position = 0),
         )
-        coEvery { api.getPlaylist(any(), id = "pl-0") } returns mapOf("songCount" to 0)
+        coEvery { api.getPlaylist(any(), id = "pl-0") } returns
+            mapOf("subsonic-response" to mapOf("playlist" to mapOf("songCount" to 0)))
 
         worker.flushNow()
         advanceUntilIdle()
 
-        coVerify { api.updatePlaylist(any(), "pl-0", removeIndices = "", addIds = "t1") }
+        coVerify { api.updatePlaylist(any(), "pl-0", removeIndices = emptyList(), addIds = listOf("t1")) }
         coVerify { pendingDao.markFlushed(4) }
     }
 
@@ -169,13 +170,14 @@ class PlaylistSyncWorkerBranchTest {
             PlaylistEntryEntity(playlistId = "pl-nometa", trackId = "t1", position = 0),
             PlaylistEntryEntity(playlistId = "pl-nometa", trackId = "t2", position = 1),
         )
-        coEvery { api.getPlaylist(any(), id = "pl-nometa") } returns mapOf("songCount" to 2)
+        coEvery { api.getPlaylist(any(), id = "pl-nometa") } returns
+            mapOf("subsonic-response" to mapOf("playlist" to mapOf("songCount" to 2)))
         coEvery { playlistDao.getById("pl-nometa") } returns null
 
         worker.flushNow()
         advanceUntilIdle()
 
-        coVerify { api.updatePlaylist(any(), "pl-nometa", removeIndices = "0,1", addIds = "t1,t2") }
+        coVerify { api.updatePlaylist(any(), "pl-nometa", removeIndices = listOf(0, 1), addIds = listOf("t1", "t2")) }
         coVerify(exactly = 0) { playlistDao.upsertAll(any()) }
     }
 
@@ -242,7 +244,7 @@ class PlaylistSyncWorkerBranchTest {
     // ── loop lifecycle + backoff ────────────────────────────────────────────
 
     @Test
-    fun `start loop breaks after max consecutive failures`() = runTest {
+    fun `start loop does not break after max consecutive failures`() = runTest {
         val field = PlaylistSyncWorker::class.java.getDeclaredField("consecutiveFailures")
         field.isAccessible = true
         field.setInt(worker, 10)
@@ -250,8 +252,9 @@ class PlaylistSyncWorkerBranchTest {
         worker.start()
         advanceTimeBy(1)
 
-        // Loop breaks before flushing
-        coVerify(exactly = 0) { pendingDao.getPending() }
+        // Loop no longer breaks on a high failure count — it keeps flushing
+        // (pending empty here, so the counter resets and backoff drops to 15s).
+        coVerify(atLeast = 1) { pendingDao.getPending() }
         worker.stop()
     }
 

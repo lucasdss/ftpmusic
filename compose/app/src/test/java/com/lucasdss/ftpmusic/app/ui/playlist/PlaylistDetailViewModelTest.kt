@@ -497,12 +497,12 @@ class PlaylistDetailViewModelTest {
             ),
         )
         val createResponse = mapOf("subsonic-response" to mapOf("playlist" to mapOf("id" to "pl-copy")))
-        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = "t1,t2") } returns createResponse
+        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns createResponse
 
         viewModel.copyPlaylist()
         advanceUntilIdle()
 
-        coVerify { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = "t1,t2") }
+        coVerify { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) }
         coVerify { playlistDao.upsertAll(match { it.size == 1 && it[0].id == "pl-copy" }) }
     }
 
@@ -671,7 +671,7 @@ class PlaylistDetailViewModelTest {
             ),
         )
         val createResponse = mapOf("subsonic-response" to mapOf("playlist" to mapOf("id" to "pl-copy")))
-        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = "t1,t2") } returns createResponse
+        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns createResponse
         coEvery { playlistDao.upsertAll(any()) } returns Unit
         coEvery { playlistDao.clearEntries(any()) } returns Unit
         coEvery { playlistDao.upsertEntries(any()) } returns Unit
@@ -733,13 +733,14 @@ class PlaylistDetailViewModelTest {
         coEvery { playlistDao.removeEntry(any(), any()) } returns Unit
         coEvery { playlistDao.upsertAll(any()) } returns Unit
 
-        // Remove track at index 1 (t2) — sync payload should be "1"
+        // Remove track t2 — removal now enqueues a full-replace sync_tracks
+        // (server order rebuilt from local entries), not an index-based remove.
         viewModel.removeFromPlaylist("t2")
         advanceUntilIdle()
 
         coVerify { playlistDao.removeEntry("pl-1", "t2") }
         coVerify { playlistDao.upsertAll(match { it.size == 1 && it[0].trackCount == 2 }) }
-        coVerify { pendingChangeDao.insert(match { it.changeType == "remove_tracks" && it.payload == "1" }) }
+        coVerify { pendingChangeDao.insert(match { it.changeType == "sync_tracks" && it.payload == "t1,t3" }) }
         coVerify { syncWorker.flushNow() }
         assertEquals(2, viewModel.state.value.tracks.size)
         assertEquals("t1", viewModel.state.value.tracks[0].id)

@@ -53,3 +53,11 @@ respecting the app's existing design system and its local-first
 - Picker selection is transient (lost on process death) — acceptable: only
   explicit "Add" persists.
 - No schema change; no new dependencies; no navigation graph change.
+
+## Amend (2026-10-18)
+
+Points 1 & 5 superseded: `removeFromPlaylist` now enqueues `sync_tracks`
+(full-replace from local entries) instead of position-based `remove_tracks`,
+removing index-drift risk. `add_tracks` / `remove_tracks` / `sync_tracks`
+`updatePlaylist` args are sent as **repeated** query params (`List`), not
+comma-joined strings. See `docs/SYNC_CONSISTENCY_REVIEW_BEHAVIOR_REPORT.md`.

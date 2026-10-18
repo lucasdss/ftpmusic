@@ -33,7 +33,7 @@ If OS blocks FGS start, sync continues best-effort without notification.
 | Periodic library (`SyncScheduleWorker`) | Yes (WM + FGS when allowed) |
 | Post-sync enrich (`MetadataEnrichScheduleWorker`) | Yes (WM one-shot) |
 | First-run FULL / manual Resync / Home DELTA | FGS while Job runs |
-| Playlist outbound (`PlaylistSyncWorker` ~15s loop) | Process-lifetime only — dies with process; **not** interval-tied. After **10** consecutive network failures loop `break`s → paused until process restart (pending flush can sit) |
+| Playlist outbound (`PlaylistSyncWorker` ~15s loop) | Process-lifetime only — dies with process; **not** interval-tied. Backoff 60s→5m→30m capped; loop never permanently pauses |
 | Playlist inbound (imported refresh) | Inside metadata sync phase (1A) |
 
 WM network: `UNMETERED` if sync Wi‑Fi-only else `CONNECTED`. No battery/charging/idle.
@@ -196,7 +196,7 @@ WM constraint: `UNMETERED` when sync Wi‑Fi-only else `CONNECTED`.
 - `LibraryViewModel.resyncAll` = default DELTA, **no production UI caller**
 - Soft-skip → WM `retry` (ADR-0139); `already_running` stays success
 - `SyncScheduleWorker` reads shared `status.phase` after `join()` — concurrent manual Resync can race phase (narrow)
-- Playlist flush loop permanent pause after 10 consecutive network fails until process restart
+- Playlist flush loop backs off 60s→5m→30m and never permanently pauses (pending flush converges on reconnect)
 - Unimported playlists still require import picker (1A — no auto-import)
 
 ## Not in this pass
