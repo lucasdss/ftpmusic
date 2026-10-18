@@ -16,11 +16,13 @@ import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -100,7 +102,13 @@ class ServerReachabilityMonitor(
         keepaliveJob = s.launch {
             while (isActive) {
                 delay(currentIntervalMs())
-                probeOnce()
+                try {
+                    probeOnce()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Keepalive probe failed: ${e.message}")
+                }
             }
         }
         Log.i(TAG, "Reachability monitor started")
@@ -140,7 +148,15 @@ class ServerReachabilityMonitor(
         if (s == null) {
             return
         }
-        s.launch { probeOnce() }
+        s.launch {
+            try {
+                probeOnce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Debounced probe failed: ${e.message}")
+            }
+        }
     }
 
     /**
@@ -150,11 +166,22 @@ class ServerReachabilityMonitor(
      * @return true if ping succeeded; false if skipped or failed.
      */
     suspend fun probeOnce(): Boolean = probeMutex.withLock {
-        if (offlineModeManager.isOfflineEnabled()) return@withLock false
-        if (!DynamicBaseUrl.isConfigured()) return@withLock false
-        val username = SubsonicCredentials.username
-        val password = SubsonicCredentials.password
-        if (username.isBlank() || password.isBlank()) return@withLock false
+        // Pre-flight reads touch singletons that tests mock/unmock; a transient
+        // read failure must not crash the background keepalive or leak an
+        // uncaught exception. Treat it as "not ready" — do NOT mark the server down.
+        val (username, password) = try {
+            if (offlineModeManager.isOfflineEnabled()) return@withLock false
+            if (!DynamicBaseUrl.isConfigured()) return@withLock false
+            val u = SubsonicCredentials.username
+            val p = SubsonicCredentials.password
+            if (u.isBlank() || p.isBlank()) return@withLock false
+            u to p
+        } catch (e: CancellationException) {
+            throw e // keep stop()/cancel cooperative
+        } catch (e: Exception) {
+            Log.w(TAG, "Probe pre-flight read failed: ${e.message}")
+            return@withLock false // not a server-down signal
+        }
 
         return@withLock try {
             withTimeout(PROBE_TIMEOUT_MS) {
@@ -163,6 +190,11 @@ class ServerReachabilityMonitor(
             }
             ReachabilityStateHolder.onApiSuccess()
             true
+        } catch (e: TimeoutCancellationException) {
+            ReachabilityStateHolder.onApiFailure()
+            false
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             ReachabilityStateHolder.onApiFailure()
             false

@@ -10,6 +10,8 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import java.io.IOException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -276,6 +278,64 @@ class ServerReachabilityMonitorTest {
         monitor.onNetworkAvailable()
         runCurrent()
         coVerify(exactly = 0) { api.ping(any(), any(), any()) }
+    }
+
+    // ── Fix 0 regression: probe must not leak on a config-read race ─────────
+
+    @Test
+    fun `probeOnce returns false without failure when config read throws`() = runTest(testDispatcher) {
+        ReachabilityStateHolder.resetForTests(reachable = true)
+        mockkObject(DynamicBaseUrl)
+        try {
+            every { DynamicBaseUrl.isConfigured() } throws RuntimeException("unmocked")
+
+            assertFalse(monitor.probeOnce())
+            // A config-read failure is NOT a server-down signal.
+            assertTrue(ReachabilityStateHolder.isReachable.first())
+            coVerify(exactly = 0) { api.ping(any(), any(), any()) }
+        } finally {
+            unmockkObject(DynamicBaseUrl)
+        }
+    }
+
+    @Test
+    fun `keepalive survives a probe exception`() = runTest(testDispatcher) {
+        ReachabilityStateHolder.resetForTests(reachable = false) // interval = 15s
+        mockkObject(DynamicBaseUrl)
+        try {
+            every { DynamicBaseUrl.isConfigured() } throws RuntimeException("unmocked")
+            coEvery { api.ping(any(), any(), any()) } returns mapOf("status" to "ok")
+
+            monitor.start()
+            advanceTimeBy(ServerReachabilityMonitor.INTERVAL_UNREACHABLE_MS)
+            runCurrent() // first cycle throws internally, must NOT cancel the loop
+
+            unmockkObject(DynamicBaseUrl)
+            DynamicBaseUrl.url = "https://music.example.com" // real object again
+            advanceTimeBy(ServerReachabilityMonitor.INTERVAL_UNREACHABLE_MS)
+            runCurrent()
+
+            coVerify(atLeast = 1) { api.ping(any(), any(), any()) } // loop still alive
+        } finally {
+            unmockkObject(DynamicBaseUrl)
+            monitor.stop()
+        }
+    }
+
+    @Test
+    fun `onNetworkAvailable survives a probe exception`() = runTest(testDispatcher) {
+        mockkObject(DynamicBaseUrl)
+        try {
+            every { DynamicBaseUrl.isConfigured() } throws RuntimeException("unmocked")
+            monitor.start()
+            clock = 5_000L
+            monitor.onNetworkAvailable()
+            runCurrent() // debounced probe throws internally, must not leak
+            assertTrue(fakeWatcher.started)
+        } finally {
+            unmockkObject(DynamicBaseUrl)
+            monitor.stop()
+        }
     }
 
     private class FakeNetworkWatcher : NetworkWatcher {
