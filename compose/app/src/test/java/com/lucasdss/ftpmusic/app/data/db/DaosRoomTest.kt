@@ -1072,6 +1072,60 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `populateGenresFromCachedGenreSongs preserves disc track and enrichment`() = runBlocking {
+        val tracks = db.trackDao()
+        val genres = db.genreMixDao()
+        tracks.upsert(
+            TrackEntity(
+                id = "t-genre-preserve",
+                title = "Preserve Me",
+                albumId = "al-preserve",
+                discNumber = 2,
+                trackNumber = 5,
+                musicbrainzId = "mbid-1",
+                publicRating = 4.5,
+                publicRatingVotes = 10,
+            ),
+        )
+        genres.upsertSongs(
+            listOf(
+                CachedGenreSongEntity(
+                    id = "t-genre-preserve",
+                    genre = "Rock",
+                    title = "Genre Song",
+                    // trackNumber null → must keep existing tracks.track_number
+                ),
+            ),
+        )
+
+        tracks.populateGenresFromCachedGenreSongs()
+
+        val row = tracks.getTrack("t-genre-preserve")!!
+        assertEquals(2, row.discNumber) // genre source has no disc → preserve
+        assertEquals(5, row.trackNumber) // genre track null → preserve
+        assertEquals("mbid-1", row.musicbrainzId)
+        assertEquals(4.5, row.publicRating ?: 0.0, 0.0)
+        assertEquals(10, row.publicRatingVotes ?: 0)
+    }
+
+    @Test
+    fun `getAlbumTracks orders by disc then track null disc last`() = runBlocking {
+        val meta = db.cachedMetadataDao()
+        meta.upsertAlbumTracks(
+            listOf(
+                CachedAlbumTrackEntity(id = "t21", albumId = "al-multi", title = "D2 T1", discNumber = 2, trackNumber = 1),
+                CachedAlbumTrackEntity(id = "t12", albumId = "al-multi", title = "D1 T2", discNumber = 1, trackNumber = 2),
+                CachedAlbumTrackEntity(id = "t11", albumId = "al-multi", title = "D1 T1", discNumber = 1, trackNumber = 1),
+                CachedAlbumTrackEntity(id = "tnull", albumId = "al-multi", title = "No Disc", discNumber = null, trackNumber = 0),
+            ),
+        )
+
+        val ordered = meta.getAlbumTracks("al-multi")
+
+        assertEquals(listOf("t11", "t12", "t21", "tnull"), ordered.map { it.id })
+    }
+
+    @Test
     fun `clearStarAndMarkPendingUnstar is atomic`() = runBlocking {
         val tracks = db.trackDao()
         tracks.ensureTrackRow("t-atom")
