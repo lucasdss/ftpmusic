@@ -58,3 +58,20 @@ reliability; it is not the fix.
 Post-ship review of `ae38c15` found M1 (user download blocked) and M2 (prepare-then-pause
 race). Remediation updates decisions 1–3 and 5 above. See
 [AE38C15_CORRECTNESS_REVIEW_BEHAVIOR_REPORT.md](../AE38C15_CORRECTNESS_REVIEW_BEHAVIOR_REPORT.md).
+
+## Amendment (2026-10-19 — play-queue vs user Download)
+
+Decision 2 previously equated “priority 1” with user Download. ADR-0022 also uses
+priority 1 for **play-queue remainder** constraint gating, which caused
+`retry_user` storms on terminal CT rejects (diagnostics 2026-10-19).
+
+**Clarification:** resurrection / `markAsDownload` is gated on explicit
+`isDownload == true`. `DownloadManager.enqueue` defaults
+`isDownload = (priority == 1)` for backward-compatible user Download call sites;
+`PlaybackManager.enqueuePlayQueue` always passes `isDownload = false`.
+
+**Gap A:** `MIGRATION_31_32` backfilled `is_download=1 WHERE priority=1`. Do **not**
+re-introduce that derivation in future migrations. Existing pinned remainder rows
+are left as-is (on-disk already); new remainder inserts are not pinned.
+
+See [DIAGNOSTICS_20261019_BT_DOWNLOAD_BEHAVIOR_REPORT.md](../DIAGNOSTICS_20261019_BT_DOWNLOAD_BEHAVIOR_REPORT.md).

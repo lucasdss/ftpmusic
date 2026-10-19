@@ -478,7 +478,11 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_31_32 = object : Migration(31, 32) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE cache_queue_items ADD COLUMN is_download INTEGER NOT NULL DEFAULT 0")
-                // Backfill: priority 1 has always meant an explicit download request
+                // Historical backfill (do NOT repeat in future migrations): at the
+                // time, priority 1 was assumed to mean user Download. ADR-0022 also
+                // uses pri 1 for play-queue remainder — runtime now passes
+                // isDownload=false for that path (ADR-0117 2026-10-19 amendment).
+                // Existing rows already backfilled stay pinned; leave as-is.
                 database.execSQL("UPDATE cache_queue_items SET is_download = 1 WHERE priority = 1")
             }
         }

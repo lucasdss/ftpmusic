@@ -1120,7 +1120,14 @@ class PlaybackManager @Inject constructor(
                             album = alignedTracks[i].album,
                         ) // store for Cast URL swap
                     val priority = if (i < urgentEnd) 0 else 1
-                    downloadManager.enqueue(alignedTracks[i].id, alignedUrls[i], priority = priority)
+                    // ADR-0022 remainder uses pri 1 for constraints only — not user Download.
+                    // Explicit isDownload=false stops terminal CT rows from retry_user storms.
+                    downloadManager.enqueue(
+                        alignedTracks[i].id,
+                        alignedUrls[i],
+                        priority = priority,
+                        isDownload = false,
+                    )
                 } catch (e: Exception) {
                     logWarn("enqueuePlayQueue", e.message ?: "unknown error")
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(

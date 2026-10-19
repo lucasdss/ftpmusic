@@ -34,6 +34,8 @@ ADR 0013 (Proposed) described a local-first architecture, but the enforcement la
 ### 6. Queue-always-cached (whole queue)
 `PlaybackManager.enqueuePlayQueue` enqueues the ENTIRE queue: the next 3 tracks at priority 0 (streaming-continuity window — always downloaded, no constraint gating) and the remainder at priority 1 (Wi-Fi/battery/mobile-data gated). Completed rows still present in the cache are a no-op — no re-download on every track advance.
 
+**Amendment (2026-10-19):** Remainder priority 1 is a **constraint tier only**, not user Download. Call sites pass `isDownload = false` so terminal CT failures are not resurrected as `retry_user` (see ADR-0117 amendment).
+
 ## Consequences
 
 - Offline mode is now enforced at every network boundary; the toggle is honest after process death.

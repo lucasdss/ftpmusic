@@ -92,9 +92,19 @@ class DownloadManager @Inject constructor(
      *
      *  Completed rows that are still stored in the cache are never reset to
      *  "pending" — re-enqueueing a cached track (e.g. the play-queue prefetch
-     *  firing on every track advance) must not trigger a re-download. */
-    suspend fun enqueue(trackId: String, url: String, priority: Int = 2) {
-        val isDownload = priority == 1
+     *  firing on every track advance) must not trigger a re-download.
+     *
+     *  [isDownload] defaults to `(priority == 1)` so explicit user Download call
+     *  sites stay unchanged. Play-queue remainder also uses priority 1 for
+     *  constraint gating (ADR-0022) but must pass `isDownload = false` so
+     *  terminal CT failures are not resurrected as `retry_user` every transition.
+     */
+    suspend fun enqueue(
+        trackId: String,
+        url: String,
+        priority: Int = 2,
+        isDownload: Boolean = (priority == 1),
+    ) {
         val existing = cacheQueueDao.getByTrackId(trackId)
         if (existing != null && existing.status in listOf("pending", "processing")) {
             // Upgrade priority if new request is higher

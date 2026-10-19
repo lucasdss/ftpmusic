@@ -354,8 +354,9 @@ class PlaybackManagerBranchCoverageTest {
 
     @Test
     fun `enqueuePlayQueue continues after enqueue throw`() {
-        coEvery { mockDownloadManager.enqueue(any(), any(), any()) } throws RuntimeException("disk full") andThen
-            Unit andThen Unit andThen Unit
+        coEvery {
+            mockDownloadManager.enqueue(any(), any(), priority = any(), isDownload = any())
+        } throws RuntimeException("disk full") andThen Unit andThen Unit andThen Unit
         val m = mgr()
         m.enqueuePlayQueue(
             listOf(track("t0"), track("t1"), track("t2"), track("t3")),
@@ -363,13 +364,17 @@ class PlaybackManagerBranchCoverageTest {
             currentIndex = 0,
         )
         // start = 1; t1 throws, t2+t3 still attempted
-        coVerify(atLeast = 3) { mockDownloadManager.enqueue(any(), any(), any()) }
+        coVerify(atLeast = 3) {
+            mockDownloadManager.enqueue(any(), any(), priority = any(), isDownload = false)
+        }
     }
 
     @Test
     fun `enqueuePlayQueue clamps startIndex past coerced length`() {
         clearMocks(mockDownloadManager, recordedCalls = true, answers = false)
-        coEvery { mockDownloadManager.enqueue(any(), any(), any()) } just Runs
+        coEvery {
+            mockDownloadManager.enqueue(any(), any(), priority = any(), isDownload = any())
+        } just Runs
         val m = mgr()
         // 3 tracks / 2 urls → n=2; currentIndex=9 clamps to lastIndex=1 → start=2 → no enqueues
         m.enqueuePlayQueue(
@@ -377,7 +382,31 @@ class PlaybackManagerBranchCoverageTest {
             listOf(url("a"), url("b")),
             currentIndex = 9,
         )
-        coVerify(exactly = 0) { mockDownloadManager.enqueue(any(), any(), any()) }
+        coVerify(exactly = 0) {
+            mockDownloadManager.enqueue(any(), any(), priority = any(), isDownload = any())
+        }
+    }
+
+    @Test
+    fun `enqueuePlayQueue passes isDownload false for urgent and remainder`() {
+        clearMocks(mockDownloadManager, recordedCalls = true, answers = false)
+        coEvery {
+            mockDownloadManager.enqueue(any(), any(), priority = any(), isDownload = any())
+        } just Runs
+        val m = mgr()
+        // idx=0 → urgent t1..t3 (pri 0), remainder t4 (pri 1); both isDownload=false
+        m.enqueuePlayQueue(
+            listOf(track("t0"), track("t1"), track("t2"), track("t3"), track("t4")),
+            listOf(url("t0"), url("t1"), url("t2"), url("t3"), url("t4")),
+            currentIndex = 0,
+        )
+        coVerify { mockDownloadManager.enqueue("t1", any(), priority = 0, isDownload = false) }
+        coVerify { mockDownloadManager.enqueue("t2", any(), priority = 0, isDownload = false) }
+        coVerify { mockDownloadManager.enqueue("t3", any(), priority = 0, isDownload = false) }
+        coVerify { mockDownloadManager.enqueue("t4", any(), priority = 1, isDownload = false) }
+        coVerify(exactly = 0) {
+            mockDownloadManager.enqueue(any(), any(), priority = any(), isDownload = true)
+        }
     }
 
     // ── empty / journal XOR / length guard ───────────────────────────────

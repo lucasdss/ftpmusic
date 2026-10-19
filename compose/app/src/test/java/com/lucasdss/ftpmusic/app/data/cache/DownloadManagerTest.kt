@@ -58,7 +58,9 @@ class DownloadManagerTest {
 
         manager.enqueue("tr-3", "http://z", priority = 1)
 
-        coVerify { dao.insertIgnore(match { it.trackId == "tr-3" && it.priority == 1 }) }
+        coVerify {
+            dao.insertIgnore(match { it.trackId == "tr-3" && it.priority == 1 && it.isDownload })
+        }
         val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             context,
             offline = false,
@@ -121,6 +123,47 @@ class DownloadManagerTest {
             reachable = true,
         )
         assertTrue(snap.contains("result=retry_user"))
+    }
+
+    @Test
+    fun `enqueue play-queue pri1 does not resurrect failed terminal`() = runTest {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        coEvery { dao.getByTrackId("tr-pq") } returns CacheQueueItemEntity(
+            id = 34,
+            trackId = "tr-pq",
+            remoteUrl = "http://a",
+            status = "failed",
+            priority = 1,
+            isDownload = true,
+            retryCount = 0,
+        )
+
+        manager.enqueue("tr-pq", "http://a", priority = 1, isDownload = false)
+
+        coVerify(exactly = 0) { dao.updateStatus(34, "pending") }
+        coVerify(exactly = 0) { dao.markAsDownload(any()) }
+        coVerify(exactly = 0) { dao.insertIgnore(any()) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+        )
+        assertTrue(snap.contains("result=failed_terminal"))
+        assertTrue(manager.isTerminalFailed("tr-pq"))
+    }
+
+    @Test
+    fun `enqueue play-queue remainder insert does not set isDownload`() = runTest {
+        coEvery { dao.getByTrackId("tr-rem") } returns null
+        coEvery { dao.insertIgnore(any()) } returns 1
+
+        manager.enqueue("tr-rem", "http://r", priority = 1, isDownload = false)
+
+        coVerify {
+            dao.insertIgnore(
+                match { it.trackId == "tr-rem" && it.priority == 1 && !it.isDownload },
+            )
+        }
     }
 
     @Test
