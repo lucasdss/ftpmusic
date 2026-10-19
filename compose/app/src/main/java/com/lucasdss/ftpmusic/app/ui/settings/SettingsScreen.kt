@@ -71,17 +71,17 @@ fun SettingsScreen(
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
 
-    fun navigate(route: String) {
-        when (route) {
+    fun navigate(node: SettingNode) {
+        when (node.route) {
             SettingsRoutes.PROFILE -> onProfile()
             SettingsRoutes.DOWNLOADS -> onDownloads()
             SettingsRoutes.TYPOGRAPHY -> onTypography()
-            else -> onNavigate(route)
+            else -> onNavigate(node.routeForQuery(query))
         }
     }
 
     val filtered = remember(query, state) {
-        SettingsIndex.filter(query, state) { resId -> context.getString(resId) }
+        SettingsIndex.filter(query, state, context)
     }
     val grouped = remember(filtered) { filtered.groupBy { it.groupRes } }
     val groupOrder = remember {
@@ -155,9 +155,9 @@ fun SettingsScreen(
                         nodes.forEachIndexed { index, node ->
                             SettingsNavRow(
                                 title = stringResource(node.titleRes),
-                                summary = node.summaryProvider(state),
+                                summary = node.summaryProvider(state, context),
                                 icon = node.icon,
-                                onClick = { navigate(node.route) },
+                                onClick = { navigate(node) },
                                 testTag = node.testTag,
                             )
                             if (index < nodes.lastIndex) {

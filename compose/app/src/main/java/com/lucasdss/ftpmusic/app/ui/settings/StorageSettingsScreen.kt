@@ -124,6 +124,7 @@ import com.lucasdss.ftpmusic.app.ui.textLabelS
 fun StorageSettingsScreen(
     onBack: () -> Unit = {},
     onDownloads: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -134,14 +135,17 @@ fun StorageSettingsScreen(
     SettingsPageScaffold(title = stringResource(R.string.settings_page_storage), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             // ═══ Cache section ═══
-            SectionLabel("Cache")
+            SectionLabel(stringResource(R.string.settings_storage_cache))
             SectionCard {
                 // Storage breakdown
-                SectionRow("Auto-cache", formatBytes(state.autoCacheBytes))
+                SectionRow(stringResource(R.string.settings_storage_auto_cache), formatBytes(state.autoCacheBytes))
                 SectionDivider()
-                SectionRow("Downloads", formatBytes(state.downloadBytes))
+                SectionRow(stringResource(R.string.settings_storage_downloads), formatBytes(state.downloadBytes))
                 SectionDivider()
-                SectionRow("Total", formatBytes(state.autoCacheBytes + state.downloadBytes))
+                SectionRow(
+                    stringResource(R.string.settings_storage_total),
+                    formatBytes(state.autoCacheBytes + state.downloadBytes),
+                )
             }
 
             Spacer(Modifier.height(12.dp))
@@ -159,13 +163,13 @@ fun StorageSettingsScreen(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Manage downloads",
+                            stringResource(R.string.settings_storage_manage_downloads),
                             color = Color.White,
                             fontSize = textHeadingS(),
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            "Browse, play, or remove pinned offline tracks",
+                            stringResource(R.string.settings_storage_manage_downloads_sub),
                             color = Color(0xFF888888),
                             fontSize = textLabelM(),
                         )
@@ -177,7 +181,7 @@ fun StorageSettingsScreen(
             Spacer(Modifier.height(12.dp))
 
             // Unified audio cache size (shared by streaming, auto-cache; downloads are pinned)
-            SectionLabel("Audio cache size")
+            SectionLabel(stringResource(R.string.settings_storage_audio_quota))
             var quota by remember(state.audioCacheQuotaMb) { mutableStateOf(state.audioCacheQuotaMb.toFloat()) }
             SectionCard {
                 Row(
@@ -212,7 +216,7 @@ fun StorageSettingsScreen(
             Spacer(Modifier.height(12.dp))
 
             // Cover Art quota
-            SectionLabel("Cover Art quota")
+            SectionLabel(stringResource(R.string.settings_storage_cover_quota))
             var artQuota by remember(state.coverArtQuotaMb) { mutableStateOf(state.coverArtQuotaMb.toFloat()) }
             SectionCard {
                 Row(
@@ -248,12 +252,21 @@ fun StorageSettingsScreen(
             var showClearCacheConfirm by remember { mutableStateOf(false) }
             var showClearDownloadsConfirm by remember { mutableStateOf(false) }
             var showClearCoverArtConfirm by remember { mutableStateOf(false) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacingS())) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .settingsScrollAnchor(SettingsAnchors.CLEAR_CACHE, scrollToAnchor),
+                horizontalArrangement = Arrangement.spacedBy(spacingS()),
+            ) {
                 SectionCard(Modifier.weight(1f).clickable { showClearCacheConfirm = true }) {
                     Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Storage, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
                         Spacer(Modifier.height(4.dp))
-                        Text("Clear cache", color = Color.White, fontSize = textLabelL())
+                        Text(
+                            stringResource(R.string.settings_storage_clear_cache),
+                            color = Color.White,
+                            fontSize = textLabelL(),
+                        )
                         Text(formatBytes(state.autoCacheBytes), color = Color(0xFF888888), fontSize = textLabelS())
                     }
                 }
@@ -266,7 +279,11 @@ fun StorageSettingsScreen(
                             modifier = Modifier.size(iconSmall()),
                         )
                         Spacer(Modifier.height(4.dp))
-                        Text("Clear downloads", color = Color.White, fontSize = textLabelL())
+                        Text(
+                            stringResource(R.string.settings_storage_clear_downloads),
+                            color = Color.White,
+                            fontSize = textLabelL(),
+                        )
                         Text(formatBytes(state.downloadBytes), color = Color(0xFF888888), fontSize = textLabelS())
                     }
                 }

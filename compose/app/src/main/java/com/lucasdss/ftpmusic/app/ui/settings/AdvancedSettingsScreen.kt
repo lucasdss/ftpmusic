@@ -123,6 +123,7 @@ import com.lucasdss.ftpmusic.app.ui.textLabelS
 @Composable
 fun AdvancedSettingsScreen(
     onBack: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -133,10 +134,16 @@ fun AdvancedSettingsScreen(
     SettingsPageScaffold(title = stringResource(R.string.settings_page_advanced), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             // ═══ Custom Headers section ═══
-            SectionLabel("Custom HTTP Headers")
-            SectionCard {
+            SectionLabel(stringResource(R.string.settings_advanced_headers))
+            SectionCard(
+                Modifier.settingsScrollAnchor(SettingsAnchors.CUSTOM_HEADERS, scrollToAnchor),
+            ) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Headers sent with every API request", color = Color(0xFF888888), fontSize = textLabelM())
+                    Text(
+                        stringResource(R.string.settings_advanced_headers_sub),
+                        color = Color(0xFF888888),
+                        fontSize = textLabelM(),
+                    )
                     Spacer(Modifier.height(8.dp))
                     state.customHeaders.forEachIndexed { index, (key, value) ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

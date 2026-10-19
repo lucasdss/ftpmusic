@@ -17,6 +17,12 @@ Caveman terse. Post–ADR-0149 polish (release review `v1.16.1` → HEAD).
 
 - `SectionLabel` uppercases title (restored convention).
 
-## Out of scope here
+## Search → leaf anchor
 
-- Full leaf i18n / search scroll-anchor (tracked separately if still open).
+- Hub search click builds `settings/<leaf>?anchor=<key>` (URL-encoded).
+- Keyword map e.g. `clear cache` → `clear_cache` on Storage; leaf scrolls via `BringIntoViewRequester`.
+- Hub summaries resolve from `strings_settings.xml` (Context-aware `summaryProvider`).
+
+## Section labels
+
+- `SectionLabel` uppercases title (restored convention).

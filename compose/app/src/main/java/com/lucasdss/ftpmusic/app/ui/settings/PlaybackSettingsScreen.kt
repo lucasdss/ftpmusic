@@ -123,6 +123,7 @@ import com.lucasdss.ftpmusic.app.ui.textLabelS
 @Composable
 fun PlaybackSettingsScreen(
     onBack: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -133,7 +134,7 @@ fun PlaybackSettingsScreen(
     SettingsPageScaffold(title = stringResource(R.string.settings_page_playback), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             // ═══ Queue Journal section ═══
-            SectionLabel("Queue Journal")
+            SectionLabel(stringResource(R.string.settings_playback_queue_journal))
             SectionCard {
                 val journalCapOptions = (100..500 step 50).toList()
                 Row(
@@ -181,17 +182,22 @@ fun PlaybackSettingsScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 SectionToggleRow(
-                    label = "Continuous Play",
-                    subtitle = "Auto-append journal picks to context when queue runs out (also in Queue · Autoplay)",
+                    label = stringResource(R.string.settings_playback_continuous),
+                    subtitle = stringResource(R.string.settings_playback_continuous_sub),
                     checked = state.continuousPlayEnabled,
                     onToggle = { viewModel.setContinuousPlayEnabled(it) },
+                    testTagId = "settings_toggle_continuous_play",
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(
+                Modifier
+                    .height(24.dp)
+                    .settingsScrollAnchor(SettingsAnchors.CONTINUOUS_PLAY, scrollToAnchor),
+            )
 
             // ═══ Queue Overwrite Behavior section ═══
-            SectionLabel("Queue Overwrite")
+            SectionLabel(stringResource(R.string.settings_playback_overwrite))
             SectionCard {
                 Text(
                     "When you start a new album/mix while tracks are in your queue:",

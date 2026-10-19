@@ -64,6 +64,7 @@ fun NetworkSettingsScreen(
     onResyncLibrary: () -> Unit = {},
     onRebuildMixes: () -> Unit = {},
     onCustomMixes: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -74,11 +75,13 @@ fun NetworkSettingsScreen(
 
     SettingsPageScaffold(title = stringResource(R.string.settings_page_network), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-            SectionLabel("On cellular")
-            SectionCard {
+            SectionLabel(stringResource(R.string.settings_network_cellular))
+            SectionCard(
+                Modifier.settingsScrollAnchor(SettingsAnchors.CELLULAR, scrollToAnchor),
+            ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
-                        "On cellular",
+                        stringResource(R.string.settings_network_cellular),
                         color = Color.White,
                         fontSize = textHeadingS(),
                         fontWeight = FontWeight.SemiBold,
@@ -101,19 +104,19 @@ fun NetworkSettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(spacingS()),
                     ) {
                         SegmentedChip(
-                            label = "Auto-cache",
+                            label = stringResource(R.string.settings_network_chip_auto),
                             selected = state.cellularMediaPolicy == CellularMediaPolicy.AUTO_CACHE,
                             onClick = { viewModel.setCellularMediaPolicy(CellularMediaPolicy.AUTO_CACHE) },
                             modifier = Modifier.weight(1f),
                         )
                         SegmentedChip(
-                            label = "Minimal",
+                            label = stringResource(R.string.settings_network_chip_minimal),
                             selected = state.cellularMediaPolicy == CellularMediaPolicy.MINIMAL,
                             onClick = { viewModel.setCellularMediaPolicy(CellularMediaPolicy.MINIMAL) },
                             modifier = Modifier.weight(1f),
                         )
                         SegmentedChip(
-                            label = "Local only",
+                            label = stringResource(R.string.settings_network_chip_local),
                             selected = state.cellularMediaPolicy == CellularMediaPolicy.LOCAL_ONLY,
                             onClick = { viewModel.setCellularMediaPolicy(CellularMediaPolicy.LOCAL_ONLY) },
                             modifier = Modifier.weight(1f),
@@ -122,16 +125,17 @@ fun NetworkSettingsScreen(
                 }
                 SectionDivider()
                 SectionToggleRow(
-                    label = "Auto-Download Playlists",
-                    subtitle = "Download tracks when syncing playlists",
+                    label = stringResource(R.string.settings_network_auto_download),
+                    subtitle = stringResource(R.string.settings_network_auto_download_sub),
                     checked = state.autoDownloadPlaylists,
                     onToggle = { viewModel.setAutoDownloadPlaylists(it) },
+                    testTagId = "settings_toggle_auto_download_playlists",
                 )
             }
 
             Spacer(Modifier.height(24.dp))
 
-            SectionLabel("Library sync")
+            SectionLabel(stringResource(R.string.settings_network_library_sync))
             SectionCard {
                 Row(
                     Modifier

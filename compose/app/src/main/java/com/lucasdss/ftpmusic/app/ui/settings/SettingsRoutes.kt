@@ -1,5 +1,8 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+
 /**
  * Route string constants for Settings IA (ADR-0149).
  * Existing top-level routes (`downloads`, `profile`, `customMixes`) stay unchanged.
@@ -19,6 +22,16 @@ object SettingsRoutes {
     const val ADVANCED = "settings/advanced"
     const val ABOUT = "settings/about"
     const val TYPOGRAPHY = "settings/typography"
+
+    /** Nav graph pattern with optional search scroll anchor. */
+    fun leafPattern(base: String): String = "$base?anchor={anchor}"
+
+    fun leafNavArgs() = listOf(
+        navArgument("anchor") {
+            type = NavType.StringType
+            defaultValue = ""
+        },
+    )
 
     /** Pre-existing routes (not renamed). */
     const val DOWNLOADS = "downloads"

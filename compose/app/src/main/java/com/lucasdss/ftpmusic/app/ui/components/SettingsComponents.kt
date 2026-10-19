@@ -44,12 +44,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.ui.Background
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.DestructiveRed
@@ -323,7 +325,11 @@ fun SystemStatusRow(
     testTag: String? = null,
 ) {
     val badgeColor = if (ok) StatusOk else StatusWarn
-    val badgeLabel = if (ok) "OK" else "Action needed"
+    val badgeLabel = if (ok) {
+        stringResource(R.string.settings_status_ok)
+    } else {
+        stringResource(R.string.settings_status_action_needed)
+    }
     Row(
         modifier
             .fillMaxWidth()
@@ -346,7 +352,7 @@ fun SystemStatusRow(
         )
         Icon(
             Icons.Default.ChevronRight,
-            contentDescription = "Open system settings",
+            contentDescription = stringResource(R.string.settings_open_system),
             tint = NavUnselected,
             modifier = Modifier.size(iconSmall()),
         )
@@ -408,7 +414,7 @@ fun ConfirmationSheet(
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Muted),
                     border = BorderStroke(1.dp, Color(0xFF333333)),
-                ) { Text("Cancel") }
+                ) { Text(stringResource(R.string.settings_cancel)) }
                 Button(
                     onClick = onConfirm,
                     modifier = Modifier.weight(1f),
@@ -441,7 +447,12 @@ fun UpdateCheckRow(
                 Icon(Icons.Default.SystemUpdate, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Update available", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.settings_update_available),
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text(
                         "Version code ${updateCheck.availableVersionCode} on Play Store",
                         color = Muted,
@@ -461,7 +472,12 @@ fun UpdateCheckRow(
                 CircularProgressIndicator(modifier = Modifier.size(iconSmall()), color = BrandTeal, strokeWidth = 2.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Downloading update…", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.settings_update_downloading),
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text("Version code ${updateCheck.availableVersionCode}", color = Muted, fontSize = textLabelM())
                 }
             }
@@ -478,7 +494,12 @@ fun UpdateCheckRow(
                 Icon(Icons.Default.SystemUpdate, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Restart to install", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.settings_update_restart),
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text("Update downloaded · tap to finish", color = Muted, fontSize = textLabelM())
                 }
             }
@@ -517,7 +538,12 @@ fun UpdateCheckRow(
                     Icon(Icons.Default.SystemUpdateAlt, null, tint = BrandTeal, modifier = Modifier.size(iconSmall()))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Check for updates", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.SemiBold)
+                        Text(
+                            stringResource(R.string.settings_update_check),
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         Text(subtitle, color = Muted, fontSize = textLabelM())
                     }
                 }
@@ -528,7 +554,11 @@ fun UpdateCheckRow(
                             .padding(start = spacingL(), bottom = spacingS())
                             .testTag("settings_open_play_store"),
                     ) {
-                        Text("Open Play Store", color = BrandTeal, fontSize = textLabelM())
+                        Text(
+                            stringResource(R.string.settings_update_open_play),
+                            color = BrandTeal,
+                            fontSize = textLabelM(),
+                        )
                     }
                 }
             }

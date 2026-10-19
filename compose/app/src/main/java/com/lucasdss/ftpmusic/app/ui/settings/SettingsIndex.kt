@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
+import android.content.Context
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Cast
@@ -33,7 +34,11 @@ data class SettingNode(
     val icon: ImageVector,
     val keywords: List<String>,
     val testTag: String? = null,
-    val summaryProvider: (SettingsUiState) -> String,
+    /** Optional default scroll target when opening this leaf from search. */
+    val defaultAnchor: String? = null,
+    /** Keyword fragment → scroll anchor (first match wins). */
+    val keywordAnchors: Map<String, String> = emptyMap(),
+    val summaryProvider: (SettingsUiState, Context) -> String,
 )
 
 object SettingsIndex {
@@ -46,8 +51,9 @@ object SettingsIndex {
             icon = Icons.Default.Dns,
             keywords = listOf("server", "url", "password", "credentials", "navidrome", "login"),
             testTag = "settings_nav_server",
-            summaryProvider = { state ->
-                hostSummary(state.serverUrl) ?: "Not configured"
+            summaryProvider = { state, ctx ->
+                hostSummary(state.serverUrl)
+                    ?: ctx.getString(R.string.settings_summary_server_empty)
             },
         ),
         SettingNode(
@@ -58,7 +64,7 @@ object SettingsIndex {
             icon = Icons.Default.Person,
             keywords = listOf("profile", "stats", "listening", "scrobble", "history"),
             testTag = "settings_nav_profile",
-            summaryProvider = { "Listening stats & recently played" },
+            summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_profile) },
         ),
         SettingNode(
             id = "playback",
@@ -68,14 +74,23 @@ object SettingsIndex {
             icon = Icons.Default.QueueMusic,
             keywords = listOf("queue", "autoplay", "continuous", "overwrite", "play all", "journal"),
             testTag = "settings_nav_playback",
-            summaryProvider = { state ->
+            defaultAnchor = SettingsAnchors.CONTINUOUS_PLAY,
+            keywordAnchors = mapOf(
+                "continuous" to SettingsAnchors.CONTINUOUS_PLAY,
+                "overwrite" to SettingsAnchors.CONTINUOUS_PLAY,
+            ),
+            summaryProvider = { state, ctx ->
                 val overwrite = when (state.overwriteBehavior) {
-                    OverwriteBehavior.ASK -> "Ask"
-                    OverwriteBehavior.CLEAN -> "Clean"
-                    OverwriteBehavior.PUSH -> "Ask" // stored push maps to Ask (ADR-0094)
+                    OverwriteBehavior.ASK -> ctx.getString(R.string.settings_summary_overwrite_ask)
+                    OverwriteBehavior.CLEAN -> ctx.getString(R.string.settings_summary_overwrite_clean)
+                    OverwriteBehavior.PUSH -> ctx.getString(R.string.settings_summary_overwrite_ask)
                 }
-                val continuous = if (state.continuousPlayEnabled) "Continuous on" else "Continuous off"
-                "$overwrite · $continuous"
+                val continuous = if (state.continuousPlayEnabled) {
+                    ctx.getString(R.string.settings_summary_continuous_on)
+                } else {
+                    ctx.getString(R.string.settings_summary_continuous_off)
+                }
+                ctx.getString(R.string.settings_summary_playback_combo, overwrite, continuous)
             },
         ),
         SettingNode(
@@ -86,18 +101,16 @@ object SettingsIndex {
             icon = Icons.Default.Bluetooth,
             keywords = listOf("bluetooth", "bt", "a2dp", "car", "headset", "resume", "battery"),
             testTag = "settings_nav_bluetooth",
-            summaryProvider = { state ->
+            defaultAnchor = SettingsAnchors.BT_RESUME,
+            summaryProvider = { state, ctx ->
                 if (!state.btResumeEnabled) {
-                    "Off"
+                    ctx.getString(R.string.settings_summary_bt_off)
+                } else if (state.btResumeMode ==
+                    com.lucasdss.ftpmusic.app.playback.BtResumeMode.ANY
+                ) {
+                    ctx.getString(R.string.settings_summary_bt_any)
                 } else {
-                    val mode = if (state.btResumeMode ==
-                        com.lucasdss.ftpmusic.app.playback.BtResumeMode.ANY
-                    ) {
-                        "Any device"
-                    } else {
-                        "${state.btSelectedMacs.size} devices"
-                    }
-                    mode
+                    ctx.getString(R.string.settings_summary_bt_devices, state.btSelectedMacs.size)
                 }
             },
         ),
@@ -109,11 +122,12 @@ object SettingsIndex {
             icon = Icons.Default.Cast,
             keywords = listOf("cast", "chromecast", "google cast", "http"),
             testTag = "settings_nav_cast",
-            summaryProvider = { state ->
+            defaultAnchor = SettingsAnchors.CAST_FROM_PHONE,
+            summaryProvider = { state, ctx ->
                 when {
-                    !state.castFromPhone -> "Off"
+                    !state.castFromPhone -> ctx.getString(R.string.settings_summary_cast_off)
                     state.castDeviceName != null -> state.castDeviceName!!
-                    else -> "From phone"
+                    else -> ctx.getString(R.string.settings_summary_cast_from_phone)
                 }
             },
         ),
@@ -125,7 +139,12 @@ object SettingsIndex {
             icon = Icons.Default.Storage,
             keywords = listOf("storage", "cache", "quota", "clear cache", "cover art", "cache size"),
             testTag = "settings_nav_storage",
-            summaryProvider = { state ->
+            defaultAnchor = SettingsAnchors.CLEAR_CACHE,
+            keywordAnchors = mapOf(
+                "clear cache" to SettingsAnchors.CLEAR_CACHE,
+                "cache size" to SettingsAnchors.CLEAR_CACHE,
+            ),
+            summaryProvider = { state, _ ->
                 formatBytes(state.autoCacheBytes + state.downloadBytes)
             },
         ),
@@ -137,8 +156,12 @@ object SettingsIndex {
             icon = Icons.Default.DownloadDone,
             keywords = listOf("downloads", "offline", "pinned", "manage downloads"),
             testTag = "settings_downloads_manage",
-            summaryProvider = { state ->
-                "${state.downloadedTrackCount} tracks · ${formatBytes(state.downloadBytes)}"
+            summaryProvider = { state, ctx ->
+                ctx.getString(
+                    R.string.settings_summary_downloads_tracks,
+                    state.downloadedTrackCount,
+                    formatBytes(state.downloadBytes),
+                )
             },
         ),
         SettingNode(
@@ -152,11 +175,20 @@ object SettingsIndex {
                 "auto-download", "ttl", "interval", "mobile data",
             ),
             testTag = "settings_nav_network",
-            summaryProvider = { state ->
+            defaultAnchor = SettingsAnchors.CELLULAR,
+            keywordAnchors = mapOf(
+                "cellular" to SettingsAnchors.CELLULAR,
+                "resync" to SettingsAnchors.CELLULAR,
+                "auto-download" to SettingsAnchors.CELLULAR,
+            ),
+            summaryProvider = { state, ctx ->
                 when (state.cellularMediaPolicy) {
-                    CellularMediaPolicy.AUTO_CACHE -> "Auto-cache on cellular"
-                    CellularMediaPolicy.MINIMAL -> "Minimal on cellular"
-                    CellularMediaPolicy.LOCAL_ONLY -> "Local only on cellular"
+                    CellularMediaPolicy.AUTO_CACHE ->
+                        ctx.getString(R.string.settings_summary_cellular_auto)
+                    CellularMediaPolicy.MINIMAL ->
+                        ctx.getString(R.string.settings_summary_cellular_minimal)
+                    CellularMediaPolicy.LOCAL_ONLY ->
+                        ctx.getString(R.string.settings_summary_cellular_local)
                 }
             },
         ),
@@ -168,8 +200,11 @@ object SettingsIndex {
             icon = Icons.Default.TextFields,
             keywords = listOf("typography", "font", "density", "text size", "display size"),
             testTag = "settings_typography_nav",
-            summaryProvider = { state ->
-                state.typographyPrefs.density.label + " · fonts, icons, and cover art"
+            summaryProvider = { state, ctx ->
+                ctx.getString(
+                    R.string.settings_summary_typography,
+                    state.typographyPrefs.density.label,
+                )
             },
         ),
         SettingNode(
@@ -183,7 +218,7 @@ object SettingsIndex {
                 "nav labels", "itunes", "lyrics search",
             ),
             testTag = "settings_nav_appearance",
-            summaryProvider = { "Reactions, duration, numbers" },
+            summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_appearance) },
         ),
         SettingNode(
             id = "notifications",
@@ -193,7 +228,8 @@ object SettingsIndex {
             icon = Icons.Default.Notifications,
             keywords = listOf("notifications", "lock screen", "shade", "playback notification"),
             testTag = "settings_nav_notifications",
-            summaryProvider = { "Playback & system permission" },
+            defaultAnchor = SettingsAnchors.PLAYBACK_NOTIF,
+            summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_notifications) },
         ),
         SettingNode(
             id = "home",
@@ -203,14 +239,14 @@ object SettingsIndex {
             icon = Icons.Default.Home,
             keywords = listOf("home", "favorites", "playlists", "artists", "albums", "radio"),
             testTag = "settings_nav_home",
-            summaryProvider = { state ->
+            summaryProvider = { state, ctx ->
                 val n = listOf(
                     state.showPlaylistsOnHome,
                     state.showFavArtistsSection,
                     state.showFavAlbumsSection,
                     state.showFavRadioSection,
                 ).count { it }
-                "$n sections shown"
+                ctx.getString(R.string.settings_summary_home_sections, n)
             },
         ),
         SettingNode(
@@ -221,8 +257,12 @@ object SettingsIndex {
             icon = Icons.Default.Cloud,
             keywords = listOf("last.fm", "lastfm", "api key", "similar artists", "scrobble"),
             testTag = "settings_nav_lastfm",
-            summaryProvider = { state ->
-                if (state.lastFmKeySaved) "Key saved" else "No API key"
+            summaryProvider = { state, ctx ->
+                if (state.lastFmKeySaved) {
+                    ctx.getString(R.string.settings_summary_lastfm_saved)
+                } else {
+                    ctx.getString(R.string.settings_summary_lastfm_empty)
+                }
             },
         ),
         SettingNode(
@@ -233,8 +273,9 @@ object SettingsIndex {
             icon = Icons.Default.Http,
             keywords = listOf("headers", "http", "custom headers", "advanced"),
             testTag = "settings_nav_advanced",
-            summaryProvider = { state ->
-                "${state.customHeaders.size} headers"
+            defaultAnchor = SettingsAnchors.CUSTOM_HEADERS,
+            summaryProvider = { state, ctx ->
+                ctx.getString(R.string.settings_summary_headers, state.customHeaders.size)
             },
         ),
         SettingNode(
@@ -248,7 +289,7 @@ object SettingsIndex {
                 "simulate offline", "developer", "share log",
             ),
             testTag = "settings_nav_about",
-            summaryProvider = { "Version, updates, diagnostics" },
+            summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_about) },
         ),
     )
 
@@ -258,13 +299,13 @@ object SettingsIndex {
     fun filter(
         query: String,
         state: SettingsUiState,
-        titleResolver: (Int) -> String,
+        context: Context,
     ): List<SettingNode> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return nodes
         return nodes.filter { node ->
-            val title = titleResolver(node.titleRes).lowercase()
-            val summary = node.summaryProvider(state).lowercase()
+            val title = context.getString(node.titleRes).lowercase()
+            val summary = node.summaryProvider(state, context).lowercase()
             title.contains(q) ||
                 summary.contains(q) ||
                 node.keywords.any { it.lowercase().contains(q) || q.contains(it.lowercase()) }

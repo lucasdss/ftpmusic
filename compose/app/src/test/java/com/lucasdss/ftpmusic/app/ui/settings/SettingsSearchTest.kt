@@ -37,7 +37,8 @@ class SettingsSearchTest {
     fun `empty query shows hub groups`() {
         composeRule.setContent { SettingsScreen(viewModel = mockViewModel()) }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Account & server").assertIsDisplayed()
+        // SectionLabel uppercases group titles (A5).
+        composeRule.onNodeWithText("ACCOUNT & SERVER").assertIsDisplayed()
         composeRule.onNodeWithTag("settings_hub_list").assertIsDisplayed()
     }
 
@@ -54,7 +55,23 @@ class SettingsSearchTest {
         composeRule.onNodeWithTag("settings_search").performTextInput("resync")
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("settings_nav_network").assertIsDisplayed().performClick()
-        assert(route == SettingsRoutes.NETWORK)
+        assert(route == settingsLeafRoute(SettingsRoutes.NETWORK, SettingsAnchors.CELLULAR))
+    }
+
+    @Test
+    fun `clear cache search navigates to storage with clear_cache anchor`() {
+        var route: String? = null
+        composeRule.setContent {
+            SettingsScreen(
+                viewModel = mockViewModel(),
+                onNavigate = { route = it },
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings_search").performTextInput("clear cache")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings_nav_storage").assertIsDisplayed().performClick()
+        assert(route == settingsLeafRoute(SettingsRoutes.STORAGE, SettingsAnchors.CLEAR_CACHE))
     }
 
     @Test

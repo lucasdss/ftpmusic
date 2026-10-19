@@ -123,6 +123,7 @@ import com.lucasdss.ftpmusic.app.ui.textLabelS
 @Composable
 fun CastSettingsScreen(
     onBack: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -133,13 +134,16 @@ fun CastSettingsScreen(
     SettingsPageScaffold(title = stringResource(R.string.settings_page_cast), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             // ═══ Cast section ═══
-            SectionLabel("Google Cast")
-            SectionCard {
+            SectionLabel(stringResource(R.string.settings_row_cast))
+            SectionCard(
+                Modifier.settingsScrollAnchor(SettingsAnchors.CAST_FROM_PHONE, scrollToAnchor),
+            ) {
                 SectionToggleRow(
-                    label = "Cast from Phone",
-                    subtitle = "Phone streams to Cast over LAN",
+                    label = stringResource(R.string.settings_cast_from_phone),
+                    subtitle = stringResource(R.string.settings_cast_from_phone_sub),
                     checked = state.castFromPhone,
                     onToggle = { viewModel.setCastFromPhone(it) },
+                    testTagId = "settings_toggle_cast_from_phone",
                 )
                 if (state.castFromPhone && state.castDeviceName != null) {
                     SectionDivider()

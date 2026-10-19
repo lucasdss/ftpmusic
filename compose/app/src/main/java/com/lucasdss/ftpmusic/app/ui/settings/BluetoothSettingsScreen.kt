@@ -44,6 +44,7 @@ import com.lucasdss.ftpmusic.app.ui.textLabelS
 @Composable
 fun BluetoothSettingsScreen(
     onBack: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -53,7 +54,9 @@ fun BluetoothSettingsScreen(
 
     SettingsPageScaffold(title = stringResource(R.string.settings_page_bluetooth), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-            SectionCard {
+            SectionCard(
+                Modifier.settingsScrollAnchor(SettingsAnchors.BT_RESUME, scrollToAnchor),
+            ) {
                 LaunchedEffect(Unit) { viewModel.refreshBtResumeState() }
                 val btPermissionLauncher = rememberLauncherForActivityResult(
                     androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),

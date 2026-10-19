@@ -33,16 +33,24 @@
     <string name="settings_row_advanced">Custom HTTP headers</string>
     <string name="settings_row_about">About &amp; diagnostics</string>
 
-    <!-- Summaries (static / fallbacks) -->
+    <!-- Hub summaries -->
     <string name="settings_summary_profile">Listening stats &amp; recently played</string>
     <string name="settings_summary_server_empty">Not configured</string>
+    <string name="settings_summary_overwrite_ask">Ask</string>
+    <string name="settings_summary_overwrite_clean">Clean</string>
     <string name="settings_summary_continuous_on">Continuous on</string>
     <string name="settings_summary_continuous_off">Continuous off</string>
+    <string name="settings_summary_playback_combo">%1$s · %2$s</string>
     <string name="settings_summary_bt_off">Off</string>
+    <string name="settings_summary_bt_any">Any device</string>
+    <string name="settings_summary_bt_devices">%1$d devices</string>
     <string name="settings_summary_cast_off">Off</string>
     <string name="settings_summary_cast_from_phone">From phone</string>
-    <string name="settings_summary_downloads">Pinned offline tracks</string>
-    <string name="settings_summary_typography_suffix">fonts, icons, and cover art</string>
+    <string name="settings_summary_downloads_tracks">%1$d tracks · %2$s</string>
+    <string name="settings_summary_cellular_auto">Auto-cache on cellular</string>
+    <string name="settings_summary_cellular_minimal">Minimal on cellular</string>
+    <string name="settings_summary_cellular_local">Local only on cellular</string>
+    <string name="settings_summary_typography">%1$s · fonts, icons, and cover art</string>
     <string name="settings_summary_appearance">Reactions, duration, numbers</string>
     <string name="settings_summary_notifications">Playback &amp; system permission</string>
     <string name="settings_summary_home_sections">%1$d sections shown</string>
@@ -65,9 +73,58 @@
     <string name="settings_page_advanced">Advanced</string>
     <string name="settings_page_about">About</string>
 
+    <!-- Shared chrome -->
+    <string name="settings_status_ok">OK</string>
+    <string name="settings_status_action_needed">Action needed</string>
+    <string name="settings_open_system">Open system settings</string>
+    <string name="settings_cancel">Cancel</string>
+    <string name="settings_update_available">Update available</string>
+    <string name="settings_update_downloading">Downloading update…</string>
+    <string name="settings_update_restart">Restart to install</string>
+    <string name="settings_update_check">Check for updates</string>
+    <string name="settings_update_open_play">Open Play Store</string>
+
     <!-- Notifications page -->
     <string name="settings_notif_system_title">System notifications</string>
     <string name="settings_notif_system_ok">Allowed — lock screen and shade can show media controls</string>
     <string name="settings_notif_system_needed">Open system Settings to allow notifications for this app</string>
     <string name="settings_notif_playback_subtitle">When off, a minimal silent notification still posts while playing (Android requirement)</string>
+    <string name="settings_notif_playback_title">Playback notifications</string>
+
+    <!-- Storage page -->
+    <string name="settings_storage_cache">Cache</string>
+    <string name="settings_storage_auto_cache">Auto-cache</string>
+    <string name="settings_storage_downloads">Downloads</string>
+    <string name="settings_storage_total">Total</string>
+    <string name="settings_storage_manage_downloads">Manage downloads</string>
+    <string name="settings_storage_manage_downloads_sub">Browse, play, or remove pinned offline tracks</string>
+    <string name="settings_storage_audio_quota">Audio cache size</string>
+    <string name="settings_storage_cover_quota">Cover Art quota</string>
+    <string name="settings_storage_clear_cache">Clear cache</string>
+    <string name="settings_storage_clear_downloads">Clear downloads</string>
+    <string name="settings_storage_clear_cover">Clear cover art cache</string>
+    <string name="settings_storage_quota_mb">%1$d MB</string>
+
+    <!-- Playback page (smoke + continuous) -->
+    <string name="settings_playback_queue_journal">Queue Journal</string>
+    <string name="settings_playback_continuous">Continuous Play</string>
+    <string name="settings_playback_continuous_sub">Auto-append journal picks to context when queue runs out (also in Queue · Autoplay)</string>
+    <string name="settings_playback_overwrite">Queue Overwrite</string>
+
+    <!-- Network page -->
+    <string name="settings_network_cellular">On cellular</string>
+    <string name="settings_network_auto_download">Auto-Download Playlists</string>
+    <string name="settings_network_auto_download_sub">Download tracks when syncing playlists</string>
+    <string name="settings_network_library_sync">Library sync</string>
+    <string name="settings_network_chip_auto">Auto-cache</string>
+    <string name="settings_network_chip_minimal">Minimal</string>
+    <string name="settings_network_chip_local">Local only</string>
+
+    <!-- Cast page -->
+    <string name="settings_cast_from_phone">Cast from phone</string>
+    <string name="settings_cast_from_phone_sub">Send audio to Chromecast when casting</string>
+
+    <!-- Advanced page -->
+    <string name="settings_advanced_headers">Custom HTTP headers</string>
+    <string name="settings_advanced_headers_sub">Sent with every Subsonic request</string>
 </resources>

@@ -28,6 +28,7 @@ import com.lucasdss.ftpmusic.app.ui.components.SystemStatusRow
 @Composable
 fun NotificationsSettingsScreen(
     onBack: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -49,7 +50,9 @@ fun NotificationsSettingsScreen(
 
     SettingsPageScaffold(title = stringResource(R.string.settings_page_notifications), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-            SectionCard {
+            SectionCard(
+                Modifier.settingsScrollAnchor(SettingsAnchors.PLAYBACK_NOTIF, scrollToAnchor),
+            ) {
                 SystemStatusRow(
                     title = stringResource(R.string.settings_notif_system_title),
                     subtitle = if (systemNotificationsEnabled) {
@@ -77,7 +80,7 @@ fun NotificationsSettingsScreen(
                 )
                 SectionDivider()
                 SectionToggleRow(
-                    label = "Playback notifications",
+                    label = stringResource(R.string.settings_notif_playback_title),
                     subtitle = stringResource(R.string.settings_notif_playback_subtitle),
                     checked = state.playbackNotificationsEnabled,
                     onToggle = { enabled ->

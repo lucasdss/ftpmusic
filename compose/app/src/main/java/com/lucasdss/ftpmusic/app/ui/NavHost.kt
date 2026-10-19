@@ -784,75 +784,142 @@ fun FtpmusicNavHost() {
                             onBack = { navController.popBackStack() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.SERVER) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.SERVER,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) {
                         com.lucasdss.ftpmusic.app.ui.settings.ServerSettingsScreen(
                             onBack = { navController.popBackStack() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.PLAYBACK) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.PLAYBACK,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.PlaybackSettingsScreen(
                             onBack = { navController.popBackStack() },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.BLUETOOTH) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.BLUETOOTH,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.BluetoothSettingsScreen(
                             onBack = { navController.popBackStack() },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.CAST) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.CAST,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.CastSettingsScreen(
                             onBack = { navController.popBackStack() },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.STORAGE) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.STORAGE,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.StorageSettingsScreen(
                             onBack = { navController.popBackStack() },
                             onDownloads = { navController.navigate("downloads") },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NETWORK) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NETWORK,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.NetworkSettingsScreen(
                             onBack = { navController.popBackStack() },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                             onResyncLibrary = {
                                 if (navController.currentBackStackEntry?.destination?.route?.startsWith("syncing") ==
                                     true
                                 ) {
                                     return@NetworkSettingsScreen
                                 }
-                                val origin = navController.currentBackStackEntry?.destination?.route
-                                    ?: com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NETWORK
-                                navController.navigate(syncingRoute(origin))
+                                navController.navigate(
+                                    syncingRoute(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NETWORK),
+                                )
                             },
                             onRebuildMixes = { navController.navigate("rebuildmix") },
                             onCustomMixes = { navController.navigate("customMixes") },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.APPEARANCE) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.APPEARANCE,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) {
                         com.lucasdss.ftpmusic.app.ui.settings.AppearanceSettingsScreen(
                             onBack = { navController.popBackStack() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NOTIFICATIONS) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NOTIFICATIONS,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.NotificationsSettingsScreen(
                             onBack = { navController.popBackStack() },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.HOME) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.HOME,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) {
                         com.lucasdss.ftpmusic.app.ui.settings.HomeSettingsScreen(
                             onBack = { navController.popBackStack() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.LASTFM) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.LASTFM,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) {
                         com.lucasdss.ftpmusic.app.ui.settings.LastFmSettingsScreen(
                             onBack = { navController.popBackStack() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.ADVANCED) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.ADVANCED,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.AdvancedSettingsScreen(
                             onBack = { navController.popBackStack() },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                         )
                     }
-                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.ABOUT) {
+                    composable(
+                        com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafPattern(
+                            com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.ABOUT,
+                        ),
+                        arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
+                    ) {
                         com.lucasdss.ftpmusic.app.ui.settings.AboutSettingsScreen(
                             onBack = { navController.popBackStack() },
                         )
