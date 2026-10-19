@@ -1,7 +1,8 @@
 package com.lucasdss.ftpmusic.app.ui
 
-import android.net.Uri
 import androidx.navigation.NavOptionsBuilder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 /** Settings destination — off bottom nav (ADR-0055); stack-push entry (ADR-0056). */
 const val SETTINGS_ROUTE = "settings"
@@ -12,8 +13,11 @@ const val SETTINGS_ROUTE = "settings"
  */
 const val SYNCING_ROUTE_PATTERN = "syncing?returnTo={returnTo}"
 
-fun syncingRoute(returnTo: String = "home"): String =
-    "syncing?returnTo=${Uri.encode(returnTo)}"
+/** URL-encode nav query values (JVM-safe; Uri.encode is null on plain unit tests). */
+internal fun encodeNavQuery(value: String): String =
+    URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+
+fun syncingRoute(returnTo: String = "home"): String = "syncing?returnTo=${encodeNavQuery(returnTo)}"
 
 /**
  * Documented Settings entry policy (ADR-0056 / market stack-back).

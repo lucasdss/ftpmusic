@@ -1,6 +1,5 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
-import android.net.Uri
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
@@ -8,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import com.lucasdss.ftpmusic.app.ui.encodeNavQuery
 import kotlinx.coroutines.delay
 
 /** Scroll targets for Settings search → leaf deep-link (ADR-0149 fixup). */
@@ -22,7 +22,7 @@ object SettingsAnchors {
 }
 
 fun settingsLeafRoute(base: String, anchor: String? = null): String {
-    val encoded = Uri.encode(anchor.orEmpty())
+    val encoded = encodeNavQuery(anchor.orEmpty())
     return "$base?anchor=$encoded"
 }
 

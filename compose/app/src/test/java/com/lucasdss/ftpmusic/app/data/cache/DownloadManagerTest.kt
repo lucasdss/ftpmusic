@@ -132,7 +132,7 @@ class DownloadManagerTest {
             id = 34,
             trackId = "tr-pq",
             remoteUrl = "http://a",
-            status = "failed",
+            status = DownloadManager.STATUS_FAILED_CT,
             priority = 1,
             isDownload = true,
             retryCount = 0,
@@ -150,6 +150,52 @@ class DownloadManagerTest {
         )
         assertTrue(snap.contains("result=failed_terminal"))
         assertTrue(manager.isTerminalFailed("tr-pq"))
+    }
+
+    @Test
+    fun `enqueue play-queue requeues retry-exhausted failed`() = runTest {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        coEvery { dao.getByTrackId("tr-tq") } returns CacheQueueItemEntity(
+            id = 35,
+            trackId = "tr-tq",
+            remoteUrl = "http://a",
+            status = DownloadManager.STATUS_FAILED,
+            priority = 1,
+            isDownload = false,
+            retryCount = DownloadManager.MAX_RETRIES,
+        )
+
+        manager.enqueue("tr-tq", "http://a", priority = 1, isDownload = false)
+
+        coVerify { dao.updateStatus(35, "pending") }
+        coVerify { dao.updateRetryCount(35, 0) }
+        coVerify(exactly = 0) { dao.markAsDownload(any()) }
+        val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+        )
+        assertTrue(snap.contains("result=retry_transient"))
+        assertFalse(manager.isTerminalFailed("tr-tq"))
+    }
+
+    @Test
+    fun `enqueue play-queue keeps legacy failed with low retry sticky`() = runTest {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
+        coEvery { dao.getByTrackId("tr-leg") } returns CacheQueueItemEntity(
+            id = 36,
+            trackId = "tr-leg",
+            remoteUrl = "http://a",
+            status = DownloadManager.STATUS_FAILED,
+            priority = 1,
+            isDownload = false,
+            retryCount = 0,
+        )
+
+        manager.enqueue("tr-leg", "http://a", priority = 1, isDownload = false)
+
+        coVerify(exactly = 0) { dao.updateStatus(36, "pending") }
+        assertTrue(manager.isTerminalFailed("tr-leg"))
     }
 
     @Test

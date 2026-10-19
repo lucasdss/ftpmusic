@@ -48,4 +48,15 @@ class ShowAppHeaderTest {
             "settings/storage",
         ).forEach { assertFalse(it, showAppHeaderForRoute(it)) }
     }
+
+    @Test
+    fun `settings leaf pattern routes with query hide header`() {
+        listOf(
+            "settings/network?anchor={anchor}",
+            "settings/storage?anchor=clear_cache",
+            "settings/about?anchor=",
+            "syncing?returnTo={returnTo}",
+            "syncing?returnTo=settings%2Fnetwork",
+        ).forEach { assertFalse(it, showAppHeaderForRoute(it)) }
+    }
 }

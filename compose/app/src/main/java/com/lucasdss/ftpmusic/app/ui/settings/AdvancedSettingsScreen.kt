@@ -94,6 +94,8 @@ import com.lucasdss.ftpmusic.app.ui.components.SectionDivider
 import com.lucasdss.ftpmusic.app.ui.components.SectionLabel
 import com.lucasdss.ftpmusic.app.ui.components.SectionRow
 import com.lucasdss.ftpmusic.app.ui.components.SectionToggleRow
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.components.SettingsPageScaffold
 import com.lucasdss.ftpmusic.app.ui.components.SystemStatusRow
 import com.lucasdss.ftpmusic.app.ui.components.UpdateCheckRow
@@ -102,8 +104,6 @@ import com.lucasdss.ftpmusic.app.ui.components.formatDurationMs
 import com.lucasdss.ftpmusic.app.ui.components.openPlayStoreListing
 import com.lucasdss.ftpmusic.app.ui.components.settingsTextFieldColors
 import com.lucasdss.ftpmusic.app.ui.components.timeAgo
-import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
-import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.cornerL
 import com.lucasdss.ftpmusic.app.ui.cornerS
 import com.lucasdss.ftpmusic.app.ui.iconSmall

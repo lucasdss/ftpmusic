@@ -75,3 +75,11 @@ re-introduce that derivation in future migrations. Existing pinned remainder row
 are left as-is (on-disk already); new remainder inserts are not pinned.
 
 See [DIAGNOSTICS_20261019_BT_DOWNLOAD_BEHAVIOR_REPORT.md](../DIAGNOSTICS_20261019_BT_DOWNLOAD_BEHAVIOR_REPORT.md).
+
+## Amendment (2026-10-19 — failed_ct vs transient failed)
+
+- **CT / non-audio** → status `failed_ct` (sticky for `isDownload=false`).
+- **Retry-exhausted** → status `failed` with `retryCount >= 3`; play-queue /
+  mix enqueue may `retry_transient` (reset pending).
+- **Legacy** `failed` with `retryCount < 3` stays sticky (pre-2.0.0 CT rows).
+- User Download (`isDownload=true`) still `retry_user` for both statuses.

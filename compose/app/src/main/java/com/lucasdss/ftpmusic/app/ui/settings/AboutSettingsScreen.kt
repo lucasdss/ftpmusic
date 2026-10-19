@@ -102,6 +102,7 @@ fun AboutSettingsScreen(
                     val activity = context as? ComponentActivity ?: return@collect
                     viewModel.launchFlexibleUpdate(activity, updateLauncher)
                 }
+
                 is AppUpdateEvent.OpenPlayStore -> openPlayStoreListing(context, event.packageName)
             }
         }
@@ -198,7 +199,9 @@ fun AboutSettingsScreen(
                         "Albums",
                         "${state.albumCount} albums",
                         if (state.lastMetadataSyncMs > 0) {
-                            "${timeAgo(state.lastMetadataSyncMs)} (took ${formatDurationMs(state.metadataSyncDurationMs)})"
+                            "${timeAgo(
+                                state.lastMetadataSyncMs,
+                            )} (took ${formatDurationMs(state.metadataSyncDurationMs)})"
                         } else {
                             "Never synced"
                         },
@@ -250,7 +253,9 @@ fun AboutSettingsScreen(
                     SectionDivider()
                     MetricRow(
                         "Cover Art",
-                        "${formatBytes(state.coverArtCacheBytes)} / ${formatBytes(state.coverArtQuotaMb * 1024L * 1024L)}",
+                        "${formatBytes(
+                            state.coverArtCacheBytes,
+                        )} / ${formatBytes(state.coverArtQuotaMb * 1024L * 1024L)}",
                     )
                     SectionDivider()
                     MetricRow("Cached Music", "${formatBytes(state.autoCacheBytes)} used")

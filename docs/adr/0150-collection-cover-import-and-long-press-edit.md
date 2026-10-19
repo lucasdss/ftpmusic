@@ -26,3 +26,10 @@ ADR 0125 added square crop + JPEG caps for Device covers. Two problems remained:
 - Behavior report + ADR 0125 clauses on 8 MiB reject / 768 stop superseded for Device ImageDecoder path; fallback retains 8 MiB ceiling.
 - Unit-test seam `decodeStreamOriented` keeps coverage achievable under Robolectric.
 - HEIC: ImageDecoder primary; manual verify if CI lacks HEIC fixtures.
+
+## Amendment (2026-10-19 — post-1.16.1 / 2.0.0)
+
+`openSheet` is a no-op while `pendingCropUri != null` or the album picker is
+open (`canAutoOpenCoverEditSheet`). Rotation must not stack the edit sheet on
+top of a restored crop dialog.
+

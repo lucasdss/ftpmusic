@@ -129,13 +129,7 @@ fun CollectionCoverEditSheet(
 }
 
 @Composable
-private fun CoverEditAction(
-    label: String,
-    icon: ImageVector,
-    color: Color,
-    testTag: String,
-    onClick: () -> Unit,
-) {
+private fun CoverEditAction(label: String, icon: ImageVector, color: Color, testTag: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -156,6 +150,13 @@ private fun CoverEditAction(
     }
     HorizontalDivider(color = Color.White.copy(alpha = 0.04f), modifier = Modifier.padding(horizontal = spacingL()))
 }
+
+/**
+ * Auto-open sheet only when crop/picker not mid-flight.
+ * Rotation restores [pendingCropUri]/ [LaunchedEffect] must not re-open sheet on top.
+ */
+fun canAutoOpenCoverEditSheet(hasPendingCrop: Boolean, showAlbumPicker: Boolean): Boolean =
+    !hasPendingCrop && !showAlbumPicker
 
 /** Controller for long-press / button cover edit on one collection. */
 class CollectionCoverEditController(
@@ -258,7 +259,15 @@ fun rememberCollectionCoverEditController(
     }
 
     return CollectionCoverEditController(
-        openSheet = { showSheet = true },
+        openSheet = {
+            if (canAutoOpenCoverEditSheet(
+                    hasPendingCrop = pendingCropUri != null,
+                    showAlbumPicker = showAlbumPicker,
+                )
+            ) {
+                showSheet = true
+            }
+        },
         openLibrary = { showAlbumPicker = true },
         openDevice = {
             photoPicker.launch(

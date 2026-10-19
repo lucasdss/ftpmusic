@@ -360,11 +360,7 @@ fun SystemStatusRow(
 }
 
 @Composable
-fun SettingsPageScaffold(
-    title: String,
-    onBack: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-) {
+fun SettingsPageScaffold(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -461,6 +457,7 @@ fun UpdateCheckRow(
                 }
             }
         }
+
         is UpdateCheckUi.InProgress -> {
             Row(
                 Modifier
@@ -482,6 +479,7 @@ fun UpdateCheckRow(
                 }
             }
         }
+
         UpdateCheckUi.ReadyToInstall -> {
             Row(
                 Modifier
@@ -504,6 +502,7 @@ fun UpdateCheckRow(
                 }
             }
         }
+
         UpdateCheckUi.Checking -> {
             Row(
                 Modifier
@@ -515,11 +514,17 @@ fun UpdateCheckRow(
                 CircularProgressIndicator(modifier = Modifier.size(iconSmall()), color = BrandTeal, strokeWidth = 2.dp)
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("Checking for updates…", color = Color.White, fontSize = textHeadingS(), fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Checking for updates…",
+                        color = Color.White,
+                        fontSize = textHeadingS(),
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text("Asking Play Store", color = Muted, fontSize = textLabelM())
                 }
             }
         }
+
         else -> {
             val subtitle = when (updateCheck) {
                 UpdateCheckUi.UpToDate -> "You're up to date"

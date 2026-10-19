@@ -185,8 +185,10 @@ object SettingsIndex {
                 when (state.cellularMediaPolicy) {
                     CellularMediaPolicy.AUTO_CACHE ->
                         ctx.getString(R.string.settings_summary_cellular_auto)
+
                     CellularMediaPolicy.MINIMAL ->
                         ctx.getString(R.string.settings_summary_cellular_minimal)
+
                     CellularMediaPolicy.LOCAL_ONLY ->
                         ctx.getString(R.string.settings_summary_cellular_local)
                 }
@@ -214,8 +216,14 @@ object SettingsIndex {
             route = SettingsRoutes.APPEARANCE,
             icon = Icons.Default.ListAlt,
             keywords = listOf(
-                "appearance", "reactions", "duration", "track numbers", "list",
-                "nav labels", "itunes", "lyrics search",
+                "appearance",
+                "reactions",
+                "duration",
+                "track numbers",
+                "list",
+                "nav labels",
+                "itunes",
+                "lyrics search",
             ),
             testTag = "settings_nav_appearance",
             summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_appearance) },
@@ -285,8 +293,14 @@ object SettingsIndex {
             route = SettingsRoutes.ABOUT,
             icon = Icons.Default.Info,
             keywords = listOf(
-                "about", "version", "update", "diagnostics", "metrics",
-                "simulate offline", "developer", "share log",
+                "about",
+                "version",
+                "update",
+                "diagnostics",
+                "metrics",
+                "simulate offline",
+                "developer",
+                "share log",
             ),
             testTag = "settings_nav_about",
             summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_about) },
@@ -296,11 +310,7 @@ object SettingsIndex {
     /**
      * Case-insensitive match on title (resolved), live summary, and curated keywords.
      */
-    fun filter(
-        query: String,
-        state: SettingsUiState,
-        context: Context,
-    ): List<SettingNode> {
+    fun filter(query: String, state: SettingsUiState, context: Context): List<SettingNode> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return nodes
         return nodes.filter { node ->
@@ -313,11 +323,10 @@ object SettingsIndex {
     }
 
     /** Routes that must be indexed (nested leaves + legacy hub destinations). */
-    fun requiredIndexedRoutes(): Set<String> =
-        SettingsRoutes.nestedLeaves.toSet() + setOf(
-            SettingsRoutes.DOWNLOADS,
-            SettingsRoutes.PROFILE,
-        ) - setOf(SettingsRoutes.CUSTOM_MIXES) // customMixes reached from network page, not hub
+    fun requiredIndexedRoutes(): Set<String> = SettingsRoutes.nestedLeaves.toSet() + setOf(
+        SettingsRoutes.DOWNLOADS,
+        SettingsRoutes.PROFILE,
+    ) - setOf(SettingsRoutes.CUSTOM_MIXES) // customMixes reached from network page, not hub
 }
 
 private fun hostSummary(url: String): String? {

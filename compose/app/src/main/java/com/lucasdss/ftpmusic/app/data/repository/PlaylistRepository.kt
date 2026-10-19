@@ -450,19 +450,17 @@ class PlaylistRepository @Inject constructor(
      * Persist a cropped bitmap as LOCAL fixed cover. Recycles [bitmap].
      * @return relative path or null on failure.
      */
-    suspend fun setFixedCoverFromCroppedBitmap(
-        playlistId: String,
-        bitmap: android.graphics.Bitmap,
-    ): String? = withContext(Dispatchers.IO) {
-        try {
-            val relative = coverStore.importCroppedBitmap(bitmap, COVER_PREFIX, playlistId)
-                ?: return@withContext null
-            setFixedCover(playlistId, CollectionCoverKind.LOCAL, relative)
-            relative
-        } finally {
-            bitmap.recycle()
+    suspend fun setFixedCoverFromCroppedBitmap(playlistId: String, bitmap: android.graphics.Bitmap): String? =
+        withContext(Dispatchers.IO) {
+            try {
+                val relative = coverStore.importCroppedBitmap(bitmap, COVER_PREFIX, playlistId)
+                    ?: return@withContext null
+                setFixedCover(playlistId, CollectionCoverKind.LOCAL, relative)
+                relative
+            } finally {
+                bitmap.recycle()
+            }
         }
-    }
 
     /** Drop local cover files when a playlist is removed. */
     suspend fun onPlaylistDeleted(playlistId: String) {

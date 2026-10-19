@@ -51,8 +51,8 @@ import com.lucasdss.ftpmusic.app.ui.components.SectionCard
 import com.lucasdss.ftpmusic.app.ui.components.SectionDivider
 import com.lucasdss.ftpmusic.app.ui.components.SectionLabel
 import com.lucasdss.ftpmusic.app.ui.components.SectionToggleRow
-import com.lucasdss.ftpmusic.app.ui.components.SettingsPageScaffold
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SettingsPageScaffold
 import com.lucasdss.ftpmusic.app.ui.iconSmall
 import com.lucasdss.ftpmusic.app.ui.spacingS
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
@@ -90,8 +90,10 @@ fun NetworkSettingsScreen(
                         when (state.cellularMediaPolicy) {
                             CellularMediaPolicy.AUTO_CACHE ->
                                 "Auto-cache albums and downloads on mobile data"
+
                             CellularMediaPolicy.MINIMAL ->
                                 "Only queue and now-playing use mobile data"
+
                             CellularMediaPolicy.LOCAL_ONLY ->
                                 "Use only already cached or downloaded content"
                         },
@@ -145,8 +147,10 @@ fun NetworkSettingsScreen(
                                     when {
                                         viewModel.shouldBlockResyncOnCellular() ->
                                             showResyncCellularBlocked = true
+
                                         viewModel.shouldWarnResyncOnCellular() ->
                                             showResyncCellularWarn = true
+
                                         else -> onResyncLibrary()
                                     }
                                 }

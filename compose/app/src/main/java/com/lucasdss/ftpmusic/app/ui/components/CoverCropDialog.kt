@@ -32,8 +32,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +62,8 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -77,10 +77,16 @@ interface CoverCropStoreEntryPoint {
 fun rememberCollectionCoverStore(): CollectionCoverStore {
     val context = LocalContext.current
     return remember {
-        EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            CoverCropStoreEntryPoint::class.java,
-        ).collectionCoverStore()
+        val app = context.applicationContext
+        try {
+            EntryPointAccessors.fromApplication(
+                app,
+                CoverCropStoreEntryPoint::class.java,
+            ).collectionCoverStore()
+        } catch (_: IllegalStateException) {
+            // Robolectric / non-Hilt Compose tests — construct store directly.
+            CollectionCoverStore(app)
+        }
     }
 }
 

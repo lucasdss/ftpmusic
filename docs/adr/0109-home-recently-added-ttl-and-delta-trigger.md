@@ -39,3 +39,13 @@ network.
 - Identical newest lists after TTL refresh do not spam DELTA.
 - Staying on Home across a background sync still updates the strip when ids change.
 - Same-id Room metadata-only churn does not force a strip repaint (accepted).
+
+## Amendment (2026-10-19 — post-1.16.1 / 2.0.0)
+
+1. **Paint-before-bump** — `loadRecentlyAddedHome` sets `_state.randomAlbums`
+   from the API **before** `writeHomeRecentSnapshot` so the revision collector
+   cannot overwrite with rating-less Room rows.
+2. **Rating merge** — `paintHomeRecentFromSnapshot` carries prior `rating` by
+   album id when Room rows omit `userRating`.
+3. **Single-flight** — `homeRecentMutex.tryLock` prevents init + first Home
+   RESUMED from double-fetching `getAlbumList2(newest)`.

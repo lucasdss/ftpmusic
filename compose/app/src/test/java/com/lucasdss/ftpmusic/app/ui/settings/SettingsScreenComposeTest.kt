@@ -102,7 +102,7 @@ class SettingsScreenComposeTest {
         var route: String? = null
         render(vm) { route = it }
         composeRule.onNodeWithTag("settings_nav_server").performScrollTo().performClick()
-        assert(route == SettingsRoutes.SERVER)
+        assert(route == settingsLeafRoute(SettingsRoutes.SERVER))
     }
 
     @Test

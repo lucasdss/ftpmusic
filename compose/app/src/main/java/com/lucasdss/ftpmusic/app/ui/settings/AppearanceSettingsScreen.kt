@@ -94,6 +94,8 @@ import com.lucasdss.ftpmusic.app.ui.components.SectionDivider
 import com.lucasdss.ftpmusic.app.ui.components.SectionLabel
 import com.lucasdss.ftpmusic.app.ui.components.SectionRow
 import com.lucasdss.ftpmusic.app.ui.components.SectionToggleRow
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.components.SettingsPageScaffold
 import com.lucasdss.ftpmusic.app.ui.components.SystemStatusRow
 import com.lucasdss.ftpmusic.app.ui.components.UpdateCheckRow
@@ -102,8 +104,6 @@ import com.lucasdss.ftpmusic.app.ui.components.formatDurationMs
 import com.lucasdss.ftpmusic.app.ui.components.openPlayStoreListing
 import com.lucasdss.ftpmusic.app.ui.components.settingsTextFieldColors
 import com.lucasdss.ftpmusic.app.ui.components.timeAgo
-import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
-import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.cornerL
 import com.lucasdss.ftpmusic.app.ui.cornerS
 import com.lucasdss.ftpmusic.app.ui.iconSmall
@@ -131,61 +131,61 @@ fun AppearanceSettingsScreen(
     SettingsPageScaffold(title = stringResource(R.string.settings_page_appearance), onBack = onBack) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             SectionCard {
-                    SectionToggleRow(
-                        label = "Like and dislike on track lists",
-                        subtitle = "Hide to give titles more room; Now Playing keeps thumbs",
-                        checked = state.listChromePrefs.showListReactions,
-                        onToggle = { viewModel.setShowListReactions(it) },
-                    )
-                    SectionDivider()
-                    SectionToggleRow(
-                        label = "Duration on track lists",
-                        subtitle = "Show track length on the title line",
-                        checked = state.listChromePrefs.showListDuration,
-                        onToggle = { viewModel.setShowListDuration(it) },
-                    )
-                    SectionDivider()
-                    SectionToggleRow(
-                        label = "Track numbers on albums",
-                        subtitle = "Show album disc/track tags; hide to free title space",
-                        checked = state.listChromePrefs.showAlbumTrackNumbers,
-                        onToggle = { viewModel.setShowAlbumTrackNumbers(it) },
-                    )
-                    SectionDivider()
-                    SectionToggleRow(
-                        label = "Numbers on playlists and mixes",
-                        subtitle = "Sequence order on playlists, Daily Mix, and artist songs",
-                        checked = state.listChromePrefs.showListSequence,
-                        onToggle = { viewModel.setShowListSequence(it) },
-                    )
-                    SectionDivider()
-                    SectionToggleRow(
-                        label = "Scroll lists to now playing",
-                        subtitle = "Center the playing track in playlists, albums, mixes, and queue",
-                        checked = state.listChromePrefs.autoCenterNowPlaying,
-                        onToggle = { viewModel.setAutoCenterNowPlaying(it) },
-                    )
-                    SectionDivider()
-                    SectionToggleRow(
-                        label = "Prefer iTunes album art",
-                        subtitle = "Use iTunes artwork instead of Navidrome when available",
-                        checked = state.preferItunesArt,
-                        onToggle = { viewModel.setPreferItunesArt(it) },
-                    )
-                    SectionDivider()
-                    SectionToggleRow(
-                        label = "Search lyrics",
-                        subtitle = "Include cached lyrics in local search (rebuilds within ~500ms)",
-                        checked = state.searchLyricsEnabled,
-                        onToggle = { viewModel.setSearchLyricsEnabled(it) },
-                    )
-                    SectionDivider()
-                    SectionToggleRow(
-                        label = "Hide navigation labels",
-                        subtitle = "Show icons only in the bottom bar",
-                        checked = state.hideNavLabels,
-                        onToggle = { viewModel.setHideNavLabels(it) },
-                    )
+                SectionToggleRow(
+                    label = "Like and dislike on track lists",
+                    subtitle = "Hide to give titles more room; Now Playing keeps thumbs",
+                    checked = state.listChromePrefs.showListReactions,
+                    onToggle = { viewModel.setShowListReactions(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Duration on track lists",
+                    subtitle = "Show track length on the title line",
+                    checked = state.listChromePrefs.showListDuration,
+                    onToggle = { viewModel.setShowListDuration(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Track numbers on albums",
+                    subtitle = "Show album disc/track tags; hide to free title space",
+                    checked = state.listChromePrefs.showAlbumTrackNumbers,
+                    onToggle = { viewModel.setShowAlbumTrackNumbers(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Numbers on playlists and mixes",
+                    subtitle = "Sequence order on playlists, Daily Mix, and artist songs",
+                    checked = state.listChromePrefs.showListSequence,
+                    onToggle = { viewModel.setShowListSequence(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Scroll lists to now playing",
+                    subtitle = "Center the playing track in playlists, albums, mixes, and queue",
+                    checked = state.listChromePrefs.autoCenterNowPlaying,
+                    onToggle = { viewModel.setAutoCenterNowPlaying(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Prefer iTunes album art",
+                    subtitle = "Use iTunes artwork instead of Navidrome when available",
+                    checked = state.preferItunesArt,
+                    onToggle = { viewModel.setPreferItunesArt(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Search lyrics",
+                    subtitle = "Include cached lyrics in local search (rebuilds within ~500ms)",
+                    checked = state.searchLyricsEnabled,
+                    onToggle = { viewModel.setSearchLyricsEnabled(it) },
+                )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Hide navigation labels",
+                    subtitle = "Show icons only in the bottom bar",
+                    checked = state.hideNavLabels,
+                    onToggle = { viewModel.setHideNavLabels(it) },
+                )
             }
         }
     }

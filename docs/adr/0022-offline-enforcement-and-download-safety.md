@@ -36,6 +36,10 @@ ADR 0013 (Proposed) described a local-first architecture, but the enforcement la
 
 **Amendment (2026-10-19):** Remainder priority 1 is a **constraint tier only**, not user Download. Call sites pass `isDownload = false` so terminal CT failures are not resurrected as `retry_user` (see ADR-0117 amendment).
 
+**Amendment (2026-10-19 — 2.0.0):** CT rejects use `failed_ct`. Retry-exhausted
+`failed` may requeue for non-download enqueue; CT / legacy low-retry `failed`
+remain sticky (ADR-0117).
+
 ## Consequences
 
 - Offline mode is now enforced at every network boundary; the toggle is honest after process death.

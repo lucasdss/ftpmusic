@@ -2,9 +2,6 @@ package com.lucasdss.ftpmusic.app.ui.settings
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.lucasdss.ftpmusic.app.ui.components.formatBytes
-import com.lucasdss.ftpmusic.app.ui.components.formatDurationMs
-import com.lucasdss.ftpmusic.app.ui.components.timeAgo
 import com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
@@ -24,6 +21,9 @@ import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
+import com.lucasdss.ftpmusic.app.ui.components.formatBytes
+import com.lucasdss.ftpmusic.app.ui.components.formatDurationMs
+import com.lucasdss.ftpmusic.app.ui.components.timeAgo
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

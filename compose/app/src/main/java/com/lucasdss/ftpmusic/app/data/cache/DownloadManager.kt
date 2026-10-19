@@ -29,6 +29,14 @@ class DownloadManager @Inject constructor(
          * Prefer [NetworkPolicyState.allowsDownloadPriority]; kept for residual callers/tests.
          */
         @Volatile var allowMobileData: Boolean = true
+
+        /** Non-audio Content-Type reject — sticky for prefetch (ADR-0117). */
+        const val STATUS_FAILED_CT = "failed_ct"
+
+        /** Retry-exhausted / generic fail — requeueable for non-download enqueue. */
+        const val STATUS_FAILED = "failed"
+
+        const val MAX_RETRIES = 3
     }
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
@@ -81,8 +89,20 @@ class DownloadManager @Inject constructor(
         scope.cancel()
     }
 
-    /** True when the queue row is permanently failed (ADR-0117 mix skip). */
-    suspend fun isTerminalFailed(trackId: String): Boolean = cacheQueueDao.getByTrackId(trackId)?.status == "failed"
+    /**
+     * Sticky terminal for mix/prefetch skip: CT rejects ([STATUS_FAILED_CT]) and legacy
+     * `failed` rows that never exhausted retries (retryCount below [MAX_RETRIES]).
+     * Retry-exhausted `failed` is requeueable so flaky networks do not permanently
+     * opt tracks out of prefetch.
+     */
+    suspend fun isTerminalFailed(trackId: String): Boolean {
+        val row = cacheQueueDao.getByTrackId(trackId) ?: return false
+        return when (row.status) {
+            STATUS_FAILED_CT -> true
+            STATUS_FAILED -> row.retryCount < MAX_RETRIES
+            else -> false
+        }
+    }
 
     /** Enqueue with dedup. Priority: 0=play-queue (urgent), 1=download, 2=cache-warming.
      *
@@ -99,12 +119,7 @@ class DownloadManager @Inject constructor(
      *  constraint gating (ADR-0022) but must pass `isDownload = false` so
      *  terminal CT failures are not resurrected as `retry_user` every transition.
      */
-    suspend fun enqueue(
-        trackId: String,
-        url: String,
-        priority: Int = 2,
-        isDownload: Boolean = (priority == 1),
-    ) {
+    suspend fun enqueue(trackId: String, url: String, priority: Int = 2, isDownload: Boolean = (priority == 1)) {
         val existing = cacheQueueDao.getByTrackId(trackId)
         if (existing != null && existing.status in listOf("pending", "processing")) {
             // Upgrade priority if new request is higher
@@ -165,11 +180,12 @@ class DownloadManager @Inject constructor(
                 }
                 return
             }
-            // "failed" is terminal for prefetch/mix (pri 0/2) — do NOT resurrect
-            // or restore storms re-loop forever (ADR-0117). User Download (pri 1)
-            // is an explicit retry: resurrect so album/mix Download taps work
-            // after sticky CT rejects once the server is fixed.
-            if (existing.status == "failed") {
+            // CT / sticky terminal (ADR-0117): do NOT resurrect for prefetch.
+            // Retry-exhausted `failed` may requeue for play-queue/mix so transient
+            // HTTP/IO blips are not permanent. User Download always retries.
+            if (existing.status == STATUS_FAILED || existing.status == STATUS_FAILED_CT) {
+                val stickyCt = existing.status == STATUS_FAILED_CT ||
+                    (existing.status == STATUS_FAILED && existing.retryCount < MAX_RETRIES)
                 if (isDownload) {
                     cacheQueueDao.updateStatus(existing.id, "pending")
                     cacheQueueDao.updateRetryCount(existing.id, 0)
@@ -182,6 +198,18 @@ class DownloadManager @Inject constructor(
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                         "ftpmusic-download",
                         "enqueue trackId=$trackId priority=$priority isDownload=true result=retry_user",
+                    )
+                    return
+                }
+                if (!stickyCt) {
+                    cacheQueueDao.updateStatus(existing.id, "pending")
+                    cacheQueueDao.updateRetryCount(existing.id, 0)
+                    if (priority < existing.priority) {
+                        cacheQueueDao.updatePriority(existing.id, priority)
+                    }
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-download",
+                        "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=retry_transient",
                     )
                     return
                 }
@@ -432,7 +460,7 @@ class DownloadManager @Inject constructor(
     }
 
     private suspend fun failTerminal(item: CacheQueueItemEntity) {
-        cacheQueueDao.updateStatus(item.id, "failed")
+        cacheQueueDao.updateStatus(item.id, STATUS_FAILED_CT)
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
             "ftpmusic-download",
             "worker terminal trackId=${item.trackId} priority=${item.priority} reason=non_audio_content_type",
@@ -442,7 +470,7 @@ class DownloadManager @Inject constructor(
     private suspend fun handleRetry(item: CacheQueueItemEntity) {
         val nextRetry = item.retryCount + 1
         cacheQueueDao.updateRetryCount(item.id, nextRetry)
-        if (nextRetry < 3) {
+        if (nextRetry < MAX_RETRIES) {
             // Exponential backoff: 1s, 2s, 4s max
             if (nextRetry > 0) {
                 delay(minOf(1000L * (1 shl (nextRetry - 1)), 8000L))
@@ -451,7 +479,7 @@ class DownloadManager @Inject constructor(
             // Retry count prevents infinite loops
             cacheQueueDao.updateStatus(item.id, "pending")
         } else {
-            cacheQueueDao.updateStatus(item.id, "failed")
+            cacheQueueDao.updateStatus(item.id, STATUS_FAILED)
         }
     }
 }

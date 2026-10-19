@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.db.AlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
@@ -34,7 +35,6 @@ import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
-import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
@@ -295,6 +295,9 @@ class LibraryViewModel @Inject constructor(
     @Volatile private var alphaBrowseHasMore = true
     private var alphaBrowseGen = 0
     private val alphaBrowseMutex = Mutex()
+
+    /** Single-flight Recently Added TTL path (init + first Home RESUMED). */
+    private val homeRecentMutex = Mutex()
 
     init {
         if (username().isNotEmpty()) {
@@ -1527,6 +1530,8 @@ class LibraryViewModel @Inject constructor(
      * server when TTL stale; kick DELTA when ordered ids change.
      */
     private suspend fun loadRecentlyAddedHome() {
+        // Skip duplicate in-flight (init + first RESUMED race).
+        if (!homeRecentMutex.tryLock()) return
         try {
             val previousIds = metadataSyncWorker.homeRecentIds()
             // Skip same-id Room repaint — snapshot omits userRating and would wipe
@@ -1584,8 +1589,10 @@ class LibraryViewModel @Inject constructor(
 
             ensureCachedAlbumsForLikes(albums)
             val newIds = albums.map { it.id }
-            metadataSyncWorker.writeHomeRecentSnapshot(newIds)
+            // Paint API albums before snapshot bump so revision collector cannot
+            // overwrite with rating-less Room rows (post-1.16.1 P1-2).
             _state.value = _state.value.copy(randomAlbums = albums)
+            metadataSyncWorker.writeHomeRecentSnapshot(newIds)
             refreshAlbumDownloadStatuses(newIds)
 
             if (newIds != previousIds) {
@@ -1596,12 +1603,15 @@ class LibraryViewModel @Inject constructor(
             }
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-library", "loadRecentlyAddedHome: ${e.message}")
+        } finally {
+            homeRecentMutex.unlock()
         }
     }
 
     private suspend fun paintHomeRecentFromSnapshot(ids: List<String>) {
         if (ids.isEmpty()) return
         try {
+            val priorById = _state.value.randomAlbums.associateBy { it.id }
             val byId = metadataDao.getAlbumsByIds(ids).associateBy { it.id }
             val albums = ids.mapNotNull { id ->
                 val a = byId[id] ?: return@mapNotNull null
@@ -1611,6 +1621,7 @@ class LibraryViewModel @Inject constructor(
                     artist = a.artist,
                     coverArt = a.coverArt,
                     year = a.year,
+                    rating = priorById[id]?.rating,
                 )
             }
             if (albums.isNotEmpty()) {

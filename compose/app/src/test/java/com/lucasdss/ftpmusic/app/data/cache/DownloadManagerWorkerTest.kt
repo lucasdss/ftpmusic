@@ -130,8 +130,10 @@ class DownloadManagerWorkerTest {
             val manager = managerWithPicks(item, null)
             try {
                 manager.start()
-                // ADR-0117: non-audio CT is sticky — mark failed immediately.
-                coVerify(timeout = 5000) { dao.updateStatus(item.id, "failed") }
+                // ADR-0117: non-audio CT is sticky — mark failed_ct immediately.
+                coVerify(timeout = 5000) {
+                    dao.updateStatus(item.id, DownloadManager.STATUS_FAILED_CT)
+                }
                 coVerify(exactly = 0) { dao.updateRetryCount(any(), any()) }
                 coVerify(exactly = 0) { dao.updateStatus(item.id, "completed") }
                 coVerify(exactly = 0) {

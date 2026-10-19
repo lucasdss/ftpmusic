@@ -31,6 +31,7 @@ class HomeScreenComposeTest {
         val vm = mockk<LibraryViewModel>(relaxed = true)
         every { vm.state } returns MutableStateFlow(state)
         every { vm.showOverwriteModal } returns MutableStateFlow(false)
+        every { vm.coverToast } returns MutableStateFlow(null)
         return vm
     }
 

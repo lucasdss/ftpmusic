@@ -56,12 +56,12 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
-import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.ScrollAwareEqBars
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
+import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -825,17 +825,11 @@ private sealed class HomeCoverEditTarget {
     abstract val title: String
     abstract val hasFixedCover: Boolean
 
-    data class Mix(
-        val id: Long,
-        override val title: String,
-        override val hasFixedCover: Boolean,
-    ) : HomeCoverEditTarget()
+    data class Mix(val id: Long, override val title: String, override val hasFixedCover: Boolean) :
+        HomeCoverEditTarget()
 
-    data class Playlist(
-        val id: String,
-        override val title: String,
-        override val hasFixedCover: Boolean,
-    ) : HomeCoverEditTarget()
+    data class Playlist(val id: String, override val title: String, override val hasFixedCover: Boolean) :
+        HomeCoverEditTarget()
 }
 
 private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
@@ -854,11 +848,13 @@ private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
                 title = list[2] as String,
                 hasFixedCover = list[3] as Boolean,
             )
+
             "pl" -> HomeCoverEditTarget.Playlist(
                 id = list[1] as String,
                 title = list[2] as String,
                 hasFixedCover = list[3] as Boolean,
             )
+
             else -> null
         }
     },

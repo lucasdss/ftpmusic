@@ -185,12 +185,10 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
         return decodeUriWithBitmapFactory(uri, maxEdge)
     }
 
-    private fun uriByteLength(uri: Uri): Long {
-        return try {
-            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
-        } catch (_: Exception) {
-            -1L
-        }
+    private fun uriByteLength(uri: Uri): Long = try {
+        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+    } catch (_: Exception) {
+        -1L
     }
 
     /**
