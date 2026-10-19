@@ -4,15 +4,18 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.media.ExifInterface
 import android.net.Uri
+import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.max
@@ -24,17 +27,21 @@ import kotlinx.coroutines.withContext
  * Persists gallery-picked collection covers under app filesDir.
  * Atomic write (temp + rename) so process death never leaves a trusted truncated file.
  *
- * Device UX (ADR 0125): crop UI → [importCroppedBitmap] → JPEG ≤[MAX_EDGE_PX] / ≤[MAX_OUTPUT_BYTES].
+ * Device UX (ADR 0150): crop UI → [importCroppedBitmap] → JPEG ≤[MAX_EDGE_PX] / ≤[MAX_OUTPUT_BYTES].
+ * Large gallery files decode via ImageDecoder / stream subsample (no 8 MiB hard reject on crop path).
  */
 @Singleton
 class CollectionCoverStore @Inject constructor(@ApplicationContext private val context: Context) {
     companion object {
         const val DIR = "collection_covers"
 
-        /** Reject / budget raw URI reads above this size. */
+        /**
+         * Legacy full-buffer URI read ceiling (unused by crop path).
+         * Kept for callers/tests that still exercise [readUriBytesCapped].
+         */
         const val MAX_IMPORT_BYTES = 8L * 1024L * 1024L
 
-        /** Longest edge after crop export (ADR 0125). */
+        /** Longest edge after crop export (ADR 0125 / 0150). */
         const val MAX_EDGE_PX = 1024
 
         /** Hard cap on encoded JPEG size. */
@@ -45,7 +52,7 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
 
         private val ALLOWED_EXT = setOf("jpg", "jpeg", "png", "webp", "gif")
         private val JPEG_QUALITIES = intArrayOf(85, 75, 65)
-        private const val FALLBACK_EDGE_PX = 768
+        private val FALLBACK_EDGES_PX = intArrayOf(768, 512, 384, 256)
     }
 
     private val root: File
@@ -65,12 +72,11 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
 
     /**
      * Decode [uri] for crop preview: EXIF-aware, subsampled to [CROP_PREVIEW_MAX_EDGE].
-     * Returns null on oversize stream, corrupt, or undecodable.
+     * Prefer [ImageDecoder] (HEIC + EXIF); fall back to [decodeStreamOriented].
+     * Does not hard-reject by compressed file size.
      */
     suspend fun decodeForCrop(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
-        val bytes = readUriBytesCapped(uri) ?: return@withContext null
-        if (bytes.isEmpty()) return@withContext null
-        decodeSampledOriented(bytes, CROP_PREVIEW_MAX_EDGE)
+        decodeUriOriented(uri, CROP_PREVIEW_MAX_EDGE)
     }
 
     /**
@@ -110,13 +116,11 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
     }
 
     /**
-     * Legacy direct URI import (tests / fallback). Caps raw bytes at
-     * [MAX_IMPORT_BYTES]; always writes JPEG with [MAX_EDGE_PX] / budget.
+     * Legacy direct URI import (tests / fallback). Decodes via stream/ImageDecoder
+     * (no 8 MiB hard reject); always writes JPEG with [MAX_EDGE_PX] / budget.
      */
     suspend fun importFromUri(uri: Uri, prefix: String, id: String): String? = withContext(Dispatchers.IO) {
-        val bytes = readUriBytesCapped(uri) ?: return@withContext null
-        if (bytes.isEmpty()) return@withContext null
-        val bitmap = decodeSampledOriented(bytes, MAX_EDGE_PX) ?: return@withContext null
+        val bitmap = decodeUriOriented(uri, MAX_EDGE_PX) ?: return@withContext null
         try {
             importCroppedBitmap(bitmap, prefix, id)
         } finally {
@@ -171,7 +175,56 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
 
     private fun sanitizeId(id: String): String = id.replace(Regex("[^A-Za-z0-9._-]"), "_")
 
-    private fun readUriBytesCapped(uri: Uri): ByteArray? {
+    private fun decodeUriOriented(uri: Uri, maxEdge: Int): Bitmap? {
+        val fromDecoder = decodeWithImageDecoder(uri, maxEdge)
+        if (fromDecoder != null) return fromDecoder
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                decodeStreamOriented(input, maxEdge)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun decodeWithImageDecoder(uri: Uri, maxEdge: Int): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        return try {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.isMutableRequired = false
+                val w = info.size.width
+                val h = info.size.height
+                val longest = max(w, h)
+                if (longest > maxEdge && longest > 0) {
+                    val scale = maxEdge.toFloat() / longest
+                    decoder.setTargetSize(
+                        (w * scale).roundToInt().coerceAtLeast(1),
+                        (h * scale).roundToInt().coerceAtLeast(1),
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Bounds-first stream decode + EXIF orientation. Unit-test seam (Robolectric).
+     */
+    internal fun decodeStreamOriented(input: InputStream, maxEdge: Int): Bitmap? {
+        return try {
+            val buffered = input.readBytes()
+            if (buffered.isEmpty()) return null
+            decodeSampledOriented(buffered, maxEdge)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Legacy full-buffer read; retained for tests / diagnostics. */
+    internal fun readUriBytesCapped(uri: Uri): ByteArray? {
         val resolver = context.contentResolver
         return try {
             resolver.openInputStream(uri)?.use { input ->
@@ -223,6 +276,10 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
         } catch (_: Exception) {
             ExifInterface.ORIENTATION_NORMAL
         }
+        return applyOrientationMatrix(bitmap, orientation)
+    }
+
+    internal fun applyOrientationMatrix(bitmap: Bitmap, orientation: Int): Bitmap {
         val matrix = Matrix()
         when (orientation) {
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
@@ -268,8 +325,8 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
     }
 
     /**
-     * Flatten alpha on black, JPEG quality ladder, optional downscale to
-     * [FALLBACK_EDGE_PX] if still over [MAX_OUTPUT_BYTES].
+     * Flatten alpha on black, JPEG quality ladder, progressive downscale through
+     * fallback edges until ≤ [MAX_OUTPUT_BYTES].
      * Never recycles [bitmap]; only recycles intermediates it allocates.
      */
     internal fun encodeJpegWithinBudget(bitmap: Bitmap): ByteArray? {
@@ -282,17 +339,18 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
                 val out = compressJpeg(working, q) ?: continue
                 if (out.size <= MAX_OUTPUT_BYTES) return out
             }
-            val smaller = scaleToMaxEdge(working, FALLBACK_EDGE_PX)
-            if (smaller !== working) {
-                if (ownedWorking) working.recycle()
-                working = smaller
-                ownedWorking = true
+            for (edge in FALLBACK_EDGES_PX) {
+                val smaller = scaleToMaxEdge(working, edge)
+                if (smaller !== working) {
+                    if (ownedWorking) working.recycle()
+                    working = smaller
+                    ownedWorking = true
+                }
+                for (q in JPEG_QUALITIES) {
+                    val out = compressJpeg(working, q) ?: continue
+                    if (out.size <= MAX_OUTPUT_BYTES) return out
+                }
             }
-            for (q in JPEG_QUALITIES) {
-                val out = compressJpeg(working, q) ?: continue
-                if (out.size <= MAX_OUTPUT_BYTES) return out
-            }
-            // Hard cap (ADR-0125): never ship oversize; reject if still over budget.
             val last = compressJpeg(working, 65) ?: return null
             return last.takeIf { it.size <= MAX_OUTPUT_BYTES }
         } finally {

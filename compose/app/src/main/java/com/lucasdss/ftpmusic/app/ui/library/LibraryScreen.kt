@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,6 +34,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +64,7 @@ import com.lucasdss.ftpmusic.app.ui.components.RadioBookmarkIcon
 import com.lucasdss.ftpmusic.app.ui.components.ScrollAwareEqBars
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
 import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
+import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
 import com.lucasdss.ftpmusic.app.ui.playlist.AddSongsPickerContent
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -107,9 +111,45 @@ fun LibraryContent(
     // The playlist targeted by the confirm dialog — captured when the menu item
     // is tapped, because menuPlaylist is cleared to close the menu.
     var pendingRemovePlaylist by remember { mutableStateOf<PlaylistView?>(null) }
+    var coverEditPlaylist by remember { mutableStateOf<PlaylistView?>(null) }
 
     val context = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
+    val coverToast by viewModel.coverToast.collectAsStateWithLifecycle()
+    LaunchedEffect(coverToast) {
+        coverToast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearCoverToast()
+        }
+    }
+    coverEditPlaylist?.let { pl ->
+        val coverEdit = rememberCollectionCoverEditController(
+            title = pl.name,
+            hasFixedCover = pl.fixedCoverKind != null,
+            onLibraryCover = { id ->
+                viewModel.setPlaylistFixedCoverFromLibrary(pl.id, id)
+                coverEditPlaylist = null
+            },
+            onCroppedBitmap = { bmp ->
+                viewModel.setPlaylistFixedCoverFromCropped(pl.id, bmp)
+                coverEditPlaylist = null
+            },
+            onClear = {
+                viewModel.clearPlaylistFixedCover(pl.id)
+                coverEditPlaylist = null
+            },
+            onLoadFailed = {
+                viewModel.notifyCoverCropLoadFailed()
+                coverEditPlaylist = null
+            },
+            onExportFailed = {
+                viewModel.notifyCoverCropExportFailed()
+                coverEditPlaylist = null
+            },
+            onIdleDismiss = { coverEditPlaylist = null },
+        )
+        LaunchedEffect(pl.id) { coverEdit.openSheet() }
+    }
 
     // Chrome (chips + search) sits above Lazy — pad Column, not only list content
     // (ADR-0107 / post-1.8.0 hard-fix). Lazy top pad is local spacing only.
@@ -470,11 +510,8 @@ fun LibraryContent(
                                     items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
                                         Box {
                                             Row(
-                                                Modifier.fillMaxWidth()
-                                                    .combinedClickable(
-                                                        onClick = { onPlaylistClick(pl.id) },
-                                                        onLongClick = { menuPlaylist = pl },
-                                                    )
+                                                Modifier
+                                                    .fillMaxWidth()
                                                     .padding(horizontal = spacingL(), vertical = spacingM()),
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
@@ -487,70 +524,86 @@ fun LibraryContent(
                                                     primaryArtist = pl.primaryArtist,
                                                     primaryAlbum = pl.primaryAlbum,
                                                     decodeSize = 52.dp,
+                                                    contentDescription = "${pl.name} cover. Long-press to edit.",
                                                     modifier = Modifier
                                                         .size(52.dp)
-                                                        .clip(RoundedCornerShape(cornerM())),
+                                                        .clip(RoundedCornerShape(cornerM()))
+                                                        .combinedClickable(
+                                                            onClick = { onPlaylistClick(pl.id) },
+                                                            onLongClick = { coverEditPlaylist = pl },
+                                                        )
+                                                        .semantics { testTag = "library_playlist_cover_${pl.id}" },
                                                 )
                                                 Spacer(Modifier.width(12.dp))
-                                                Column(Modifier.weight(1f)) {
-                                                    Text(
-                                                        pl.name,
-                                                        color = Color.White,
-                                                        fontSize = textHeadingS(),
-                                                        fontWeight = FontWeight.Medium,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Row(
+                                                    Modifier
+                                                        .weight(1f)
+                                                        .combinedClickable(
+                                                            onClick = { onPlaylistClick(pl.id) },
+                                                            onLongClick = { menuPlaylist = pl },
+                                                        ),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Column(Modifier.weight(1f)) {
                                                         Text(
-                                                            "${pl.trackCount} tracks",
-                                                            color = Color(0xFF888888),
-                                                            fontSize = textLabelM(),
+                                                            pl.name,
+                                                            color = Color.White,
+                                                            fontSize = textHeadingS(),
+                                                            fontWeight = FontWeight.Medium,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
                                                         )
-                                                        if (pl.isSynced) {
-                                                            Spacer(Modifier.width(8.dp))
-                                                            Surface(
-                                                                color = BrandTeal.copy(alpha = 0.12f),
-                                                                shape = RoundedCornerShape(4.dp),
-                                                            ) {
-                                                                Text(
-                                                                    "Synced",
-                                                                    modifier = Modifier.padding(
-                                                                        horizontal = 5.dp,
-                                                                        vertical = 1.dp,
-                                                                    ),
-                                                                    color = BrandTeal,
-                                                                    fontSize = textMicro(),
-                                                                    fontWeight = FontWeight.SemiBold,
-                                                                )
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Text(
+                                                                "${pl.trackCount} tracks",
+                                                                color = Color(0xFF888888),
+                                                                fontSize = textLabelM(),
+                                                            )
+                                                            if (pl.isSynced) {
+                                                                Spacer(Modifier.width(8.dp))
+                                                                Surface(
+                                                                    color = BrandTeal.copy(alpha = 0.12f),
+                                                                    shape = RoundedCornerShape(4.dp),
+                                                                ) {
+                                                                    Text(
+                                                                        "Synced",
+                                                                        modifier = Modifier.padding(
+                                                                            horizontal = 5.dp,
+                                                                            vertical = 1.dp,
+                                                                        ),
+                                                                        color = BrandTeal,
+                                                                        fontSize = textMicro(),
+                                                                        fontWeight = FontWeight.SemiBold,
+                                                                    )
+                                                                }
                                                             }
-                                                        }
-                                                        if (pl.isDownloaded) {
-                                                            Spacer(Modifier.width(8.dp))
-                                                            Surface(
-                                                                color = BrandPurple.copy(alpha = 0.12f),
-                                                                shape = RoundedCornerShape(4.dp),
-                                                            ) {
-                                                                Text(
-                                                                    "Downloaded",
-                                                                    modifier = Modifier.padding(
-                                                                        horizontal = 5.dp,
-                                                                        vertical = 1.dp,
-                                                                    ),
-                                                                    color = BrandPurple,
-                                                                    fontSize = textMicro(),
-                                                                    fontWeight = FontWeight.SemiBold,
-                                                                )
+                                                            if (pl.isDownloaded) {
+                                                                Spacer(Modifier.width(8.dp))
+                                                                Surface(
+                                                                    color = BrandPurple.copy(alpha = 0.12f),
+                                                                    shape = RoundedCornerShape(4.dp),
+                                                                ) {
+                                                                    Text(
+                                                                        "Downloaded",
+                                                                        modifier = Modifier.padding(
+                                                                            horizontal = 5.dp,
+                                                                            vertical = 1.dp,
+                                                                        ),
+                                                                        color = BrandPurple,
+                                                                        fontSize = textMicro(),
+                                                                        fontWeight = FontWeight.SemiBold,
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }
+                                                    Icon(
+                                                        Icons.Default.ChevronRight,
+                                                        null,
+                                                        tint = Color(0xFF444444),
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
                                                 }
-                                                Icon(
-                                                    Icons.Default.ChevronRight,
-                                                    null,
-                                                    tint = Color(0xFF444444),
-                                                    modifier = Modifier.size(18.dp),
-                                                )
                                             }
                                             // Long-press menu
                                             DropdownMenu(

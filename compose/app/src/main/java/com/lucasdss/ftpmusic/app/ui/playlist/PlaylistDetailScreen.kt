@@ -2,11 +2,7 @@
 
 package com.lucasdss.ftpmusic.app.ui.playlist
 
-import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -55,9 +51,7 @@ import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
-import com.lucasdss.ftpmusic.app.ui.components.AlbumCoverPickerSheet
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
-import com.lucasdss.ftpmusic.app.ui.components.CoverCropDialog
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
@@ -65,7 +59,7 @@ import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
-import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverStore
+import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -98,14 +92,16 @@ fun PlaylistDetailScreen(
     var showPlaylistSheet by remember { mutableStateOf(false) }
     var showAddToPlaylistPicker by remember { mutableStateOf(false) }
     var showAddSongsSheet by remember { mutableStateOf(false) }
-    var showAlbumCoverPicker by remember { mutableStateOf(false) }
-    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
-    val playlistPhotoPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) pendingCropUri = uri
-    }
     val availablePlaylists by viewModel.availablePlaylists.collectAsStateWithLifecycle()
+    val coverEdit = rememberCollectionCoverEditController(
+        title = state.playlist?.name ?: "Playlist",
+        hasFixedCover = state.playlist?.fixedCoverKind != null,
+        onLibraryCover = viewModel::setFixedCoverFromLibrary,
+        onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
+        onClear = viewModel::clearFixedCover,
+        onLoadFailed = viewModel::notifyCoverCropLoadFailed,
+        onExportFailed = viewModel::notifyCoverCropExportFailed,
+    )
 
     val listState = rememberLazyListState(
         cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
@@ -240,34 +236,33 @@ fun PlaylistDetailScreen(
                                 primaryAlbum = state.tracks.firstOrNull()?.album,
                                 decodeSize = 160.dp,
                                 lettermarkLarge = true,
+                                contentDescription = "Playlist cover. Long-press to edit.",
                                 modifier = Modifier
                                     .size(adp(160f))
                                     .clip(RoundedCornerShape(cornerS()))
+                                    .combinedClickable(
+                                        onClick = { coverEdit.openSheet() },
+                                        onLongClick = { coverEdit.openSheet() },
+                                    )
                                     .semantics { testTag = "playlist_cover_art" },
                             )
                             Spacer(Modifier.height(spacingS()))
                             Row(horizontalArrangement = Arrangement.spacedBy(spacingS())) {
                                 TextButton(
-                                    onClick = { showAlbumCoverPicker = true },
+                                    onClick = coverEdit.openLibrary,
                                     modifier = Modifier.semantics { testTag = "playlist_cover_library" },
                                 ) {
                                     Text("Library", color = BrandTeal, fontSize = textLabelM())
                                 }
                                 TextButton(
-                                    onClick = {
-                                        playlistPhotoPicker.launch(
-                                            PickVisualMediaRequest(
-                                                ActivityResultContracts.PickVisualMedia.ImageOnly,
-                                            ),
-                                        )
-                                    },
+                                    onClick = coverEdit.openDevice,
                                     modifier = Modifier.semantics { testTag = "playlist_cover_device" },
                                 ) {
                                     Text("Device", color = BrandTeal, fontSize = textLabelM())
                                 }
                                 if (pl?.fixedCoverKind != null) {
                                     TextButton(
-                                        onClick = viewModel::clearFixedCover,
+                                        onClick = coverEdit.clear,
                                         modifier = Modifier.semantics { testTag = "playlist_cover_clear" },
                                     ) {
                                         Text("Clear", color = Color(0xFFE84040), fontSize = textLabelM())
@@ -655,36 +650,6 @@ fun PlaylistDetailScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } },
-        )
-    }
-
-    if (showAlbumCoverPicker) {
-        AlbumCoverPickerSheet(
-            onPicked = {
-                viewModel.setFixedCoverFromLibrary(it)
-                showAlbumCoverPicker = false
-            },
-            onDismiss = { showAlbumCoverPicker = false },
-        )
-    }
-    pendingCropUri?.let { cropUri ->
-        val coverStore = rememberCollectionCoverStore()
-        CoverCropDialog(
-            uri = cropUri,
-            coverStore = coverStore,
-            onConfirm = { cropped ->
-                pendingCropUri = null
-                viewModel.setFixedCoverFromCroppedBitmap(cropped)
-            },
-            onDismiss = { pendingCropUri = null },
-            onLoadFailed = {
-                pendingCropUri = null
-                viewModel.notifyCoverCropLoadFailed()
-            },
-            onExportFailed = {
-                pendingCropUri = null
-                viewModel.notifyCoverCropExportFailed()
-            },
         )
     }
 

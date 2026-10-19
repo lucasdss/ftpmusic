@@ -35,4 +35,18 @@ class CoverCropExportTest {
         assertEquals(out!!.width, out.height)
         out.recycle()
     }
+
+    @Test
+    fun `exportCroppedBitmap at minScale without extra zoom for portrait`() {
+        val bmp = Bitmap.createBitmap(800, 1600, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(0xFF778899.toInt())
+        val scale = CoverCropMath.minScale(800f, 1600f, 400f)
+        // Default framing only — no pinch above minScale.
+        assertEquals(scale, CoverCropMath.clampScale(scale, 800f, 1600f, 400f))
+        val out = exportCroppedBitmap(bmp, 400f, scale, 0f, 0f)
+        bmp.recycle()
+        assertNotNull(out)
+        assertEquals(out!!.width, out.height)
+        out.recycle()
+    }
 }

@@ -1,13 +1,13 @@
 # Daily Mix & Playlist Cover Behavior Report
 
-Date: 2026-10-12  
-Related: ADR 0115, ADR 0125
+Date: 2026-10-19  
+Related: ADR 0115, ADR 0125, ADR 0150
 
 ## Verdict
 
 Collection art (Daily Mix + playlist) always resolves: **fixed → derived track/album → CoverArtFallbackService → lettermark**. Never blank MusicNote as sole chrome.
 
-Device gallery covers go through **square pan/zoom crop** then **JPEG ≤1024px / ≤512 KiB** (ADR 0125).
+Device gallery covers go through **square pan/zoom crop** then **JPEG ≤1024px / ≤512 KiB** (ADR 0125 / 0150). Large files decode via ImageDecoder / stream subsample — **no 8 MiB hard reject** on crop path. Long-press cover art opens shared Library / Device / Clear sheet on all editable surfaces.
 
 ## Resolution order
 
@@ -28,24 +28,35 @@ Device gallery covers go through **square pan/zoom crop** then **JPEG ≤1024px 
 | Playlist detail | Header + Library / Device / Clear; Device → crop dialog |
 | Custom Daily Mixes editor | Preview + Library / Device / Clear; Device → crop; persist on save |
 
-## Device cover flow (ADR 0125)
+## Device cover flow (ADR 0125 / 0150)
 
-1. `PickVisualMedia(ImageOnly)` → `pendingCropUri`
-2. `CoverCropDialog` — square viewport, pinch zoom (min=fill, max=4×), drag clamp, Cancel / Use
-3. Use → `CollectionCoverStore.importCroppedBitmap` → always `.jpg`
-4. Cancel → discard URI; prior fixed cover unchanged
-5. Fail load/import → toast (`Could not load image for crop` / `Could not import image`)
+1. Library / Device / Clear via buttons **or** long-press → `CollectionCoverEditSheet`
+2. Device → `PickVisualMedia(ImageOnly)` → `CoverCropDialog`
+3. Decode: ImageDecoder (HEIC/EXIF) or `decodeStreamOriented` subsample ≤2048 — no 8 MiB gate
+4. Crop: square viewport, minScale=fill, max 4×; **Use works at default framing** (pinch optional)
+5. Use → `importCroppedBitmap` → always `.jpg`
+6. Fail load/import → toast (`Could not load image for crop` / `Could not import image`)
 
 Library album pick skips crop (Navidrome id).
+
+## Long-press surfaces (ADR 0150)
+
+| Surface | Long-press | Buttons |
+|---|---|---|
+| Playlist detail | Cover → sheet | Library / Device / Clear |
+| Mix detail | Cover → sheet | Library / Device / Clear |
+| Mix editor | Cover → sheet | Library / Device / Clear |
+| Home mix / playlist cards | Cover → sheet | — |
+| Library playlist thumb | Thumb → sheet; row text → Remove Locally | — |
 
 ## Export caps
 
 | Cap | Value |
 |---|---|
 | Cropped max edge | **1024** px (no upscale) |
-| Max output bytes | **512 KiB** (q85→75→65, then edge 768) |
+| Max output bytes | **512 KiB** (q85→75→65, edges 768→512→384→256) |
 | Format | JPEG (alpha → black) |
-| Legacy raw URI read | ≤ **8 MiB** (`importFromUri`) |
+| Legacy `readUriBytesCapped` | ≤ **8 MiB** (unused by crop path) |
 | Atomic write | `*.tmp` + rename |
 
 ## Edge cases

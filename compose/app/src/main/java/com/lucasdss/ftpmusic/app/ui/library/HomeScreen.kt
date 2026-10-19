@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -53,6 +54,7 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
+import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.ScrollAwareEqBars
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
@@ -80,7 +82,53 @@ fun HomeScreen(
     onOpenServerSettings: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val coverToast by viewModel.coverToast.collectAsStateWithLifecycle()
     var showAlbumSheet by remember { mutableStateOf<com.lucasdss.ftpmusic.app.data.model.Album?>(null) }
+    var coverEditTarget by remember { mutableStateOf<HomeCoverEditTarget?>(null) }
+    val context = LocalContext.current
+    LaunchedEffect(coverToast) {
+        coverToast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearCoverToast()
+        }
+    }
+    coverEditTarget?.let { target ->
+        val coverEdit = rememberCollectionCoverEditController(
+            title = target.title,
+            hasFixedCover = target.hasFixedCover,
+            onLibraryCover = { id ->
+                when (target) {
+                    is HomeCoverEditTarget.Mix -> viewModel.setMixFixedCoverFromLibrary(target.id, id)
+                    is HomeCoverEditTarget.Playlist -> viewModel.setPlaylistFixedCoverFromLibrary(target.id, id)
+                }
+                coverEditTarget = null
+            },
+            onCroppedBitmap = { bmp ->
+                when (target) {
+                    is HomeCoverEditTarget.Mix -> viewModel.setMixFixedCoverFromCropped(target.id, bmp)
+                    is HomeCoverEditTarget.Playlist -> viewModel.setPlaylistFixedCoverFromCropped(target.id, bmp)
+                }
+                coverEditTarget = null
+            },
+            onClear = {
+                when (target) {
+                    is HomeCoverEditTarget.Mix -> viewModel.clearMixFixedCover(target.id)
+                    is HomeCoverEditTarget.Playlist -> viewModel.clearPlaylistFixedCover(target.id)
+                }
+                coverEditTarget = null
+            },
+            onLoadFailed = {
+                viewModel.notifyCoverCropLoadFailed()
+                coverEditTarget = null
+            },
+            onExportFailed = {
+                viewModel.notifyCoverCropExportFailed()
+                coverEditTarget = null
+            },
+            onIdleDismiss = { coverEditTarget = null },
+        )
+        LaunchedEffect(target) { coverEdit.openSheet() }
+    }
 
     // ADR-0109 amend: TTL-check Recently Added on resume (with other Home refresh).
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -216,6 +264,13 @@ fun HomeScreen(
                                         mix = mix,
                                         decodeSize = cardDecode,
                                         onClick = { onMixClick(mix.id) },
+                                        onLongClickCover = {
+                                            coverEditTarget = HomeCoverEditTarget.Mix(
+                                                id = mix.id,
+                                                title = mix.name,
+                                                hasFixedCover = mix.fixedCoverKind != null,
+                                            )
+                                        },
                                         modifier = Modifier.semantics { testTag = "daily_mix_card_${mix.id}" },
                                     )
                                 }
@@ -268,6 +323,13 @@ fun HomeScreen(
                                         montageCovers = state.playlistMontages[pl.id].orEmpty(),
                                         decodeSize = cardDecode,
                                         onClick = { onPlaylistClick(pl.id) },
+                                        onLongClickCover = {
+                                            coverEditTarget = HomeCoverEditTarget.Playlist(
+                                                id = pl.id,
+                                                title = pl.name,
+                                                hasFixedCover = pl.fixedCoverKind != null,
+                                            )
+                                        },
                                     )
                                 }
                             }
@@ -751,19 +813,33 @@ private fun StarRating(rating: Int) {
     }
 }
 
+private sealed class HomeCoverEditTarget {
+    abstract val title: String
+    abstract val hasFixedCover: Boolean
+
+    data class Mix(
+        val id: Long,
+        override val title: String,
+        override val hasFixedCover: Boolean,
+    ) : HomeCoverEditTarget()
+
+    data class Playlist(
+        val id: String,
+        override val title: String,
+        override val hasFixedCover: Boolean,
+    ) : HomeCoverEditTarget()
+}
+
 @Composable
 private fun GenreMixCard(
     mix: com.lucasdss.ftpmusic.app.ui.library.MixCard,
     onClick: () -> Unit,
+    onLongClickCover: () -> Unit = {},
     modifier: Modifier = Modifier,
     decodeSize: androidx.compose.ui.unit.Dp = albumCardWidth(),
 ) {
     // Clip art Box only — Column clip cut title first glyph against cornerM arc.
-    Column(
-        modifier
-            .width(albumCardWidth())
-            .clickable { onClick() },
-    ) {
+    Column(modifier.width(albumCardWidth())) {
         // Single primary cover on Home LazyRow — 4-tile montage binds 4×
         // resolver + Coil and stalls horizontal fling (HOME_SCROLL_PERF).
         CollectionCoverArt(
@@ -774,10 +850,12 @@ private fun GenreMixCard(
             primaryArtist = mix.primaryArtist,
             primaryAlbum = mix.primaryAlbum,
             decodeSize = decodeSize,
+            contentDescription = "${mix.name} cover. Long-press to edit.",
             modifier = Modifier
                 .width(albumCardWidth())
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(cornerM())),
+                .clip(RoundedCornerShape(cornerM()))
+                .combinedClickable(onClick = onClick, onLongClick = onLongClickCover),
         )
         Spacer(Modifier.height(spacingBelowArt()))
         Text(
@@ -787,6 +865,7 @@ private fun GenreMixCard(
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clickable(onClick = onClick),
         )
     }
 }
@@ -819,9 +898,10 @@ private fun HomePlaylistCard(
     playlist: PlaylistView,
     montageCovers: List<String>,
     onClick: () -> Unit,
+    onLongClickCover: () -> Unit = {},
     decodeSize: androidx.compose.ui.unit.Dp = albumCardWidth(),
 ) {
-    Column(Modifier.width(albumCardWidth()).clickable { onClick() }) {
+    Column(Modifier.width(albumCardWidth())) {
         CollectionCoverArt(
             name = playlist.name,
             fixedCoverKind = playlist.fixedCoverKind,
@@ -831,31 +911,35 @@ private fun HomePlaylistCard(
             primaryArtist = playlist.primaryArtist,
             primaryAlbum = playlist.primaryAlbum,
             decodeSize = decodeSize,
+            contentDescription = "${playlist.name} cover. Long-press to edit.",
             modifier = Modifier
                 .width(albumCardWidth())
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp)),
+                .clip(RoundedCornerShape(10.dp))
+                .combinedClickable(onClick = onClick, onLongClick = onLongClickCover),
         )
         Spacer(Modifier.height(spacingBelowArt()))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.CheckCircle, null, tint = BrandTeal, modifier = Modifier.size(10.dp))
-            Spacer(Modifier.width(4.dp))
+        Column(Modifier.clickable(onClick = onClick)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.CheckCircle, null, tint = BrandTeal, modifier = Modifier.size(10.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    playlist.name,
+                    color = Color.White,
+                    fontSize = textBodyM(),
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
-                playlist.name,
-                color = Color.White,
-                fontSize = textBodyM(),
-                fontWeight = FontWeight.SemiBold,
+                "${playlist.trackCount} track${if (playlist.trackCount == 1) "" else "s"}",
+                color = NavUnselected,
+                fontSize = textLabelM(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Text(
-            "${playlist.trackCount} track${if (playlist.trackCount == 1) "" else "s"}",
-            color = NavUnselected,
-            fontSize = textLabelM(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

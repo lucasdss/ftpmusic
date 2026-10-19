@@ -144,7 +144,7 @@ fun CoverCropDialog(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Pinch to zoom, drag to center",
+                "Drag to frame · pinch optional",
                 color = NavUnselected,
                 fontSize = textBodyM(),
             )
@@ -221,7 +221,7 @@ fun CoverCropDialog(
                     .background(Color(0xFF1A1A1A))
                     .semantics {
                         testTag = "cover_crop_viewport"
-                        contentDescription = "Cover crop. Pinch to zoom, drag to center."
+                        contentDescription = "Cover crop. Drag to frame, pinch optional."
                     },
             ) {
                 val vp = with(LocalDensity.current) { maxWidth.toPx() }

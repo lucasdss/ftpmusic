@@ -3,10 +3,12 @@ package com.lucasdss.ftpmusic.app.data.cover
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,12 +57,61 @@ class CollectionCoverStoreTest {
     }
 
     @Test
-    fun `importFromUri rejects oversize payload`() = runBlocking {
-        val src = File(context.cacheDir, "huge.jpg").also {
-            it.writeBytes(ByteArray((CollectionCoverStore.MAX_IMPORT_BYTES + 1).toInt()) { 0xFF.toByte() })
-        }
+    fun `importFromUri rejects empty payload`() = runBlocking {
+        val src = File(context.cacheDir, "empty.bin").also { it.writeBytes(ByteArray(0)) }
         assertNull(store.importFromUri(Uri.fromFile(src), "mix", "1"))
         assertFalse(File(root, "mix_1.jpg").exists())
+        assertNull(store.decodeStreamOriented(ByteArray(0).inputStream(), 2048))
+    }
+
+    @Test
+    fun `importFromUri accepts valid jpeg larger than legacy 8MiB cap`() = runBlocking {
+        // Build a valid JPEG then pad file past MAX_IMPORT_BYTES with trailing zeros
+        // (decoders ignore trailing junk; proves we no longer hard-reject by byte size).
+        val jpeg = encodedJpeg(512, 512)
+        val src = File(context.cacheDir, "padded.jpg").also { f ->
+            FileOutputStream(f).use { out ->
+                out.write(jpeg)
+                val pad = ByteArray(8192)
+                var remaining = CollectionCoverStore.MAX_IMPORT_BYTES + 1 - jpeg.size
+                while (remaining > 0) {
+                    val n = minOf(pad.size.toLong(), remaining).toInt()
+                    out.write(pad, 0, n)
+                    remaining -= n
+                }
+            }
+        }
+        assertTrue(src.length() > CollectionCoverStore.MAX_IMPORT_BYTES)
+        val relative = store.importFromUri(Uri.fromFile(src), "mix", "big")
+        assertEquals("mix_big.jpg", relative)
+        val out = File(root, relative!!)
+        assertTrue(out.isFile)
+        assertTrue(out.length() <= CollectionCoverStore.MAX_OUTPUT_BYTES)
+    }
+
+    @Test
+    fun `decodeStreamOriented applies EXIF rotate 90`() {
+        val jpeg = encodedJpeg(40, 20)
+        // Inject EXIF Orientation=6 (ROTATE_90) via ExifInterface rewrite.
+        val withExif = File(context.cacheDir, "exif90.jpg").also { it.writeBytes(jpeg) }
+        ExifInterface(withExif.absolutePath).apply {
+            setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString())
+            saveAttributes()
+        }
+        val bmp = store.decodeStreamOriented(withExif.inputStream(), 2048)
+        assertNotNull(bmp)
+        // 40x20 + rotate 90 → 20x40
+        assertEquals(20, bmp!!.width)
+        assertEquals(40, bmp.height)
+        bmp.recycle()
+    }
+
+    @Test
+    fun `readUriBytesCapped still rejects oversize full buffer`() {
+        val src = File(context.cacheDir, "huge.bin").also {
+            it.writeBytes(ByteArray((CollectionCoverStore.MAX_IMPORT_BYTES + 1).toInt()) { 0xFF.toByte() })
+        }
+        assertNull(store.readUriBytesCapped(Uri.fromFile(src)))
     }
 
     @Test

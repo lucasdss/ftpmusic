@@ -1,5 +1,7 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
+import android.graphics.Bitmap
+import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -39,6 +41,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +60,7 @@ import com.lucasdss.ftpmusic.app.data.db.CachedGenreSongEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
@@ -67,6 +72,7 @@ import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
+import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -99,9 +105,25 @@ fun MixDetailScreen(
 ) {
     LaunchedEffect(mixId) { viewModel.loadMix(mixId) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val toast by viewModel.toast.collectAsStateWithLifecycle()
     var showMixSheet by remember { mutableStateOf(false) }
     var showTrackSheet by remember { mutableStateOf<GenreMixTrack?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(toast) {
+        toast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearToast()
+        }
+    }
+    val coverEdit = rememberCollectionCoverEditController(
+        title = mixName,
+        hasFixedCover = state.fixedCoverKind != null,
+        onLibraryCover = viewModel::setFixedCoverFromLibrary,
+        onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
+        onClear = viewModel::clearFixedCover,
+        onLoadFailed = viewModel::notifyCoverCropLoadFailed,
+        onExportFailed = viewModel::notifyCoverCropExportFailed,
+    )
     val listState = rememberLazyListState(
         cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
     )
@@ -221,8 +243,15 @@ fun MixDetailScreen(
                                 localFixedPath,
                             )
                             Box(
-                                Modifier.size(200.dp).clip(RoundedCornerShape(16.dp))
-                                    .background(Color(0xFF1E1E3E)),
+                                Modifier
+                                    .size(200.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color(0xFF1E1E3E))
+                                    .combinedClickable(
+                                        onClick = { coverEdit.openSheet() },
+                                        onLongClick = { coverEdit.openSheet() },
+                                    )
+                                    .semantics { testTag = "mix_detail_cover_art" },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 when {
@@ -236,6 +265,7 @@ fun MixDetailScreen(
                                             primaryAlbum = null,
                                             decodeSize = 200.dp,
                                             lettermarkLarge = true,
+                                            contentDescription = "Mix cover. Long-press to edit.",
                                             modifier = Modifier.fillMaxSize(),
                                         )
                                     }
@@ -262,6 +292,29 @@ fun MixDetailScreen(
 
                                     else -> {
                                         GenreMixCoverImage(covers[0], Modifier.fillMaxSize())
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(spacingS())) {
+                                TextButton(
+                                    onClick = coverEdit.openLibrary,
+                                    modifier = Modifier.semantics { testTag = "mix_detail_cover_library" },
+                                ) {
+                                    Text("Library", color = BrandTeal, fontSize = textLabelM())
+                                }
+                                TextButton(
+                                    onClick = coverEdit.openDevice,
+                                    modifier = Modifier.semantics { testTag = "mix_detail_cover_device" },
+                                ) {
+                                    Text("Device", color = BrandTeal, fontSize = textLabelM())
+                                }
+                                if (state.fixedCoverKind != null) {
+                                    TextButton(
+                                        onClick = coverEdit.clear,
+                                        modifier = Modifier.semantics { testTag = "mix_detail_cover_clear" },
+                                    ) {
+                                        Text("Clear", color = Color(0xFFE84040), fontSize = textLabelM())
                                     }
                                 }
                             }
@@ -538,6 +591,7 @@ class MixDetailViewModel @Inject constructor(
     private val downloadManager: com.lucasdss.ftpmusic.app.data.cache.DownloadManager,
     private val favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository,
     private val api: com.lucasdss.ftpmusic.app.data.network.SubsonicApi,
+    private val coverStore: CollectionCoverStore,
 ) : androidx.lifecycle.ViewModel() {
 
     data class State(
@@ -552,6 +606,66 @@ class MixDetailViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
+
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast.asStateFlow()
+
+    fun clearToast() {
+        _toast.value = null
+    }
+
+    fun setFixedCoverFromLibrary(coverArtId: String) {
+        val id = loadedMixId ?: return
+        viewModelScope.launch {
+            dailyMixRepository.setFixedCover(id, CollectionCoverKind.NAVIDROME, coverArtId)
+            _state.value = _state.value.copy(
+                fixedCoverKind = CollectionCoverKind.NAVIDROME,
+                fixedCoverValue = coverArtId,
+            )
+        }
+    }
+
+    fun setFixedCoverFromCroppedBitmap(bitmap: Bitmap) {
+        val id = loadedMixId ?: run {
+            bitmap.recycle()
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val relative = coverStore.importCroppedBitmap(
+                    bitmap,
+                    DailyMixRepository.COVER_PREFIX,
+                    id.toString(),
+                ) ?: run {
+                    _toast.value = "Could not import image"
+                    return@launch
+                }
+                dailyMixRepository.setFixedCover(id, CollectionCoverKind.LOCAL, relative)
+                _state.value = _state.value.copy(
+                    fixedCoverKind = CollectionCoverKind.LOCAL,
+                    fixedCoverValue = relative,
+                )
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    fun clearFixedCover() {
+        val id = loadedMixId ?: return
+        viewModelScope.launch {
+            dailyMixRepository.clearFixedCover(id)
+            _state.value = _state.value.copy(fixedCoverKind = null, fixedCoverValue = null)
+        }
+    }
+
+    fun notifyCoverCropLoadFailed() {
+        _toast.value = "Could not load image for crop"
+    }
+
+    fun notifyCoverCropExportFailed() {
+        _toast.value = "Could not save cropped cover"
+    }
 
     private val isRefreshing = java.util.concurrent.atomic.AtomicBoolean(false)
 

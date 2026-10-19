@@ -34,6 +34,7 @@ import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
@@ -2121,4 +2122,99 @@ class LibraryViewModel @Inject constructor(
     fun getUsername(): String? = username().ifEmpty { null }
 
     fun getPassword(): String? = password().ifEmpty { null }
+
+    // ── Collection cover edit (Home / Library long-press, ADR 0150) ──
+
+    private val _coverToast = MutableStateFlow<String?>(null)
+    val coverToast: StateFlow<String?> = _coverToast.asStateFlow()
+
+    fun clearCoverToast() {
+        _coverToast.value = null
+    }
+
+    fun setPlaylistFixedCoverFromLibrary(playlistId: String, coverArtId: String) {
+        if (playlistId.isBlank() || coverArtId.isBlank()) return
+        viewModelScope.launch {
+            playlistRepo.setFixedCover(playlistId, CollectionCoverKind.NAVIDROME, coverArtId)
+            loadPlaylists()
+        }
+    }
+
+    fun setPlaylistFixedCoverFromCropped(playlistId: String, bitmap: android.graphics.Bitmap) {
+        if (playlistId.isBlank()) {
+            bitmap.recycle()
+            return
+        }
+        viewModelScope.launch {
+            val relative = playlistRepo.setFixedCoverFromCroppedBitmap(playlistId, bitmap)
+            if (relative == null) {
+                _coverToast.value = "Could not import image"
+            } else {
+                loadPlaylists()
+            }
+        }
+    }
+
+    fun clearPlaylistFixedCover(playlistId: String) {
+        if (playlistId.isBlank()) return
+        viewModelScope.launch {
+            playlistRepo.clearFixedCover(playlistId)
+            loadPlaylists()
+        }
+    }
+
+    fun setMixFixedCoverFromLibrary(mixId: Long, coverArtId: String) {
+        if (coverArtId.isBlank()) return
+        viewModelScope.launch {
+            dailyMixRepository.setFixedCover(mixId, CollectionCoverKind.NAVIDROME, coverArtId)
+            // Home mix cards refresh via existing mix flows / next load.
+            refreshMixCardsAfterCoverChange()
+        }
+    }
+
+    fun setMixFixedCoverFromCropped(mixId: Long, bitmap: android.graphics.Bitmap) {
+        viewModelScope.launch {
+            val relative = dailyMixRepository.setFixedCoverFromCroppedBitmap(mixId, bitmap)
+            if (relative == null) {
+                _coverToast.value = "Could not import image"
+            } else {
+                refreshMixCardsAfterCoverChange()
+            }
+        }
+    }
+
+    fun clearMixFixedCover(mixId: Long) {
+        viewModelScope.launch {
+            dailyMixRepository.clearFixedCover(mixId)
+            refreshMixCardsAfterCoverChange()
+        }
+    }
+
+    fun notifyCoverCropLoadFailed() {
+        _coverToast.value = "Could not load image for crop"
+    }
+
+    fun notifyCoverCropExportFailed() {
+        _coverToast.value = "Could not save cropped cover"
+    }
+
+    private suspend fun refreshMixCardsAfterCoverChange() {
+        // Reload mix card metadata from recipes so fixed cover fields update.
+        try {
+            val recipes = dailyMixRepository.getAll()
+            val cards = _state.value.mixCards.associateBy { it.id }
+            val updated = recipes.mapNotNull { recipe ->
+                val existing = cards[recipe.id] ?: return@mapNotNull null
+                existing.copy(
+                    fixedCoverKind = recipe.fixedCoverKind,
+                    fixedCoverValue = recipe.fixedCoverValue,
+                )
+            }
+            if (updated.isNotEmpty()) {
+                _state.value = _state.value.copy(mixCards = updated)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "refreshMixCardsAfterCoverChange: ${e.message}")
+        }
+    }
 }

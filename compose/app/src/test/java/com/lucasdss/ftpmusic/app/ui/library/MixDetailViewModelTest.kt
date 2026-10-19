@@ -28,6 +28,7 @@ class MixDetailViewModelTest {
     private lateinit var cacheService: com.lucasdss.ftpmusic.app.data.cache.CacheService
     private lateinit var downloadManager: com.lucasdss.ftpmusic.app.data.cache.DownloadManager
     private lateinit var favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
+    private lateinit var coverStore: com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
     private val today = LocalDate.now().toString()
     private val yesterday = LocalDate.now().minusDays(1).toString()
 
@@ -42,6 +43,7 @@ class MixDetailViewModelTest {
         cacheService = mockk(relaxed = true)
         downloadManager = mockk(relaxed = true)
         favoriteRepository = mockk(relaxed = true)
+        coverStore = mockk(relaxed = true)
         coEvery { dailyMixRepository.filterPlayableMixTrackIds(any()) } coAnswers {
             @Suppress("UNCHECKED_CAST")
             invocation.args[0] as List<String>
@@ -53,6 +55,7 @@ class MixDetailViewModelTest {
             downloadManager = downloadManager,
             favoriteRepository = favoriteRepository,
             api = mockk(relaxed = true),
+            coverStore = coverStore,
         )
     }
 

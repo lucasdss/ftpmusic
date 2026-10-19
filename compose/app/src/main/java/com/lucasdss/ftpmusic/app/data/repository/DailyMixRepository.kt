@@ -282,6 +282,24 @@ class DailyMixRepository @Inject constructor(
         customMixDao.update(old.copy(fixedCoverKind = null, fixedCoverValue = null))
     }
 
+    /**
+     * Persist a cropped bitmap as LOCAL fixed cover. Recycles [bitmap].
+     * @return relative path or null on failure.
+     */
+    suspend fun setFixedCoverFromCroppedBitmap(
+        id: Long,
+        bitmap: android.graphics.Bitmap,
+    ): String? = withContext(ioDispatcher) {
+        try {
+            val relative = coverStore.importCroppedBitmap(bitmap, COVER_PREFIX, id.toString())
+                ?: return@withContext null
+            setFixedCover(id, CollectionCoverKind.LOCAL, relative)
+            relative
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     /** Build pools + one weight map for the whole run. Run on IO by callers. */
     suspend fun prepare(date: String): GenerationContext {
         seedIfNeeded()

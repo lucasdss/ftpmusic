@@ -1,12 +1,10 @@
 package com.lucasdss.ftpmusic.app.ui.settings
 
-import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,12 +73,10 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
-import com.lucasdss.ftpmusic.app.ui.components.AlbumCoverPickerSheet
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
-import com.lucasdss.ftpmusic.app.ui.components.CoverCropDialog
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverEditHost
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
-import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverStore
 import com.lucasdss.ftpmusic.app.ui.textBodyM
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
@@ -872,93 +868,67 @@ private fun SuggestionChip(text: String, selected: Boolean, onClick: () -> Unit)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDailyMixesViewModel) {
-    var showAlbumPicker by remember { mutableStateOf(false) }
-    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
-    // Resolve Hilt cover store only when crop dialog opens — Robolectric
-    // compose tests have no GeneratedComponent on Application.
-    val photoPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) pendingCropUri = uri
-    }
-    Column(Modifier.semantics { testTag = "mix_cover_section" }) {
-        Text("COVER IMAGE", color = MUTED, fontSize = textLabelS(), fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Fixed cover stays across regenerations. Local only.",
-            color = DIM,
-            fontSize = textLabelS(),
-        )
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CollectionCoverArt(
-                name = editor.name.ifBlank { "Mix" },
-                fixedCoverKind = editor.fixedCoverKind,
-                fixedCoverValue = editor.fixedCoverValue,
-                derivedCoverArtIds = emptyList(),
-                decodeSize = 72.dp,
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(12.dp)),
+    CollectionCoverEditHost(
+        title = editor.name.ifBlank { "Mix" },
+        hasFixedCover = editor.fixedCoverKind != null && !editor.clearFixedCover,
+        onLibraryCover = viewModel::setFixedCoverFromLibrary,
+        onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
+        onClear = viewModel::clearFixedCoverInEditor,
+        onLoadFailed = viewModel::notifyCoverCropLoadFailed,
+        onExportFailed = viewModel::notifyCoverCropExportFailed,
+    ) {
+        Column(Modifier.semantics { testTag = "mix_cover_section" }) {
+            Text("COVER IMAGE", color = MUTED, fontSize = textLabelS(), fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Fixed cover stays across regenerations. Local only. Long-press art to edit.",
+                color = DIM,
+                fontSize = textLabelS(),
             )
-            Spacer(Modifier.width(12.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(
-                    onClick = { showAlbumPicker = true },
-                    modifier = Modifier.semantics { testTag = "mix_cover_library" },
-                ) {
-                    Text("Library", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
-                }
-                TextButton(
-                    onClick = {
-                        photoPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                        )
-                    },
-                    modifier = Modifier.semantics { testTag = "mix_cover_device" },
-                ) {
-                    Text("Device", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
-                }
-                if (editor.fixedCoverKind != null || editor.clearFixedCover) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CollectionCoverArt(
+                    name = editor.name.ifBlank { "Mix" },
+                    fixedCoverKind = editor.fixedCoverKind,
+                    fixedCoverValue = editor.fixedCoverValue,
+                    derivedCoverArtIds = emptyList(),
+                    decodeSize = 72.dp,
+                    contentDescription = "Mix cover. Long-press to edit.",
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .combinedClickable(
+                            onClick = { openSheet() },
+                            onLongClick = { openSheet() },
+                        ),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(
-                        onClick = viewModel::clearFixedCoverInEditor,
-                        modifier = Modifier.semantics { testTag = "mix_cover_clear" },
+                        onClick = { openLibrary() },
+                        modifier = Modifier.semantics { testTag = "mix_cover_library" },
                     ) {
-                        Text("Clear", color = RED, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
+                        Text("Library", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(
+                        onClick = { openDevice() },
+                        modifier = Modifier.semantics { testTag = "mix_cover_device" },
+                    ) {
+                        Text("Device", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
+                    }
+                    if (editor.fixedCoverKind != null || editor.clearFixedCover) {
+                        TextButton(
+                            onClick = { clear() },
+                            modifier = Modifier.semantics { testTag = "mix_cover_clear" },
+                        ) {
+                            Text("Clear", color = RED, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
         }
-    }
-    if (showAlbumPicker) {
-        AlbumCoverPickerSheet(
-            onPicked = {
-                viewModel.setFixedCoverFromLibrary(it)
-                showAlbumPicker = false
-            },
-            onDismiss = { showAlbumPicker = false },
-        )
-    }
-    pendingCropUri?.let { cropUri ->
-        val coverStore = rememberCollectionCoverStore()
-        CoverCropDialog(
-            uri = cropUri,
-            coverStore = coverStore,
-            onConfirm = { cropped ->
-                pendingCropUri = null
-                viewModel.setFixedCoverFromCroppedBitmap(cropped)
-            },
-            onDismiss = { pendingCropUri = null },
-            onLoadFailed = {
-                pendingCropUri = null
-                viewModel.notifyCoverCropLoadFailed()
-            },
-            onExportFailed = {
-                pendingCropUri = null
-                viewModel.notifyCoverCropExportFailed()
-            },
-        )
     }
 }
