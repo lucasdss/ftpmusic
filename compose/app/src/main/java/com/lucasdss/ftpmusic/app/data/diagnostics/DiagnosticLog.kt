@@ -45,6 +45,12 @@ object DiagnosticLog {
         albums: Int = -1,
         artists: Int = -1,
         tracks: Int = -1,
+        syncIntervalHours: Int = -1,
+        homeRecentFetchedMs: Long = -1L,
+        homeRecentTtlMin: Int = -1,
+        homeRecentIdsCount: Int = -1,
+        lastWmAttemptMs: Long = -1L,
+        lastWmSkipReason: String = "",
     ): String {
         val header = buildString {
             appendLine("ftpmusic diagnostics")
@@ -52,6 +58,22 @@ object DiagnosticLog {
             appendLine("sdk=${Build.VERSION.SDK_INT} model=${Build.MODEL}")
             appendLine("offline=$offline reachable=$reachable")
             appendLine("lastFullSyncMs=$lastFullSyncMs lastDeltaSyncMs=$lastDeltaSyncMs")
+            if (syncIntervalHours >= 0) {
+                appendLine("syncIntervalHours=$syncIntervalHours")
+            }
+            if (homeRecentFetchedMs >= 0L || homeRecentTtlMin >= 0 || homeRecentIdsCount >= 0) {
+                appendLine(
+                    "homeRecentFetchedMs=${homeRecentFetchedMs.coerceAtLeast(0L)} " +
+                        "homeRecentTtlMin=${homeRecentTtlMin.coerceAtLeast(0)} " +
+                        "homeRecentIdsCount=${homeRecentIdsCount.coerceAtLeast(0)}",
+                )
+            }
+            if (lastWmAttemptMs >= 0L || lastWmSkipReason.isNotEmpty()) {
+                appendLine(
+                    "lastWmAttemptMs=${lastWmAttemptMs.coerceAtLeast(0L)} " +
+                        "lastWmSkipReason=${lastWmSkipReason.ifEmpty { "-" }}",
+                )
+            }
             if (albums >= 0 || artists >= 0 || tracks >= 0) {
                 appendLine("albums=$albums artists=$artists tracks=$tracks")
             }

@@ -34,16 +34,19 @@ class SyncScheduleWorker @AssistedInject constructor(
             if (!ReachabilityStateHolder.isReachable.value) {
                 Log.d("ftpmusic-work", "Periodic sync deferred — server unreachable")
                 DiagnosticLog.w("ftpmusic-work", "periodic sync deferred — unreachable")
+                metadataSyncWorker.recordWmAttempt(skipReason = "unreachable")
                 return Result.retry()
             }
             val mode = MetadataSyncWorker.resolvePeriodicMode(metadataSyncWorker.lastFullSyncMs())
             Log.d("ftpmusic-work", "Periodic sync starting mode=$mode")
             DiagnosticLog.d("ftpmusic-work", "periodic sync start mode=$mode")
+            metadataSyncWorker.recordWmAttempt(skipReason = "")
             val job = metadataSyncWorker.syncNowAsync(forceTrackResync = false, mode = mode)
             if (job == null) {
                 val reason = metadataSyncWorker.lastSkipReason()
                 Log.d("ftpmusic-work", "Periodic sync skipped reason=$reason")
                 DiagnosticLog.d("ftpmusic-work", "periodic sync skipped reason=$reason")
+                metadataSyncWorker.recordWmAttempt(skipReason = reason)
                 return when (reason) {
                     // Cooldown cannot succeed until wall-clock elapses — avoid hot WM retry.
                     "already_running", "cooldown" -> Result.success()

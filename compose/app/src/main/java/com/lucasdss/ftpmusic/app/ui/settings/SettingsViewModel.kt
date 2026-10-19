@@ -929,6 +929,7 @@ class SettingsViewModel @Inject constructor(
         )
         val prefs = context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE)
         val s = _state.value
+        val homeIds = com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.readIds(prefs)
         return com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             context = context,
             offline = s.offlineMode || offlineModeManager.isQueueEnabled(),
@@ -938,6 +939,12 @@ class SettingsViewModel @Inject constructor(
             albums = s.albumCount,
             artists = s.artistCount,
             tracks = s.cachedTrackCount,
+            syncIntervalHours = s.syncIntervalHours,
+            homeRecentFetchedMs = prefs.getLong(MetadataSyncWorker.PREF_HOME_RECENT_FETCHED_MS, 0),
+            homeRecentTtlMin = s.homeRecentTtlMinutes,
+            homeRecentIdsCount = homeIds.size,
+            lastWmAttemptMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_WM_ATTEMPT_MS, 0),
+            lastWmSkipReason = prefs.getString(MetadataSyncWorker.PREF_LAST_WM_SKIP_REASON, "") ?: "",
         ) + "\nmode=${s.lastSyncMode} skip=${s.lastSyncSkipReason}" +
             " corpus=${s.searchCorpusTrackCount} songSum=${s.albumSongCountSum}"
     }

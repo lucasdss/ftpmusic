@@ -70,6 +70,24 @@ class DiagnosticLogTest {
     }
 
     @Test
+    fun snapshot_includesHomeAndWmDiagnosticsWhenProvided() {
+        val snap = DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+            syncIntervalHours = 12,
+            homeRecentFetchedMs = 99L,
+            homeRecentTtlMin = 5,
+            homeRecentIdsCount = 10,
+            lastWmAttemptMs = 88L,
+            lastWmSkipReason = "cooldown",
+        )
+        assertTrue(snap.contains("syncIntervalHours=12"))
+        assertTrue(snap.contains("homeRecentFetchedMs=99 homeRecentTtlMin=5 homeRecentIdsCount=10"))
+        assertTrue(snap.contains("lastWmAttemptMs=88 lastWmSkipReason=cooldown"))
+    }
+
+    @Test
     fun snapshot_neverRequiresTitles() {
         DiagnosticLog.d("ftpmusic-playback", "transition id=t1 reason=1 idx=0 count=3")
         val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)

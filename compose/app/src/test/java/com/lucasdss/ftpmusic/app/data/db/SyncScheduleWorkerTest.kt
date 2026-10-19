@@ -56,6 +56,7 @@ class SyncScheduleWorkerTest {
                 mode = LibrarySyncMode.DELTA,
             )
         }
+        verify { metadataSyncWorker.recordWmAttempt(skipReason = "", nowMs = any()) }
         assertTrue(result is ListenableWorker.Result.Success)
     }
 

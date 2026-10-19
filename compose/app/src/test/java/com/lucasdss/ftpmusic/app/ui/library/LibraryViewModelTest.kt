@@ -23,6 +23,7 @@ import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -383,6 +384,8 @@ class LibraryViewModelTest {
         )
         coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(randomMaps)
         val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        val homeRev = MutableStateFlow(0L)
+        every { metadataSync.homeRecentRevision } returns homeRev
         every { metadataSync.homeRecentIds() } returns emptyList()
         every { metadataSync.homeRecentFetchedMs() } returns 0L
         every { metadataSync.syncNowAsync(any(), any(), any()) } returns null
@@ -430,6 +433,7 @@ class LibraryViewModelTest {
             CachedAlbumEntity(id = "cached-1", name = "Cached Recent", artist = "A", coverArt = "c"),
         )
         val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentRevision } returns MutableStateFlow(0L)
         every { metadataSync.homeRecentIds() } returns listOf("cached-1")
         every { metadataSync.homeRecentFetchedMs() } returns System.currentTimeMillis()
 
@@ -471,6 +475,7 @@ class LibraryViewModelTest {
             CachedAlbumEntity(id = "cached-1", name = "Cached Recent", artist = "A", coverArt = "c"),
         )
         val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentRevision } returns MutableStateFlow(0L)
         every { metadataSync.homeRecentIds() } returns listOf("cached-1")
         // Stale TTL forces network; empty response must still stamp backoff (ADR-0112).
         every { metadataSync.homeRecentFetchedMs() } returns 0L
@@ -496,6 +501,159 @@ class LibraryViewModelTest {
         verify { metadataSync.touchHomeRecentFetched() }
         verify(exactly = 0) { metadataSync.writeHomeRecentSnapshot(any()) }
         verify(exactly = 0) { metadataSync.syncNowAsync(any(), any(), any()) }
+    }
+
+    @Test
+    fun `onHomeResume triggers recently added load`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS) } returns "12"
+        every { storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES) } returns "5"
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns buildAlbumListResponse(emptyList())
+        coEvery { trackDao.getRecentlyPlayed(any()) } returns emptyList()
+        coEvery { playlistDao.getAll() } returns emptyList()
+        val metadataDaoLocal: CachedMetadataDao = mockk(relaxed = true)
+        coEvery { metadataDaoLocal.getAllArtists() } returns emptyList()
+        coEvery { metadataDaoLocal.getAlbumsByIds(listOf("cached-1")) } returns listOf(
+            CachedAlbumEntity(id = "cached-1", name = "Cached Recent", artist = "A", coverArt = "c"),
+        )
+        val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentRevision } returns MutableStateFlow(0L)
+        every { metadataSync.homeRecentIds() } returns listOf("cached-1")
+        every { metadataSync.homeRecentFetchedMs() } returns System.currentTimeMillis()
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDaoLocal,
+                metadataSync,
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.state.first { it.randomAlbums.isNotEmpty() }
+        advanceUntilIdle()
+        clearMocks(api, answers = false, recordedCalls = true)
+
+        viewModel.onHomeResume()
+        advanceUntilIdle()
+
+        // Fresh TTL → paint from snapshot again, no newest network.
+        coVerify(exactly = 0) { api.getAlbumList2("newest", 10, 0, any()) }
+        coVerify { metadataDaoLocal.getAlbumsByIds(listOf("cached-1")) }
+    }
+
+    @Test
+    fun `home recent revision same ids preserves rating`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS) } returns "12"
+        every { storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES) } returns "5"
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
+        coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(emptyList())
+        val rated = listOf(
+            mapOf<String, Any?>(
+                "id" to "ral-1",
+                "name" to "Rated Album",
+                "artist" to "A",
+                "userRating" to 5,
+            ),
+        )
+        coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(rated)
+        val metadataDaoLocal: CachedMetadataDao = mockk(relaxed = true)
+        coEvery { metadataDaoLocal.getAlbumsByIds(listOf("ral-1")) } returns listOf(
+            CachedAlbumEntity(id = "ral-1", name = "Rated Album", artist = "A"),
+        )
+        val homeRev = MutableStateFlow(0L)
+        val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentRevision } returns homeRev
+        every { metadataSync.homeRecentIds() } returnsMany listOf(emptyList(), listOf("ral-1"), listOf("ral-1"))
+        every { metadataSync.homeRecentFetchedMs() } returns 0L
+        every { metadataSync.syncNowAsync(any(), any(), any()) } returns null
+        every { metadataSync.writeHomeRecentSnapshot(any()) } answers { homeRev.value = homeRev.value + 1 }
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDaoLocal,
+                metadataSync,
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.state.first { it.randomAlbums.isNotEmpty() && it.randomAlbums[0].rating == 5 }
+        advanceUntilIdle()
+
+        // Self-bump already fired via writeHomeRecentSnapshot; rating must remain.
+        assertEquals(5, viewModel.state.value.randomAlbums[0].rating)
+
+        // Explicit same-id revision bump must not strip rating.
+        every { metadataSync.homeRecentIds() } returns listOf("ral-1")
+        homeRev.value = homeRev.value + 1
+        advanceUntilIdle()
+        assertEquals(5, viewModel.state.value.randomAlbums[0].rating)
+        assertEquals("Rated Album", viewModel.state.value.randomAlbums[0].name)
+    }
+
+    @Test
+    fun `home recent revision new ids repaints from room`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS) } returns "12"
+        every { storage.get(SecureStorage.KEY_HOME_RECENT_TTL_MINUTES) } returns "5"
+        coEvery { api.getArtists(any()) } returns buildArtistResponse(emptyList())
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns buildAlbumListResponse(emptyList())
+        val metadataDaoLocal: CachedMetadataDao = mockk(relaxed = true)
+        coEvery { metadataDaoLocal.getAlbumsByIds(listOf("old-1")) } returns listOf(
+            CachedAlbumEntity(id = "old-1", name = "Old", artist = "A"),
+        )
+        coEvery { metadataDaoLocal.getAlbumsByIds(listOf("new-1")) } returns listOf(
+            CachedAlbumEntity(id = "new-1", name = "New From Sync", artist = "B"),
+        )
+        val homeRev = MutableStateFlow(0L)
+        val metadataSync = mockk<MetadataSyncWorker>(relaxed = true)
+        every { metadataSync.homeRecentRevision } returns homeRev
+        every { metadataSync.homeRecentIds() } returns listOf("old-1")
+        every { metadataSync.homeRecentFetchedMs() } returns System.currentTimeMillis()
+
+        viewModel =
+            LibraryViewModel(
+                api, trackDao, genreDao, genreMixDao, playlistDao,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                metadataDaoLocal,
+                metadataSync,
+                downloadManager, storage, playbackManager,
+                mockk<OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                dailyMixRepository = dailyMixRepository,
+                ioDispatcher = testDispatcher,
+            )
+        viewModel.state.first { it.randomAlbums.any { a -> a.id == "old-1" } }
+        advanceUntilIdle()
+
+        every { metadataSync.homeRecentIds() } returns listOf("new-1")
+        homeRev.value = homeRev.value + 1
+        advanceUntilIdle()
+
+        assertEquals("new-1", viewModel.state.value.randomAlbums[0].id)
+        assertEquals("New From Sync", viewModel.state.value.randomAlbums[0].name)
+        coVerify(exactly = 0) { api.getAlbumList2("newest", 10, 0, any()) }
     }
 
     @Test

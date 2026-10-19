@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class SyncStatus(
@@ -172,6 +173,10 @@ class MetadataSyncWorker(
         /** Why the last syncNowAsync returned null / skipped (empty when ran). */
         const val PREF_LAST_SYNC_SKIP_REASON = "last_sync_skip_reason"
 
+        /** Last WorkManager SyncScheduleWorker attempt (diagnostics / ADR-0109 amend). */
+        const val PREF_LAST_WM_ATTEMPT_MS = "last_wm_attempt_ms"
+        const val PREF_LAST_WM_SKIP_REASON = "last_wm_skip_reason"
+
         const val PREF_HOME_RECENT_IDS = HomeRecentCache.PREF_HOME_RECENT_IDS
         const val PREF_HOME_RECENT_FETCHED_MS = HomeRecentCache.PREF_HOME_RECENT_FETCHED_MS
 
@@ -237,6 +242,14 @@ class MetadataSyncWorker(
     /** Observable sync status — SyncingScreen observes for progress display */
     private val _status = MutableStateFlow(SyncStatus())
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
+
+    /**
+     * In-memory revision bumped only by [writeHomeRecentSnapshot] (not touch).
+     * LibraryViewModel collects to repaint Home Recently Added after sync warm
+     * while process is alive (ADR-0109 amend). Resets on process death.
+     */
+    private val _homeRecentRevision = MutableStateFlow(0L)
+    val homeRecentRevision: StateFlow<Long> = _homeRecentRevision.asStateFlow()
 
     fun start(initialDelayMs: Long = 2000L) {
         syncJob = scope.launch {
@@ -793,16 +806,31 @@ class MetadataSyncWorker(
 
     fun writeHomeRecentSnapshot(orderedIds: List<String>) {
         HomeRecentCache.writeSnapshot(HomeRecentCache.prefs(context), orderedIds)
+        _homeRecentRevision.update { it + 1 }
     }
 
     /** Backoff Home newest poll after timeout/empty without wiping snapshot ids (ADR-0112). */
     fun touchHomeRecentFetched() {
         HomeRecentCache.touchFetchedMs(HomeRecentCache.prefs(context))
+        // Do not bump homeRecentRevision — timeout/empty must not force Room repaint.
     }
 
     fun homeRecentIds(): List<String> = HomeRecentCache.readIds(HomeRecentCache.prefs(context))
 
     fun homeRecentFetchedMs(): Long = HomeRecentCache.readFetchedMs(HomeRecentCache.prefs(context))
+
+    fun lastWmAttemptMs(): Long = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getLong(PREF_LAST_WM_ATTEMPT_MS, 0L)
+
+    fun lastWmSkipReason(): String = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getString(PREF_LAST_WM_SKIP_REASON, "") ?: ""
+
+    fun recordWmAttempt(skipReason: String = "", nowMs: Long = System.currentTimeMillis()) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putLong(PREF_LAST_WM_ATTEMPT_MS, nowMs)
+            .putString(PREF_LAST_WM_SKIP_REASON, skipReason)
+            .apply()
+    }
 
     private fun parseAlbumMap(m: Map<*, *>): CachedAlbumEntity? {
         val id = m["id"] as? String ?: return null

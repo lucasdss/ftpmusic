@@ -71,6 +71,27 @@ class MetadataSyncWorkerTest {
     }
 
     @Test
+    fun `writeHomeRecentSnapshot bumps revision atomically and touch does not`() {
+        assertEquals(0L, worker.homeRecentRevision.value)
+        worker.writeHomeRecentSnapshot(listOf("a1", "a2"))
+        assertEquals(1L, worker.homeRecentRevision.value)
+        worker.writeHomeRecentSnapshot(listOf("a1"))
+        assertEquals(2L, worker.homeRecentRevision.value)
+        val beforeTouch = worker.homeRecentRevision.value
+        worker.touchHomeRecentFetched()
+        assertEquals(beforeTouch, worker.homeRecentRevision.value)
+    }
+
+    @Test
+    fun `recordWmAttempt persists attempt stamp and skip reason`() {
+        worker.recordWmAttempt(skipReason = "cooldown", nowMs = 12345L)
+        verify {
+            prefsEditor.putLong(MetadataSyncWorker.PREF_LAST_WM_ATTEMPT_MS, 12345L)
+            prefsEditor.putString(MetadataSyncWorker.PREF_LAST_WM_SKIP_REASON, "cooldown")
+        }
+    }
+
+    @Test
     fun `syncAlbums fetches single page and caches`() = runTest {
         val albumListResponse = mapOf(
             "subsonic-response" to mapOf(

@@ -94,8 +94,10 @@ daily-mix seed → populate `tracks` → FTS rebuild → **imported playlists re
 
 - Snapshot: prefs ordered ids + `fetched_at`; paint from `cached_albums`.
 - TTL default 5m; clamp **1 … Sync Interval minutes**.
-- Home open: local first; network only if stale.
+- Home open **and RESUMED** (`onHomeResume`): local first; network only if stale.
 - Sync album phase also writes snapshot (DELTA reuse newest pages; FULL `newest`×10).
+- Snapshot write bumps in-memory `homeRecentRevision`; VM repaints when ids change
+  (id-equality guard preserves API ratings). See `HOME_RECENTLY_ADDED_BEHAVIOR_REPORT.md`.
 
 ## WorkManager completion (ADR-0068)
 

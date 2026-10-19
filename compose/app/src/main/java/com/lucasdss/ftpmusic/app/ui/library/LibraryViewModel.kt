@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.joinAll
@@ -305,6 +306,36 @@ class LibraryViewModel @Inject constructor(
         loadFavorites()
         observeFavorites()
         observeLocalOnly()
+        observeHomeRecentRevision()
+    }
+
+    /**
+     * Home RESUMED entry (ADR-0109 amend): refresh strips including Recently Added TTL.
+     * Extracted for unit testability without Compose lifecycle harness.
+     */
+    fun onHomeResume() {
+        refreshRecentlyPlayed()
+        loadGenres()
+        loadDailyMixes()
+        refreshHomePrefs()
+        healEmptyLedger()
+        loadPlaylists()
+        loadRandomAlbums()
+    }
+
+    /**
+     * Sync warm writes prefs then bumps [MetadataSyncWorker.homeRecentRevision].
+     * Repaint Room snapshot only when ordered ids actually change — same-id
+     * self-bump from [loadRecentlyAddedHome] must not strip API `rating` stars.
+     */
+    private fun observeHomeRecentRevision() {
+        viewModelScope.launch {
+            metadataSyncWorker.homeRecentRevision.drop(1).collect {
+                val ids = metadataSyncWorker.homeRecentIds()
+                if (ids == _state.value.randomAlbums.map { album -> album.id }) return@collect
+                paintHomeRecentFromSnapshot(ids)
+            }
+        }
     }
 
     /** Airplane / Simulate Offline flip → reload browse surfaces (ADR 0051). */

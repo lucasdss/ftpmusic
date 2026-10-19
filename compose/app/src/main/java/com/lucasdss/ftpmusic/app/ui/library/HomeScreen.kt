@@ -82,16 +82,11 @@ fun HomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAlbumSheet by remember { mutableStateOf<com.lucasdss.ftpmusic.app.data.model.Album?>(null) }
 
-    // Refresh recently played each time Home becomes visible
+    // ADR-0109 amend: TTL-check Recently Added on resume (with other Home refresh).
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            viewModel.refreshRecentlyPlayed()
-            viewModel.loadGenres()
-            viewModel.loadDailyMixes()
-            viewModel.refreshHomePrefs()
-            viewModel.healEmptyLedger()
-            viewModel.loadPlaylists()
+            viewModel.onHomeResume()
         }
     }
 
