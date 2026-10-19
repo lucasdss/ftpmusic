@@ -774,7 +774,11 @@ class MetadataSyncWorker(
         } else {
             fetchNewestAlbums(params, HomeRecentCache.HOME_RECENT_LIMIT)
         }
-        if (recent.isEmpty()) return
+        if (recent.isEmpty()) {
+            // Stamp TTL so empty newest does not leave Home re-hitting on every open.
+            touchHomeRecentFetched()
+            return
+        }
         if (mode == LibrarySyncMode.FULL) {
             metadataDao.upsertAlbumsPreserveEnrich(recent)
             try {

@@ -61,6 +61,7 @@ class SyncScheduleWorker @AssistedInject constructor(
             if (phase == "error") {
                 Log.w("ftpmusic-work", "Periodic sync ended in error phase — retry")
                 DiagnosticLog.w("ftpmusic-work", "periodic sync error phase — retry")
+                metadataSyncWorker.recordWmAttempt(skipReason = "error")
                 return if (runAttemptCount < 3) Result.retry() else Result.failure()
             }
             // ADR-0140: piggyback Play update check; never fail WM on probe errors.
@@ -78,6 +79,7 @@ class SyncScheduleWorker @AssistedInject constructor(
         } catch (e: Exception) {
             Log.w("ftpmusic-work", "Sync work failed: ${e.message}", e)
             DiagnosticLog.e("ftpmusic-work", "periodic sync failed: ${e.message}", e)
+            metadataSyncWorker.recordWmAttempt(skipReason = "exception")
             if (runAttemptCount < 3) Result.retry() else Result.failure()
         }
     }

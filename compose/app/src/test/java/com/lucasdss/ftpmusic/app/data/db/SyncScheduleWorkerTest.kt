@@ -165,6 +165,7 @@ class SyncScheduleWorkerTest {
         every { worker.runAttemptCount } returns 1
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Retry)
+        verify { metadataSyncWorker.recordWmAttempt(skipReason = "error", nowMs = any()) }
     }
 
     @Test
@@ -192,6 +193,7 @@ class SyncScheduleWorkerTest {
         every { worker.runAttemptCount } returns 1
         val result = worker.doWork()
         assertTrue(result is ListenableWorker.Result.Retry)
+        verify { metadataSyncWorker.recordWmAttempt(skipReason = "exception", nowMs = any()) }
     }
 
     @Test

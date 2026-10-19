@@ -71,6 +71,26 @@ class MetadataSyncWorkerTest {
     }
 
     @Test
+    fun `refreshHomeRecent empty newest stamps TTL without snapshot write`() = runTest {
+        coEvery {
+            api.getAlbumList2(type = "newest", size = any(), offset = any(), auth = any())
+        } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "albumList2" to mapOf("album" to emptyList<Any>()),
+            ),
+        )
+        val beforeRev = worker.homeRecentRevision.value
+        worker.refreshHomeRecentAfterAlbumSync(
+            LibrarySyncMode.FULL,
+            emptyList(),
+            emptyMap(),
+        )
+        assertEquals(beforeRev, worker.homeRecentRevision.value)
+        verify { prefsEditor.putLong(HomeRecentCache.PREF_HOME_RECENT_FETCHED_MS, any()) }
+    }
+
+    @Test
     fun `writeHomeRecentSnapshot bumps revision atomically and touch does not`() {
         assertEquals(0L, worker.homeRecentRevision.value)
         worker.writeHomeRecentSnapshot(listOf("a1", "a2"))

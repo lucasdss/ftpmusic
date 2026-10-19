@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -180,9 +181,9 @@ fun rememberCollectionCoverEditController(
     onIdleDismiss: () -> Unit = {},
 ): CollectionCoverEditController {
     val coverStore = rememberCollectionCoverStore()
-    var showSheet by remember { mutableStateOf(false) }
-    var showAlbumPicker by remember { mutableStateOf(false) }
-    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+    var showSheet by rememberSaveable { mutableStateOf(false) }
+    var showAlbumPicker by rememberSaveable { mutableStateOf(false) }
+    var pendingCropUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),

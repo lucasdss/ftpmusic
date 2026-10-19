@@ -93,7 +93,7 @@ fun settingsTextFieldColors() = OutlinedTextFieldDefaults.colors(
 @Composable
 fun SectionLabel(title: String) {
     Text(
-        title,
+        title.uppercase(),
         color = Dimmed,
         fontSize = textLabelS(),
         fontWeight = FontWeight.Bold,
@@ -146,7 +146,6 @@ fun SectionToggleRow(
     testTagId: String? = null,
 ) {
     val tag = testTagId ?: "settings_toggle_${label.replace(" ", "_")}"
-    val stateDesc = if (checked) "On" else "Off"
     Row(
         Modifier
             .fillMaxWidth()
@@ -157,9 +156,7 @@ fun SectionToggleRow(
                 role = Role.Switch,
             )
             .padding(horizontal = spacingL(), vertical = spacingM())
-            .semantics(mergeDescendants = true) {
-                stateDescription = stateDesc
-            }
+            .semantics(mergeDescendants = true) {}
             .testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
     ) {

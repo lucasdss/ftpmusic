@@ -111,7 +111,8 @@ fun LibraryContent(
     // The playlist targeted by the confirm dialog — captured when the menu item
     // is tapped, because menuPlaylist is cleared to close the menu.
     var pendingRemovePlaylist by remember { mutableStateOf<PlaylistView?>(null) }
-    var coverEditPlaylist by remember { mutableStateOf<PlaylistView?>(null) }
+    var coverEditPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
+    val playlistsForCover by viewModel.state.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
@@ -122,31 +123,34 @@ fun LibraryContent(
             viewModel.clearCoverToast()
         }
     }
+    val coverEditPlaylist = coverEditPlaylistId?.let { id ->
+        playlistsForCover.playlists.find { it.id == id }
+    }
     coverEditPlaylist?.let { pl ->
         val coverEdit = rememberCollectionCoverEditController(
             title = pl.name,
             hasFixedCover = pl.fixedCoverKind != null,
             onLibraryCover = { id ->
                 viewModel.setPlaylistFixedCoverFromLibrary(pl.id, id)
-                coverEditPlaylist = null
+                coverEditPlaylistId = null
             },
             onCroppedBitmap = { bmp ->
                 viewModel.setPlaylistFixedCoverFromCropped(pl.id, bmp)
-                coverEditPlaylist = null
+                coverEditPlaylistId = null
             },
             onClear = {
                 viewModel.clearPlaylistFixedCover(pl.id)
-                coverEditPlaylist = null
+                coverEditPlaylistId = null
             },
             onLoadFailed = {
                 viewModel.notifyCoverCropLoadFailed()
-                coverEditPlaylist = null
+                coverEditPlaylistId = null
             },
             onExportFailed = {
                 viewModel.notifyCoverCropExportFailed()
-                coverEditPlaylist = null
+                coverEditPlaylistId = null
             },
-            onIdleDismiss = { coverEditPlaylist = null },
+            onIdleDismiss = { coverEditPlaylistId = null },
         )
         LaunchedEffect(pl.id) { coverEdit.openSheet() }
     }
@@ -530,7 +534,7 @@ fun LibraryContent(
                                                         .clip(RoundedCornerShape(cornerM()))
                                                         .combinedClickable(
                                                             onClick = { onPlaylistClick(pl.id) },
-                                                            onLongClick = { coverEditPlaylist = pl },
+                                                            onLongClick = { coverEditPlaylistId = pl.id },
                                                         )
                                                         .semantics { testTag = "library_playlist_cover_${pl.id}" },
                                                 )

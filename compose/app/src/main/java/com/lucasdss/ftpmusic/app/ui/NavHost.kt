@@ -598,6 +598,7 @@ fun FtpmusicNavHost() {
                             onComplete = {
                                 navController.navigate(returnTo) {
                                     popUpTo(SYNCING_ROUTE_PATTERN) { inclusive = true }
+                                    launchSingleTop = true
                                 }
                             },
                         )
@@ -769,7 +770,9 @@ fun FtpmusicNavHost() {
                     composable("settings") {
                         SettingsScreen(
                             onBack = { navController.popBackStack() },
-                            onNavigate = { route -> navController.navigate(route) },
+                            onNavigate = { route ->
+                                navController.navigate(route) { launchSingleTop = true }
+                            },
                             onCustomMixes = { navController.navigate("customMixes") },
                             onDownloads = { navController.navigate("downloads") },
                             onProfile = { navController.navigate("profile") },
@@ -816,7 +819,9 @@ fun FtpmusicNavHost() {
                                 ) {
                                     return@NetworkSettingsScreen
                                 }
-                                navController.navigate(syncingRoute("settings"))
+                                val origin = navController.currentBackStackEntry?.destination?.route
+                                    ?: com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NETWORK
+                                navController.navigate(syncingRoute(origin))
                             },
                             onRebuildMixes = { navController.navigate("rebuildmix") },
                             onCustomMixes = { navController.navigate("customMixes") },

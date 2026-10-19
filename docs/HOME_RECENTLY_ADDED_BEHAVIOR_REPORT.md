@@ -16,7 +16,7 @@ Caveman terse. ADR-0109 + amend (resume TTL + revision StateFlow).
 ## Load path
 
 1. `onHomeResume()` / init / connect → `loadRecentlyAddedHome`
-2. Paint prefs ids from Room
+2. Paint prefs ids from Room **only when** strip empty or ids changed (preserves ratings)
 3. If TTL stale + online → newest×10 → write snapshot → state
 4. If ordered ids changed → `syncNowAsync(DELTA)`
 5. Empty/timeout → `touchHomeRecentFetched` (no revision bump)
@@ -24,7 +24,11 @@ Caveman terse. ADR-0109 + amend (resume TTL + revision StateFlow).
 ## Sync warm → UI
 
 `writeHomeRecentSnapshot` → bump `homeRecentRevision` → VM collector →
-`paintHomeRecentFromSnapshot` **iff** ids ≠ current strip ids.
+`paintHomeRecentFromSnapshot` **iff** ids ≠ current strip ids (cold start, revision with
+new ids, or empty strip). Fresh-TTL resume with same ids **skips** Room paint so API
+`userRating` stars stay on the strip (Room `CachedAlbumEntity` has no rating column).
+
+Empty sync-warm newest → `touchHomeRecentFetched()` (TTL backoff; no revision bump).
 
 ## Diagnostics
 

@@ -252,9 +252,6 @@ object SettingsIndex {
         ),
     )
 
-    fun nodesByGroup(): Map<Int, List<SettingNode>> =
-        nodes.groupBy { it.groupRes }
-
     /**
      * Case-insensitive match on title (resolved), live summary, and curated keywords.
      */

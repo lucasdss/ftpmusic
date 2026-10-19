@@ -28,7 +28,8 @@ import kotlinx.coroutines.withContext
  * Atomic write (temp + rename) so process death never leaves a trusted truncated file.
  *
  * Device UX (ADR 0150): crop UI → [importCroppedBitmap] → JPEG ≤[MAX_EDGE_PX] / ≤[MAX_OUTPUT_BYTES].
- * Large gallery files decode via ImageDecoder / stream subsample (no 8 MiB hard reject on crop path).
+ * ImageDecoder (API 28+) streams with target size. URI fallback uses two-pass
+ * BitmapFactory (no full-file byte[]). InputStream test seam caps at [MAX_IMPORT_BYTES].
  */
 @Singleton
 class CollectionCoverStore @Inject constructor(@ApplicationContext private val context: Context) {
@@ -176,12 +177,43 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
     private fun sanitizeId(id: String): String = id.replace(Regex("[^A-Za-z0-9._-]"), "_")
 
     private fun decodeUriOriented(uri: Uri, maxEdge: Int): Bitmap? {
+        // Empty files: some ImageDecoder stubs still return a tiny bitmap.
+        if (uriByteLength(uri) == 0L) return null
         val fromDecoder = decodeWithImageDecoder(uri, maxEdge)
         if (fromDecoder != null) return fromDecoder
+        // Stream subsample without buffering the whole file (OOM-safe on API 26–27).
+        return decodeUriWithBitmapFactory(uri, maxEdge)
+    }
+
+    private fun uriByteLength(uri: Uri): Long {
         return try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                decodeStreamOriented(input, maxEdge)
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+        } catch (_: Exception) {
+            -1L
+        }
+    }
+
+    /**
+     * Two-pass [BitmapFactory] decode from [uri] (bounds → sampled pixels) + EXIF.
+     * Never materializes the full file as a byte[].
+     */
+    private fun decodeUriWithBitmapFactory(uri: Uri, maxEdge: Int): Bitmap? {
+        return try {
+            val resolver = context.contentResolver
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            val w = bounds.outWidth
+            val h = bounds.outHeight
+            if (w <= 0 || h <= 0) return null
+            var sample = 1
+            while (w / (sample * 2) >= maxEdge || h / (sample * 2) >= maxEdge) {
+                sample *= 2
             }
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val raw = resolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return null
+            applyExifOrientationUri(raw, uri)
         } catch (_: Exception) {
             null
         }
@@ -197,7 +229,7 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
                 val w = info.size.width
                 val h = info.size.height
                 val longest = max(w, h)
-                if (longest > maxEdge && longest > 0) {
+                if (longest > maxEdge) {
                     val scale = maxEdge.toFloat() / longest
                     decoder.setTargetSize(
                         (w * scale).roundToInt().coerceAtLeast(1),
@@ -212,10 +244,11 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
 
     /**
      * Bounds-first stream decode + EXIF orientation. Unit-test seam (Robolectric).
+     * Buffers at most [MAX_IMPORT_BYTES]; larger streams return null (OOM guard).
      */
     internal fun decodeStreamOriented(input: InputStream, maxEdge: Int): Bitmap? {
         return try {
-            val buffered = input.readBytes()
+            val buffered = readStreamBytesCapped(input, MAX_IMPORT_BYTES) ?: return null
             if (buffered.isEmpty()) return null
             decodeSampledOriented(buffered, maxEdge)
         } catch (_: Exception) {
@@ -223,22 +256,27 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
         }
     }
 
+    /** Copy stream up to [maxBytes]; null if the stream exceeds the ceiling. */
+    internal fun readStreamBytesCapped(input: InputStream, maxBytes: Long): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > maxBytes) return null
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
+
     /** Legacy full-buffer read; retained for tests / diagnostics. */
     internal fun readUriBytesCapped(uri: Uri): ByteArray? {
         val resolver = context.contentResolver
         return try {
             resolver.openInputStream(uri)?.use { input ->
-                val out = ByteArrayOutputStream()
-                val buf = ByteArray(8192)
-                var total = 0L
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    total += n
-                    if (total > MAX_IMPORT_BYTES) return@use null
-                    out.write(buf, 0, n)
-                }
-                out.toByteArray()
+                readStreamBytesCapped(input, MAX_IMPORT_BYTES)
             }
         } catch (_: Exception) {
             null
@@ -273,6 +311,20 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
                 ExifInterface.TAG_ORIENTATION,
                 ExifInterface.ORIENTATION_NORMAL,
             )
+        } catch (_: Exception) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
+        return applyOrientationMatrix(bitmap, orientation)
+    }
+
+    private fun applyExifOrientationUri(bitmap: Bitmap, uri: Uri): Bitmap {
+        val orientation = try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                ExifInterface(stream).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL,
+                )
+            } ?: ExifInterface.ORIENTATION_NORMAL
         } catch (_: Exception) {
             ExifInterface.ORIENTATION_NORMAL
         }
@@ -350,14 +402,19 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
                     val out = compressJpeg(working, q) ?: continue
                     if (out.size <= MAX_OUTPUT_BYTES) return out
                 }
+                // Already at smallest edge with full quality ladder — reject.
+                if (smaller === working && edge == FALLBACK_EDGES_PX.last()) return null
             }
-            val last = compressJpeg(working, 65) ?: return null
-            return last.takeIf { it.size <= MAX_OUTPUT_BYTES }
+            return null
         } finally {
             if (ownedWorking) working.recycle()
         }
     }
 
+    /**
+     * Flatten translucent pixels onto opaque black before JPEG (no alpha channel).
+     * Matte color is intentional product choice (ADR-0150).
+     */
     private fun flattenToRgb(bitmap: Bitmap): Bitmap {
         if (bitmap.config == Bitmap.Config.RGB_565 || !bitmap.hasAlpha()) return bitmap
         val flat = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)

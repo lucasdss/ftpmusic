@@ -192,7 +192,11 @@ fun ServerSettingsScreen(
                             IconButton(onClick = { showPassword = !showPassword }) {
                                 Icon(
                                     if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    null,
+                                    contentDescription = if (showPassword) {
+                                        "Hide password"
+                                    } else {
+                                        "Show password"
+                                    },
                                     tint = Color(0xFF888888),
                                 )
                             }

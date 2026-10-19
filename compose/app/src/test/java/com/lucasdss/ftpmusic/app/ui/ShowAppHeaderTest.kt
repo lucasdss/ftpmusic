@@ -28,6 +28,7 @@ class ShowAppHeaderTest {
             "settings",
             "profile",
             "customMixes",
+            "downloads",
         )
             .forEach { assertFalse(it, showAppHeaderForRoute(it)) }
     }
@@ -41,6 +42,10 @@ class ShowAppHeaderTest {
             "genre/Rock",
             "mix/daily1",
             "syncing?returnTo=home",
+            "settings/server",
+            "settings/typography",
+            "settings/network",
+            "settings/storage",
         ).forEach { assertFalse(it, showAppHeaderForRoute(it)) }
     }
 }

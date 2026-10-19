@@ -7,7 +7,7 @@ Related: ADR 0115, ADR 0125, ADR 0150
 
 Collection art (Daily Mix + playlist) always resolves: **fixed → derived track/album → CoverArtFallbackService → lettermark**. Never blank MusicNote as sole chrome.
 
-Device gallery covers go through **square pan/zoom crop** then **JPEG ≤1024px / ≤512 KiB** (ADR 0125 / 0150). Large files decode via ImageDecoder / stream subsample — **no 8 MiB hard reject** on crop path. Long-press cover art opens shared Library / Device / Clear sheet on all editable surfaces.
+Device gallery covers go through **square pan/zoom crop** then **JPEG ≤1024px / ≤512 KiB** (ADR 0125 / 0150). Large files decode via ImageDecoder or two-pass BitmapFactory (no full-file RAM buffer). InputStream test seam still caps at 8 MiB. Cover edit = **playlists + Daily Mixes only**. Long-press (and detail tap) opens shared Library / Device / Clear sheet.
 
 ## Resolution order
 
@@ -32,7 +32,7 @@ Device gallery covers go through **square pan/zoom crop** then **JPEG ≤1024px 
 
 1. Library / Device / Clear via buttons **or** long-press → `CollectionCoverEditSheet`
 2. Device → `PickVisualMedia(ImageOnly)` → `CoverCropDialog`
-3. Decode: ImageDecoder (HEIC/EXIF) or `decodeStreamOriented` subsample ≤2048 — no 8 MiB gate
+3. Decode: ImageDecoder (HEIC/EXIF) or URI BitmapFactory subsample ≤2048 — no full-file byte[]
 4. Crop: square viewport, minScale=fill, max 4×; **Use works at default framing** (pinch optional)
 5. Use → `importCroppedBitmap` → always `.jpg`
 6. Fail load/import → toast (`Could not load image for crop` / `Could not import image`)
@@ -71,7 +71,7 @@ Library album pick skips crop (Navidrome id).
 - Empty tracklist / null art → lettermark (still “proper” tile).
 - Subsonic has no playlist cover upload; Navidrome native image API deferred (auth mismatch).
 - EXIF orientation applied before crop math; HEIC may fail decode → toast.
-- Process death mid-crop: `pendingCropUri` is Compose `remember` (not saveable) → dialog gone; user re-picks. No persistable URI grant needed; no partial LOCAL write.
+- Rotation / process death mid-crop: `pendingCropUri` + sheet flags + Home/Library targets use `rememberSaveable`. Persistable URI grant still not required; no partial LOCAL write on cancel.
 - EXIF orientation applied in `decodeSampledOriented` before crop preview/export.
 - Coil local model key includes `mtime+length` so overwrite refreshes tiles.
 

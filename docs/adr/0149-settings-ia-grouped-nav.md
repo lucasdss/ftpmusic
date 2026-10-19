@@ -36,3 +36,8 @@ use a short grouped navigation list with dedicated sub-pages. Shared UI primitiv
 - SecureStorage keys unchanged.
 - Coverage: prefer package filter note / optional `jacocoSettingsCoverage` for
   `ui/settings` + `SettingsComponents` (≥80% aspirational; do not fail CI if global gate absent).
+- **Header chrome:** `showAppHeaderForRoute` hides exact `settings` / `downloads` and prefix
+  `settings/` so leaf scaffolds are not double-chromed with global AppHeader.
+- **Resync:** Network resync records origin route (`syncing?returnTo=` URL-encoded) and
+  completes with `launchSingleTop` so the user returns to the leaf, not a duplicate hub.
+- **Status tokens:** `StatusOk` / `StatusWarn` are fixed Theme colors (not scheme-dynamic).

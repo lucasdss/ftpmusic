@@ -23,6 +23,7 @@ private val HEADER_HIDDEN_EXACT = setOf(
     "settings",
     "profile",
     "customMixes",
+    "downloads",
 )
 
 private val HEADER_HIDDEN_PREFIXES = listOf(
@@ -32,4 +33,5 @@ private val HEADER_HIDDEN_PREFIXES = listOf(
     "genre/",
     "mix/",
     "syncing",
+    "settings/",
 )

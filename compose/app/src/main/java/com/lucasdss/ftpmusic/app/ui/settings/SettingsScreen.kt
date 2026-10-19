@@ -76,7 +76,6 @@ fun SettingsScreen(
             SettingsRoutes.PROFILE -> onProfile()
             SettingsRoutes.DOWNLOADS -> onDownloads()
             SettingsRoutes.TYPOGRAPHY -> onTypography()
-            SettingsRoutes.CUSTOM_MIXES -> onCustomMixes()
             else -> onNavigate(route)
         }
     }

@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,7 +86,9 @@ fun HomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val coverToast by viewModel.coverToast.collectAsStateWithLifecycle()
     var showAlbumSheet by remember { mutableStateOf<com.lucasdss.ftpmusic.app.data.model.Album?>(null) }
-    var coverEditTarget by remember { mutableStateOf<HomeCoverEditTarget?>(null) }
+    var coverEditTarget by rememberSaveable(stateSaver = HomeCoverEditTargetSaver) {
+        mutableStateOf<HomeCoverEditTarget?>(null)
+    }
     val context = LocalContext.current
     LaunchedEffect(coverToast) {
         coverToast?.let {
@@ -813,6 +817,10 @@ private fun StarRating(rating: Int) {
     }
 }
 
+/**
+ * Cover edit targets on Home — playlists + Daily Mixes only (albums intentionally
+ * absent; album long-press opens [AlbumCardActionSheet]). ADR-0150.
+ */
 private sealed class HomeCoverEditTarget {
     abstract val title: String
     abstract val hasFixedCover: Boolean
@@ -829,6 +837,32 @@ private sealed class HomeCoverEditTarget {
         override val hasFixedCover: Boolean,
     ) : HomeCoverEditTarget()
 }
+
+private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
+    save = { target ->
+        when (target) {
+            is HomeCoverEditTarget.Mix -> listOf("mix", target.id, target.title, target.hasFixedCover)
+            is HomeCoverEditTarget.Playlist -> listOf("pl", target.id, target.title, target.hasFixedCover)
+            null -> emptyList()
+        }
+    },
+    restore = { list ->
+        if (list.isEmpty()) return@listSaver null
+        when (list[0] as String) {
+            "mix" -> HomeCoverEditTarget.Mix(
+                id = (list[1] as Number).toLong(),
+                title = list[2] as String,
+                hasFixedCover = list[3] as Boolean,
+            )
+            "pl" -> HomeCoverEditTarget.Playlist(
+                id = list[1] as String,
+                title = list[2] as String,
+                hasFixedCover = list[3] as Boolean,
+            )
+            else -> null
+        }
+    },
+)
 
 @Composable
 private fun GenreMixCard(

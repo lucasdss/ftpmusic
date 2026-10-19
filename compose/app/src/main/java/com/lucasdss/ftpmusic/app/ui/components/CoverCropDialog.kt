@@ -22,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -31,6 +32,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -102,27 +105,53 @@ fun CoverCropDialog(
     var offsetY by rememberSaveable { mutableFloatStateOf(0f) }
     var viewportPx by rememberSaveable { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
+    // Ownership ref so dismiss / cancel-before-assign can recycle without double-free.
+    val ownedDecode = remember { arrayOf<Bitmap?>(null) }
+
+    val onLoadFailedState = rememberUpdatedState(onLoadFailed)
+
+    fun releaseOwnedDecode() {
+        ownedDecode[0]?.recycle()
+        ownedDecode[0] = null
+        bitmap = null
+    }
 
     LaunchedEffect(uri) {
         loading = true
         scale = 0f
         offsetX = 0f
         offsetY = 0f
-        val decoded = coverStore.decodeForCrop(uri)
-        if (decoded == null) {
-            loading = false
-            onLoadFailed()
-            onDismiss()
-        } else {
-            bitmap = decoded
-            loading = false
+        releaseOwnedDecode()
+        var decoded: Bitmap? = null
+        try {
+            decoded = coverStore.decodeForCrop(uri)
+            ensureActive()
+            if (decoded == null) {
+                loading = false
+                // Single signal — caller maps load-fail to dismiss/toast.
+                onLoadFailedState.value()
+            } else {
+                ownedDecode[0] = decoded
+                bitmap = decoded
+                decoded = null
+                loading = false
+            }
+        } finally {
+            decoded?.recycle()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            ownedDecode[0]?.recycle()
+            ownedDecode[0] = null
         }
     }
 
     Dialog(
         onDismissRequest = {
             if (!exporting) {
-                bitmap?.recycle()
+                releaseOwnedDecode()
                 onDismiss()
             }
         },
@@ -299,14 +328,16 @@ fun CoverCropDialog(
                             }
                             exporting = false
                             if (cropped != null) {
+                                ownedDecode[0] = null
                                 src.recycle()
                                 bitmap = null
                                 onConfirm(cropped)
                             } else {
-                                onExportFailed()
+                                ownedDecode[0] = null
                                 src.recycle()
                                 bitmap = null
-                                onDismiss()
+                                // Single signal — caller maps export-fail to dismiss/toast.
+                                onExportFailed()
                             }
                         }
                     },

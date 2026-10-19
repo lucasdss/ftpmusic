@@ -190,7 +190,7 @@ fun AdvancedSettingsScreen(
                             }) {
                                 Icon(
                                     Icons.Default.Close,
-                                    null,
+                                    contentDescription = "Remove custom header",
                                     tint = Color(0xFF666666),
                                     modifier = Modifier.size(18.dp),
                                 )

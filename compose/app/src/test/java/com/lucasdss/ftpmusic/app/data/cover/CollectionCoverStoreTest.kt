@@ -115,6 +115,18 @@ class CollectionCoverStoreTest {
     }
 
     @Test
+    fun `decodeStreamOriented rejects oversize stream without buffering all bytes`() {
+        val oversize = ByteArray((CollectionCoverStore.MAX_IMPORT_BYTES + 1).toInt()) { 0x01 }
+        assertNull(store.decodeStreamOriented(oversize.inputStream(), 2048))
+        assertNull(
+            store.readStreamBytesCapped(
+                oversize.inputStream(),
+                CollectionCoverStore.MAX_IMPORT_BYTES,
+            ),
+        )
+    }
+
+    @Test
     fun `importFromUri downsamples oversized dimensions`() = runBlocking {
         val src = File(context.cacheDir, "wide.jpg").also {
             it.writeBytes(encodedJpeg(4096, 4096))

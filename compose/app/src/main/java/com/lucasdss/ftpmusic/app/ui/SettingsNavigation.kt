@@ -1,5 +1,6 @@
 package com.lucasdss.ftpmusic.app.ui
 
+import android.net.Uri
 import androidx.navigation.NavOptionsBuilder
 
 /** Settings destination — off bottom nav (ADR-0055); stack-push entry (ADR-0056). */
@@ -11,7 +12,8 @@ const val SETTINGS_ROUTE = "settings"
  */
 const val SYNCING_ROUTE_PATTERN = "syncing?returnTo={returnTo}"
 
-fun syncingRoute(returnTo: String = "home"): String = "syncing?returnTo=$returnTo"
+fun syncingRoute(returnTo: String = "home"): String =
+    "syncing?returnTo=${Uri.encode(returnTo)}"
 
 /**
  * Documented Settings entry policy (ADR-0056 / market stack-back).

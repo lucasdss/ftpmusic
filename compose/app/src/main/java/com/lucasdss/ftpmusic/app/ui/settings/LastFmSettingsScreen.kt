@@ -167,7 +167,11 @@ fun LastFmSettingsScreen(
                             IconButton(onClick = { showLastFmKey = !showLastFmKey }) {
                                 Icon(
                                     if (showLastFmKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    null,
+                                    contentDescription = if (showLastFmKey) {
+                                        "Hide API key"
+                                    } else {
+                                        "Show API key"
+                                    },
                                     tint = Color(0xFF888888),
                                 )
                             }

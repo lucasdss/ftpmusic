@@ -19,6 +19,8 @@ import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Singleton
 class PlaylistRepository @Inject constructor(
@@ -451,9 +453,10 @@ class PlaylistRepository @Inject constructor(
     suspend fun setFixedCoverFromCroppedBitmap(
         playlistId: String,
         bitmap: android.graphics.Bitmap,
-    ): String? {
-        return try {
-            val relative = coverStore.importCroppedBitmap(bitmap, COVER_PREFIX, playlistId) ?: return null
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val relative = coverStore.importCroppedBitmap(bitmap, COVER_PREFIX, playlistId)
+                ?: return@withContext null
             setFixedCover(playlistId, CollectionCoverKind.LOCAL, relative)
             relative
         } finally {

@@ -1529,7 +1529,12 @@ class LibraryViewModel @Inject constructor(
     private suspend fun loadRecentlyAddedHome() {
         try {
             val previousIds = metadataSyncWorker.homeRecentIds()
-            paintHomeRecentFromSnapshot(previousIds)
+            // Skip same-id Room repaint — snapshot omits userRating and would wipe
+            // API-painted stars on fresh-TTL resume (ADR-0109 / release fix).
+            val currentIds = _state.value.randomAlbums.map { it.id }
+            if (previousIds.isEmpty() || previousIds != currentIds) {
+                paintHomeRecentFromSnapshot(previousIds)
+            }
 
             if (isLocalOnly()) {
                 if (_state.value.randomAlbums.isEmpty()) {
@@ -2145,13 +2150,17 @@ class LibraryViewModel @Inject constructor(
             bitmap.recycle()
             return
         }
-        viewModelScope.launch {
-            val relative = playlistRepo.setFixedCoverFromCroppedBitmap(playlistId, bitmap)
+        val owned = bitmap
+        val job = viewModelScope.launch {
+            val relative = playlistRepo.setFixedCoverFromCroppedBitmap(playlistId, owned)
             if (relative == null) {
                 _coverToast.value = "Could not import image"
             } else {
                 loadPlaylists()
             }
+        }
+        job.invokeOnCompletion { cause ->
+            if (cause != null && !owned.isRecycled) owned.recycle()
         }
     }
 
@@ -2173,13 +2182,21 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun setMixFixedCoverFromCropped(mixId: Long, bitmap: android.graphics.Bitmap) {
-        viewModelScope.launch {
-            val relative = dailyMixRepository.setFixedCoverFromCroppedBitmap(mixId, bitmap)
+        if (mixId <= 0L) {
+            bitmap.recycle()
+            return
+        }
+        val owned = bitmap
+        val job = viewModelScope.launch {
+            val relative = dailyMixRepository.setFixedCoverFromCroppedBitmap(mixId, owned)
             if (relative == null) {
                 _coverToast.value = "Could not import image"
             } else {
                 refreshMixCardsAfterCoverChange()
             }
+        }
+        job.invokeOnCompletion { cause ->
+            if (cause != null && !owned.isRecycled) owned.recycle()
         }
     }
 
