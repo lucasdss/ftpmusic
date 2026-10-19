@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Root hub -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_search_hint">Search settings</string>
+    <string name="settings_search_empty">No settings match</string>
+
+    <!-- Groups -->
+    <string name="settings_group_account">Account &amp; server</string>
+    <string name="settings_group_playback">Playback</string>
+    <string name="settings_group_storage">Storage</string>
+    <string name="settings_group_network">Network &amp; data</string>
+    <string name="settings_group_appearance">Appearance</string>
+    <string name="settings_group_notifications">Notifications</string>
+    <string name="settings_group_home">Home &amp; favorites</string>
+    <string name="settings_group_integrations">Integrations</string>
+    <string name="settings_group_about">About</string>
+
+    <!-- Root rows -->
+    <string name="settings_row_server">Server connection</string>
+    <string name="settings_row_profile">Profile</string>
+    <string name="settings_row_playback">Queue &amp; autoplay</string>
+    <string name="settings_row_bluetooth">Bluetooth auto-resume</string>
+    <string name="settings_row_cast">Google Cast</string>
+    <string name="settings_row_storage">Storage &amp; cache</string>
+    <string name="settings_row_downloads">Downloads</string>
+    <string name="settings_row_network">Network &amp; data</string>
+    <string name="settings_row_typography">Text &amp; display size</string>
+    <string name="settings_row_appearance">Track lists</string>
+    <string name="settings_row_notifications">Notifications</string>
+    <string name="settings_row_home">Home &amp; favorites</string>
+    <string name="settings_row_lastfm">Last.fm</string>
+    <string name="settings_row_advanced">Custom HTTP headers</string>
+    <string name="settings_row_about">About &amp; diagnostics</string>
+
+    <!-- Summaries (static / fallbacks) -->
+    <string name="settings_summary_profile">Listening stats &amp; recently played</string>
+    <string name="settings_summary_server_empty">Not configured</string>
+    <string name="settings_summary_continuous_on">Continuous on</string>
+    <string name="settings_summary_continuous_off">Continuous off</string>
+    <string name="settings_summary_bt_off">Off</string>
+    <string name="settings_summary_cast_off">Off</string>
+    <string name="settings_summary_cast_from_phone">From phone</string>
+    <string name="settings_summary_downloads">Pinned offline tracks</string>
+    <string name="settings_summary_typography_suffix">fonts, icons, and cover art</string>
+    <string name="settings_summary_appearance">Reactions, duration, numbers</string>
+    <string name="settings_summary_notifications">Playback &amp; system permission</string>
+    <string name="settings_summary_home_sections">%1$d sections shown</string>
+    <string name="settings_summary_lastfm_saved">Key saved</string>
+    <string name="settings_summary_lastfm_empty">No API key</string>
+    <string name="settings_summary_headers">%1$d headers</string>
+    <string name="settings_summary_about">Version, updates, diagnostics</string>
+
+    <!-- Sub-page titles -->
+    <string name="settings_page_server">Server</string>
+    <string name="settings_page_playback">Playback</string>
+    <string name="settings_page_bluetooth">Bluetooth</string>
+    <string name="settings_page_cast">Cast</string>
+    <string name="settings_page_storage">Storage</string>
+    <string name="settings_page_network">Network &amp; data</string>
+    <string name="settings_page_appearance">Track lists</string>
+    <string name="settings_page_notifications">Notifications</string>
+    <string name="settings_page_home">Home &amp; favorites</string>
+    <string name="settings_page_lastfm">Last.fm</string>
+    <string name="settings_page_advanced">Advanced</string>
+    <string name="settings_page_about">About</string>
+
+    <!-- Notifications page -->
+    <string name="settings_notif_system_title">System notifications</string>
+    <string name="settings_notif_system_ok">Allowed — lock screen and shade can show media controls</string>
+    <string name="settings_notif_system_needed">Open system Settings to allow notifications for this app</string>
+    <string name="settings_notif_playback_subtitle">When off, a minimal silent notification still posts while playing (Android requirement)</string>
+</resources>

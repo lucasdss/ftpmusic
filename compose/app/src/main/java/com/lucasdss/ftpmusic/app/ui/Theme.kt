@@ -36,6 +36,8 @@ val CastActive = BrandTeal
 val CastIdle = Dimmed
 val OfflineYellow = Color(0xFFFFC800)
 val DestructiveRed = Color(0xFFE84040)
+val StatusWarn = Color(0xFFFFB74D)
+val StatusOk = Color(0xFF66BB6A)
 
 private val DarkColorScheme = darkColorScheme(
     primary = BrandTeal,

@@ -769,24 +769,86 @@ fun FtpmusicNavHost() {
                     composable("settings") {
                         SettingsScreen(
                             onBack = { navController.popBackStack() },
+                            onNavigate = { route -> navController.navigate(route) },
+                            onCustomMixes = { navController.navigate("customMixes") },
+                            onDownloads = { navController.navigate("downloads") },
+                            onProfile = { navController.navigate("profile") },
+                            onTypography = { navController.navigate("settings/typography") },
+                        )
+                    }
+                    composable("settings/typography") {
+                        com.lucasdss.ftpmusic.app.ui.settings.TypographySettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.SERVER) {
+                        com.lucasdss.ftpmusic.app.ui.settings.ServerSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.PLAYBACK) {
+                        com.lucasdss.ftpmusic.app.ui.settings.PlaybackSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.BLUETOOTH) {
+                        com.lucasdss.ftpmusic.app.ui.settings.BluetoothSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.CAST) {
+                        com.lucasdss.ftpmusic.app.ui.settings.CastSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.STORAGE) {
+                        com.lucasdss.ftpmusic.app.ui.settings.StorageSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                            onDownloads = { navController.navigate("downloads") },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NETWORK) {
+                        com.lucasdss.ftpmusic.app.ui.settings.NetworkSettingsScreen(
+                            onBack = { navController.popBackStack() },
                             onResyncLibrary = {
                                 if (navController.currentBackStackEntry?.destination?.route?.startsWith("syncing") ==
                                     true
                                 ) {
-                                    return@SettingsScreen
+                                    return@NetworkSettingsScreen
                                 }
                                 navController.navigate(syncingRoute("settings"))
                             },
                             onRebuildMixes = { navController.navigate("rebuildmix") },
                             onCustomMixes = { navController.navigate("customMixes") },
-                            onDownloads = { navController.navigate("downloads") },
-                            onProfile = { navController.navigate("profile") },
-                            onTypography = { navController.navigate("settings/typography") },
-                            onServerSettingsSaved = { /* saved, nothing to do */ },
                         )
                     }
-                    composable("settings/typography") {
-                        com.lucasdss.ftpmusic.app.ui.settings.TypographySettingsScreen(
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.APPEARANCE) {
+                        com.lucasdss.ftpmusic.app.ui.settings.AppearanceSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.NOTIFICATIONS) {
+                        com.lucasdss.ftpmusic.app.ui.settings.NotificationsSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.HOME) {
+                        com.lucasdss.ftpmusic.app.ui.settings.HomeSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.LASTFM) {
+                        com.lucasdss.ftpmusic.app.ui.settings.LastFmSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.ADVANCED) {
+                        com.lucasdss.ftpmusic.app.ui.settings.AdvancedSettingsScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.ABOUT) {
+                        com.lucasdss.ftpmusic.app.ui.settings.AboutSettingsScreen(
                             onBack = { navController.popBackStack() },
                         )
                     }

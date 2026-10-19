@@ -321,6 +321,45 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     )
 }
 
+// ADR-0149: Settings IA package report (ui/settings + SettingsComponents).
+// Aspirational ≥80% line coverage for that slice — informational only (not a CI gate).
+// Compose UI often under-reports under Jacoco; do not fail the build on this task.
+tasks.register<JacocoReport>("jacocoSettingsCoverage") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    val fileFilter = listOf(
+        "**/R.class", "**/R$*.class", "**/BuildConfig.*",
+        "**/Manifest*.*", "**/*Test*.*",
+    )
+    val runtimeJar =
+        "$buildDir/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar"
+    val baseTree = if (file(runtimeJar).exists()) {
+        zipTree(runtimeJar)
+    } else {
+        fileTree("$buildDir/tmp/kotlin-classes/debug")
+    }
+    val settingsTree = baseTree.matching {
+        exclude(fileFilter)
+        include(
+            "**/com/lucasdss/ftpmusic/app/ui/settings/**",
+            "**/com/lucasdss/ftpmusic/app/ui/components/SettingsComponents*",
+        )
+    }
+    sourceDirectories.setFrom(files("$projectDir/src/main/java"))
+    classDirectories.setFrom(files(settingsTree))
+    executionData.setFrom(
+        fileTree("$buildDir") {
+            include(
+                "jacoco/testDebugUnitTest.exec",
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
+            )
+        },
+    )
+}
+
 // Room schema export — enables MigrationTestHelper-based migration tests
 // (see app/schemas/ — committed; used by the coverage/migration test suite).
 ksp {

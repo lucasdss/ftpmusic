@@ -9,7 +9,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Rule
@@ -19,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Compose tests for Settings: Home toggles, Last.fm, Profile nav, stub removal.
+ * Compose tests for Settings hub (nav-only root).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -37,43 +36,11 @@ class SettingsScreenComposeTest {
         return vm
     }
 
-    private fun render(vm: SettingsViewModel) {
+    private fun render(vm: SettingsViewModel, onNavigate: (String) -> Unit = {}) {
         composeRule.setContent {
-            SettingsScreen(viewModel = vm)
+            SettingsScreen(viewModel = vm, onNavigate = onNavigate)
         }
         composeRule.waitForIdle()
-    }
-
-    @Test
-    fun `home and favorites section renders all four toggles`() {
-        val vm = mockViewModel(SettingsUiState())
-        render(vm)
-
-        composeRule.onNodeWithText("HOME & FAVORITES").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Playlists on Home").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Favorite Artists").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Favorite Albums").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Favorite Radio").performScrollTo().assertIsDisplayed()
-    }
-
-    @Test
-    fun `toggling playlists on home delegates to the view model`() {
-        val vm = mockViewModel(SettingsUiState(showPlaylistsOnHome = true))
-        render(vm)
-
-        composeRule.onNodeWithText("Playlists on Home").performScrollTo()
-        composeRule.onNodeWithTag("settings_toggle_Playlists_on_Home").performClick()
-        verify { vm.setShowPlaylistsOnHome(false) }
-    }
-
-    @Test
-    fun `toggling favorite radio delegates to the view model`() {
-        val vm = mockViewModel(SettingsUiState(showFavRadioSection = true))
-        render(vm)
-
-        composeRule.onNodeWithText("Favorite Radio").performScrollTo()
-        composeRule.onNodeWithTag("settings_toggle_Favorite_Radio").performClick()
-        verify { vm.setShowFavRadioSection(false) }
     }
 
     @Test
@@ -86,64 +53,11 @@ class SettingsScreenComposeTest {
     }
 
     @Test
-    fun `private HTTP server displays credential warning`() {
-        val vm = mockViewModel(SettingsUiState(serverUrl = "http://192.168.1.20"))
-        render(vm)
-
-        composeRule.onNodeWithText(
-            "HTTP exposes credentials in transit. Use only with a trusted private-network server.",
-        ).performScrollTo().assertIsDisplayed()
-    }
-
-    @Test
-    fun `failed server settings validation does not navigate`() {
-        val vm = mockViewModel(SettingsUiState())
-        every { vm.saveServerSettings() } returns false
-        var saved = false
-        composeRule.setContent {
-            SettingsScreen(viewModel = vm, onServerSettingsSaved = { saved = true })
-        }
-
-        composeRule.onNodeWithTag("settings_server_save").performScrollTo().performClick()
-
-        assert(!saved)
-        verify { vm.saveServerSettings() }
-    }
-
-    @Test
     fun `dark mode and accent stubs are absent`() {
         val vm = mockViewModel(SettingsUiState())
         render(vm)
         composeRule.onNodeWithText("Dark Mode").assertDoesNotExist()
         composeRule.onNodeWithText("Accent Color").assertDoesNotExist()
-    }
-
-    @Test
-    fun `hide navigation labels toggle delegates to the view model`() {
-        val vm = mockViewModel(SettingsUiState(hideNavLabels = false))
-        render(vm)
-
-        composeRule.onNodeWithText("Hide navigation labels").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_toggle_Hide_navigation_labels").performClick()
-        verify { vm.setHideNavLabels(true) }
-    }
-
-    @Test
-    fun `list reactions toggle delegates to the view model`() {
-        val vm = mockViewModel(SettingsUiState())
-        render(vm)
-        composeRule.onNodeWithText("Like and dislike on track lists").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_toggle_Like_and_dislike_on_track_lists").performClick()
-        verify { vm.setShowListReactions(false) }
-    }
-
-    @Test
-    fun `list duration toggle delegates to the view model`() {
-        val vm = mockViewModel(SettingsUiState())
-        render(vm)
-        composeRule.onNodeWithText("Duration on track lists").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_toggle_Duration_on_track_lists").performClick()
-        verify { vm.setShowListDuration(false) }
     }
 
     @Test
@@ -161,22 +75,13 @@ class SettingsScreenComposeTest {
     }
 
     @Test
-    fun `lastfm section renders and save delegates`() {
-        val vm = mockViewModel(SettingsUiState())
-        render(vm)
-        composeRule.onNodeWithText("LAST.FM").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_lastfm_save").performScrollTo().performClick()
-        verify { vm.setLastFmApiKey("") }
-    }
-
-    @Test
-    fun `profile card click invokes onProfile`() {
+    fun `profile nav row invokes onProfile`() {
         val vm = mockViewModel(SettingsUiState())
         var profileClicked = false
         composeRule.setContent {
             SettingsScreen(viewModel = vm, onProfile = { profileClicked = true })
         }
-        composeRule.onNodeWithTag("settings_profile_card").performClick()
+        composeRule.onNodeWithTag("settings_nav_profile").performScrollTo().performClick()
         assert(profileClicked)
     }
 
@@ -192,65 +97,18 @@ class SettingsScreenComposeTest {
     }
 
     @Test
-    fun `check for updates row visible and delegates`() {
+    fun `hub navigates to server route`() {
+        val vm = mockViewModel(SettingsUiState())
+        var route: String? = null
+        render(vm) { route = it }
+        composeRule.onNodeWithTag("settings_nav_server").performScrollTo().performClick()
+        assert(route == SettingsRoutes.SERVER)
+    }
+
+    @Test
+    fun `search field is displayed`() {
         val vm = mockViewModel(SettingsUiState())
         render(vm)
-
-        composeRule.onNodeWithTag("settings_check_updates").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_check_updates").performClick()
-        verify { vm.checkForUpdates() }
-    }
-
-    @Test
-    fun `update available row shows start update CTA`() {
-        val vm = mockViewModel(
-            SettingsUiState(
-                updateCheck = UpdateCheckUi.Available(
-                    availableVersionCode = 20,
-                    flexibleAllowed = true,
-                ),
-            ),
-        )
-        render(vm)
-
-        composeRule.onNodeWithTag("settings_start_update").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Update available").assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_start_update").performClick()
-        verify { vm.startUpdate() }
-    }
-
-    @Test
-    fun `update check error shows open play store`() {
-        val vm = mockViewModel(
-            SettingsUiState(updateCheck = UpdateCheckUi.Error("No network")),
-        )
-        render(vm)
-
-        composeRule.onNodeWithTag("settings_open_play_store").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_open_play_store").performClick()
-        verify { vm.openPlayStoreListing() }
-    }
-
-    @Test
-    fun `update in progress row shows downloading state`() {
-        val vm = mockViewModel(
-            SettingsUiState(updateCheck = UpdateCheckUi.InProgress(availableVersionCode = 21)),
-        )
-        render(vm)
-
-        composeRule.onNodeWithTag("settings_update_in_progress").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Downloading update…").assertIsDisplayed()
-    }
-
-    @Test
-    fun `ready to install row delegates to completeFlexibleUpdate`() {
-        val vm = mockViewModel(
-            SettingsUiState(updateCheck = UpdateCheckUi.ReadyToInstall),
-        )
-        render(vm)
-
-        composeRule.onNodeWithTag("settings_complete_update").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_complete_update").performClick()
-        verify { vm.completeFlexibleUpdate() }
+        composeRule.onNodeWithTag("settings_search").assertIsDisplayed()
     }
 }

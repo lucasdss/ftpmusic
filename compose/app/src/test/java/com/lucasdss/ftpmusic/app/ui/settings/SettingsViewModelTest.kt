@@ -2,6 +2,9 @@ package com.lucasdss.ftpmusic.app.ui.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.lucasdss.ftpmusic.app.ui.components.formatBytes
+import com.lucasdss.ftpmusic.app.ui.components.formatDurationMs
+import com.lucasdss.ftpmusic.app.ui.components.timeAgo
 import com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
@@ -519,12 +522,11 @@ class SettingsViewModelTest {
 
     @Test
     fun `formatDuration returns correct strings`() {
-        // Long literals: disambiguate from ProfileScreen's formatDuration(seconds: Int) overload
-        assertEquals("0s", formatDuration(0L))
-        assertEquals("45s", formatDuration(45_000L))
-        assertEquals("1m 30s", formatDuration(90_000L))
-        assertEquals("2m", formatDuration(120_000L))
-        assertEquals("5m", formatDuration(300_000L))
+        assertEquals("0s", formatDurationMs(0L))
+        assertEquals("45s", formatDurationMs(45_000L))
+        assertEquals("1m 30s", formatDurationMs(90_000L))
+        assertEquals("2m", formatDurationMs(120_000L))
+        assertEquals("5m", formatDurationMs(300_000L))
     }
 
     // ── v46: Playback notifications feature toggle ─────────────────────
