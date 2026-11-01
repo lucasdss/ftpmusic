@@ -61,6 +61,8 @@ class FtpmusicApp :
 
     @Inject lateinit var appUpdateProbe: com.lucasdss.ftpmusic.app.data.update.AppUpdateProbe
 
+    @Inject lateinit var syncHealthGuard: com.lucasdss.ftpmusic.app.data.sync.SyncHealthGuard
+
     override fun onCreate() {
         super.onCreate()
         // Single authoritative server-config restore — runs before any worker,
@@ -157,6 +159,7 @@ class FtpmusicApp :
         // Start metadata sync — initial run, then periodic via WorkManager
         metadataSyncWorker.start()
         schedulePeriodicMetadataSync()
+        observeForegroundSyncHealth()
         // ADR-0140: cold-start Play update probe (issue tray); fail-soft.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
@@ -175,6 +178,33 @@ class FtpmusicApp :
             } catch (e: Exception) {
                 Log.w("ftpmusic-cache", "[App] CacheService init failed: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * F1 follow-up (§11.4 / §6.4): WorkManager is the only automatic sync
+     * trigger, and periodic work can be deferred for days. ON_START fires once
+     * per app foreground (not per activity), which is exactly the moment we can
+     * compare persisted stamps and compensate with one DELTA if WM has gone
+     * silent. Cheap: prefs reads plus a fire-and-forget `syncNowAsync`.
+     */
+    private fun observeForegroundSyncHealth() {
+        try {
+            androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(
+                object : androidx.lifecycle.DefaultLifecycleObserver {
+                    override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                        try {
+                            syncHealthGuard.onAppForeground()
+                        } catch (e: Exception) {
+                            Log.w("ftpmusic-synchealth", "foreground sync-health check failed: ${e.message}")
+                        }
+                    }
+                },
+            )
+        } catch (e: Exception) {
+            // ProcessLifecycleOwner unavailable (plain-JVM / unusual host) — the
+            // periodic worker stays the only trigger, exactly as before.
+            Log.w("ftpmusic-synchealth", "foreground observer unavailable: ${e.message}")
         }
     }
 

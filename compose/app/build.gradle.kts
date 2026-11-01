@@ -171,6 +171,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    // ProcessLifecycleOwner — one ON_START per app foreground for the sync
+    // self-heal guard (SyncHealthGuard); not a UI dependency.
+    implementation("androidx.lifecycle:lifecycle-process:2.9.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 

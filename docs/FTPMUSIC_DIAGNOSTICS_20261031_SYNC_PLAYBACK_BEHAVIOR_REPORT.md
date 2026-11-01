@@ -995,16 +995,41 @@ re-litigated):
   position-only writes on a generation would instead drop a pending structural
   snapshot (reorder) that has not reached the DB yet — a worse failure. Accepted.
 
-### 12.3 Not implemented (explicitly out of scope)
+### 12.3 §6.4 foreground self-heal (implemented, tier A+C)
 
-- **§6.4 foreground stale-check** remains optional / a product decision, per §6.4.
-  F1 restores automatic sync; the stale-check is a product-level UX change, not a
-  diagnostics defect.
+§6.4 shipped in the hardened form described there as a prerequisite, because the
+naive version had an unsolved retry-storm risk: the existing `MIN_SYNC_COOLDOWN_MS`
+and `ReachabilityStateHolder` gates are **in-memory**, so every cold start reset
+them.
+
+- `data/sync/SyncHealthPolicy.kt` — pure decision table over persisted stamps
+  (`lastSuccess`, WM heartbeat, fallback stamp/streak, interval, offline,
+  reachable). Verdicts: `NeverRan`, `NotDue`, `SkippedOffline`,
+  `SkippedUnreachable`, `Backoff`, `Trigger`.
+- `data/sync/SyncHealthGuard.kt` — runs once per app foreground
+  (`ProcessLifecycleOwner` ON_START, wired in `FtpmusicApp`), reads prefs, logs
+  `sync-health verdict=…` to `DiagnosticLog`, and at most fires one DELTA via the
+  existing `syncNowAsync` (so offline / unreachable / cellular / cooldown /
+  `isSyncing` gates still apply).
+- Silence is `now - max(lastSuccess, lastWmAttempt)` — an attempt that ran but
+  failed counts as a sign of life, so a dead server is surfaced rather than
+  retried harder.
+- Backoff `1 h → 6 h → 24 h` is **persisted** and stamped *before* the trigger, so
+  a process kill cannot re-arm the same failure epoch; the streak resets on the
+  next success.
+- `WorkInfo.runAttemptCount` is deliberately unused: it is per-run and resets on
+  success, so it cannot serve as a heartbeat.
+
+Not shipped, with reasons: a WM health probe that *acts* (tier B) — F6's
+`workManager state/attempts/next` now gives the evidence first; a second periodic
+watchdog — throttled identically to the worker it watches; an AlarmManager
+fallback — a second scheduler for a P3; `CANCEL_AND_REENQUEUE` — resets
+`lastEnqueueTime` and therefore *postpones* the next run.
 
 ### 12.4 Verification
 
 - `./gradlew :app:assembleDebug` — SUCCESS
-- `./gradlew :app:testDebugUnitTest` — 3945 tests, 0 failures, 0 errors, 6 skipped
+- `./gradlew :app:testDebugUnitTest` — 3963 tests, 0 failures, 0 errors, 6 skipped
 - `./gradlew ktlintCheck` — SUCCESS
 
 ### 12.5 Phase-5 audit and adversarial challenge
