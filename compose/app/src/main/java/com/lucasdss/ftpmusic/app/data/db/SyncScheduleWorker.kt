@@ -29,6 +29,11 @@ class SyncScheduleWorker @AssistedInject constructor(
     private val appUpdateProbe: AppUpdateProbe,
 ) : CoroutineWorker(context, workerParams) {
 
+    companion object {
+        /** Unique periodic work name (scheduling + diagnostics share it). */
+        const val UNIQUE_WORK_NAME = "metadata_sync"
+    }
+
     override suspend fun doWork(): Result {
         return try {
             if (!ReachabilityStateHolder.isReachable.value) {

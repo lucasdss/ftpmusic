@@ -814,8 +814,8 @@ class MetadataSyncWorker(
     }
 
     /** Backoff Home newest poll after timeout/empty without wiping snapshot ids (ADR-0112). */
-    fun touchHomeRecentFetched() {
-        HomeRecentCache.touchFetchedMs(HomeRecentCache.prefs(context))
+    fun touchHomeRecentFetched(result: String = HomeRecentCache.RESULT_EMPTY) {
+        HomeRecentCache.touchFetchedMs(HomeRecentCache.prefs(context), result = result)
         // Do not bump homeRecentRevision — timeout/empty must not force Room repaint.
     }
 

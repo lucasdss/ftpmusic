@@ -102,11 +102,11 @@ class NetworkPolicyHolder @Inject constructor(
                 TimeUnit.HOURS,
             )
                 .setConstraints(constraints)
-                .addTag("metadata_sync")
+                .addTag(SyncScheduleWorker.UNIQUE_WORK_NAME)
                 .build()
             WorkManager.getInstance(context)
                 .enqueueUniquePeriodicWork(
-                    "metadata_sync",
+                    SyncScheduleWorker.UNIQUE_WORK_NAME,
                     ExistingPeriodicWorkPolicy.UPDATE,
                     periodicWork,
                 )

@@ -43,7 +43,7 @@ class DiagnosticLogTest {
             artists = 5,
             tracks = 100,
         )
-        assertTrue(snap.contains("albums=10 artists=5 tracks=100"))
+        assertTrue(snap.contains("albums=10 artists=5 tracksLedger=100"))
     }
 
     @Test

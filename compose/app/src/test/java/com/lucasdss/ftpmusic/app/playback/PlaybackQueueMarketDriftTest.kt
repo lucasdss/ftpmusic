@@ -90,6 +90,8 @@ class PlaybackQueueMarketDriftTest {
                 any(),
                 any(),
                 any(),
+                any(),
+                any(),
             )
         }
     }
@@ -107,6 +109,8 @@ class PlaybackQueueMarketDriftTest {
         coVerify {
             mockPersistenceManager.save(
                 match { it.map { t -> t.id } == dualIds },
+                any(),
+                any(),
                 any(),
                 any(),
                 any(),
@@ -136,7 +140,20 @@ class PlaybackQueueMarketDriftTest {
         assertEquals(1, m.contextSize)
         assertTrue(m.priorityQueueSize >= 1)
         coVerify(atLeast = 1) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
     }
 
@@ -177,6 +194,8 @@ class PlaybackQueueMarketDriftTest {
         coVerify {
             mockPersistenceManager.save(
                 match { it.map { t -> t.id } == listOf("a") },
+                any(),
+                any(),
                 any(),
                 any(),
                 any(),

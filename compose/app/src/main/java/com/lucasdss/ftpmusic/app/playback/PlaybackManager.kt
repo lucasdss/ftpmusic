@@ -101,6 +101,7 @@ class PlaybackManager @Inject constructor(
 
     private companion object {
         const val LOCAL_QUEUE_ADOPT_SUPPRESS_MS = 1_000L
+        const val PREFETCH_COALESCE_MS = 2_000L
 
         fun newDualQueuePair(): Pair<DualQueueManager, OptimisticQueueDelegate> {
             val dualQueue = DualQueueManager()
@@ -109,6 +110,21 @@ class PlaybackManager @Inject constructor(
     }
 
     private var scope = CoroutineScope(Dispatchers.IO)
+
+    /**
+     * F2: coalesce the explicit warm pass (`playAlbum`/`shuffleAlbum`/
+     * `restoreQueue`) with the `onMediaItemTransition` re-warm. Without this the
+     * same queue start runs the prefetch loop twice (23 enqueue calls for 13
+     * tracks in the 2026-10-31 diagnostics export).
+     */
+    private val prefetchLock = Any()
+
+    /** False until the first pass, so a key that hashes to 0 still warms. */
+    @Volatile private var hasWarmed: Boolean = false
+
+    @Volatile private var lastWarmKey: Int = 0
+
+    @Volatile private var lastWarmAtMs: Long = 0L
 
     @Volatile
     var journalCap: Int = 100
@@ -465,8 +481,8 @@ class PlaybackManager @Inject constructor(
         }
         val merged = dualQueue.getMerged()
         playMergedQueue(merged, si)
-        enqueuePlayQueue(alignedTracks, alignedUrls, si)
-        if (!skipPersistence) persistenceSave(alignedTracks, alignedUrls, si)
+        enqueuePlayQueue(alignedTracks, alignedUrls, si, src = "playAlbum")
+        if (!skipPersistence) persistenceSave(alignedTracks, alignedUrls, si, src = "playAlbum")
 
         if (sourceType != null && sourceId != null) {
             journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, si)
@@ -537,7 +553,7 @@ class PlaybackManager @Inject constructor(
         val merged = dualQueue.getMerged()
         val si = startIndex.coerceIn(0, merged.lastIndex.coerceAtLeast(0))
         queueManager.playAll(merged, si, positionMs, playWhenReady = playWhenReady)
-        enqueuePlayQueue(alignedTracks, alignedUrls, si)
+        enqueuePlayQueue(alignedTracks, alignedUrls, si, src = "restoreQueue")
         return true
     }
 
@@ -564,8 +580,8 @@ class PlaybackManager @Inject constructor(
         }
         val merged = dualQueue.getMerged()
         playMergedQueue(merged, 0)
-        enqueuePlayQueue(alignedTracks, alignedUrls, 0)
-        persistenceSave(alignedTracks, alignedUrls, 0)
+        enqueuePlayQueue(alignedTracks, alignedUrls, 0, src = "shuffleAlbum")
+        persistenceSave(alignedTracks, alignedUrls, 0, src = "shuffleAlbum")
 
         if (sourceType != null && sourceId != null) {
             journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, 0)
@@ -713,6 +729,7 @@ class PlaybackManager @Inject constructor(
         val items = buildMediaItems(alignedTracks, alignedUrls)
             .map { it.ensureEntryId() }
             .map { if (asAutoplay) it.withAutoplay(true) else it }
+        val contextBefore = dualQueue.contextSize
         optimist.snapshot()
         dualQueue.addAllToContext(items)
         if (!PlayerHolder.isCasting) {
@@ -720,6 +737,14 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
+        // D2: appends after the current item emit no media-item transition, so
+        // this is the only place the growth is observable (see report §5).
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "appendToContext asAutoplay=$asAutoplay adding=${items.size} " +
+                "contextBefore=$contextBefore contextAfter=${dualQueue.contextSize} " +
+                "playerItems=${PlayerHolder.player?.mediaItemCount ?: 0}",
+        )
         val player = PlayerHolder.player ?: return
         // Persist the DUAL queue (authoritative, captures the grown contextSize).
         val (allTracks, allUrls) = buildQueueStateFromDual()
@@ -1091,8 +1116,11 @@ class PlaybackManager @Inject constructor(
     fun getLastQueueSnapshot(): OptimisticQueueDelegate.Snapshot? = optimist.getLastSnapshot()
 
     /**
-     * Local-first queue caching: the ENTIRE queue is enqueued so it is
-     * progressively cached and playable offline.
+     * Local-first queue caching: upcoming tracks are enqueued so they are
+     * progressively cached and playable offline. Indices at or before the
+     * current one are skipped (`start = si + 1`) — they were warmed when they
+     * were upcoming (see ADR-0022 §6 and F7 in
+     * docs/FTPMUSIC_DIAGNOSTICS_20261031_SYNC_PLAYBACK_BEHAVIOR_REPORT.md).
      *
      *  - The next 3 tracks (streaming-continuity window) go at priority 0 —
      *    always downloaded, no Wi-Fi/battery gating, so playback never waits.
@@ -1100,13 +1128,37 @@ class PlaybackManager @Inject constructor(
      *    standard constraints (Wi-Fi/battery/mobile-data) in the worker loop.
      *  - Completed rows that are still on disk are a no-op inside
      *    DownloadManager.enqueue (no re-download on every track advance).
+     *
+     * [src] identifies the caller (`playAlbum`, `shuffleAlbum`, `restoreQueue`,
+     * `transition`) so a diagnostics export can prove a single warm pass.
      */
-    fun enqueuePlayQueue(tracks: List<Track>, urls: List<String>, currentIndex: Int) {
+    fun enqueuePlayQueue(tracks: List<Track>, urls: List<String>, currentIndex: Int, src: String = "unknown") {
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, urls, "enqueuePlayQueue")
         if (alignedTracks.isEmpty()) return
         val si = currentIndex.coerceIn(0, alignedTracks.lastIndex)
         val start = si + 1
         val urgentEnd = minOf(start + 3, alignedTracks.size)
+        // Order-insensitive id hash: shuffleAlbum passes the pre-shuffle list
+        // while the transition hook passes Dual's shuffled projection. Both
+        // describe the same installed queue and must produce the same key.
+        val warmKey = 31 * alignedTracks.map { it.id }.sorted().hashCode() + si
+        val nowMs = elapsedRealtimeMs()
+        synchronized(prefetchLock) {
+            if (hasWarmed && warmKey == lastWarmKey && nowMs - lastWarmAtMs < PREFETCH_COALESCE_MS) {
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-download",
+                    "enqueue-pass skip src=$src key=$warmKey",
+                )
+                return
+            }
+            lastWarmKey = warmKey
+            lastWarmAtMs = nowMs
+            hasWarmed = true
+        }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-download",
+            "enqueue-pass src=$src key=$warmKey size=${alignedTracks.size} start=$start",
+        )
         scope.launch(kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> }) {
             for (i in start until alignedTracks.size) {
                 try {
@@ -1295,6 +1347,7 @@ class PlaybackManager @Inject constructor(
         urls: List<String>,
         index: Int,
         contextSize: Int = dualQueue.contextSize,
+        src: String = "queueMutation",
     ) {
         val safeCtx = contextSize.coerceIn(0, tracks.size)
         val flags = dualQueue.isUserQueueFlags()
@@ -1302,18 +1355,25 @@ class PlaybackManager @Inject constructor(
         val autoplay = isAutoplayFlags().takeIf { it.size == tracks.size }
         val late = isLateFlags().takeIf { it.size == tracks.size }
         val idx = index
+        // F3 / D7: sample the generation and position at snapshot time. Reading
+        // position inside the coroutine persisted "position at execution", which
+        // could pair a later position with an older index/context.
+        val generation = persistenceManager.nextGeneration()
+        val positionMs = PlayerHolder.player?.currentPosition ?: 0L
         scope.launch(kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> }) {
             persistenceManager.save(
                 tracks,
                 urls,
                 idx,
-                PlayerHolder.player?.currentPosition ?: 0L,
+                positionMs,
                 safeCtx,
                 flags,
                 dualQueue.entryIds().takeIf { it.size == tracks.size },
                 dualQueue.peekNextEntryId(),
                 autoplay,
                 late,
+                generation = generation,
+                src = src,
             )
         }
     }

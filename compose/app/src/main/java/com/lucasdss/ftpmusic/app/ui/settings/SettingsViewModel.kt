@@ -6,6 +6,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
@@ -14,8 +15,10 @@ import com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyHolder
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
+import com.lucasdss.ftpmusic.app.data.db.HomeRecentCache
 import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
+import com.lucasdss.ftpmusic.app.data.db.SyncScheduleWorker
 import com.lucasdss.ftpmusic.app.data.network.CustomHeadersInterceptor
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder
@@ -33,6 +36,7 @@ import com.lucasdss.ftpmusic.app.ui.UiDensityPreset
 import com.lucasdss.ftpmusic.app.ui.UiFontPreset
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -921,15 +925,25 @@ class SettingsViewModel @Inject constructor(
         flexibleInstallJob = null
     }
 
-    /** Build diagnostics export text (no network upload). Safe off main. */
-    fun diagnosticsSnapshot(): String {
+    /** Build diagnostics export text (no network upload). Must run off main. */
+    suspend fun diagnosticsSnapshot(): String {
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-ui",
             "share diagnostics lines=${com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.lineCount()}",
         )
         val prefs = context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE)
         val s = _state.value
-        val homeIds = com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.readIds(prefs)
+        val homeIds = HomeRecentCache.readIds(prefs)
+        // D5 / F4: ghost rows with no ledger entry, printed as a labelled counter.
+        // CancellationException must not be swallowed — Room's suspend bridge
+        // throws it when viewModelScope is cancelled mid-snapshot.
+        val albumTracksAlbumsZero = try {
+            metadataDao.countUncachedAlbums()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            -1
+        }
         return com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             context = context,
             offline = s.offlineMode || offlineModeManager.isQueueEnabled(),
@@ -945,13 +959,40 @@ class SettingsViewModel @Inject constructor(
             homeRecentIdsCount = homeIds.size,
             lastWmAttemptMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_WM_ATTEMPT_MS, 0),
             lastWmSkipReason = prefs.getString(MetadataSyncWorker.PREF_LAST_WM_SKIP_REASON, "") ?: "",
-        ) + "\nmode=${s.lastSyncMode} skip=${s.lastSyncSkipReason}" +
-            " corpus=${s.searchCorpusTrackCount} songSum=${s.albumSongCountSum}"
+            mode = s.lastSyncMode,
+            skipReason = s.lastSyncSkipReason,
+            corpus = s.searchCorpusTrackCount,
+            songSum = s.albumSongCountSum,
+            albumTracksAlbumsZero = albumTracksAlbumsZero,
+            homeRecentResult = HomeRecentCache.readResult(prefs),
+            wmSummary = workManagerSummary(),
+        )
     }
 
-    /** Snapshot on Default → emit for Share chooser (keeps UI thread free). */
+    /** F6: live WorkManager state so a factory/scheduling failure is visible without logcat. */
+    private fun workManagerSummary(): String = try {
+        val infos = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork(SyncScheduleWorker.UNIQUE_WORK_NAME)
+            .get(2, TimeUnit.SECONDS)
+        if (infos.isNullOrEmpty()) {
+            "state=none"
+        } else {
+            infos.joinToString(" ") { info ->
+                "state=${info.state} attempts=${info.runAttemptCount} " +
+                    "next=${info.nextScheduleTimeMillis}"
+            }
+        }
+    } catch (e: Exception) {
+        "state=unavailable"
+    }
+
+    /**
+     * Snapshot on IO → emit for Share chooser (keeps UI thread free).
+     * I/O, not Default: the snapshot blocks up to 2s querying WorkManager and
+     * reads Room on the same call path.
+     */
     fun shareDiagnostics() {
-        viewModelScope.launch(Dispatchers.Default) {
+        viewModelScope.launch(Dispatchers.IO) {
             val text = diagnosticsSnapshot()
             _shareDiagnosticsEvents.send(text)
         }

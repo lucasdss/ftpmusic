@@ -63,3 +63,6 @@ pepk.jar
 output.zip
 AppIcons.zip
 
+
+# Coil disk-cache artifacts created by unit runs ("File(child^2 of #…)") 
+compose/app/File(child^2 of */

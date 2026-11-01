@@ -2,6 +2,8 @@ package com.lucasdss.ftpmusic.app
 
 import android.app.Application
 import android.util.Log
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import com.lucasdss.ftpmusic.app.data.cache.CacheService
 import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
@@ -17,7 +19,25 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 @HiltAndroidApp
-class FtpmusicApp : Application() {
+class FtpmusicApp :
+    Application(),
+    Configuration.Provider {
+
+    /**
+     * ADR-0140 / WorkManager wiring: workers are `@HiltWorker` with
+     * `@AssistedInject` constructors, so the default reflective factory cannot
+     * instantiate them. Without this provider every periodic/unique worker
+     * (metadata sync, enrichment) fails at instantiation and `doWork` never
+     * runs — see docs/FTPMUSIC_DIAGNOSTICS_20261031_SYNC_PLAYBACK_BEHAVIOR_REPORT.md F1.
+     * The manifest removes the stock `WorkManagerInitializer` so WorkManager
+     * initialises on demand with this configuration.
+     */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
+
+    @Inject lateinit var workerFactory: HiltWorkerFactory
 
     @Inject lateinit var downloadManager: DownloadManager
 

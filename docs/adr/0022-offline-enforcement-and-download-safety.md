@@ -31,8 +31,10 @@ ADR 0013 (Proposed) described a local-first architecture, but the enforcement la
 ### 5. Enqueue is atomic
 `cache_queue_items.track_id` is UNIQUE (migration 44→45, dedupes pre-existing duplicates). `CacheQueueDao.insertIgnore` returns -1 when a row exists, and the caller upgrades priority/isDownload on the winner. Temp download files are keyed by row id, never by track id alone.
 
-### 6. Queue-always-cached (whole queue)
-`PlaybackManager.enqueuePlayQueue` enqueues the ENTIRE queue: the next 3 tracks at priority 0 (streaming-continuity window — always downloaded, no constraint gating) and the remainder at priority 1 (Wi-Fi/battery/mobile-data gated). Completed rows still present in the cache are a no-op — no re-download on every track advance.
+### 6. Queue-always-cached (upcoming queue)
+`PlaybackManager.enqueuePlayQueue` enqueues every **upcoming** track (`start = currentIndex + 1`): the next 3 tracks at priority 0 (streaming-continuity window — always downloaded, no constraint gating) and the remainder at priority 1 (Wi-Fi/battery/mobile-data gated). Tracks at or before the current index are not re-enqueued by this path — they were warmed when they were upcoming. Completed rows still present in the cache are a no-op — no re-download on every track advance.
+
+**Amendment (2026-11-01):** corrected “ENTIRE queue” wording (the loop starts after the current index) and documented the F2 coalescing guard that collapses the explicit warm pass and the `onMediaItemTransition` re-warm. See `FTPMUSIC_DIAGNOSTICS_20261031_SYNC_PLAYBACK_BEHAVIOR_REPORT.md` F2/F7.
 
 **Amendment (2026-10-19):** Remainder priority 1 is a **constraint tier only**, not user Download. Call sites pass `isDownload = false` so terminal CT failures are not resurrected as `retry_user` (see ADR-0117 amendment).
 

@@ -1566,7 +1566,9 @@ class LibraryViewModel @Inject constructor(
             }
             if (response == null) {
                 // Stamp TTL so a flaky network does not re-hit newest on every Home open (ADR-0112).
-                metadataSyncWorker.touchHomeRecentFetched()
+                metadataSyncWorker.touchHomeRecentFetched(
+                    com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.RESULT_TIMEOUT,
+                )
                 return
             }
             val sr = response["subsonic-response"] as? Map<*, *>
@@ -1583,7 +1585,9 @@ class LibraryViewModel @Inject constructor(
                 )
             } ?: emptyList()
             if (albums.isEmpty()) {
-                metadataSyncWorker.touchHomeRecentFetched()
+                metadataSyncWorker.touchHomeRecentFetched(
+                    com.lucasdss.ftpmusic.app.data.db.HomeRecentCache.RESULT_EMPTY,
+                )
                 return
             }
 

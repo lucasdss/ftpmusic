@@ -165,7 +165,20 @@ class PlaybackManagerTest {
         manager.addToQueue(track, url)
 
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
     }
 
@@ -187,7 +200,20 @@ class PlaybackManagerTest {
         manager.addAllToQueue(tracks, urls)
 
         coVerify(timeout = 1_000) {
-            mockPersistenceManager.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+            mockPersistenceManager.save(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
         }
     }
 
@@ -224,6 +250,8 @@ class PlaybackManagerTest {
                 any(),
                 any(),
                 match { it == 3 },
+                any(),
+                any(),
                 any(),
                 any(),
                 any(),
@@ -294,6 +322,8 @@ class PlaybackManagerTest {
                 any(),
                 any(),
                 match { it == 2 },
+                any(),
+                any(),
                 any(),
                 any(),
                 any(),
@@ -881,6 +911,8 @@ class PlaybackManagerTest {
                 any(),
                 any(),
                 any(),
+                any(),
+                any(),
             )
         }
     }
@@ -914,6 +946,8 @@ class PlaybackManagerTest {
         coVerify(timeout = 1_000) {
             mockPersistenceManager.save(
                 match { it.any { t -> t.id == "t1" } },
+                any(),
+                any(),
                 any(),
                 any(),
                 any(),
@@ -1261,5 +1295,59 @@ class PlaybackManagerTest {
         assertTrue(!mgr.shouldAdoptExternalTimeline())
         now = 11_000L
         assertTrue(mgr.shouldAdoptExternalTimeline())
+    }
+
+    @Test
+    fun `enqueuePlayQueue coalesces a duplicate warm pass within the window`() {
+        val tracks = listOf(
+            Track("t1", "T1", duration = 10),
+            Track("t2", "T2", duration = 10),
+            Track("t3", "T3", duration = 10),
+            Track("t4", "T4", duration = 10),
+        )
+        val urls = tracks.map { "http://t/${it.id}" }
+        var now = 100_000L
+        val mgr = baseManager()
+        mgr.elapsedRealtimeMs = { now }
+
+        mgr.enqueuePlayQueue(tracks, urls, 0, src = "playAlbum")
+        mgr.enqueuePlayQueue(tracks, urls, 0, src = "transition")
+
+        // start = index + 1, so t2..t4 — one pass only; the duplicate is dropped.
+        coVerify(timeout = 5_000, exactly = 3) {
+            mockDownloadManager.enqueue(any(), any(), any(), any())
+        }
+        coVerify(timeout = 5_000, exactly = 1) {
+            mockDownloadManager.enqueue("t2", any(), any(), any())
+        }
+
+        // A different index inside the window is a new pass (start = 3 → t4 only),
+        // so t4 is warmed twice in total while t2/t3 stay at one.
+        now += 500L
+        mgr.enqueuePlayQueue(tracks, urls, 2, src = "transition")
+        coVerify(timeout = 5_000, exactly = 4) {
+            mockDownloadManager.enqueue(any(), any(), any(), any())
+        }
+        coVerify(timeout = 5_000, exactly = 2) {
+            mockDownloadManager.enqueue("t4", any(), any(), any())
+        }
+        coVerify(timeout = 5_000, exactly = 1) {
+            mockDownloadManager.enqueue("t3", any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `enqueuePlayQueue warms again after the coalesce window expires`() {
+        val tracks = listOf(Track("t1", "T1", duration = 10), Track("t2", "T2", duration = 10))
+        val urls = tracks.map { "http://t/${it.id}" }
+        var now = 200_000L
+        val mgr = baseManager()
+        mgr.elapsedRealtimeMs = { now }
+
+        mgr.enqueuePlayQueue(tracks, urls, 0, src = "playAlbum")
+        now += 2_001L
+        mgr.enqueuePlayQueue(tracks, urls, 0, src = "transition")
+
+        coVerify(timeout = 5_000, exactly = 2) { mockDownloadManager.enqueue("t2", any(), any(), any()) }
     }
 }

@@ -3,9 +3,14 @@ package com.lucasdss.ftpmusic.app.playback
 import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.QueueItemEntity
 import com.lucasdss.ftpmusic.app.data.db.QueueStateEntity
+import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
 import com.lucasdss.ftpmusic.app.data.model.Track
+import java.util.Objects
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class SavedQueueState(
     val tracks: List<Track>,
@@ -34,6 +39,26 @@ data class SavedQueueState(
 
 @Singleton
 class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
+    /**
+     * F3 / D7: MediaService.saveQueueState (2 call sites) and
+     * PlaybackManager.persistenceSave (~18 call sites) all funnel here from
+     * independent unconstrained `Dispatchers.IO` scopes, so commit order is not
+     * guaranteed. Two guards:
+     *  - [writeMutex] serialises the read-modify-write against
+     *    savePositionOnly/savePlaybackExtras.
+     *  - [generation] is captured at snapshot time by the caller; a snapshot
+     *    older than the last applied one is dropped, so a stale transition
+     *    snapshot can never overwrite a newer pause snapshot.
+     */
+    private val writeMutex = Mutex()
+    private val generationCounter = AtomicLong(0L)
+    private var lastAppliedGeneration = 0L
+    private var lastFingerprint: Int = 0
+    private var hasApplied = false
+
+    /** Monotonic snapshot id — call BEFORE launching the write coroutine. */
+    fun nextGeneration(): Long = generationCounter.incrementAndGet()
+
     suspend fun save(
         tracks: List<Track>,
         urls: List<String>,
@@ -45,64 +70,111 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
         nextEntryId: Int = 1,
         isAutoplayFlags: List<Boolean>? = null,
         isLateFlags: List<Boolean>? = null,
+        generation: Long = nextGeneration(),
+        src: String = "unknown",
     ) {
-        if (tracks.isEmpty()) {
-            dao.clear()
-            return
-        }
-        val flags = isPriorityFlags?.takeIf { it.size == tracks.size }
-            ?: List(tracks.size) { index ->
-                contextSize >= 0 && index >= contextSize
+        writeMutex.withLock {
+            if (generation < lastAppliedGeneration) {
+                DiagnosticLog.d(
+                    "ftpmusic-queue",
+                    "save skip stale src=$src gen=$generation applied=$lastAppliedGeneration",
+                )
+                return
             }
-        val ids = entryIds?.takeIf { it.size == tracks.size }
-            ?: List(tracks.size) { index -> index + 1 }
-        val autoplay = isAutoplayFlags?.takeIf { it.size == tracks.size }
-            ?: List(tracks.size) { false }
-        val late = isLateFlags?.takeIf { it.size == tracks.size }
-            ?: List(tracks.size) { false }
-        val entities = tracks.zip(urls).mapIndexed { index, (track, url) ->
-            QueueItemEntity(
-                trackId = track.id,
-                title = track.title,
-                artist = track.artist,
-                album = track.album,
-                coverArtId = track.coverArt,
-                artistId = track.artistId,
-                albumId = track.albumId,
-                url = url,
-                position = index,
-                durationSeconds = track.duration,
-                isPriority = flags[index] || late[index],
-                entryId = ids[index],
-                isAutoplay = autoplay[index],
-                isLate = late[index],
+            if (tracks.isEmpty()) {
+                lastAppliedGeneration = generation
+                lastFingerprint = 0
+                hasApplied = false
+                dao.clear()
+                return
+            }
+            val flags = isPriorityFlags?.takeIf { it.size == tracks.size }
+                ?: List(tracks.size) { index ->
+                    contextSize >= 0 && index >= contextSize
+                }
+            val ids = entryIds?.takeIf { it.size == tracks.size }
+                ?: List(tracks.size) { index -> index + 1 }
+            val autoplay = isAutoplayFlags?.takeIf { it.size == tracks.size }
+                ?: List(tracks.size) { false }
+            val late = isLateFlags?.takeIf { it.size == tracks.size }
+                ?: List(tracks.size) { false }
+            val entities = tracks.zip(urls).mapIndexed { index, (track, url) ->
+                QueueItemEntity(
+                    trackId = track.id,
+                    title = track.title,
+                    artist = track.artist,
+                    album = track.album,
+                    coverArtId = track.coverArt,
+                    artistId = track.artistId,
+                    albumId = track.albumId,
+                    url = url,
+                    position = index,
+                    durationSeconds = track.duration,
+                    isPriority = flags[index] || late[index],
+                    entryId = ids[index],
+                    isAutoplay = autoplay[index],
+                    isLate = late[index],
+                )
+            }
+            val derivedCtx = entities.count { !it.isPriority }
+            val derivedNext = maxOf(nextEntryId, ids.max() + 1, 1)
+            // Fingerprint includes flags/entry ids so a Keep-Queue / clear-priority
+            // change with identical ids+position is still written. `urls` is part
+            // of the key because a legacy/proxy URL refresh rewrites QueueItemEntity.url
+            // without touching ids, index, flags or position — skipping it would
+            // leave the stale URL persisted (QA F3/D7).
+            val fingerprint = Objects.hash(
+                tracks.map { it.id },
+                urls,
+                currentIndex,
+                positionMs / 1000L,
+                derivedCtx,
+                flags,
+                ids,
+                autoplay,
+                late,
+                derivedNext,
+            )
+            if (hasApplied && fingerprint == lastFingerprint) {
+                lastAppliedGeneration = generation
+                DiagnosticLog.d(
+                    "ftpmusic-queue",
+                    "save skip identical src=$src gen=$generation",
+                )
+                return
+            }
+            // Preserve sleep/play extras from existing row (ADR-0074 merge).
+            // Construct a real entity (do not copy a MockK stub) so nextEntryId sticks.
+            val prev = dao.getState()
+            dao.replaceAllAndState(
+                entities,
+                QueueStateEntity(
+                    currentIndex = currentIndex,
+                    positionMs = positionMs,
+                    isCasting = prev?.isCasting ?: false,
+                    castDeviceName = prev?.castDeviceName,
+                    contextSize = derivedCtx,
+                    nextEntryId = derivedNext,
+                    sleepTimerEndMs = prev?.sleepTimerEndMs ?: 0L,
+                    isPlaying = prev?.isPlaying ?: false,
+                    repeatMode = prev?.repeatMode ?: 0,
+                    shuffleEnabled = prev?.shuffleEnabled ?: false,
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+            lastAppliedGeneration = generation
+            lastFingerprint = fingerprint
+            hasApplied = true
+            DiagnosticLog.d(
+                "ftpmusic-queue",
+                "save src=$src gen=$generation tracks=${entities.size} " +
+                    "idx=$currentIndex pos=$positionMs ctx=$derivedCtx",
             )
         }
-        val derivedCtx = entities.count { !it.isPriority }
-        val derivedNext = maxOf(nextEntryId, ids.max() + 1, 1)
-        // Preserve sleep/play extras from existing row (ADR-0074 merge).
-        // Construct a real entity (do not copy a MockK stub) so nextEntryId sticks.
-        val prev = dao.getState()
-        dao.replaceAllAndState(
-            entities,
-            QueueStateEntity(
-                currentIndex = currentIndex,
-                positionMs = positionMs,
-                isCasting = prev?.isCasting ?: false,
-                castDeviceName = prev?.castDeviceName,
-                contextSize = derivedCtx,
-                nextEntryId = derivedNext,
-                sleepTimerEndMs = prev?.sleepTimerEndMs ?: 0L,
-                isPlaying = prev?.isPlaying ?: false,
-                repeatMode = prev?.repeatMode ?: 0,
-                shuffleEnabled = prev?.shuffleEnabled ?: false,
-                updatedAt = System.currentTimeMillis(),
-            ),
-        )
     }
 
     suspend fun savePositionOnly(currentIndex: Int, positionMs: Long) {
-        dao.savePositionOnly(currentIndex, positionMs)
+        writeMutex.withLock { dao.savePositionOnly(currentIndex, positionMs) }
     }
 
     /** Persist sleep timer + transport extras without touching queue items. */
@@ -112,7 +184,9 @@ class QueuePersistenceManager @Inject constructor(private val dao: QueueDao) {
         repeatMode: Int,
         shuffleEnabled: Boolean,
     ) {
-        dao.savePlaybackExtras(sleepTimerEndMs, isPlaying, repeatMode, shuffleEnabled)
+        writeMutex.withLock {
+            dao.savePlaybackExtras(sleepTimerEndMs, isPlaying, repeatMode, shuffleEnabled)
+        }
     }
 
     suspend fun sleepTimerEndMs(): Long = dao.getState()?.sleepTimerEndMs ?: 0L

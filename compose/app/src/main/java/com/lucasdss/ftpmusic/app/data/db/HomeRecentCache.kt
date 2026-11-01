@@ -10,6 +10,10 @@ import android.content.SharedPreferences
 object HomeRecentCache {
     const val PREF_HOME_RECENT_IDS = "home_recent_album_ids"
     const val PREF_HOME_RECENT_FETCHED_MS = "home_recent_fetched_ms"
+    const val PREF_HOME_RECENT_LAST_RESULT = "home_recent_last_result"
+    const val RESULT_OK = "ok"
+    const val RESULT_TIMEOUT = "timeout"
+    const val RESULT_EMPTY = "empty"
     const val DEFAULT_TTL_MINUTES = 5
     const val MIN_TTL_MINUTES = 1
     const val HOME_RECENT_LIMIT = 10
@@ -41,13 +45,27 @@ object HomeRecentCache {
                 orderedIds.take(HOME_RECENT_LIMIT).joinToString(","),
             )
             .putLong(PREF_HOME_RECENT_FETCHED_MS, fetchedAtMs)
+            .putString(PREF_HOME_RECENT_LAST_RESULT, RESULT_OK)
             .apply()
     }
 
-    /** Stamp fetch time without changing ids (timeout/empty backoff — ADR-0112). */
-    fun touchFetchedMs(prefs: SharedPreferences, fetchedAtMs: Long = System.currentTimeMillis()) {
-        prefs.edit().putLong(PREF_HOME_RECENT_FETCHED_MS, fetchedAtMs).apply()
+    /**
+     * Stamp fetch time without changing ids (timeout/empty backoff — ADR-0112).
+     * [result] distinguishes a successful refresh from a timeout/empty stamp so
+     * diagnostics can tell "fresh list" from "backoff with stale ids" (F5).
+     */
+    fun touchFetchedMs(
+        prefs: SharedPreferences,
+        fetchedAtMs: Long = System.currentTimeMillis(),
+        result: String = RESULT_TIMEOUT,
+    ) {
+        prefs.edit()
+            .putLong(PREF_HOME_RECENT_FETCHED_MS, fetchedAtMs)
+            .putString(PREF_HOME_RECENT_LAST_RESULT, result)
+            .apply()
     }
+
+    fun readResult(prefs: SharedPreferences): String = prefs.getString(PREF_HOME_RECENT_LAST_RESULT, "") ?: ""
 
     fun isStale(fetchedAtMs: Long, ttlMinutes: Int, nowMs: Long = System.currentTimeMillis()): Boolean {
         if (fetchedAtMs <= 0L) return true

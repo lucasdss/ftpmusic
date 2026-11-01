@@ -19,6 +19,9 @@ object DiagnosticLog {
     private val URL_REGEX = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
     private val lock = Any()
     private val lines = ArrayDeque<String>(CAP + 1)
+    private val lineTimes = ArrayDeque<Long>(CAP + 1)
+    private var ringSinceMsValue: Long = 0L
+    private var clearCountValue: Int = 0
 
     fun d(tag: String, msg: String) = append("D", tag, msg, null)
 
@@ -27,10 +30,21 @@ object DiagnosticLog {
     fun e(tag: String, msg: String, t: Throwable? = null) = append("E", tag, msg, t)
 
     fun clear() {
-        synchronized(lock) { lines.clear() }
+        synchronized(lock) {
+            lines.clear()
+            lineTimes.clear()
+            ringSinceMsValue = 0L
+            clearCountValue += 1
+        }
     }
 
     fun lineCount(): Int = synchronized(lock) { lines.size }
+
+    /** Epoch ms of the oldest retained line (0 = buffer empty). */
+    fun ringSinceMs(): Long = synchronized(lock) { ringSinceMsValue }
+
+    /** Number of [clear] calls in this process. */
+    fun clearCount(): Int = synchronized(lock) { clearCountValue }
 
     /**
      * Full export for Share. [offline], [reachable], sync prefs timestamps, and
@@ -51,6 +65,13 @@ object DiagnosticLog {
         homeRecentIdsCount: Int = -1,
         lastWmAttemptMs: Long = -1L,
         lastWmSkipReason: String = "",
+        mode: String = "",
+        skipReason: String = "",
+        corpus: Int = -1,
+        songSum: Int = -1,
+        albumTracksAlbumsZero: Int = -1,
+        homeRecentResult: String = "",
+        wmSummary: String = "",
     ): String {
         val header = buildString {
             appendLine("ftpmusic diagnostics")
@@ -65,18 +86,34 @@ object DiagnosticLog {
                 appendLine(
                     "homeRecentFetchedMs=${homeRecentFetchedMs.coerceAtLeast(0L)} " +
                         "homeRecentTtlMin=${homeRecentTtlMin.coerceAtLeast(0)} " +
-                        "homeRecentIdsCount=${homeRecentIdsCount.coerceAtLeast(0)}",
+                        "homeRecentIdsCount=${homeRecentIdsCount.coerceAtLeast(0)} " +
+                        "homeRecentResult=${homeRecentResult.ifEmpty { "unknown" }}",
                 )
             }
             if (lastWmAttemptMs >= 0L || lastWmSkipReason.isNotEmpty()) {
+                // F6: `0` is indistinguishable from "never ran" on a device whose
+                // prefs already hold other sync stamps.
                 appendLine(
-                    "lastWmAttemptMs=${lastWmAttemptMs.coerceAtLeast(0L)} " +
+                    "lastWmAttemptMs=${if (lastWmAttemptMs <= 0L) "never" else lastWmAttemptMs} " +
                         "lastWmSkipReason=${lastWmSkipReason.ifEmpty { "-" }}",
                 )
             }
-            if (albums >= 0 || artists >= 0 || tracks >= 0) {
-                appendLine("albums=$albums artists=$artists tracks=$tracks")
+            if (wmSummary.isNotEmpty()) appendLine("workManager $wmSummary")
+            appendLine(
+                "syncMode mode=${mode.ifEmpty { "-" }} skip=${skipReason.ifEmpty { "-" }}",
+            )
+            if (albums >= 0 || artists >= 0 || tracks >= 0 || corpus >= 0) {
+                // F4 / D5: three different SoTs, labelled; ghost-row count exposed.
+                appendLine(
+                    "libraryCounts albums=$albums artists=$artists tracksLedger=$tracks " +
+                        "corpus=$corpus songSum=$songSum albumTracksAlbumsZero=$albumTracksAlbumsZero",
+                )
             }
+            val ringSince = ringSinceMsValue
+            appendLine(
+                "ringSince=${if (ringSince <= 0L) "none" else Instant.ofEpochMilli(ringSince)} " +
+                    "clearCount=$clearCountValue",
+            )
             appendLine("capturedAt=${Instant.now()}")
             append(BtResumeEvents.snapshotSection())
             appendLine("---")
@@ -86,7 +123,8 @@ object DiagnosticLog {
     }
 
     private fun append(level: String, tag: String, msg: String, t: Throwable?) {
-        val ts = Instant.now().toString()
+        val nowMs = System.currentTimeMillis()
+        val ts = Instant.ofEpochMilli(nowMs).toString()
         val safeMsg = sanitize(msg)
         val suffix = if (t != null) {
             val tMsg = t.message?.let { sanitize(it) }
@@ -97,7 +135,12 @@ object DiagnosticLog {
         val line = "$ts | $level | $tag | $safeMsg$suffix"
         synchronized(lock) {
             lines.addLast(line)
-            while (lines.size > CAP) lines.removeFirst()
+            lineTimes.addLast(nowMs)
+            while (lines.size > CAP) {
+                lines.removeFirst()
+                lineTimes.removeFirst()
+            }
+            ringSinceMsValue = lineTimes.firstOrNull() ?: 0L
         }
         if (BuildConfig.DEBUG) {
             when (level) {

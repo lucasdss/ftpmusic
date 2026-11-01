@@ -118,7 +118,7 @@ fun FtpmusicNavHost() {
 
     LaunchedEffect(currentRoute) {
         val route = currentRoute ?: return@LaunchedEffect
-        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-ui", "route=$route")
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d("ftpmusic-ui", "routePattern=$route")
     }
 
     val playbackViewModel: PlaybackViewModel = hiltViewModel()

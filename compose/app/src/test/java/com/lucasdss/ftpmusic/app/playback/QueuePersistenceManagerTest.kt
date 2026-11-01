@@ -534,4 +534,45 @@ class QueuePersistenceManagerTest {
         coEvery { dao.getState() } returns QueueStateEntity(sleepTimerEndMs = 999L)
         assertEquals(999L, manager.sleepTimerEndMs())
     }
+
+    @Test
+    fun `stale generation is skipped`() = runTest {
+        val tracks = listOf(Track("t1", "T"))
+        val older = manager.nextGeneration()
+        val newer = manager.nextGeneration()
+        manager.save(tracks, listOf("u"), 0, 1000L, generation = newer, src = "newer")
+        manager.save(tracks, listOf("u"), 0, 2000L, generation = older, src = "older")
+        coVerify(exactly = 1) { dao.replaceAllAndState(any(), any()) }
+    }
+
+    @Test
+    fun `newer generation applies after out-of-order arrival`() = runTest {
+        val tracks = listOf(Track("t1", "T"))
+        val older = manager.nextGeneration()
+        val newer = manager.nextGeneration()
+        manager.save(tracks, listOf("u"), 0, 1000L, generation = older, src = "older")
+        manager.save(tracks, listOf("u"), 0, 2000L, generation = newer, src = "newer")
+        coVerify(exactly = 2) { dao.replaceAllAndState(any(), any()) }
+    }
+
+    @Test
+    fun `identical snapshot is skipped`() = runTest {
+        val tracks = listOf(Track("t1", "T"))
+        manager.save(tracks, listOf("u"), 0, 1000L, generation = manager.nextGeneration(), src = "a")
+        manager.save(tracks, listOf("u"), 0, 1000L, generation = manager.nextGeneration(), src = "b")
+        coVerify(exactly = 1) { dao.replaceAllAndState(any(), any()) }
+    }
+
+    @Test
+    fun `nextGeneration is monotonic`() {
+        assertTrue(manager.nextGeneration() < manager.nextGeneration())
+    }
+
+    @Test
+    fun `url-only change is still written`() = runTest {
+        val tracks = listOf(Track("t1", "T"))
+        manager.save(tracks, listOf("http://old"), 0, 1000L, generation = manager.nextGeneration(), src = "a")
+        manager.save(tracks, listOf("http://new"), 0, 1000L, generation = manager.nextGeneration(), src = "b")
+        coVerify(exactly = 2) { dao.replaceAllAndState(any(), any()) }
+    }
 }

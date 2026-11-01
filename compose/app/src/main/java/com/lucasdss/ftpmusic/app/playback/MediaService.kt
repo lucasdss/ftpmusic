@@ -914,7 +914,7 @@ class MediaService : MediaLibraryService() {
                 }
             } else {
                 handler.removeCallbacks(positionPoller)
-                saveQueueState()
+                saveQueueState(src = "pause")
             }
         }
 
@@ -997,7 +997,8 @@ class MediaService : MediaLibraryService() {
             lastTrackedPositionMs = 0L
 
             // Persist queue + enqueue upcoming tracks for download (local-first:
-            // the whole queue is progressively cached, next 3 urgent).
+            // every track after the current one is progressively cached, next 3
+            // urgent — see ADR-0022 §6 / F7).
             // Only touch ExoPlayer's queue during local playback — CastPlayer items are transient
             if (!PlayerHolder.isCasting) {
                 val player = PlayerHolder.player
@@ -1005,7 +1006,7 @@ class MediaService : MediaLibraryService() {
                     val (tracks, urls) = playbackManager.buildQueueStateFromDual()
                     if (tracks.isNotEmpty()) {
                         val idx = player.currentMediaItemIndex.coerceIn(0, tracks.lastIndex)
-                        playbackManager.enqueuePlayQueue(tracks, urls, idx)
+                        playbackManager.enqueuePlayQueue(tracks, urls, idx, src = "transition")
                     }
                 }
             }
@@ -1076,7 +1077,7 @@ class MediaService : MediaLibraryService() {
             if (persistOk) {
                 // Cast: receiver handles auto-advance with full queue loaded.
                 // Local-first: persist queue to DB immediately, sync to server async
-                saveQueueState()
+                saveQueueState(src = "transition")
             }
             // ADR-0121: reload Room reactions for shade/lock thumbs when UI dead.
             // ADR-0132: clear reaction buttons immediately on radio so stale like/dislike
@@ -1140,6 +1141,13 @@ class MediaService : MediaLibraryService() {
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
+            // D3: was Logcat-silent; needed to classify the 18:52:56 position jump.
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-playback",
+                "positionDiscontinuity reason=$reason " +
+                    "oldIdx=${oldPosition.mediaItemIndex} oldPos=${oldPosition.positionMs} " +
+                    "newIdx=${newPosition.mediaItemIndex} newPos=${newPosition.positionMs}",
+            )
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
@@ -2728,6 +2736,10 @@ class MediaService : MediaLibraryService() {
                                     "ftpmusic-playback",
                                     "Continuous play: similar-songs API primary appended=${similar.size}",
                                 )
+                                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                                    "ftpmusic-playback",
+                                    "continuous-play source=similar appended=${similar.size}",
+                                )
                             }
                             return@launch
                         }
@@ -2741,6 +2753,10 @@ class MediaService : MediaLibraryService() {
                 val entries = queueJournalDao.getAllRecent()
                 if (entries.isEmpty()) {
                     android.util.Log.d("ftpmusic-playback", "Continuous play: empty journal")
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-playback",
+                        "continuous-play empty-journal mediaId=$mediaId",
+                    )
                     return@launch
                 }
                 val selected = JournalTrackSelector.select(entries, currentTrackIds)
@@ -2756,6 +2772,10 @@ class MediaService : MediaLibraryService() {
                         "ftpmusic-playback",
                         "Continuous play: no eligible candidates (localOnly=$localOnly selected=${selected.size})",
                     )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-playback",
+                        "continuous-play no-candidates localOnly=$localOnly selected=${selected.size}",
+                    )
                     return@launch
                 }
                 withContext(Dispatchers.Main) {
@@ -2768,6 +2788,10 @@ class MediaService : MediaLibraryService() {
                     android.util.Log.d(
                         "ftpmusic-playback",
                         "Continuous play: appended ${candidates.size} autoplay tracks",
+                    )
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                        "ftpmusic-playback",
+                        "continuous-play source=journal appended=${candidates.size}",
                     )
                 }
             } catch (e: Exception) {
@@ -3359,7 +3383,7 @@ class MediaService : MediaLibraryService() {
         return (PlayerHolder.player ?: player).currentMediaItemIndex
     }
 
-    private fun saveQueueState() {
+    private fun saveQueueState(src: String = "hot") {
         val player = PlayerHolder.exoPlayer ?: return
         // DualQueue is sole persist SoT (ADR 0067) — Player is projection only.
         // Local and Cast both snapshot Dual so is_priority / is_autoplay / entryIds
@@ -3376,6 +3400,8 @@ class MediaService : MediaLibraryService() {
             "ftpmusic-playback",
             "saveQueueState casting=${PlayerHolder.isCasting} tracks=${tracks.size} contextSize=${playbackManager.contextSize} idx=$currentIndex pos=$currentPosition",
         )
+        // F3 / D7: generation captured with the snapshot, before the launch.
+        val generation = persistenceManager.nextGeneration()
         scope.launch {
             persistenceManager.save(
                 tracks,
@@ -3388,6 +3414,8 @@ class MediaService : MediaLibraryService() {
                 playbackManager.peekNextEntryId(),
                 playbackManager.isAutoplayFlags(),
                 playbackManager.isLateFlags(),
+                generation = generation,
+                src = src,
             )
             // savePlayQueue: debounce by 1.5s — cancels previous pending call, fires after idle window.
             // saveQueueStateSync() (onDestroy/onTaskRemoved) bypasses this for guaranteed last-chance persistence.
@@ -3449,6 +3477,8 @@ class MediaService : MediaLibraryService() {
             "ftpmusic-playback",
             "saveQueueStateSync casting=${PlayerHolder.isCasting} tracks=${tracks.size} contextSize=${playbackManager.contextSize} idx=$currentIndex pos=$currentPosition",
         )
+        // F3 / D7: teardown snapshot is the newest generation.
+        val generation = persistenceManager.nextGeneration()
         try {
             if (waitBoundedMs != null) {
                 runBlocking {
@@ -3464,6 +3494,8 @@ class MediaService : MediaLibraryService() {
                             playbackManager.peekNextEntryId(),
                             playbackManager.isAutoplayFlags(),
                             playbackManager.isLateFlags(),
+                            generation = generation,
+                            src = "teardown",
                         )
                     }
                 }
@@ -3481,6 +3513,8 @@ class MediaService : MediaLibraryService() {
                             playbackManager.peekNextEntryId(),
                             playbackManager.isAutoplayFlags(),
                             playbackManager.isLateFlags(),
+                            generation = generation,
+                            src = "teardown",
                         )
                     } catch (_: Exception) {}
                 }
