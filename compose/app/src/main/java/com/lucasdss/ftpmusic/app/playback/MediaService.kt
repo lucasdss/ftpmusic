@@ -45,6 +45,7 @@ import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
+import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
@@ -86,6 +87,15 @@ internal enum class ErrorSkipAction {
     /** N1-C: bounded burst — pause and resume past the failed run on the next play. */
     PAUSE_BURST,
 }
+
+/** SQLite host-parameter budget for journal hydration IN (...) reads. */
+private const val JOURNAL_HYDRATE_CHUNK = 500
+
+/** Bounded rows per CP-6 fallback tier (target is `maxTracks` = 10). */
+private const val CONTINUOUS_PLAY_FALLBACK_LIMIT = 50
+
+/** Autoplay tracks appended per CP-6 fallback burst. */
+private const val CONTINUOUS_PLAY_FALLBACK_TARGET = 10
 
 /**
  * Pure decision logic for [MediaService]'s error auto-skip guard.
@@ -3072,6 +3082,91 @@ class MediaService : MediaLibraryService() {
     }
 
     /**
+     * CP-6 fallback ladder. Called only after the similar API and journal both
+     * produced nothing. Tiers accumulate until [maxTracks] is reached; each
+     * tier is bounded and filtered through [ContinuousPlayLoader.resolve], so
+     * offline/localOnly and CP-2 dislike ledgers apply identically.
+     */
+    private suspend fun loadFallbackCandidates(
+        currentEntity: TrackEntity?,
+        excludedTrackId: String?,
+        currentTrackIds: Set<String>,
+        localOnly: Boolean,
+        dislikedAlbumIds: Set<String>,
+        dislikedArtistIds: Set<String>,
+        buildStreamUrl: (String) -> String,
+        maxTracks: Int,
+    ): Pair<List<ContinuousPlayLoader.Candidate>, List<ContinuousPlayFallback.Tier>>? {
+        val context = ContinuousPlayFallback.contextOf(currentEntity)
+        val pickedIds = LinkedHashSet<String>()
+        val out = ArrayList<ContinuousPlayLoader.Candidate>(maxTracks)
+        val usedTiers = LinkedHashSet<ContinuousPlayFallback.Tier>()
+        for (tier in ContinuousPlayFallback.tiers(context)) {
+            if (out.size >= maxTracks) break
+            val entities = when (tier) {
+                ContinuousPlayFallback.Tier.SAME_GENRE ->
+                    context.genre?.let {
+                        if (localOnly) {
+                            trackDao.getRandomCachedTracksByGenre(it, CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                        } else {
+                            trackDao.getRandomTracksByGenre(it, CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                        }
+                    }
+
+                ContinuousPlayFallback.Tier.SAME_ARTIST ->
+                    context.artistId?.let {
+                        if (localOnly) {
+                            trackDao.getRandomCachedTracksByArtist(it, CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                        } else {
+                            trackDao.getRandomTracksByArtist(it, CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                        }
+                    }
+
+                ContinuousPlayFallback.Tier.MOST_PLAYED ->
+                    if (localOnly) {
+                        trackDao.getMostPlayedCached(CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                    } else {
+                        trackDao.getMostPlayed(CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                    }
+
+                ContinuousPlayFallback.Tier.RANDOM ->
+                    if (localOnly) {
+                        trackDao.getRandomCachedTracks(CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                    } else {
+                        trackDao.getRandomTracks(CONTINUOUS_PLAY_FALLBACK_LIMIT)
+                    }
+            } ?: emptyList()
+            if (entities.isEmpty()) continue
+            val byId = entities.associateBy { it.id }
+            val excludedIds = currentTrackIds + pickedIds + listOfNotNull(excludedTrackId)
+            val ids = ContinuousPlayFallback.eligibleIds(
+                entities = entities,
+                excludedIds = excludedIds,
+                localOnly = localOnly,
+                dislikedAlbumIds = dislikedAlbumIds,
+                dislikedArtistIds = dislikedArtistIds,
+                limit = maxTracks - out.size,
+            )
+            if (ids.isEmpty()) continue
+            val resolved = ContinuousPlayLoader.resolve(
+                selectedIds = ids,
+                localOnly = localOnly,
+                loadTrack = { byId[it] },
+                buildStreamUrl = buildStreamUrl,
+                excludedAlbumIds = dislikedAlbumIds,
+                excludedArtistIds = dislikedArtistIds,
+            )
+            if (resolved.isEmpty()) continue
+            resolved.forEach {
+                pickedIds.add(it.track.id)
+                out.add(it)
+            }
+            usedTiers.add(tier)
+        }
+        return if (out.isEmpty()) null else out to usedTiers.toList()
+    }
+
+    /**
      * Journal → context Autoplay append. Sets [hasLoadedContinuation] only after
      * ≥1 track appended so empty/offline misses can retry (ADR-0053).
      */
@@ -3181,56 +3276,111 @@ class MediaService : MediaLibraryService() {
                     }
                 }
                 val entries = queueJournalDao.getAllRecent()
-                if (entries.isEmpty()) {
-                    android.util.Log.d("ftpmusic-playback", "Continuous play: empty journal")
-                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
-                        "ftpmusic-playback",
-                        "continuous-play empty-journal mediaId=$mediaId",
-                    )
-                    return@launch
-                }
-                val selected = JournalTrackSelector.select(entries, currentTrackIds)
-                val entityById = selected.associateWith { id -> trackDao.getTrack(id) }
-                // CP-2: journal candidates must obey track/album/artist dislikes.
-                val dislikedTrackIds = trackDao.getDislikedIdsByIds(selected).toSet()
+                val journalCap = playbackManager.journalCap
+                val parsed = JournalTrackSelector.parse(entries, entryCap = journalCap)
+                val currentEntity = mediaId.takeIf { it.isNotBlank() }?.let { trackDao.getTrack(it) }
                 val dislikedAlbumIds = metadataDao.getDislikedAlbumIds().toSet()
                 val dislikedArtistIds = metadataDao.getDislikedArtistIds().toSet()
+                val journalIds = parsed.candidates.map { it.id }
+                val hydrated = if (journalIds.isEmpty()) {
+                    emptyMap()
+                } else {
+                    journalIds.chunked(JOURNAL_HYDRATE_CHUNK).flatMap { chunk ->
+                        trackDao.getTracksByIds(chunk)
+                    }.associateBy { it.id }
+                }
+                // CP-2: hydrated rows expose the track-level dislike flag directly.
+                val dislikedTrackIds = hydrated.values.filter { it.isDisliked }.map { it.id }.toSet()
+                val signals = JournalTrackSelector.Signals(
+                    currentTrackId = mediaId.takeIf { it.isNotBlank() },
+                    currentArtistId = currentEntity?.artistId,
+                    currentAlbumId = currentEntity?.albumId,
+                    currentGenre = currentEntity?.genre,
+                    // CP-3: exclude the whole active queue so CP cannot re-append
+                    // tracks that are still queued. Prefix-only exclusion needs a
+                    // currentJournalKey/cursor; CP-6 covers a fully-excluded pool.
+                    excludedIds = currentTrackIds,
+                    dislikedTrackIds = dislikedTrackIds,
+                    dislikedAlbumIds = dislikedAlbumIds,
+                    dislikedArtistIds = dislikedArtistIds,
+                    nowMs = System.currentTimeMillis(),
+                )
+                val selected = JournalTrackSelector.select(parsed, hydrated, signals)
                 val candidates = ContinuousPlayLoader.resolve(
                     selectedIds = selected,
                     localOnly = localOnly,
-                    loadTrack = { entityById[it] },
+                    loadTrack = { hydrated[it] },
                     buildStreamUrl = { id -> auth.buildStreamUrl(base, id, user, pass) },
                     excludedTrackIds = dislikedTrackIds,
                     excludedAlbumIds = dislikedAlbumIds,
                     excludedArtistIds = dislikedArtistIds,
                 )
-                if (candidates.isEmpty()) {
-                    android.util.Log.d(
-                        "ftpmusic-playback",
-                        "Continuous play: no eligible candidates (localOnly=$localOnly selected=${selected.size})",
-                    )
-                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
-                        "ftpmusic-playback",
-                        "continuous-play no-candidates localOnly=$localOnly selected=${selected.size}",
-                    )
+                if (candidates.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        playbackManager.appendToContext(
+                            candidates.map { it.track },
+                            candidates.map { it.streamUrl },
+                            asAutoplay = true,
+                        )
+                        hasLoadedContinuation = true
+                        android.util.Log.d(
+                            "ftpmusic-playback",
+                            "Continuous play: appended ${candidates.size} autoplay tracks",
+                        )
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                            "ftpmusic-playback",
+                            "continuous-play source=journal cap=$journalCap " +
+                                "considered=${parsed.candidates.size} picked=${selected.size} " +
+                                "appended=${candidates.size} localOnly=$localOnly",
+                        )
+                    }
                     return@launch
                 }
-                withContext(Dispatchers.Main) {
-                    playbackManager.appendToContext(
-                        candidates.map { it.track },
-                        candidates.map { it.streamUrl },
-                        asAutoplay = true,
-                    )
-                    hasLoadedContinuation = true
-                    android.util.Log.d(
-                        "ftpmusic-playback",
-                        "Continuous play: appended ${candidates.size} autoplay tracks",
-                    )
+                android.util.Log.d(
+                    "ftpmusic-playback",
+                    "Continuous play: no journal candidates (localOnly=$localOnly " +
+                        "entries=${entries.size} considered=${parsed.candidates.size} " +
+                        "picked=${selected.size} poolTruncated=${parsed.truncated})",
+                )
+                if (parsed.candidates.isNotEmpty() && selected.isEmpty()) {
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                         "ftpmusic-playback",
-                        "continuous-play source=journal appended=${candidates.size}",
+                        "continuous-play journal-excluded considered=${parsed.candidates.size} " +
+                            "queue=${currentTrackIds.size} localOnly=$localOnly",
                     )
                 }
+                // CP-6: similar API and journal both missed — try the local ladder.
+                val fallback = loadFallbackCandidates(
+                    currentEntity = currentEntity,
+                    excludedTrackId = mediaId.takeIf { it.isNotBlank() },
+                    currentTrackIds = currentTrackIds,
+                    localOnly = localOnly,
+                    dislikedAlbumIds = dislikedAlbumIds,
+                    dislikedArtistIds = dislikedArtistIds,
+                    buildStreamUrl = { id -> auth.buildStreamUrl(base, id, user, pass) },
+                    maxTracks = CONTINUOUS_PLAY_FALLBACK_TARGET,
+                )
+                if (fallback != null) {
+                    val (fallbackCandidates, tiers) = fallback
+                    withContext(Dispatchers.Main) {
+                        playbackManager.appendToContext(
+                            fallbackCandidates.map { it.track },
+                            fallbackCandidates.map { it.streamUrl },
+                            asAutoplay = true,
+                        )
+                        hasLoadedContinuation = true
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                            "ftpmusic-playback",
+                            "continuous-play source=fallback tiers=${tiers.joinToString("+")} " +
+                                "appended=${fallbackCandidates.size} localOnly=$localOnly",
+                        )
+                    }
+                    return@launch
+                }
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-playback",
+                    "continuous-play exhausted localOnly=$localOnly entries=${entries.size}",
+                )
             } catch (e: Exception) {
                 android.util.Log.w(
                     "ftpmusic-playback",

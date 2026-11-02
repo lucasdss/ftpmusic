@@ -2142,3 +2142,45 @@ audit OK → Mistral final challenge OK.
 Known non-blocking gap: `tryStartContext`/`PendingPlayback` do not carry
 `journalSource`. No tap path uses them today; any future tap that needs
 overwrite protection must extend that path before relying on journaling.
+
+### 11.7 Iteration log — CP-3 + CP-9 + CP-6 selector and fallback (2026-11-02)
+
+| ID | Change |
+|---|---|
+| CP-3 | `JournalTrackSelector` rewritten from random recency weighting into a scored selector. `parse(entries, entryCap = playbackManager.journalCap, poolCap = 800)` reads the full configured journal cap (10–500), de-duplicates ids, bounds Room hydration, and reports `truncated` when the pool cap cuts ids. `select(parsed, hydrated, Signals, maxTracks, Random)` scores entry recency (5× newest → 1× oldest), taste (`play_count` capped at 40, `user_rating`, `starred_at`), current artist/album/genre affinity, and a recent-play penalty (≤2 days 0.35, ≤7 days 0.65), with hard filters for the excluded queue and track/album/artist dislike ledgers. Sampling is weighted without replacement; artist/album repeats are soft down-weights (0.55/0.75), so a small pool still fills `min(maxTracks, eligible)`. |
+| CP-9 | Candidate scoring now reads `QueueJournalEntity.position`. When the current track appears in a journal entry, that entry uses the current index: after → 2.0, before → 0.4. Otherwise the saved start index is used: after → 1.4, before → 0.75. This makes “continue this album from track 40” observable without a schema change. |
+| CP-6 | Added pure `ContinuousPlayFallback` (tier order `SAME_GENRE → SAME_ARTIST → MOST_PLAYED → RANDOM`, skipped when context is absent) plus `eligibleIds`, which applies `isDisliked`, offline cache-path, and album/artist dislike filters **before** slicing. `MediaService` removed the empty-journal early return, hydrates journal ids in 500-id chunks, and after the similar API + journal both miss runs a bounded ladder that accumulates up to 10 tracks across tiers, excluding the whole active queue, the playing `mediaId`, and previously picked ids. The ladder runs both online (new uncached queries) and offline (`localOnly` means the cached variants and loader re-check). |
+
+DAO additions are query-only (no schema change, no migration): bounded
+`ORDER BY RANDOM()` genre/artist reads for online and cached-only modes, plus
+`getMostPlayed` / `getRandomTracks` online counterparts of existing cached
+queries. Randomized tiers avoid replaying the same alphabetically-first rows on
+every burst.
+
+**Whole-queue exclusion trade-off (CP-3).** The journal excludes the entire
+active queue rather than only the played prefix. Continuous Play appends to the
+context queue, so prefix-only exclusion would re-append tracks that are still
+queued (upcoming) or already played, depending on which side of the cursor is
+excluded. The review wording is internally inconsistent on this point, and a
+correct prefix rule needs a `currentJournalKey`/cursor that does not exist.
+Consequently a fully-excluded pool now logs `journal-excluded` and falls through
+to the CP-6 ladder, which uses the current track's genre/artist context. A
+cursor-based prefix policy is deferred rather than guessed. Mistral and DeepSeek
+both reviewed this and agreed it is defensible and non-blocking.
+
+**Known residual risk.** The fallback ladder adds up to four bounded DAO reads
+inside `continuousPlayInFlight`, which lengthens the in-flight window CP-14
+watches. The gate itself was not changed in this iteration.
+
+Verification: full `:app:testDebugUnitTest` green; `ktlintTestSourceSetCheck`
+green; `ktlintMainSourceSetCheck` reports only the same pre-existing unrelated
+violations in `PlaySuppressionWatch.kt`, `LibraryScreen.kt`, and
+`LibraryViewModel.kt`. New tests cover current-index and saved-position
+continuity, rating/play-count bias, recent-play penalty, dislike ledgers,
+>5 unique tracks from a 100-track entry, entry/pool caps and truncation,
+soft-diversity underfill, seeded determinism, fallback tier/filter order,
+offline vs online eligibility, and real in-memory Room execution of every new
+fallback query. Cross-model: DeepSeek audit returned NOT OK (deterministic
+genre/artist sampling, current-track replay, pre-filter slot waste) → all fixed
+→ Mistral challenge accepted the whole-queue trade-off → DeepSeek re-audit
+returned reasoned OK with no blocking issue.

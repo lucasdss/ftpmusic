@@ -1414,4 +1414,31 @@ class DaosRoomTest {
         assertFalse(cleared.isDownloaded)
         assertFalse(cleared.isAutoCached)
     }
+
+    @Test
+    fun `CP-6 fallback queries select by genre and artist with cached variants`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsertAll(
+            listOf(
+                TrackEntity(
+                    id = "a",
+                    title = "A",
+                    genre = "Rock",
+                    artistId = "ar-1",
+                    cachedFilePath = "/cache/a",
+                    playCount = 5,
+                ),
+                TrackEntity(id = "b", title = "B", genre = "Rock", artistId = "ar-1"),
+                TrackEntity(id = "c", title = "C", genre = "Jazz", artistId = "ar-2"),
+            ),
+        )
+
+        assertEquals(setOf("a", "b"), tracks.getRandomTracksByGenre("Rock", 10).map { it.id }.toSet())
+        assertEquals(listOf("a"), tracks.getRandomCachedTracksByGenre("Rock", 10).map { it.id })
+        assertEquals(setOf("a", "b"), tracks.getRandomTracksByArtist("ar-1", 10).map { it.id }.toSet())
+        assertEquals(listOf("a"), tracks.getRandomCachedTracksByArtist("ar-1", 10).map { it.id })
+        assertEquals("a", tracks.getMostPlayed(10).first().id)
+        assertEquals(listOf("a"), tracks.getRandomCachedTracks(10).map { it.id })
+        assertTrue(tracks.getRandomTracks(10).isNotEmpty())
+    }
 }

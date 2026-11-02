@@ -212,11 +212,39 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE cached_file_path IS NOT NULL ORDER BY play_count DESC LIMIT :limit")
     suspend fun getMostPlayedCached(limit: Int = 20): List<TrackEntity>
 
+    /** CP-6 online fallback: any Room row is streamable; loader applies dislikes. */
+    @Query("SELECT * FROM tracks ORDER BY play_count DESC, last_played_at DESC LIMIT :limit")
+    suspend fun getMostPlayed(limit: Int = 20): List<TrackEntity>
+
     @Query("SELECT * FROM tracks WHERE cached_file_path IS NOT NULL ORDER BY RANDOM() LIMIT 1")
     suspend fun getRandomCached(): TrackEntity?
 
     @Query("SELECT * FROM tracks WHERE cached_file_path IS NOT NULL ORDER BY RANDOM() LIMIT :limit")
     suspend fun getRandomCachedTracks(limit: Int = 50): List<TrackEntity>
+
+    /** CP-6 online fallback: random streamable row; offline uses the cached variant. */
+    @Query("SELECT * FROM tracks ORDER BY RANDOM() LIMIT :limit")
+    suspend fun getRandomTracks(limit: Int = 50): List<TrackEntity>
+
+    /** CP-6 same-genre fallback, randomized so repeated bursts do not replay the head rows. */
+    @Query("SELECT * FROM tracks WHERE genre = :genre ORDER BY RANDOM() LIMIT :limit")
+    suspend fun getRandomTracksByGenre(genre: String, limit: Int): List<TrackEntity>
+
+    @Query(
+        "SELECT * FROM tracks WHERE genre = :genre AND cached_file_path IS NOT NULL " +
+            "ORDER BY RANDOM() LIMIT :limit",
+    )
+    suspend fun getRandomCachedTracksByGenre(genre: String, limit: Int): List<TrackEntity>
+
+    /** CP-6 same-artist fallback, randomized (track artist id; best-effort vs artist view). */
+    @Query("SELECT * FROM tracks WHERE artist_id = :artistId ORDER BY RANDOM() LIMIT :limit")
+    suspend fun getRandomTracksByArtist(artistId: String, limit: Int): List<TrackEntity>
+
+    @Query(
+        "SELECT * FROM tracks WHERE artist_id = :artistId AND cached_file_path IS NOT NULL " +
+            "ORDER BY RANDOM() LIMIT :limit",
+    )
+    suspend fun getRandomCachedTracksByArtist(artistId: String, limit: Int): List<TrackEntity>
 
     @Query("SELECT * FROM tracks WHERE title LIKE '%' || :query || '%' AND cached_file_path IS NOT NULL")
     fun searchCached(query: String): Flow<List<TrackEntity>>
