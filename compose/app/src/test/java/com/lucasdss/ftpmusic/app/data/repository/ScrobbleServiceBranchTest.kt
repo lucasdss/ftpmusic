@@ -47,6 +47,7 @@ class ScrobbleServiceBranchTest {
 
     @After
     fun tearDown() {
+        if (::service.isInitialized) service.cancelScopeForTest()
         Dispatchers.resetMain()
     }
 
@@ -134,14 +135,17 @@ class ScrobbleServiceBranchTest {
         every { offlineModeManager.isOfflineEnabled() } returns true
         service.nowPlaying("t1")
         coVerify(timeout = 2000, exactly = 0) { api.scrobble(any(), id = "t1", submission = false) }
-        coVerify(timeout = 2000) { trackDao.upsert(any()) }
+        coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
-    fun `nowPlaying swallows API failure and still upserts`() = runTest(testDispatcher) {
+    fun `nowPlaying swallows API failure and still writes the local row`() = runTest(testDispatcher) {
         coEvery { api.scrobble(any(), id = "t1", submission = false) } throws RuntimeException("boom")
         service.nowPlaying("t1")
-        coVerify(timeout = 2000) { trackDao.upsert(any()) }
+        coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
+        coVerify(timeout = 2000) { trackDao.updateTrackMetadata(trackId = "t1") }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
@@ -150,7 +154,8 @@ class ScrobbleServiceBranchTest {
         service.scrobble("t1", "Title", "Artist")
         coVerify(timeout = 2000) { api.scrobble(any(), id = "t1", submission = true) }
         coVerify(timeout = 2000) { trackDao.incrementPlayCount("t1", any()) }
-        coVerify(timeout = 2000) { trackDao.upsert(match { it.playCount == 0 }) }
+        coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
@@ -158,7 +163,8 @@ class ScrobbleServiceBranchTest {
         coEvery { api.scrobble(any(), id = "t1", submission = true) } throws RuntimeException("boom")
         service.scrobble("t1")
         coVerify(timeout = 2000) { trackDao.incrementPlayCount("t1", any()) }
-        coVerify(timeout = 2000) { trackDao.upsert(any()) }
+        coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     // ── savePlayQueue ───────────────────────────────────────────────────────
@@ -191,7 +197,12 @@ class ScrobbleServiceBranchTest {
     fun `ensureTrackRow uses trackId for missing title`() = runTest(testDispatcher) {
         coEvery { trackDao.getTrack("t-no-title") } returns null
         service.nowPlaying("t-no-title", null)
-        coVerify(timeout = 2000) { trackDao.upsert(match { it.title == "t-no-title" && it.playCount == 0 }) }
+        // ensureTrackRow seeds title=trackId; the patch leaves it untouched.
+        coVerify(timeout = 2000) { trackDao.ensureTrackRow("t-no-title") }
+        coVerify(timeout = 2000) {
+            trackDao.updateTrackMetadata(trackId = "t-no-title", title = null)
+        }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
@@ -202,6 +213,11 @@ class ScrobbleServiceBranchTest {
             playCount = 42,
         )
         service.nowPlaying("t-count", "T")
-        coVerify(timeout = 2000) { trackDao.upsert(match { it.playCount == 42 }) }
+        // MET-3: no full-row write, so the existing play_count cannot be clobbered.
+        coVerify(timeout = 2000) {
+            trackDao.updateTrackMetadata(trackId = "t-count", title = "T")
+        }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
+        coVerify(exactly = 0) { trackDao.update(any()) }
     }
 }

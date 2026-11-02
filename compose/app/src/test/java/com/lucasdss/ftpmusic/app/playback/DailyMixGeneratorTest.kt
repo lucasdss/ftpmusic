@@ -39,8 +39,13 @@ class DailyMixGeneratorTest {
 
     @Test
     fun `no two consecutive tracks have the same artist`() {
-        val songs = (1..100).map { song("s$it", "Artist${it % 3}") }
+        // 3 artists × 10 tracks = exactly the minimum target, so every track is
+        // selected and a perfect A/B/C rotation is possible. (With an uneven
+        // pool the soft adjacency rule intentionally allows a same-artist run
+        // once every alternative is exhausted — see the single-artist test.)
+        val songs = (1..30).map { song("s$it", "Artist${it % 3}") }
         val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList())
+        assertEquals(30, result.size)
         for (i in 1 until result.size) {
             assertNotEquals(
                 "Consecutive tracks at $i must differ in artist",
