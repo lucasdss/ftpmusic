@@ -134,6 +134,35 @@ interface TrackDao {
     )
     suspend fun ensureTrackRow(trackId: String)
 
+    /**
+     * Targeted metadata patch for [ensureTrackRow]. Never writes local-weight
+     * columns (play_count, last_played_at, starred_at, is_disliked, cache
+     * fields), so it cannot clobber a concurrent increment (MET-3).
+     */
+    @Query(
+        "UPDATE tracks SET " +
+            "title = COALESCE(:title, title), " +
+            "artist = COALESCE(:artist, artist), " +
+            "album = COALESCE(:album, album), " +
+            "genre = COALESCE(:genre, genre), " +
+            "album_id = COALESCE(:albumId, album_id), " +
+            "artist_id = COALESCE(:artistId, artist_id), " +
+            "duration_seconds = COALESCE(:durationSeconds, duration_seconds), " +
+            "cover_art_url = COALESCE(:coverArtUrl, cover_art_url) " +
+            "WHERE id = :trackId",
+    )
+    suspend fun updateTrackMetadata(
+        trackId: String,
+        title: String? = null,
+        artist: String? = null,
+        album: String? = null,
+        genre: String? = null,
+        albumId: String? = null,
+        artistId: String? = null,
+        durationSeconds: Int? = null,
+        coverArtUrl: String? = null,
+    )
+
     @Query("SELECT COUNT(*) > 0 FROM tracks WHERE id = :trackId AND starred_at IS NOT NULL")
     suspend fun isTrackStarred(trackId: String): Boolean
 
@@ -1714,9 +1743,21 @@ interface GenreMixDao {
     @Query("SELECT * FROM daily_mix WHERE date = :date AND mix_id = :mixId LIMIT 1")
     suspend fun getDailyMix(date: String, mixId: Long): DailyMixEntity?
 
+    /**
+     * Most recent row for a recipe, whatever its date (DM-5). The regeneration
+     * predicate must evaluate the last generated list, not only today's or
+     * yesterday's — otherwise a missed day makes the next run look like a
+     * brand-new mix and bypasses the 24h/48h policy.
+     */
+    @Query("SELECT * FROM daily_mix WHERE mix_id = :mixId ORDER BY date DESC LIMIT 1")
+    suspend fun getLatestDailyMix(mixId: Long): DailyMixEntity?
+
     /** Batch read for Home cards: today's + yesterday's rows in one query. */
     @Query("SELECT * FROM daily_mix WHERE date IN (:dates)")
     suspend fun getDailyMixesForDates(dates: List<String>): List<DailyMixEntity>
+
+    @Query("SELECT COUNT(*) FROM daily_mix_tracks WHERE mix_id = :dailyMixId")
+    suspend fun getDailyMixTrackCount(dailyMixId: Int): Int
 
     /** Track counts for many daily mixes in one query (Home card batch). */
     @Query(
@@ -1733,6 +1774,14 @@ interface GenreMixDao {
 
     @Query("DELETE FROM daily_mix WHERE date = :date AND mix_id = :mixId")
     suspend fun deleteDailyMix(date: String, mixId: Long)
+
+    /**
+     * Remove historical rows older than [cutoffDate] for a recipe. Used when
+     * the recipe's pool becomes empty: the bounded delete below otherwise
+     * leaves a pre-yesterday row that can be resurrected as the "latest" list.
+     */
+    @Query("DELETE FROM daily_mix WHERE mix_id = :mixId AND date < :cutoffDate")
+    suspend fun deleteDailyMixesBefore(cutoffDate: String, mixId: Long)
 
     @Transaction
     suspend fun replaceDailyMix(date: String, mixId: Long, tracks: List<DailyMixTrackEntity>) {
@@ -1935,6 +1984,50 @@ interface ListenEventDao {
         """,
     )
     suspend fun countDistinctTracks(startMs: Long?, endMs: Long?, includeBackfill: Boolean): Int
+
+    /**
+     * Honest listens for a persisted Daily Mix, joined on the SQL side (DM-5).
+     * Avoids passing 30–120 track ids as bind variables and counts only events
+     * that happened after the list was generated. Backfill is excluded by
+     * default so a Last.fm import cannot mark a fresh mix as listened.
+     */
+    @Query(
+        """
+        SELECT COUNT(DISTINCT e.track_id)
+        FROM listen_events e
+        INNER JOIN daily_mix_tracks dmt ON dmt.track_id = e.track_id
+        WHERE dmt.mix_id = :dailyMixId
+          AND (:includeBackfill = 1 OR e.is_backfill = 0)
+          AND e.listened_at >= :startMs
+          AND (:endMs IS NULL OR e.listened_at < :endMs)
+        """,
+    )
+    suspend fun countDistinctTracksForMix(
+        dailyMixId: Int,
+        startMs: Long,
+        endMs: Long? = null,
+        includeBackfill: Boolean = false,
+    ): Int
+
+    /** Same join as [countDistinctTracksForMix], but returns the ids for
+     *  anti-repetition in the next list. */
+    @Query(
+        """
+        SELECT DISTINCT e.track_id
+        FROM listen_events e
+        INNER JOIN daily_mix_tracks dmt ON dmt.track_id = e.track_id
+        WHERE dmt.mix_id = :dailyMixId
+          AND (:includeBackfill = 1 OR e.is_backfill = 0)
+          AND e.listened_at >= :startMs
+          AND (:endMs IS NULL OR e.listened_at < :endMs)
+        """,
+    )
+    suspend fun getListenedTrackIdsForMix(
+        dailyMixId: Int,
+        startMs: Long,
+        endMs: Long? = null,
+        includeBackfill: Boolean = false,
+    ): List<String>
 
     @Query(
         """

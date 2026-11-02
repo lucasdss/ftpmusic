@@ -50,32 +50,50 @@ class ScrobbleServiceTest {
 
     @After
     fun tearDown() {
+        if (::service.isInitialized) service.cancelScopeForTest()
         Dispatchers.resetMain()
     }
 
     @Test
-    fun `nowPlaying upserts track row with all fields including genre`() = runTest(testDispatcher) {
+    fun `nowPlaying inserts stub then patches metadata without a full-row write`() = runTest(testDispatcher) {
         service.nowPlaying("t1", "Test Track", "Test Artist", "al-1", "ar-1", 240, "cov-1", "Rock")
 
-        val slot = slot<TrackEntity>()
-        coVerify(timeout = 2000) { trackDao.upsert(capture(slot)) }
-        assertEquals("t1", slot.captured.id)
-        assertEquals("Test Track", slot.captured.title)
-        assertEquals("Test Artist", slot.captured.artist)
-        assertEquals("al-1", slot.captured.albumId)
-        assertEquals("ar-1", slot.captured.artistId)
-        assertEquals(240, slot.captured.durationSeconds)
-        assertEquals("cov-1", slot.captured.coverArtUrl)
-        assertEquals("Rock", slot.captured.genre)
+        coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
+        coVerify(timeout = 2000) {
+            trackDao.updateTrackMetadata(
+                trackId = "t1",
+                title = "Test Track",
+                artist = "Test Artist",
+                album = null,
+                genre = "Rock",
+                albumId = "al-1",
+                artistId = "ar-1",
+                durationSeconds = 240,
+                coverArtUrl = "cov-1",
+            )
+        }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
-    fun `nowPlaying falls back to trackId as title when title is null`() = runTest(testDispatcher) {
+    fun `nowPlaying leaves the stub title when title is null`() = runTest(testDispatcher) {
         service.nowPlaying("t2", null, null)
 
-        val slot = slot<TrackEntity>()
-        coVerify(timeout = 2000) { trackDao.upsert(capture(slot)) }
-        assertEquals("t2", slot.captured.title)
+        // ensureTrackRow seeds title=trackId; the metadata patch keeps it.
+        coVerify(timeout = 2000) { trackDao.ensureTrackRow("t2") }
+        coVerify(timeout = 2000) {
+            trackDao.updateTrackMetadata(
+                trackId = "t2",
+                title = null,
+                artist = null,
+                album = null,
+                genre = null,
+                albumId = null,
+                artistId = null,
+                durationSeconds = null,
+                coverArtUrl = null,
+            )
+        }
     }
 
     // Note: scrobble() is tested via nowPlaying tests (shares ensureTrackRow code path)
@@ -85,9 +103,19 @@ class ScrobbleServiceTest {
     fun `nowPlaying handles null genre gracefully`() = runTest(testDispatcher) {
         service.nowPlaying("t4", "Title", "Artist", null, null, null, null, null)
 
-        val slot = slot<TrackEntity>()
-        coVerify(timeout = 2000) { trackDao.upsert(capture(slot)) }
-        assertNull(slot.captured.genre)
+        coVerify(timeout = 2000) {
+            trackDao.updateTrackMetadata(
+                trackId = "t4",
+                title = "Title",
+                artist = "Artist",
+                album = null,
+                genre = null,
+                albumId = null,
+                artistId = null,
+                durationSeconds = null,
+                coverArtUrl = null,
+            )
+        }
     }
 
     @Test
@@ -98,9 +126,13 @@ class ScrobbleServiceTest {
     }
 
     @Test
-    fun `dispose cancels scope`() {
-        service.dispose()
-        // No exception = scope cancelled
+    fun `scrobble persists local metrics when network fails`() = runTest(testDispatcher) {
+        coEvery { api.scrobble(any(), id = any(), submission = any()) } throws
+            java.io.IOException("offline")
+        service.scrobble("t-fail", "Title", "Artist")
+
+        coVerify(timeout = 2000) { trackDao.incrementPlayCount(eq("t-fail"), any()) }
+        coVerify(timeout = 2000) { listenEventDao.insert(any()) }
     }
 
     @Test
@@ -168,7 +200,7 @@ class ScrobbleServiceTest {
     }
 
     @Test
-    fun `ensureTrackRow preserves album and genre when metadata null`() = runTest(testDispatcher) {
+    fun `ensureTrackRow never overwrites album and genre with null`() = runTest(testDispatcher) {
         coEvery { trackDao.getTrack("t-keep") } returns TrackEntity(
             id = "t-keep",
             title = "Keep",
@@ -178,80 +210,71 @@ class ScrobbleServiceTest {
             playCount = 3,
         )
         service.nowPlaying("t-keep", "Keep", null, null, null, null, null, null)
-        val slot = slot<TrackEntity>()
-        coVerify(timeout = 2000) { trackDao.upsert(capture(slot)) }
-        assertEquals("Kept Album", slot.captured.album)
-        assertEquals("Metal", slot.captured.genre)
-        assertEquals("Art", slot.captured.artist)
-        assertEquals(3, slot.captured.playCount)
+
+        // Null metadata is passed through; the SQL COALESCE keeps the old value.
+        coVerify(timeout = 2000) {
+            trackDao.updateTrackMetadata(
+                trackId = "t-keep",
+                title = "Keep",
+                artist = null,
+                album = null,
+                genre = null,
+                albumId = null,
+                artistId = null,
+                durationSeconds = null,
+                coverArtUrl = null,
+            )
+        }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
-    // ── Play count preservation (RED: fails until ensureTrackRow fix) ───────
+    // ── Play count preservation ────────────────────────────────────────────
 
     @Test
-    fun `ensureTrackRow preserves existing play count`() = runTest(testDispatcher) {
-        // Simulate existing track with play_count = 5
+    fun `ensureTrackRow does not write play count`() = runTest(testDispatcher) {
         coEvery { trackDao.getTrack("t-existing") } returns TrackEntity(
             id = "t-existing",
             title = "Existing Track",
             playCount = 5,
         )
 
-        // Call nowPlaying — ensureTrackRow should upsert WITHOUT resetting play_count
         service.nowPlaying("t-existing", "Existing Track", "Artist")
 
-        val slot = slot<TrackEntity>()
-        coVerify(timeout = 5000) { trackDao.upsert(capture(slot)) }
-        // After fix: upsert should pass the EXISTING play_count (5), not default 0
-        assertEquals(
-            "ensureTrackRow must preserve existing play_count",
-            5,
-            slot.captured.playCount,
-        )
+        coVerify(timeout = 5000) { trackDao.ensureTrackRow("t-existing") }
+        coVerify(timeout = 5000) {
+            trackDao.updateTrackMetadata(trackId = "t-existing", title = "Existing Track", artist = "Artist")
+        }
+        // MET-3: no full-row write means the SQL layer cannot clobber play_count.
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
+        coVerify(exactly = 0) { trackDao.update(any()) }
     }
 
     @Test
-    fun `ensureTrackRow sets play count 0 for new track`() = runTest(testDispatcher) {
-        // Track doesn't exist in DB
+    fun `ensureTrackRow seeds a new row with play count 0`() = runTest(testDispatcher) {
         coEvery { trackDao.getTrack("t-new") } returns null
 
         service.nowPlaying("t-new", "New Track", "Artist")
 
-        val slot = slot<TrackEntity>()
-        coVerify(timeout = 5000) { trackDao.upsert(capture(slot)) }
-        assertEquals(
-            "New track must have play_count = 0",
-            0,
-            slot.captured.playCount,
-        )
+        coVerify(timeout = 5000) { trackDao.ensureTrackRow("t-new") }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
-    fun `scrobble increments play count after ensureTrackRow preserves it`() = runTest(testDispatcher) {
+    fun `scrobble increments play count via the targeted DAO query`() = runTest(testDispatcher) {
         val trackId = "t-inc"
-        coEvery { trackDao.getTrack(trackId) } returns TrackEntity(
-            id = trackId,
-            title = "Inc Track",
-            playCount = 10,
-        )
 
-        // nowPlaying triggers ensureTrackRow, then scrobble triggers incrementPlayCount
-        // This test verifies the sequence doesn't lose the play_count
-        service.nowPlaying(trackId, "Inc Track", "Artist")
-        advanceUntilIdle()
+        service.scrobble(trackId, "Inc Track", "Artist")
 
-        // After nowPlaying, upsert preserved play_count (should be 10)
-        val upsertSlot = slot<TrackEntity>()
-        coVerify(timeout = 5000) { trackDao.upsert(capture(upsertSlot)) }
-        assertEquals(
-            "play_count must be preserved by ensureTrackRow",
-            10,
-            upsertSlot.captured.playCount,
-        )
+        coVerify(timeout = 5000) { trackDao.ensureTrackRow(trackId) }
+        coVerify(timeout = 5000) {
+            trackDao.updateTrackMetadata(trackId = trackId, title = "Inc Track", artist = "Artist")
+        }
+        coVerify(timeout = 5000) { trackDao.incrementPlayCount(eq(trackId), any()) }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
-    fun `ensureTrackRow preserves cache download star dislike and lastPlayed`() = runTest(testDispatcher) {
+    fun `ensureTrackRow never writes cache download star dislike or lastPlayed`() = runTest(testDispatcher) {
         coEvery { trackDao.getTrack("t-weight") } returns TrackEntity(
             id = "t-weight",
             title = "Weighted",
@@ -267,16 +290,12 @@ class ScrobbleServiceTest {
         )
         service.nowPlaying("t-weight", "Weighted", "Artist")
 
-        val slot = slot<TrackEntity>()
-        coVerify(timeout = 5000) { trackDao.upsert(capture(slot)) }
-        // Fix 0: a bare REPLACE with a sparse entity must not zero local weight.
-        assertEquals("/cache/t-weight.mp3", slot.captured.cachedFilePath)
-        assertTrue(slot.captured.isDownloaded)
-        assertEquals(1234, slot.captured.cacheSizeBytes)
-        assertEquals(1700000000000L, slot.captured.starredAt)
-        assertEquals(1600000000000L, slot.captured.lastPlayedAt)
-        assertTrue(slot.captured.isDisliked)
-        assertEquals(7, slot.captured.playCount)
+        coVerify(timeout = 5000) {
+            trackDao.updateTrackMetadata(trackId = "t-weight", title = "Weighted", artist = "Artist")
+        }
+        // None of the preserved columns are part of the metadata patch.
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
+        coVerify(exactly = 0) { trackDao.update(any()) }
     }
 
     // ── Integer overflow safeguard ───────────────────────────────────────

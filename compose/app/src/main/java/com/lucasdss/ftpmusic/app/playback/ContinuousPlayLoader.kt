@@ -12,19 +12,51 @@ object ContinuousPlayLoader {
     data class Candidate(val track: Track, val streamUrl: String)
 
     /**
+     * Single source of truth for dislike-ledger filtering. Used by [resolve]
+     * for journal candidates and by [MediaService] for API similar-songs,
+     * where album/artist ids may need to be resolved from Room first.
+     */
+    fun isExcluded(
+        trackId: String,
+        albumId: String?,
+        artistId: String?,
+        excludedTrackIds: Set<String> = emptySet(),
+        excludedAlbumIds: Set<String> = emptySet(),
+        excludedArtistIds: Set<String> = emptySet(),
+    ): Boolean = trackId in excludedTrackIds ||
+        (albumId != null && albumId in excludedAlbumIds) ||
+        (artistId != null && artistId in excludedArtistIds)
+
+    /**
      * @param selectedIds journal-picked IDs (already de-duped vs current queue)
      * @param localOnly when true, keep only downloaded/cached rows
+     * @param excludedTrackIds locally disliked track IDs (track ledger)
+     * @param excludedAlbumIds locally disliked album IDs (album ledger)
+     * @param excludedArtistIds locally disliked artist IDs (artist ledger)
      */
     fun resolve(
         selectedIds: List<String>,
         localOnly: Boolean,
         loadTrack: (String) -> TrackEntity?,
         buildStreamUrl: (String) -> String,
+        excludedTrackIds: Set<String> = emptySet(),
+        excludedAlbumIds: Set<String> = emptySet(),
+        excludedArtistIds: Set<String> = emptySet(),
     ): List<Candidate> {
         if (selectedIds.isEmpty()) return emptyList()
         val out = ArrayList<Candidate>(selectedIds.size)
         for (id in selectedIds) {
             val entity = loadTrack(id) ?: continue
+            if (entity.isDisliked) continue
+            val excluded = isExcluded(
+                id,
+                entity.albumId,
+                entity.artistId,
+                excludedTrackIds,
+                excludedAlbumIds,
+                excludedArtistIds,
+            )
+            if (excluded) continue
             if (localOnly && !isPlayableOffline(entity)) continue
             out.add(
                 Candidate(

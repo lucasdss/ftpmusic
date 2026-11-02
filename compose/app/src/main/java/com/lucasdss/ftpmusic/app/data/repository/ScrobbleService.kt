@@ -4,7 +4,6 @@ import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
 import com.lucasdss.ftpmusic.app.data.db.ListenEventEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
-import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
@@ -30,7 +29,22 @@ class ScrobbleService @Inject constructor(
     private val offlineModeManager: OfflineModeManager,
 ) {
     private val auth = SubsonicAuthHelper()
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    /**
+     * Process-scoped (MET-1): never cancel this from a service/feature
+     * lifecycle. A CoroutineExceptionHandler prevents an uncaught Room/API
+     * failure from crashing the process (MET-8); cancellation is rethrown by
+     * callers so structured concurrency still works.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() +
+            Dispatchers.IO +
+            CoroutineExceptionHandler { _, throwable ->
+                if (throwable is CancellationException) return@CoroutineExceptionHandler
+                android.util.Log.e("ftpmusic-scrobble", "Uncaught scrobble failure", throwable)
+                DiagnosticLog.e("ftpmusic-scrobble", "uncaught: ${throwable.message}", throwable)
+            },
+    )
 
     private suspend fun authParams(): Map<String, String> {
         val user = storage.get(SecureStorage.KEY_USERNAME) ?: ""
@@ -50,19 +64,21 @@ class ScrobbleService @Inject constructor(
         genre: String? = null,
     ) {
         scope.launch {
-            if (!offlineModeManager.isOfflineEnabled()) {
-                try {
-                    api.scrobble(authParams(), id = trackId, submission = false)
-                } catch (
-                    e: Exception,
-                ) {
-                    android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
-                }
-            }
+            // Local first (MET-2): never let a slow/failed API call delay or
+            // lose the metadata row that like/dislike/rating depend on.
             ensureTrackRow(
                 trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre,
                 album = null,
             )
+            if (!offlineModeManager.isOfflineEnabled()) {
+                try {
+                    api.scrobble(authParams(), id = trackId, submission = false)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
+                }
+            }
         }
     }
 
@@ -87,18 +103,9 @@ class ScrobbleService @Inject constructor(
         listenedAt: Long = System.currentTimeMillis(),
     ) {
         scope.launch {
-            if (!offlineModeManager.isQueueEnabled()) {
-                try {
-                    api.scrobble(authParams(), id = trackId, submission = true)
-                } catch (
-                    e: Exception,
-                ) {
-                    android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
-                    DiagnosticLog.w("ftpmusic-scrobble", "API skip/fail: ${e.message}")
-                }
-            } else {
-                DiagnosticLog.d("ftpmusic-scrobble", "API skip — offline id=$trackId")
-            }
+            // Local first (MET-2): the play_count + listen_event are the
+            // durable record. A slow/failed server scrobble must not delay or
+            // lose them (and service teardown must not cancel in-flight writes).
             ensureTrackRow(
                 trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre,
                 album = albumName,
@@ -130,6 +137,19 @@ class ScrobbleService @Inject constructor(
                 "ftpmusic-scrobble",
                 "listen event id=$trackId secs=$cappedSeconds",
             )
+            // Server report is best-effort and runs after the durable local write.
+            if (!offlineModeManager.isQueueEnabled()) {
+                try {
+                    api.scrobble(authParams(), id = trackId, submission = true)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
+                    DiagnosticLog.w("ftpmusic-scrobble", "API skip/fail: ${e.message}")
+                }
+            } else {
+                DiagnosticLog.d("ftpmusic-scrobble", "API skip — offline id=$trackId")
+            }
         }
     }
 
@@ -144,37 +164,21 @@ class ScrobbleService @Inject constructor(
         genre: String? = null,
         album: String? = null,
     ) {
-        // Always upsert — CacheService may have created a stub row with title=trackId.
-        // PlaybackState metadata from the server is authoritative when present.
-        // Preserve ALL local-weight fields (play_count, last_played_at, starred_at,
-        // is_disliked, cached_file_path, is_downloaded, …) via copy() — a bare
-        // REPLACE with a sparse entity would zero them (ADR-0128).
-        val existing = trackDao.getTrack(trackId)
-        val entity = if (existing == null) {
-            TrackEntity(
-                id = trackId,
-                title = title ?: trackId,
-                artist = artist,
-                album = album,
-                genre = genre,
-                albumId = albumId,
-                artistId = artistId,
-                durationSeconds = durationSeconds,
-                coverArtUrl = coverArtUrl,
-            )
-        } else {
-            existing.copy(
-                title = title ?: existing.title,
-                artist = artist ?: existing.artist,
-                album = album ?: existing.album,
-                genre = genre ?: existing.genre,
-                albumId = albumId ?: existing.albumId,
-                artistId = artistId ?: existing.artistId,
-                durationSeconds = durationSeconds ?: existing.durationSeconds,
-                coverArtUrl = coverArtUrl ?: existing.coverArtUrl,
-            )
-        }
-        trackDao.upsert(entity)
+        // MET-3: INSERT OR IGNORE + targeted UPDATE. This preserves every
+        // local-weight/cache column and cannot lose a concurrent
+        // incrementPlayCount() to a stale read-copy-REPLACE.
+        trackDao.ensureTrackRow(trackId)
+        trackDao.updateTrackMetadata(
+            trackId = trackId,
+            title = title,
+            artist = artist,
+            album = album,
+            genre = genre,
+            albumId = albumId,
+            artistId = artistId,
+            durationSeconds = durationSeconds,
+            coverArtUrl = coverArtUrl,
+        )
     }
 
     /** Save the play queue to the Subsonic server (fire-and-forget). */
@@ -182,9 +186,9 @@ class ScrobbleService @Inject constructor(
         scope.launch {
             try {
                 api.savePlayQueue(auth, ids, current, position)
-            } catch (
-                e: Exception,
-            ) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
             }
         }
@@ -217,12 +221,20 @@ class ScrobbleService @Inject constructor(
                     suffix = s["suffix"] as? String,
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             emptyList()
         }
     }
 
-    fun dispose() {
+    /**
+     * Test-only teardown. Production code must never call this: the service is
+     * a process-scoped @Singleton (MET-1). Kept internal so tests can release
+     * their IO scope.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun cancelScopeForTest() {
         scope.cancel()
     }
 }

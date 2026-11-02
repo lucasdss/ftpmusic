@@ -22,6 +22,24 @@ object DailyMixGenerator {
      *  candidate id list past the 999-variable limit on older Android. */
     private const val SQL_CHUNK = 900
 
+    /** Internal bucket for null/blank artists. A sentinel (not the literal
+     *  string "unknown") keeps untagged tracks distinct from a real artist
+     *  whose name happens to be "unknown" (DM-9). */
+    internal const val UNKNOWN_ARTIST_KEY = "\u0000<unknown>"
+
+    internal fun artistKey(artist: String?): String = artist?.trim()?.takeIf { it.isNotEmpty() } ?: UNKNOWN_ARTIST_KEY
+
+    /**
+     * Per-artist cap that cannot, by itself, prevent reaching [targetSize].
+     * The previous `targetSize / 10` cap limited a two-artist recipe to 6–24
+     * tracks for a 30–120 target (DM-1/DM-12). This cap is a soft diversity
+     * limit: the selection loop ignores it when no uncapped alternative remains.
+     */
+    internal fun maxTracksPerArtist(targetSize: Int, artistCount: Int): Int {
+        if (artistCount <= 0) return 0
+        return maxOf(2, (targetSize + artistCount - 1) / artistCount + 1)
+    }
+
     /**
      * Determines whether the Daily Mix should be regenerated.
      *
@@ -63,8 +81,6 @@ object DailyMixGenerator {
         val primaryPool = if (unlistenedSongs.size >= 30) unlistenedSongs else songs
 
         val targetSize = random.nextInt(30, 121).coerceAtMost(primaryPool.size + supplementalTracks.size)
-        // Dynamic per-artist cap: proportional to mix size (min 2, max ~12 for 120-track mix)
-        val dynamicMaxPerArtist = maxOf(2, targetSize / 10)
 
         // Build weight map from the primary pool for tiebreaking (includes yesterday penalty)
         val weightMap = primaryPool.associate { s ->
@@ -73,38 +89,49 @@ object DailyMixGenerator {
             s.id to w
         }
 
-        // Organize primary pool by artist → list of tracks sorted by weight
+        // Organize primary pool by normalized artist key → tracks sorted by weight
         val artistTracks = mutableMapOf<String, MutableList<SongInfo>>()
         for (s in primaryPool) {
-            val artist = s.artist ?: "unknown"
-            artistTracks.getOrPut(artist) { mutableListOf() }.add(s)
+            artistTracks.getOrPut(artistKey(s.artist)) { mutableListOf() }.add(s)
         }
         for ((_, tracks) in artistTracks) {
             tracks.sortByDescending { weightMap[it.id] ?: 1 }
         }
 
+        // Soft cap: never let the cap alone keep the mix below target.
+        val dynamicMaxPerArtist = maxTracksPerArtist(targetSize, artistTracks.size)
+
         val result = mutableListOf<SongInfo>()
         val resultIds = mutableSetOf<String>()
         val artistCounts = mutableMapOf<String, Int>()
+        val artistRemaining = artistTracks.mapValuesTo(mutableMapOf()) { it.value.size }
         val albumUsage = mutableMapOf<String, Int>() // "$artist:$albumId"
 
         // Round-robin through artists (shuffled to avoid stable ordering)
         val queue = ArrayDeque(artistTracks.keys.shuffled(random))
 
-        var consecutiveSkips = 0
-        while (result.size < targetSize && queue.isNotEmpty() && consecutiveSkips < queue.size * 2) {
+        fun hasAlternative(current: String): Boolean = queue.any { other ->
+            other != current &&
+                (artistCounts[other] ?: 0) < dynamicMaxPerArtist &&
+                (artistRemaining[other] ?: 0) > 0
+        }
+
+        while (result.size < targetSize && queue.isNotEmpty()) {
             val artist = queue.removeFirst()
             val tracks = artistTracks[artist] ?: continue
+            if ((artistRemaining[artist] ?: 0) <= 0) continue
             val count = artistCounts[artist] ?: 0
-            if (count >= dynamicMaxPerArtist) continue
 
-            val lastArtist = result.lastOrNull()?.artist
-            if (artist == lastArtist) {
+            // Cap is soft: only enforce it while an uncapped alternative exists.
+            if (count >= dynamicMaxPerArtist && hasAlternative(artist)) continue
+
+            // Adjacency is soft too: when every alternative is exhausted/capped,
+            // allow the same artist rather than collapsing to one track (DM-1).
+            val lastArtist = result.lastOrNull()?.let { artistKey(it.artist) }
+            if (artist == lastArtist && hasAlternative(artist)) {
                 queue.addLast(artist)
-                consecutiveSkips++
                 continue
             }
-            consecutiveSkips = 0
 
             // Pick best track: prefer unused album, then highest weight.
             // Un-albumed tracks get a UNIQUE per-track key ("single-<id>") so they
@@ -124,26 +151,77 @@ object DailyMixGenerator {
                 result.add(pick)
                 resultIds.add(pick.id)
                 artistCounts[artist] = count + 1
+                artistRemaining[artist] = (artistRemaining[artist] ?: 1) - 1
                 val ak = "$artist:${pick.albumId ?: "single-${pick.id}"}"
                 albumUsage[ak] = (albumUsage[ak] ?: 0) + 1
                 queue.addLast(artist) // re-enter for next round
             }
         }
 
-        // Phase 3: fill remaining from supplemental
+        // Phase 3: fill remaining from supplemental, with the same soft cap and
+        // adjacency rules. Supplemental stays separate from the primary pool so
+        // cross-mix fill cannot shrink the primary selection (DM-2/DM-3).
         if (result.size < targetSize) {
-            val lastArtist = result.lastOrNull()?.artist
-            supplementalTracks
-                .filter { it.artist != lastArtist && it.id !in resultIds }
-                .sortedByDescending { weightMap[it.id] ?: 1 }
-                .forEach { s ->
-                    if (result.size >= targetSize) return@forEach
-                    val a = s.artist ?: "unknown"
-                    if ((artistCounts[a] ?: 0) >= dynamicMaxPerArtist) return@forEach
-                    result.add(s)
-                    resultIds.add(s.id)
-                    artistCounts[a] = (artistCounts[a] ?: 0) + 1
+            val supplementalByArtist = supplementalTracks
+                .filter { it.id !in resultIds }
+                .groupBy { artistKey(it.artist) }
+                .mapValues { (_, tracks) ->
+                    tracks.sortedByDescending { weightMap[it.id] ?: 1 }.toMutableList()
                 }
+            val suppQueue = ArrayDeque(supplementalByArtist.keys.shuffled(random))
+
+            fun hasSupplementalAlternative(current: String): Boolean = suppQueue.any { other ->
+                other != current &&
+                    (artistCounts[other] ?: 0) < dynamicMaxPerArtist &&
+                    supplementalByArtist[other]?.isNotEmpty() == true
+            }
+
+            while (result.size < targetSize && suppQueue.isNotEmpty()) {
+                val artist = suppQueue.removeFirst()
+                val tracks = supplementalByArtist[artist] ?: continue
+                if (tracks.isEmpty()) continue
+                if ((artistCounts[artist] ?: 0) >= dynamicMaxPerArtist &&
+                    hasSupplementalAlternative(artist)
+                ) {
+                    continue
+                }
+                val lastArtist = result.lastOrNull()?.let { artistKey(it.artist) }
+                if (artist == lastArtist && hasSupplementalAlternative(artist)) {
+                    suppQueue.addLast(artist)
+                    continue
+                }
+
+                val pick = tracks.removeFirstOrNull() ?: continue
+                result.add(pick)
+                resultIds.add(pick.id)
+                artistCounts[artist] = (artistCounts[artist] ?: 0) + 1
+                if (tracks.isNotEmpty()) suppQueue.addLast(artist)
+            }
+        }
+
+        // Hard fill: if small alternative pools exhausted before the target, the
+        // soft cap must not leave the mix short. Prefer adjacency diversity once,
+        // then allow same-artist runs to reach the requested size.
+        if (result.size < targetSize) {
+            val leftover = (primaryPool.asSequence() + supplementalTracks.asSequence())
+                .filter { it.id !in resultIds }
+                .sortedByDescending { weightMap[it.id] ?: 1 }
+                .toList()
+            for (track in leftover) {
+                if (result.size >= targetSize) break
+                val last = result.lastOrNull()?.let { artistKey(it.artist) }
+                if (artistKey(track.artist) == last) continue
+                result.add(track)
+                resultIds.add(track.id)
+            }
+            if (result.size < targetSize) {
+                for (track in leftover) {
+                    if (result.size >= targetSize) break
+                    if (track.id in resultIds) continue
+                    result.add(track)
+                    resultIds.add(track.id)
+                }
+            }
         }
 
         return result.take(targetSize)

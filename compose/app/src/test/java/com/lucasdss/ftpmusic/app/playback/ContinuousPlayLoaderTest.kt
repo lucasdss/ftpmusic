@@ -19,6 +19,47 @@ class ContinuousPlayLoaderTest {
     )
 
     @Test
+    fun `exclusion helper matches track album and artist ledgers`() {
+        assertTrue(ContinuousPlayLoader.isExcluded("t", null, null, excludedTrackIds = setOf("t")))
+        assertTrue(ContinuousPlayLoader.isExcluded("t", "al", null, excludedAlbumIds = setOf("al")))
+        assertTrue(ContinuousPlayLoader.isExcluded("t", null, "ar", excludedArtistIds = setOf("ar")))
+        assertFalse(ContinuousPlayLoader.isExcluded("t", "al", "ar"))
+        // Null ids must not match an empty ledger or throw.
+        assertFalse(ContinuousPlayLoader.isExcluded("t", null, null))
+    }
+
+    @Test
+    fun `resolve excludes disliked tracks albums and artists`() {
+        val db = mapOf(
+            "track" to entity("track").copy(isDisliked = true),
+            "album" to entity("album").copy(albumId = "bad-album"),
+            "artist" to entity("artist").copy(artistId = "bad-artist"),
+            "ok" to entity("ok"),
+        )
+        val result = ContinuousPlayLoader.resolve(
+            selectedIds = listOf("track", "album", "artist", "ok"),
+            localOnly = false,
+            loadTrack = { db[it] },
+            buildStreamUrl = { "http://x/$it" },
+            excludedAlbumIds = setOf("bad-album"),
+            excludedArtistIds = setOf("bad-artist"),
+        )
+        assertEquals(listOf("ok"), result.map { it.track.id })
+    }
+
+    @Test
+    fun `resolve excludes explicit track id even when row is not marked disliked`() {
+        val result = ContinuousPlayLoader.resolve(
+            selectedIds = listOf("a", "b"),
+            localOnly = false,
+            loadTrack = { entity(it) },
+            buildStreamUrl = { "http://x/$it" },
+            excludedTrackIds = setOf("a"),
+        )
+        assertEquals(listOf("b"), result.map { it.track.id })
+    }
+
+    @Test
     fun `resolve skips missing DB rows`() {
         val result = ContinuousPlayLoader.resolve(
             selectedIds = listOf("a", "b"),

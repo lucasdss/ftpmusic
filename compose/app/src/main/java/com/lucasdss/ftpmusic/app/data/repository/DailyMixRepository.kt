@@ -12,6 +12,7 @@ import com.lucasdss.ftpmusic.app.data.db.CustomMixEntity
 import com.lucasdss.ftpmusic.app.data.db.CustomMixStateEntity
 import com.lucasdss.ftpmusic.app.data.db.DailyMixTrackEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
+import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.playback.DailyMixGenerator
@@ -65,6 +66,7 @@ class DailyMixRepository @Inject constructor(
     private val genreMixDao: GenreMixDao,
     private val trackDao: TrackDao,
     private val metadataDao: CachedMetadataDao,
+    private val listenEventDao: ListenEventDao,
     private val mixCacheCoordinator: MixCacheCoordinator,
     private val coverStore: CollectionCoverStore,
     private val ioDispatcher: CoroutineDispatcher,
@@ -340,6 +342,10 @@ class DailyMixRepository @Inject constructor(
             // generation attempt unblocked.
             genreMixDao.deleteDailyMix(context.date, mix.id)
             genreMixDao.deleteDailyMix(context.yesterday, mix.id)
+            // Also drop older history: generateForMix now looks at the latest
+            // row regardless of date, so a pre-yesterday row would otherwise
+            // be reusable after the pool recovers.
+            genreMixDao.deleteDailyMixesBefore(context.yesterday, mix.id)
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-dailymix",
                 "empty pool delete mixId=${mix.id} date=${context.date}",
@@ -347,20 +353,33 @@ class DailyMixRepository @Inject constructor(
             return emptyList()
         }
 
-        val existingMix = genreMixDao.getDailyMix(context.date, mix.id)
+        val existingMix = genreMixDao.getLatestDailyMix(mix.id)
+            ?: genreMixDao.getDailyMix(context.date, mix.id)
             ?: genreMixDao.getDailyMix(context.yesterday, mix.id)
         val existingIds = if (existingMix != null) genreMixDao.getDailyMixTrackIds(existingMix.id) else emptyList()
-        // One batched play-count read serves both the listen-ratio check and
-        // the anti-repetition set.
-        val playCounts = if (existingIds.isEmpty()) {
-            emptyMap()
-        } else {
-            trackDao.getTrackPlayCounts(existingIds).associate { it.id to it.playCount }
-        }
+
+        // DM-5: count only honest listens that happened after this list was
+        // generated. Lifetime tracks.play_count is wrong — a long-owned
+        // favorite looks "listened" the moment it is added to a fresh mix.
         val listenedCount = if (existingMix != null) {
-            existingIds.count { (playCounts[it] ?: 0) > 0 }
+            listenEventDao.countDistinctTracksForMix(
+                dailyMixId = existingMix.id,
+                startMs = existingMix.createdAt,
+                includeBackfill = false,
+            )
         } else {
             0
+        }
+        // DM-13: anti-repetition must survive a missed generation day. Use the
+        // latest persisted list even when it is older than yesterday.
+        val previouslyListenedIds = if (existingMix != null) {
+            listenEventDao.getListenedTrackIdsForMix(
+                dailyMixId = existingMix.id,
+                startMs = existingMix.createdAt,
+                includeBackfill = false,
+            ).toSet()
+        } else {
+            emptySet()
         }
         val shouldRegen = if (existingMix != null) {
             DailyMixGenerator.shouldRegenerate(
@@ -387,17 +406,19 @@ class DailyMixRepository @Inject constructor(
         } else {
             emptyList()
         }
-        val yesterdayMix = if (existingMix != null && existingMix.date == context.yesterday) {
-            existingMix
-        } else {
-            genreMixDao.getDailyMix(context.yesterday, mix.id)
+        // DM-13: prefer yesterday's list for the weight penalty; when a
+        // generation day was missed, fall back to the latest persisted list so
+        // the penalty (and anti-repetition) is not silently dropped.
+        val yesterdayMix = when {
+            existingMix != null && existingMix.date == context.yesterday -> existingMix
+            else -> genreMixDao.getDailyMix(context.yesterday, mix.id)
         }
-        val yesterdayIds = if (yesterdayMix != null) {
-            genreMixDao.getDailyMixTrackIds(yesterdayMix.id).toSet()
+        val penaltyMix = yesterdayMix ?: existingMix
+        val yesterdayIds = if (penaltyMix != null) {
+            genreMixDao.getDailyMixTrackIds(penaltyMix.id).toSet()
         } else {
             emptySet()
         }
-        val previouslyListenedIds = existingIds.filter { (playCounts[it] ?: 0) > 0 }.toSet()
 
         val generated = DailyMixGenerator.generate(
             songs,
@@ -438,6 +459,35 @@ class DailyMixRepository @Inject constructor(
                 onProgress?.invoke(index + 1, mixes.size)
             }
             produced
+        }
+    }
+
+    /**
+     * Home freshness check (DM-5): true when at least one recipe's latest list
+     * is stale under the same predicate used by [generateForMix].
+     *
+     * Home must call this even when every card is present; a yesterday-fallback
+     * card otherwise hides the age/listen check indefinitely.
+     */
+    suspend fun anyMixNeedsRegeneration(): Boolean = withContext(ioDispatcher) {
+        val mixes = customMixDao.getAll()
+        if (mixes.isEmpty()) return@withContext false
+        val nowMs = System.currentTimeMillis()
+        mixes.any { mix ->
+            val row = genreMixDao.getLatestDailyMix(mix.id) ?: return@any true
+            val totalTracks = genreMixDao.getDailyMixTrackCount(row.id)
+            val listenedTracks = listenEventDao.countDistinctTracksForMix(
+                dailyMixId = row.id,
+                startMs = row.createdAt,
+                includeBackfill = false,
+            )
+            DailyMixGenerator.shouldRegenerate(
+                createdAtMs = row.createdAt,
+                totalTracks = totalTracks,
+                listenedTracks = listenedTracks,
+                nowMs = nowMs,
+                manual = false,
+            )
         }
     }
 

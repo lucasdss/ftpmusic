@@ -41,6 +41,7 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.MediaQueue
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.lucasdss.ftpmusic.app.data.cache.CacheSpanState
+import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
@@ -321,6 +322,8 @@ class MediaService : MediaLibraryService() {
     @Inject lateinit var queueJournalDao: QueueJournalDao
 
     @Inject lateinit var trackDao: TrackDao
+
+    @Inject lateinit var metadataDao: CachedMetadataDao
 
     @Inject lateinit var secureStorage: com.lucasdss.ftpmusic.app.data.security.SecureStorage
 
@@ -2504,7 +2507,10 @@ class MediaService : MediaLibraryService() {
         }
         btWarmAudioDeviceMonitor = null
         playSuppressionWatch.cancel("destroy")
-        scrobbleService.dispose()
+        // Do NOT dispose @Singleton ScrobbleService here. Its scope is
+        // process-scoped; cancel() during service teardown permanently kills
+        // play_count/listen_events and the queued savePlayQueue write for the
+        // rest of the process (MET-1/MET-1a). Keep it alive across restarts.
         playbackManager.destroy()
         playbackProvider.disconnect()
         notificationProvider?.dispose()
@@ -3121,8 +3127,36 @@ class MediaService : MediaLibraryService() {
                 // ADR-0094: prefer getSimilarSongs2 (may not be in Room yet), then journal.
                 if (!localOnly && mediaId.isNotBlank()) {
                     try {
-                        val similar = scrobbleService.fetchSimilarSongs(mediaId, count = 20)
-                            .filter { it.id !in currentTrackIds }
+                        val fetched = scrobbleService.fetchSimilarSongs(mediaId, count = 20)
+                        // CP-2: apply local dislike ledgers to API results too.
+                        // Do not use filterMixPlayableIds here — it drops IDs that
+                        // are not in Room yet and can empty the primary path.
+                        val knownById = if (fetched.isEmpty()) {
+                            emptyMap()
+                        } else {
+                            trackDao.getTracksByIds(fetched.map { it.id }).associateBy { it.id }
+                        }
+                        val dislikedTrackIds = trackDao
+                            .getDislikedIdsByIds(fetched.map { it.id })
+                            .toSet()
+                        val dislikedAlbumIds = metadataDao.getDislikedAlbumIds().toSet()
+                        val dislikedArtistIds = metadataDao.getDislikedArtistIds().toSet()
+                        val similar = fetched.filter { track ->
+                            if (track.id in currentTrackIds) return@filter false
+                            // Some servers omit albumId/artistId on
+                            // similar-songs payloads; fall back to Room so an
+                            // album/artist dislike cannot leak.
+                            val albumId = track.albumId ?: knownById[track.id]?.albumId
+                            val artistId = track.artistId ?: knownById[track.id]?.artistId
+                            !ContinuousPlayLoader.isExcluded(
+                                trackId = track.id,
+                                albumId = albumId,
+                                artistId = artistId,
+                                excludedTrackIds = dislikedTrackIds,
+                                excludedAlbumIds = dislikedAlbumIds,
+                                excludedArtistIds = dislikedArtistIds,
+                            )
+                        }
                         if (similar.isNotEmpty()) {
                             val urls = similar.map { auth.buildStreamUrl(base, it.id, user, pass) }
                             withContext(Dispatchers.Main) {
@@ -3157,11 +3191,18 @@ class MediaService : MediaLibraryService() {
                 }
                 val selected = JournalTrackSelector.select(entries, currentTrackIds)
                 val entityById = selected.associateWith { id -> trackDao.getTrack(id) }
+                // CP-2: journal candidates must obey track/album/artist dislikes.
+                val dislikedTrackIds = trackDao.getDislikedIdsByIds(selected).toSet()
+                val dislikedAlbumIds = metadataDao.getDislikedAlbumIds().toSet()
+                val dislikedArtistIds = metadataDao.getDislikedArtistIds().toSet()
                 val candidates = ContinuousPlayLoader.resolve(
                     selectedIds = selected,
                     localOnly = localOnly,
                     loadTrack = { entityById[it] },
                     buildStreamUrl = { id -> auth.buildStreamUrl(base, id, user, pass) },
+                    excludedTrackIds = dislikedTrackIds,
+                    excludedAlbumIds = dislikedAlbumIds,
+                    excludedArtistIds = dislikedArtistIds,
                 )
                 if (candidates.isEmpty()) {
                     android.util.Log.d(

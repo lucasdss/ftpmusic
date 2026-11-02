@@ -8,7 +8,9 @@ import org.junit.Test
 
 class DailyMixGeneratorTest {
 
-    private fun song(id: String, artist: String) = DailyMixGenerator.SongInfo(
+    private fun song(id: String, artist: String) = songWithArtist(id, artist)
+
+    private fun songWithArtist(id: String, artist: String?) = DailyMixGenerator.SongInfo(
         id = id,
         title = "Track $id",
         artist = artist,
@@ -52,11 +54,57 @@ class DailyMixGeneratorTest {
     fun `handles single artist gracefully`() {
         val songs = (1..100).map { song("s$it", "SameArtist") }
         val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList())
-        assertTrue("Must return some tracks", result.isNotEmpty())
+        // DM-1/DM-12: a single-artist pool must not collapse to one track.
+        assertTrue("Must fill the mix (got ${result.size})", result.size >= 30)
         assertTrue(
             "All same artist is acceptable when only one exists",
             result.all { it.artist == "SameArtist" },
         )
+        assertEquals("No duplicate track IDs", result.size, result.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun `null artists are one bucket and still fill the mix`() {
+        val songs = (1..100).map { songWithArtist("n$it", null) }
+        val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList(), random = Random(3))
+        // DM-9: null artists share one internal key; adjacency relaxes when no
+        // alternative exists, so the mix must still reach the target.
+        assertTrue("Null-artist pool must fill (got ${result.size})", result.size >= 30)
+        assertEquals("No duplicate track IDs", result.size, result.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun `null artist and literal unknown artist are distinct buckets`() {
+        val songs = (1..40).map { songWithArtist("n$it", null) } +
+            (1..40).map { songWithArtist("u$it", "unknown") }
+        val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList(), random = Random(4))
+        assertTrue("Mix must fill (got ${result.size})", result.size >= 30)
+        assertTrue("Null-artist tracks represented", result.any { it.artist == null })
+        assertTrue("Literal 'unknown' tracks represented", result.any { it.artist == "unknown" })
+    }
+
+    @Test
+    fun `dominant artist fills target after the only alternative is exhausted`() {
+        // DM-12: ArtistB has one track, ArtistA has many. The soft cap on A must
+        // relax once B is exhausted, otherwise the mix stops around cap+1.
+        val songs = (1..100).map { song("a$it", "ArtistA") } + song("b1", "ArtistB")
+        val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList(), random = Random(5))
+        assertTrue("Must reach minimum target (got ${result.size})", result.size >= 30)
+        assertTrue("ArtistB must be included", result.any { it.artist == "ArtistB" })
+    }
+
+    @Test
+    fun `small alternative pools do not strand the mix below target`() {
+        // 3 artists: A has 100 tracks, B and C have one each. Once B/C exhaust,
+        // the hard fill must use A's remaining tracks instead of stopping at
+        // the soft cap (DM-1 follow-up).
+        val songs = (1..100).map { song("a$it", "ArtistA") } +
+            song("b1", "ArtistB") +
+            song("c1", "ArtistC")
+        val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList(), random = Random(6))
+        assertTrue("Must reach minimum target (got ${result.size})", result.size >= 30)
+        assertTrue("ArtistB included", result.any { it.artist == "ArtistB" })
+        assertTrue("ArtistC included", result.any { it.artist == "ArtistC" })
     }
 
     @Test
@@ -151,8 +199,8 @@ class DailyMixGeneratorTest {
 
         val result = DailyMixGenerator.generate(songs, emptyMap(), supplemental)
 
-        // Graceful degradation: returns tracks even though all are same artist
-        assertTrue("Must return some tracks", result.isNotEmpty())
+        // DM-10: graceful degradation must still fill the mix, not stop at 1.
+        assertTrue("Must fill the mix (got ${result.size})", result.size >= 30)
         assertTrue(
             "All same artist is acceptable when no alternatives exist",
             result.all { it.artist == "SameArtist" },
@@ -202,28 +250,31 @@ class DailyMixGeneratorTest {
 
     @Test
     fun `retries exhaust gracefully without supplemental tracks`() {
-        // 80 ArtistA + 5 ArtistB — cap limits both, no supplemental to fill
+        // 80 ArtistA + 5 ArtistB — the soft cap must not strand the mix below target.
         val songs = mutableListOf<DailyMixGenerator.SongInfo>()
         repeat(80) { songs.add(song("a$it", "ArtistA")) }
         repeat(5) { songs.add(song("b$it", "ArtistB")) }
 
         val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList())
-        // Cap = max(2, 85/10) = 8. ArtistB=5, ArtistA=8 → max 13 tracks < 30 target.
-        assertTrue("Must return some tracks", result.isNotEmpty())
-        assertTrue("Size <= 15 due to artist cap (got ${result.size})", result.size <= 15)
+        assertTrue("Must fill at least the minimum target (got ${result.size})", result.size >= 30)
+        assertTrue("Cannot exceed available tracks (got ${result.size})", result.size <= 85)
     }
 
     @Test
     fun `dynamic cap limits tracks per artist proportionally`() {
         val rng = Random(42)
-        // 100 tracks from ArtistA, 200 from various others
+        // 100 tracks from ArtistA, 200 from 20 other artists (21 artists total).
         val songs = (1..100).map { song("a-$it", "ArtistA") } +
             (1..200).map { song("o-$it", "Artist${it % 20}") }
+        val expectedTarget = Random(42).nextInt(30, 121)
+        val expectedCap = DailyMixGenerator.maxTracksPerArtist(expectedTarget, 21)
         val result = DailyMixGenerator.generate(songs, emptyMap(), emptyList(), emptySet(), random = rng)
         val aCount = result.count { it.artist == "ArtistA" }
-        // Dynamic cap = max(2, targetSize/10). With seeded RNG(42) target is deterministic.
-        assertTrue("ArtistA capped by dynamic limit (got $aCount)", aCount <= 6)
-        assertTrue("Should generate reasonable size (got ${result.size})", result.size >= 20)
+        assertTrue(
+            "ArtistA soft cap exceeded (aCount=$aCount cap=$expectedCap)",
+            aCount <= expectedCap,
+        )
+        assertTrue("Should generate reasonable size (got ${result.size})", result.size >= 30)
     }
 
     // ── buildWeightMap tests ────────────────────────────────────────────────
@@ -567,9 +618,8 @@ class DailyMixGeneratorTest {
 
     @Test
     fun `multiple un-albumed tracks from same artist are all selected`() {
-        // 3 artists × 3 un-albumed tracks each. Per-artist cap = max(2, 9/10)=2,
-        // so 3×2 = 6 selectable. Before the fix, the shared "artist:null" key
-        // penalized tracks 2+ per artist (each artist would only contribute 1).
+        // 3 artists × 3 un-albumed tracks each = 9 total, below the 30 target.
+        // The shared "artist:null" key previously penalized tracks 2+ per artist.
         val songs = listOf(
             songNoAlbum("a1", "ArtistA"), songNoAlbum("a2", "ArtistA"), songNoAlbum("a3", "ArtistA"),
             songNoAlbum("b1", "ArtistB"), songNoAlbum("b2", "ArtistB"), songNoAlbum("b3", "ArtistB"),
@@ -578,18 +628,13 @@ class DailyMixGeneratorTest {
         val ratings = songs.associate { it.id to 0 }
         val result = DailyMixGenerator.generate(songs, ratings, emptyList(), random = kotlin.random.Random(42))
 
-        // 3 artists × 2 per-artist cap = 6; all distinct.
-        assertEquals(
-            "All cap-selected un-albumed tracks should be present",
-            6,
-            result.size,
-        )
-        assertEquals("All distinct track ids", 6, result.map { it.id }.toSet().size)
-        // Every artist contributes 2 (unique single keys → no shared pseudo-album penalty).
+        assertEquals("All 9 tracks should be present", 9, result.size)
+        assertEquals("All distinct track ids", 9, result.map { it.id }.toSet().size)
+        // Every artist contributes all 3 (unique single keys → no shared pseudo-album penalty).
         listOf("ArtistA", "ArtistB", "ArtistC").forEach { artist ->
             assertEquals(
-                "Artist must contribute 2 tracks",
-                2,
+                "Artist must contribute 3 tracks",
+                3,
                 result.count { it.artist == artist },
             )
         }
@@ -598,7 +643,6 @@ class DailyMixGeneratorTest {
     @Test
     fun `un-albumed tracks alternate with album tracks from different artists`() {
         // Artist A: 3 un-albumed tracks. Artist B: 3 album tracks (distinct albums).
-        // Cap = max(2, 6/10)=2 per artist → 4 selectable, alternating.
         val songs = listOf(
             songNoAlbum("a1", "ArtistA"),
             songNoAlbum("a2", "ArtistA"),
@@ -611,7 +655,7 @@ class DailyMixGeneratorTest {
         val result = DailyMixGenerator.generate(songs, ratings, emptyList(), random = kotlin.random.Random(7))
 
         // Both artists must appear; no two consecutive from the same artist.
-        assertEquals("4 selectable (2 per artist)", 4, result.size)
+        assertEquals("All 6 selectable tracks", 6, result.size)
         for (i in 1 until result.size) {
             assertNotEquals(
                 "No consecutive same artist at index $i",

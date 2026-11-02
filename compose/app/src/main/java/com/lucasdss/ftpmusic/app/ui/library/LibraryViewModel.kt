@@ -843,11 +843,15 @@ class LibraryViewModel @Inject constructor(
                 }
                 val mixes = dailyMixRepository.getAll()
                 var cards = readMixCards(mixes)
-                if (cards.size < mixes.size) {
-                    // Some recipes have no tracklist for today/yesterday
-                    // (e.g. a genre pool populated after the last run):
-                    // generate/regenerate lazily, then re-read so the missing
-                    // cards appear without a manual sync.
+                // DM-5: a yesterday-fallback card makes cards.size ==
+                // mixes.size, which used to skip the regeneration check
+                // entirely. Always ask the repository whether the latest list
+                // is stale, then let the coordinator gate the actual run.
+                val missingCards = cards.size < mixes.size
+                val stale = !missingCards && dailyMixRepository.anyMixNeedsRegeneration()
+                if (missingCards || stale) {
+                    // Generate/regenerate lazily, then re-read so missing cards
+                    // or a refreshed list appear without a manual sync.
                     if (maybeGenerateMixes()) {
                         cards = readMixCards(mixes)
                     }
