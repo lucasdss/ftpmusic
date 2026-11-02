@@ -17,7 +17,13 @@ toggle, not a hidden append.
 
 1. **Correctness:** `ContinuousPlayLoader` resolves candidates; set
    `hasLoadedContinuation` only after ≥1 append; batch append on Main; offline
-   filter (`isDownloaded || cachedFilePath`); STATE_ENDED retry.
+   filter requires a non-blank `cachedFilePath` (ADR-0095 — `isDownloaded`
+   alone does not imply a local file). Prefetch starts at a 3-track low-water
+   mark instead of waiting for the last item (CP-5); `STATE_ENDED` remains the
+   last-chance retry, and a retry that arrives while a load is in flight is
+   queued and replayed once (CP-14). Appending the tail is the resume
+   mechanism; no blind `play()`/`prepare()` is issued at ENDED because that
+   seeks within the current item rather than starting the appended one.
 2. **Marking:** CP appends stamp MediaItem extras `is_autoplay=true` via
    `appendToContext(..., asAutoplay=true)`. Not a third dual-queue origin —
    still CONTEXT (ADR-0039).

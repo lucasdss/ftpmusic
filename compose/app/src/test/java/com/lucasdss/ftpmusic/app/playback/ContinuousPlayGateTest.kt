@@ -62,6 +62,131 @@ class ContinuousPlayGateTest {
     }
 
     @Test
+    fun `loads on a one-item queue`() {
+        assertTrue(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 0,
+                mediaItemCount = 1,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `negative index fails closed even on a one-item queue`() {
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = true,
+                currentIndex = -1,
+                mediaItemCount = 1,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `loads with three tracks remaining before the last item`() {
+        // CP-5: prefetch at the low-water mark, not only on the last item.
+        assertTrue(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 6,
+                mediaItemCount = 10,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `skips with four tracks remaining`() {
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 5,
+                mediaItemCount = 10,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `low water zero reproduces last-item-only behavior`() {
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 6,
+                mediaItemCount = 10,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+                lowWaterMark = 0,
+            ),
+        )
+        assertTrue(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 9,
+                mediaItemCount = 10,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+                lowWaterMark = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun `negative index fails closed`() {
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = true,
+                currentIndex = -1,
+                mediaItemCount = 5,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `index at or past the item count fails closed`() {
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 5,
+                mediaItemCount = 5,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 12,
+                mediaItemCount = 5,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `skips disabled even inside the low water mark`() {
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 9,
+                mediaItemCount = 10,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = false,
+            ),
+        )
+    }
+
+    @Test
     fun `resolveTimeline uses Dual while casting`() {
         val (idx, count) = ContinuousPlayGate.resolveTimeline(
             isCasting = true,
@@ -151,11 +276,11 @@ class ContinuousPlayGateTest {
     }
 
     @Test
-    fun `skips when not on last index`() {
+    fun `skips when outside the low water mark`() {
         assertFalse(
             ContinuousPlayGate.shouldLoadContinuation(
                 isCasting = false,
-                currentIndex = 5,
+                currentIndex = 0,
                 mediaItemCount = 10,
                 hasLoadedContinuation = false,
                 continuousPlayEnabled = true,

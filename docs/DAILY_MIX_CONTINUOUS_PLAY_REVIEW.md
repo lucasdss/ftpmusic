@@ -2184,3 +2184,52 @@ fallback query. Cross-model: DeepSeek audit returned NOT OK (deterministic
 genre/artist sampling, current-track replay, pre-filter slot waste) → all fixed
 → Mistral challenge accepted the whole-queue trade-off → DeepSeek re-audit
 returned reasoned OK with no blocking issue.
+
+### 11.8 Iteration log — CP-5 + CP-14 prefetch and in-flight retry (2026-11-02)
+
+| ID | Change |
+|---|---|
+| CP-5 | `ContinuousPlayGate.shouldLoadContinuation` now fires at a 3-track low-water mark (`LOW_WATER_MARK`) instead of only on the last item. `remaining = mediaItemCount - 1 - currentIndex`; the gate fails closed for negative or out-of-range indexes (Cast Dual `-1`) and accepts an optional `lowWaterMark` for tests. `hasLoadedContinuation` remains the once-per-stint latch, so a successful 10-track burst does not re-fire until the tail drains to the low-water mark again. |
+| CP-14 | Added pure `ContinuousPlayRetry` (`tryBegin(forceRetry)`, `finish(appended, canRetry)`) and replaced the `continuousPlayInFlight` boolean. A `STATE_ENDED` retry that arrives while a load is running is now remembered and replayed exactly once after the in-flight load finishes, provided it appended nothing and the coroutine was not cancelled. The deferred retry re-resolves `PlayerHolder.player` and suppresses itself when `lastTrackId != mediaId` (the user skipped during the load), so it cannot seed context from a track that is no longer current. Cancellation is rethrown instead of being swallowed, and `finish` uses `Job.isCancelled` (not `isActive`, which is also false after normal completion). |
+
+Decisions and rejected alternatives:
+
+- **Low-water = 3** (review allows 2–3). With a 10-track burst this fires once
+  per tail cycle; the 3-track lead is one track earlier than a 2-track mark and
+  costs no extra bursts. DeepSeek argued for 2, Mistral for 3; 3 is chosen for
+  slow-network margin.
+- **No standing 5–10 buffer counter.** The append-growth model already keeps a
+  ~10-track burst ahead; a separate buffer ledger would need cursor state and
+  would duplicate the gate.
+- **No tiny-pool/no-progress cooldown.** A 1–2 track burst on a tiny queue is
+  the intended infinite tail; a failing pool exhausts the whole exclusion set
+  and logs `continuous-play exhausted` on that transition. A cooldown could
+  silence CP for new/small libraries.
+- **No `play()`/`prepare()` after an ENDED append.** Media3's `play()` at
+  `STATE_ENDED` seeks within the current item; blindly calling it can replay
+  the last track. Appending the tail is the existing resume mechanism.
+- **No buffering UI.** The CP-6 ladder already gives a local last resort; a
+  buffering state is deferred as scope creep.
+
+Verification: targeted `ContinuousPlayGateTest`, `ContinuousPlayRetryTest`, and
+`ContinuousPlayTest` green; full `:app:testDebugUnitTest` green;
+`ktlintTestSourceSetCheck` green; `ktlintMainSourceSetCheck` reports only the
+same pre-existing unrelated violations in `PlaySuppressionWatch.kt`,
+`LibraryScreen.kt`, and `LibraryViewModel.kt`. New tests cover remaining = 2/3/4,
+one-item queues, `lowWaterMark = 0` legacy semantics, negative/index-at-count
+failure, disabled inside the low-water mark, and the `ContinuousPlayRetry`
+interleavings (deferred once, append suppresses, cancellation suppresses —
+including a real cancelled coroutine, ENDED after clear starts immediately, no
+loop). There is no MediaService coroutine-level integration test: the
+`tryBegin`/`finish` wiring and the three `appended = true` sites are covered by
+the pure holder tests plus compile-time checks, not by a service harness.
+ADR-0053 Decision #1 now records the low-water prefetch, in-flight retry, and
+the corrected offline filter. Cross-model: DeepSeek plan → Mistral challenge
+(3 vs 2 low-water, cancellation, ENDED resume) → DeepSeek reconciliation →
+implementation → Phase-5 audits below. DeepSeek audit returned reasoned OK
+with non-blocking test/doc notes (count=1 and real-cancellation tests added;
+service-level wiring documented as untested); Mistral challenged back-to-back
+refiring and a stale-`mediaId` retry, the stale-track retry was fixed with the
+`lastTrackId` guard, and Mistral withdrew the refiring finding after the call
+sites showed a cooldown would suppress CP-14's intended ENDED retry. Both
+returned reasoned OK.

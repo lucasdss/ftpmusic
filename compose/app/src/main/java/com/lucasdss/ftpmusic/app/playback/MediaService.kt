@@ -56,6 +56,7 @@ import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import com.lucasdss.ftpmusic.app.ui.player.CastButtonState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -757,7 +758,8 @@ class MediaService : MediaLibraryService() {
 
     private val queueRestoreLatch = java.util.concurrent.CountDownLatch(1)
 
-    @Volatile private var continuousPlayInFlight = false
+    /** CP-14: keeps a STATE_ENDED retry that arrives while a load is in flight. */
+    private val continuousPlayRetry = ContinuousPlayRetry()
 
     /** Serializes fast-forward seeks so overlapping seeks can't interleave with a transition. */
     private val seekCoalescer = SeekCoalescer()
@@ -3167,8 +3169,11 @@ class MediaService : MediaLibraryService() {
     }
 
     /**
-     * Journal → context Autoplay append. Sets [hasLoadedContinuation] only after
-     * ≥1 track appended so empty/offline misses can retry (ADR-0053).
+     * Journal → context Autoplay append. Prefetches at the gate's low-water
+     * mark (CP-5) and sets [hasLoadedContinuation] only after ≥1 track appended
+     * so empty/offline misses can retry (ADR-0053). A `STATE_ENDED` retry that
+     * arrives while a load is in flight is kept by [continuousPlayRetry] and
+     * replayed once instead of being dropped (CP-14).
      */
     private fun maybeLoadContinuousPlay(
         player: Player,
@@ -3199,8 +3204,7 @@ class MediaService : MediaLibraryService() {
         ) {
             return
         }
-        if (continuousPlayInFlight) return
-        continuousPlayInFlight = true
+        if (!continuousPlayRetry.tryBegin(forceRetry)) return
         val currentTrackIds = if (casting) {
             playbackManager.currentQueueMediaIds()
         } else {
@@ -3210,6 +3214,7 @@ class MediaService : MediaLibraryService() {
             }.toSet()
         }
         scope.launch(Dispatchers.IO) {
+            var appended = false
             try {
                 val localOnly = com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy.isLocalOnly(
                     offlineModeManager.isOffline.value,
@@ -3256,6 +3261,7 @@ class MediaService : MediaLibraryService() {
                             val urls = similar.map { auth.buildStreamUrl(base, it.id, user, pass) }
                             withContext(Dispatchers.Main) {
                                 playbackManager.appendToContext(similar, urls, asAutoplay = true)
+                                appended = true
                                 hasLoadedContinuation = true
                                 android.util.Log.d(
                                     "ftpmusic-playback",
@@ -3322,6 +3328,7 @@ class MediaService : MediaLibraryService() {
                             candidates.map { it.streamUrl },
                             asAutoplay = true,
                         )
+                        appended = true
                         hasLoadedContinuation = true
                         android.util.Log.d(
                             "ftpmusic-playback",
@@ -3368,6 +3375,7 @@ class MediaService : MediaLibraryService() {
                             fallbackCandidates.map { it.streamUrl },
                             asAutoplay = true,
                         )
+                        appended = true
                         hasLoadedContinuation = true
                         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                             "ftpmusic-playback",
@@ -3381,13 +3389,36 @@ class MediaService : MediaLibraryService() {
                     "ftpmusic-playback",
                     "continuous-play exhausted localOnly=$localOnly entries=${entries.size}",
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w(
                     "ftpmusic-playback",
                     "Continuous play: journal load failed: ${e.message}",
                 )
             } finally {
-                continuousPlayInFlight = false
+                val canRetry = coroutineContext[Job]?.isCancelled != true
+                val retry = continuousPlayRetry.finish(appended, canRetry)
+                if (retry) {
+                    // CP-14: STATE_ENDED arrived while this load was running and
+                    // it produced nothing. Re-run the gate/load once the latch
+                    // is clear (Main owns player access). Re-resolve the player
+                    // because a Cast/local swap may have happened meanwhile.
+                    withContext(Dispatchers.Main) {
+                        if (!isActive) return@withContext
+                        // The user may have skipped while this load was running;
+                        // then the ENDED retry belongs to a track that is no
+                        // longer current and must not seed this context.
+                        if (lastTrackId != mediaId) return@withContext
+                        val currentPlayer = PlayerHolder.player ?: return@withContext
+                        maybeLoadContinuousPlay(
+                            player = currentPlayer,
+                            previousTrackId = null,
+                            mediaId = mediaId,
+                            forceRetry = true,
+                        )
+                    }
+                }
             }
         }
     }

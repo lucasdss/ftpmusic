@@ -12,6 +12,13 @@ package com.lucasdss.ftpmusic.app.playback
 object ContinuousPlayGate {
 
     /**
+     * Start prefetching when this many tracks (or fewer) remain after the
+     * current one. A 2–3 track lead covers a slow similar-songs round trip
+     * without waiting for `STATE_ENDED` and the audible gap (CP-5).
+     */
+    const val LOW_WATER_MARK = 3
+
+    /**
      * Pick index/count for the gate. Casting → Dual; local → active player.
      */
     fun resolveTimeline(
@@ -29,8 +36,12 @@ object ContinuousPlayGate {
     /**
      * Whether to load a journal-based continuation burst onto **context**.
      *
-     * Requires: timeline on last item, flag not yet spent for this last-item
-     * stint, and Continuous Play enabled. Works local and Cast (Dual SoT).
+     * Fires when at most [lowWaterMark] tracks remain after the current one
+     * (including the last item and a one-item queue), the flag is not yet
+     * spent for this stint, and Continuous Play is enabled. Prefetching a few
+     * tracks early gives the similar-songs/journal fetch time to finish before
+     * playback ends (CP-5); `STATE_ENDED` remains the last-chance retry.
+     * Works local and Cast (Dual SoT).
      */
     fun shouldLoadContinuation(
         isCasting: Boolean,
@@ -38,6 +49,7 @@ object ContinuousPlayGate {
         mediaItemCount: Int,
         hasLoadedContinuation: Boolean,
         continuousPlayEnabled: Boolean,
+        lowWaterMark: Int = LOW_WATER_MARK,
     ): Boolean {
         // isCasting retained for call-site / resolveTimeline pairing
         @Suppress("UNUSED_PARAMETER")
@@ -45,7 +57,11 @@ object ContinuousPlayGate {
         if (!continuousPlayEnabled) return false
         if (hasLoadedContinuation) return false
         if (mediaItemCount <= 0) return false
-        return currentIndex >= mediaItemCount - 1
+        // CP-14/CP-5 guard: a missing or windowed index (CastPlayer/Dual -1)
+        // must fail closed instead of looking like "past the last item".
+        if (currentIndex < 0 || currentIndex >= mediaItemCount) return false
+        val remaining = mediaItemCount - 1 - currentIndex
+        return remaining <= lowWaterMark.coerceAtLeast(0)
     }
 
     /**
