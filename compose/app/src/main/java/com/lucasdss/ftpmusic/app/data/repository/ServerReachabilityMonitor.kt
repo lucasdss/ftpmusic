@@ -190,15 +190,15 @@ class ServerReachabilityMonitor(
                 // Subsonic HTTP 200 + status=failed must not mark reachable (connect parity).
                 auth.requireOk(response)
             }
-            ReachabilityStateHolder.onApiSuccess()
+            ReachabilityStateHolder.onProbeSuccess()
             true
         } catch (e: TimeoutCancellationException) {
-            ReachabilityStateHolder.onApiFailure()
+            ReachabilityStateHolder.onProbeFailure()
             false
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            ReachabilityStateHolder.onApiFailure()
+            ReachabilityStateHolder.onProbeFailure()
             false
         }
     }

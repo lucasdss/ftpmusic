@@ -67,7 +67,7 @@ class ServerReachabilityMonitorTest {
 
     @Test
     fun `probeOnce success marks reachable`() = runTest(testDispatcher) {
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         coEvery { api.ping(any(), any(), any()) } returns mapOf("status" to "ok")
 
         assertTrue(monitor.probeOnce())
@@ -99,7 +99,7 @@ class ServerReachabilityMonitorTest {
     @Test
     fun `probeOnce skips when offline mode enabled`() = runTest(testDispatcher) {
         every { offlineModeManager.isOfflineEnabled() } returns true
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
 
         assertFalse(monitor.probeOnce())
         coVerify(exactly = 0) { api.ping(any(), any(), any()) }
@@ -124,7 +124,7 @@ class ServerReachabilityMonitorTest {
 
     @Test
     fun `currentIntervalMs is 15s when unreachable`() {
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         assertEquals(
             ServerReachabilityMonitor.INTERVAL_UNREACHABLE_MS,
             monitor.currentIntervalMs(),
@@ -142,7 +142,7 @@ class ServerReachabilityMonitorTest {
 
     @Test
     fun `keepalive probes every 15s while unreachable`() = runTest(testDispatcher) {
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         coEvery { api.ping(any(), any(), any()) } throws IOException("still down")
 
         monitor.start()
@@ -163,7 +163,7 @@ class ServerReachabilityMonitorTest {
 
     @Test
     fun `keepalive recovers to reachable without other API traffic`() = runTest(testDispatcher) {
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         coEvery { api.ping(any(), any(), any()) } returns mapOf("status" to "ok")
 
         monitor.start()
@@ -177,7 +177,7 @@ class ServerReachabilityMonitorTest {
     @Test
     fun `network available debounces rapid callbacks to one probe`() = runTest(testDispatcher) {
         coEvery { api.ping(any(), any(), any()) } returns mapOf("status" to "ok")
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         monitor.start()
         runCurrent()
 
@@ -195,7 +195,7 @@ class ServerReachabilityMonitorTest {
     @Test
     fun `network available after debounce window probes again`() = runTest(testDispatcher) {
         coEvery { api.ping(any(), any(), any()) } returns mapOf("status" to "ok")
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         monitor.start()
 
         clock = 1_000L
@@ -212,7 +212,7 @@ class ServerReachabilityMonitorTest {
     @Test
     fun `fake NetworkWatcher start fires probe via callback`() = runTest(testDispatcher) {
         coEvery { api.ping(any(), any(), any()) } returns mapOf("status" to "ok")
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         monitor.start()
         assertTrue(fakeWatcher.started)
 
@@ -253,7 +253,7 @@ class ServerReachabilityMonitorTest {
             entered++
             mapOf("status" to "ok")
         }
-        ReachabilityStateHolder.onApiFailure()
+        ReachabilityStateHolder.resetForTests(reachable = false)
         monitor.start()
 
         clock = 10_000L

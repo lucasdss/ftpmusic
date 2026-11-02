@@ -22,6 +22,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.SimpleCache
@@ -39,13 +40,16 @@ import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.MediaQueue
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.lucasdss.ftpmusic.app.data.cache.CacheSpanState
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
+import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.ScrobbleService
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
+import com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import com.lucasdss.ftpmusic.app.ui.player.CastButtonState
 import dagger.hilt.android.AndroidEntryPoint
@@ -77,6 +81,9 @@ internal enum class ErrorSkipAction {
 
     /** Cross-track Source-error circuit tripped (ADR-0111). */
     CIRCUIT_STOP,
+
+    /** N1-C: bounded burst — pause and resume past the failed run on the next play. */
+    PAUSE_BURST,
 }
 
 /**
@@ -330,6 +337,9 @@ class MediaService : MediaLibraryService() {
     @Inject lateinit var reactionController: CurrentTrackReactionController
 
     @Inject lateinit var offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
+
+    /** N11-3: authenticated album verification + guarded purge after a confirmed removal. */
+    @Inject lateinit var albumReconciler: AlbumReconciler
 
     // Cached CastContext — avoids repeated getSharedInstance() calls
     private val castCtx: CastContext? by lazy {
@@ -707,6 +717,20 @@ class MediaService : MediaLibraryService() {
     /** Cross-track Source-error circuit (ADR-0111) — survives per-track reset. */
     private var sourceErrorCircuit = SourceErrorCircuitState()
 
+    /**
+     * N1-C: set when a burst of auto-skips paused playback. The next play command
+     * resumes past the failed item instead of retrying it (index/position survive
+     * [Player.pause]). Cleared on queue set, explicit item select, user seek and
+     * verified play.
+     */
+    private var burstPaused = false
+
+    /** N11-2: remembers the first REMOTE_MISSING album so the second collapses the run. */
+    private val missingAlbumRun = MissingAlbumRun()
+
+    /** N1-C/N2: aggregate of consecutive auto-skips for the bound and the terminal line. */
+    private val autoSkipBurst = AutoSkipBurst()
+
     /** Bumped on each SKIP_NEXT launch — stale coroutines abort on Main. */
     private var autoSkipGeneration = 0
     private var hasLoadedContinuation = false
@@ -962,6 +986,10 @@ class MediaService : MediaLibraryService() {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // N11-2 / N1: capture the marker BEFORE the ADR-0095 block consumes it.
+            // The transition emitted by an auto-skip is not a successful transition:
+            // it must not clear the album run, the burst aggregate or burstPaused.
+            val wasErrorSkip = PlayerHolder.playbackErrorAutoSkipInFlight
             // ADR-0138: playhead advance changes Up Next bands even without Dual mutate.
             handler.post { notifyAutoQueueBrowseChildren() }
             // CastPlayer handles Cast track loading automatically via RemoteCastPlayer
@@ -975,6 +1003,22 @@ class MediaService : MediaLibraryService() {
                 lastTrackId = newMediaId
             }
             playerErrorCount = 0 // Reset error counter on new track
+            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
+                // A new queue is a fresh session: no album run, no burst, no pause.
+                resetPlaybackErrorTrackers(src = "queue-set")
+            } else if (!wasErrorSkip) {
+                // Natural / user transition: the previous error run ended.
+                missingAlbumRun.clear()
+                if (autoSkipBurst.count > 0) {
+                    autoSkipBurst.drainSummary()?.let {
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                            "ftpmusic-playback",
+                            it,
+                        )
+                    }
+                }
+                burstPaused = false
+            }
             // ADR-0095: keep sticky banner across error auto-skip transition
             if (!PlayerHolder.playbackErrorAutoSkipInFlight) {
                 PlayerHolder.clearPlaybackErrorIfSettled()
@@ -1151,7 +1195,16 @@ class MediaService : MediaLibraryService() {
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
-                sourceErrorCircuit = sourceErrorCircuit.onUserSeek()
+                // N1: the reset was meant for *user* seeks, but every programmatic
+                // seek (including our own error auto-skip) shares the reason. The
+                // error path sets [PlayerHolder.playbackErrorAutoSkipInFlight]
+                // before it seeks, so a guarded reset no longer neutralises the
+                // circuit. In-app seeks reset explicitly in
+                // [handlePlaybackControl] SEEK_TO; external controller seeks via
+                // MediaSessionCallback -> [onUserSeekIntent].
+                if (!PlayerHolder.playbackErrorAutoSkipInFlight) {
+                    resetPlaybackErrorTrackers(src = "user-seek")
+                }
             }
             // Position is read from Player directly by MediaSessionPlaybackProvider.
             // The seek coalescer treats a discontinuity as the settle point: apply
@@ -1349,137 +1402,79 @@ class MediaService : MediaLibraryService() {
             }
         }
         override fun onPlayerError(error: PlaybackException) {
+            val ep = exoPlayer
+            val failedId = ep?.currentMediaItem?.mediaId
+            val fromIdx = ep?.currentMediaItemIndex ?: -1
+            val itemCount = ep?.mediaItemCount ?: 0
+            val albumId = ep?.currentMediaItem?.albumIdExtra()
+            val httpCode = playbackErrorHttpCode(error)
+            val causeName = error.cause?.javaClass?.simpleName
+            val reachable = com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
             android.util.Log.e("MediaService", "Playback error: ${error.message}", error)
+            // N11-1: the export must be able to tell a deleted track (HTTP 404 /
+            // REMOTE_MISSING) from a dead network or a corrupt local span.
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.e(
                 "ftpmusic-playback",
-                "player error: ${error.message}",
+                "player error trackId=${failedId ?: "-"} idx=$fromIdx " +
+                    "code=${error.errorCode} name=${error.errorCodeName} " +
+                    "http=${httpCode ?: "-"} cause=${causeName ?: "-"} " +
+                    "msg=${error.message?.take(120) ?: "-"}",
                 error,
             )
             PlayerHolder.setPlaybackError(error.message?.take(160) ?: "Playback failed")
-            val ep = exoPlayer
             // Edge 40: recovery must not require STATE_IDLE — an error arriving
             // while the player is mid-transition (buffering) previously skipped
             // ALL recovery and left the player stuck in the error state. The
             // playerError null-check alone identifies a genuine failure.
             if (ep == null || ep.playerError == null) return
             playerErrorCount++
-            val currentId = ep.currentMediaItem?.mediaId
             val nowMs = android.os.SystemClock.elapsedRealtime()
-            val (nextCircuit, circuitTripped) = sourceErrorCircuit.onSourceError(nowMs)
-            sourceErrorCircuit = nextCircuit
-            val skipAction = if (circuitTripped) {
-                ErrorSkipAction.CIRCUIT_STOP
+            val baseAction = decideErrorSkipAction(playerErrorCount, failedId, fromIdx, itemCount)
+            // Provisional, file-free classification. 2008/3003/4003 also consult
+            // the local span, but those are re-classified on IO below; for the
+            // common 404/network codes this already decides which counter owns
+            // the run.
+            val provisionalKind =
+                classifySourceError(error.errorCode, httpCode, causeName, CacheSpanState.NONE)
+            val remoteMissing = provisionalKind == SourceErrorKind.REMOTE_MISSING
+            val advancing = reachable && baseAction == ErrorSkipAction.SKIP_NEXT && !remoteMissing
+            val circuitTripped = if (remoteMissing) {
+                // N11-2: a missing item is not a systemic failure. Album runs are
+                // bounded by [missingAlbumRun]; track-level removals by the
+                // [autoSkipBurst] threshold.
+                false
             } else {
-                decideErrorSkipAction(
-                    playerErrorCount,
-                    currentId,
-                    ep.currentMediaItemIndex,
-                    ep.mediaItemCount,
+                val (nextCircuit, tripped) = sourceErrorCircuit.onSourceError(
+                    nowMs,
+                    windowMs = if (advancing) AUTO_SKIP_BURST_WINDOW_MS else SOURCE_ERROR_CIRCUIT_WINDOW_MS,
+                    threshold = if (advancing) AUTO_SKIP_BURST_THRESHOLD else SOURCE_ERROR_CIRCUIT_THRESHOLD,
                 )
+                sourceErrorCircuit = nextCircuit
+                tripped
             }
+            val skipAction = chooseErrorSkipAction(baseAction, circuitTripped, advancing)
             when (skipAction) {
-                ErrorSkipAction.SKIP_NEXT -> {
-                    PlayerHolder.playbackErrorAutoSkipInFlight = true
-                    val serverUnreachable = !com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
-                    val failedId = currentId
-                    val fromIdx = ep.currentMediaItemIndex
-                    val itemCount = ep.mediaItemCount
-                    val skipGen = ++autoSkipGeneration
-                    // Await poison eviction before seek/prepare so an immediate
-                    // reselect cannot hit the same corrupt span (race from logs).
-                    scope.launch {
-                        if (!serverUnreachable && !failedId.isNullOrEmpty()) {
-                            try {
-                                cacheService.removeCached(failedId)
-                            } catch (_: Exception) {
-                            }
-                        }
-                        withContext(Dispatchers.Main) {
-                            if (skipGen != autoSkipGeneration) {
-                                android.util.Log.w(
-                                    "ftpmusic",
-                                    "[MediaService] Auto-skip aborted — superseded gen=$skipGen current=$autoSkipGeneration",
-                                )
-                                PlayerHolder.playbackErrorAutoSkipInFlight = false
-                                return@withContext
-                            }
-                            val stillOnFailed =
-                                failedId.isNullOrEmpty() ||
-                                    ep.currentMediaItem?.mediaId == failedId
-                            if (!stillOnFailed) {
-                                android.util.Log.w(
-                                    "ftpmusic",
-                                    "[MediaService] Auto-skip aborted — item changed past $failedId",
-                                )
-                                PlayerHolder.playbackErrorAutoSkipInFlight = false
-                                return@withContext
-                            }
-                            if (serverUnreachable) {
-                                val cachedIdx = findNextCachedIndex(
-                                    fromIndex = fromIdx,
-                                    mediaItemCount = itemCount,
-                                    mediaIdAt = { i ->
-                                        runCatching { ep.getMediaItemAt(i).mediaId }.getOrNull()
-                                    },
-                                    isCached = { id -> cacheService.hasPlayableSpan(id) },
-                                )
-                                if (cachedIdx != null) {
-                                    android.util.Log.w(
-                                        "ftpmusic",
-                                        "[MediaService] Server unreachable — skip to cached idx=$cachedIdx past $failedId",
-                                    )
-                                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                                        "ftpmusic-playback",
-                                        "autoSkip action=CACHED_JUMP trackId=$failedId fromIdx=$fromIdx toIdx=$cachedIdx errorCount=$playerErrorCount reachable=false",
-                                    )
-                                    ep.seekTo(cachedIdx, 0L)
-                                } else {
-                                    android.util.Log.w(
-                                        "ftpmusic",
-                                        "[MediaService] Server unreachable — no cached track ahead; stopping after $failedId",
-                                    )
-                                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                                        "ftpmusic-playback",
-                                        "autoSkip action=STOP_NO_CACHED trackId=$failedId idx=$fromIdx errorCount=$playerErrorCount reachable=false",
-                                    )
-                                    playerErrorCount = 0
-                                    PlayerHolder.playbackErrorAutoSkipInFlight = false
-                                    ep.stop()
-                                    return@withContext
-                                }
-                            } else {
-                                android.util.Log.w(
-                                    "ftpmusic",
-                                    "[MediaService] Auto-advancing past failed track: $failedId",
-                                )
-                                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                                    "ftpmusic-playback",
-                                    "autoSkip action=SKIP_NEXT trackId=$failedId " +
-                                        "idx=$fromIdx count=$itemCount " +
-                                        "errorCount=$playerErrorCount reachable=true",
-                                )
-                                ep.seekToNextMediaItem()
-                            }
-                            // seekToNextMediaItem()/seekTo() position the next source but do
-                            // NOT resume playback: with playWhenReady=false (audio-focus loss,
-                            // pause-before-error) the player would sit in STATE_IDLE forever
-                            // — Now Playing / QuickSettings show "stopped". media3's internal
-                            // error-advance policy would have prepared + played, which the
-                            // old retry loop suppressed; restore that behavior explicitly.
-                            // Flag cleared on media-item transition (ADR-0095 sticky banner).
-                            ep.playWhenReady = true
-                            ep.prepare()
-                        }
-                    }
-                }
+                ErrorSkipAction.SKIP_NEXT -> handleSkipNext(
+                    ep = ep,
+                    error = error,
+                    failedId = failedId,
+                    albumId = albumId,
+                    fromIdx = fromIdx,
+                    itemCount = itemCount,
+                    httpCode = httpCode,
+                    causeName = causeName,
+                    reachable = reachable,
+                    nowMs = nowMs,
+                )
 
                 ErrorSkipAction.LAST_TRACK_STOP -> {
                     android.util.Log.w("ftpmusic", "[MediaService] Last track failed ($playerErrorCount) — stopping")
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-playback",
-                        "autoSkip action=LAST_TRACK_STOP trackId=$currentId errorCount=$playerErrorCount",
+                        "autoSkip action=LAST_TRACK_STOP trackId=$failedId errorCount=$playerErrorCount",
                     )
                     playerErrorCount = 0
+                    resetPlaybackErrorTrackers(src = "last-track-stop", resetCircuit = false)
                     ep.stop()
                 }
 
@@ -1487,15 +1482,14 @@ class MediaService : MediaLibraryService() {
                     android.util.Log.e("ftpmusic", "[MediaService] Too many errors ($playerErrorCount) — stopping")
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.e(
                         "ftpmusic-playback",
-                        "autoSkip action=RETRY_LIMIT_STOP trackId=$currentId errorCount=$playerErrorCount",
+                        "autoSkip action=RETRY_LIMIT_STOP trackId=$failedId errorCount=$playerErrorCount",
                     )
                     playerErrorCount = 0
+                    resetPlaybackErrorTrackers(src = "retry-limit-stop", resetCircuit = false)
                     ep.stop()
                 }
 
                 ErrorSkipAction.CIRCUIT_STOP -> {
-                    val reachable =
-                        com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
                     android.util.Log.e(
                         "ftpmusic",
                         "[MediaService] Source-error circuit tripped — stopping (errors=${sourceErrorCircuit.consecutiveErrors})",
@@ -1503,15 +1497,17 @@ class MediaService : MediaLibraryService() {
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-playback",
                         "autoSkip action=CIRCUIT_STOP errors=${sourceErrorCircuit.consecutiveErrors} " +
-                            "trackId=$currentId reachable=$reachable",
+                            "trackId=$failedId reachable=$reachable",
                     )
                     playerErrorCount = 0
                     // Clear sticky circuit so the next play session can seek/skip again
-                    // instead of immediately re-tripping inside the 15s window (ADR-0112).
-                    sourceErrorCircuit = sourceErrorCircuit.onSuccessfulPlay()
+                    // instead of immediately re-tripping inside the window (ADR-0112).
+                    resetPlaybackErrorTrackers(src = "circuit-stop")
                     // Sticky banner already set via setPlaybackError — do not wipe more cache.
                     ep.stop()
                 }
+
+                ErrorSkipAction.PAUSE_BURST -> pauseAfterBurst(ep, fromIdx, provisionalKind, failedId)
 
                 ErrorSkipAction.RADIO_IGNORE -> {
                     // Radio streams — no cached file, no queue position to advance.
@@ -1519,11 +1515,325 @@ class MediaService : MediaLibraryService() {
                     android.util.Log.w("ftpmusic", "[MediaService] Radio stream error — not retrying")
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-playback",
-                        "autoSkip action=RADIO_IGNORE trackId=$currentId errorCount=$playerErrorCount",
+                        "autoSkip action=RADIO_IGNORE trackId=$failedId errorCount=$playerErrorCount",
                     )
                     playerErrorCount = 0
                 }
             }
+        }
+    }
+
+    /** N11-2: album identity for the queue's media items (written by QueueManager). */
+    private fun MediaItem.albumIdExtra(): String? =
+        mediaMetadata.extras?.getString("albumId")?.takeIf { it.isNotBlank() }
+
+    /** N11-1: the only place the HTTP status is available is the data-source cause. */
+    private fun playbackErrorHttpCode(error: PlaybackException): Int? {
+        var cause: Throwable? = error.cause
+        var depth = 0
+        while (cause != null && depth < 4) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) return cause.responseCode
+            cause = cause.cause
+            depth++
+        }
+        return null
+    }
+
+    /**
+     * N11-2 / N1-C: the auto-skip path. Classification, span probe, eviction and
+     * the cached-index scan run off main; only the seek/prepare returns to main.
+     */
+    private fun handleSkipNext(
+        ep: Player,
+        error: PlaybackException,
+        failedId: String?,
+        albumId: String?,
+        fromIdx: Int,
+        itemCount: Int,
+        httpCode: Int?,
+        causeName: String?,
+        reachable: Boolean,
+        nowMs: Long,
+    ) {
+        PlayerHolder.playbackErrorAutoSkipInFlight = true
+        val skipGen = ++autoSkipGeneration
+        // Player access is main-thread bound; sample the ids once before leaving.
+        val mediaIds = if (!reachable) {
+            (0 until itemCount).map { i ->
+                runCatching { ep.getMediaItemAt(i).mediaId }.getOrNull()
+            }
+        } else {
+            emptyList()
+        }
+        scope.launch {
+            val span = withContext(Dispatchers.IO) {
+                if (failedId.isNullOrEmpty()) {
+                    CacheSpanState.NONE
+                } else {
+                    runCatching { cacheService.spanState(failedId) }.getOrDefault(CacheSpanState.NONE)
+                }
+            }
+            val kind = classifySourceError(error.errorCode, httpCode, causeName, span)
+            // N11-2: only a demonstrably local fault may evict. A remote 404 that
+            // happened to have a stale pointer must not destroy a usable span.
+            val evicted = if (kind == SourceErrorKind.LOCAL_FAULT && !failedId.isNullOrEmpty()) {
+                try {
+                    cacheService.removeCached(failedId)
+                    1
+                } catch (_: Exception) {
+                    0
+                }
+            } else {
+                0
+            }
+            val cachedIdx = if (!reachable) {
+                findNextCachedIndex(
+                    fromIndex = fromIdx,
+                    mediaItemCount = itemCount,
+                    mediaIdAt = { i -> mediaIds.getOrNull(i) },
+                    isCached = { id ->
+                        runCatching { cacheService.hasPlayableSpan(id) }.getOrDefault(false)
+                    },
+                )
+            } else {
+                null
+            }
+            withContext(Dispatchers.Main) {
+                if (skipGen != autoSkipGeneration) {
+                    android.util.Log.w(
+                        "ftpmusic",
+                        "[MediaService] Auto-skip aborted — superseded gen=$skipGen current=$autoSkipGeneration",
+                    )
+                    PlayerHolder.playbackErrorAutoSkipInFlight = false
+                    return@withContext
+                }
+                val stillOnFailed =
+                    failedId.isNullOrEmpty() || ep.currentMediaItem?.mediaId == failedId
+                if (!stillOnFailed) {
+                    android.util.Log.w(
+                        "ftpmusic",
+                        "[MediaService] Auto-skip aborted — item changed past $failedId",
+                    )
+                    PlayerHolder.playbackErrorAutoSkipInFlight = false
+                    return@withContext
+                }
+                if (!reachable) {
+                    applyUnreachableSkip(ep, failedId, fromIdx, cachedIdx)
+                    return@withContext
+                }
+                if (kind == SourceErrorKind.REMOTE_MISSING) {
+                    applyRemoteMissingSkip(
+                        ep = ep,
+                        failedId = failedId,
+                        albumId = albumId,
+                        fromIdx = fromIdx,
+                        itemCount = itemCount,
+                        httpCode = httpCode,
+                        nowMs = nowMs,
+                    )
+                    return@withContext
+                }
+                autoSkipBurst.record(
+                    index = fromIdx,
+                    nowMs = nowMs,
+                    skipped = 1,
+                    evictedDelta = evicted,
+                    disruptiveEntry = true,
+                )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playback",
+                    "autoSkip action=SKIP_NEXT trackId=$failedId idx=$fromIdx count=$itemCount " +
+                        "errorCount=$playerErrorCount reachable=true kind=$kind " +
+                        "span=$span evicted=${evicted > 0}",
+                )
+                if (autoSkipBurst.atThreshold()) {
+                    pauseAfterBurst(ep, fromIdx, kind, failedId)
+                    return@withContext
+                }
+                ep.seekToNextMediaItem()
+                resumeAfterSkip(ep)
+            }
+        }
+    }
+
+    /**
+     * N8: server unreachable → jump to the next fully cached item, or stop when
+     * nothing ahead is playable offline. Runs on main; the span scan already ran
+     * on IO.
+     */
+    private fun applyUnreachableSkip(ep: Player, failedId: String?, fromIdx: Int, cachedIdx: Int?) {
+        if (cachedIdx != null) {
+            android.util.Log.w(
+                "ftpmusic",
+                "[MediaService] Server unreachable — skip to cached idx=$cachedIdx past $failedId",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-playback",
+                "autoSkip action=CACHED_JUMP trackId=$failedId fromIdx=$fromIdx toIdx=$cachedIdx " +
+                    "errorCount=$playerErrorCount reachable=false",
+            )
+            autoSkipBurst.record(
+                index = fromIdx,
+                nowMs = android.os.SystemClock.elapsedRealtime(),
+                skipped = cachedIdx - fromIdx,
+                disruptiveEntry = false,
+            )
+            ep.seekTo(cachedIdx, 0L)
+            resumeAfterSkip(ep)
+            return
+        }
+        android.util.Log.w(
+            "ftpmusic",
+            "[MediaService] Server unreachable — no cached track ahead; stopping after $failedId",
+        )
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-playback",
+            "autoSkip action=STOP_NO_CACHED trackId=$failedId idx=$fromIdx " +
+                "errorCount=$playerErrorCount reachable=false",
+        )
+        playerErrorCount = 0
+        PlayerHolder.playbackErrorAutoSkipInFlight = false
+        resetPlaybackErrorTrackers(src = "stop-no-cached", resetCircuit = false)
+        ep.stop()
+    }
+
+    /**
+     * N11-2 short-circuit: the first same-album REMOTE_MISSING takes one item;
+     * the second (30 s / ≤2 positions) jumps the whole consecutive album run in
+     * a single seek. N11-3 verification then runs in the background.
+     */
+    private fun applyRemoteMissingSkip(
+        ep: Player,
+        failedId: String?,
+        albumId: String?,
+        fromIdx: Int,
+        itemCount: Int,
+        httpCode: Int?,
+        nowMs: Long,
+    ) {
+        val albumRunTripped = missingAlbumRun.onRemoteMissing(albumId, fromIdx, nowMs)
+        if (albumRunTripped && albumId != null) {
+            // Re-read the count on the current (main) thread: itemCount was sampled
+            // before the IO hop and the timeline may have changed. Each access is
+            // guarded so a shrinking queue cannot throw on the media3 looper.
+            val liveCount = ep.mediaItemCount
+            val albums = ArrayList<String?>(liveCount)
+            for (i in 0 until liveCount) {
+                albums.add(runCatching { ep.getMediaItemAt(i).albumIdExtra() }.getOrNull())
+            }
+            val toIdx = findNextAlbumIndex(albums, fromIdx)
+            DiagnosticLog.w(
+                "ftpmusic-playback",
+                "autoSkip action=SKIP_MISSING_ALBUM albumId=$albumId trackId=$failedId " +
+                    "fromIdx=$fromIdx toIdx=${if (toIdx >= liveCount) "end" else toIdx.toString()} " +
+                    "n=${(toIdx - fromIdx).coerceAtLeast(1)} after=2 http=${httpCode ?: "-"}",
+            )
+            autoSkipBurst.record(
+                index = fromIdx,
+                nowMs = nowMs,
+                skipped = (toIdx - fromIdx).coerceAtLeast(1),
+                disruptiveEntry = false,
+            )
+            if (toIdx >= liveCount) {
+                // The run reaches the end of the queue: stop rather than seek past it.
+                playerErrorCount = 0
+                PlayerHolder.playbackErrorAutoSkipInFlight = false
+                resetPlaybackErrorTrackers(src = "album-end", resetCircuit = false)
+                ep.stop()
+            } else {
+                ep.seekTo(toIdx, 0L)
+                resumeAfterSkip(ep)
+            }
+            // N11-3: only on the confirmed second failure, never on the first.
+            if (::albumReconciler.isInitialized) {
+                scope.launch {
+                    albumReconciler.reconcileAfterConfirmedMissing(albumId)
+                }
+            }
+            return
+        }
+        autoSkipBurst.record(
+            index = fromIdx,
+            nowMs = nowMs,
+            skipped = 1,
+            evictedDelta = 0,
+            disruptiveEntry = true,
+        )
+        DiagnosticLog.w(
+            "ftpmusic-playback",
+            "autoSkip action=SKIP_MISSING trackId=$failedId albumId=${albumId ?: "-"} " +
+                "idx=$fromIdx count=$itemCount errorCount=$playerErrorCount " +
+                "http=${httpCode ?: "-"} reachable=true",
+        )
+        if (autoSkipBurst.atThreshold()) {
+            pauseAfterBurst(ep, fromIdx, SourceErrorKind.REMOTE_MISSING, failedId)
+            return
+        }
+        ep.seekToNextMediaItem()
+        resumeAfterSkip(ep)
+    }
+
+    /** N1-C: pause (not stop) so index/position survive; the next play resumes past it. */
+    private fun pauseAfterBurst(ep: Player, fromIdx: Int, kind: SourceErrorKind, failedId: String?) {
+        // The bound that can fire is `disruptive >= threshold`; album/cached jumps
+        // are recoveries and inflate `count`. The circuit path pauses on the
+        // tripping error before it is recorded, so take the larger of the two.
+        val burstDisruptive = autoSkipBurst.disruptive
+        val n = maxOf(burstDisruptive, sourceErrorCircuit.consecutiveErrors)
+        autoSkipBurst.drainSummary()?.let {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-playback", it)
+        }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-playback",
+            "circuit clear src=burst",
+        )
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-playback",
+            "autoSkip action=PAUSE_BURST n=$n disruptive=$burstDisruptive " +
+                "trackId=$failedId fromIdx=$fromIdx kind=$kind " +
+                "reachable=${ReachabilityStateHolder.isReachable.value}",
+        )
+        playerErrorCount = 0
+        sourceErrorCircuit = sourceErrorCircuit.onSuccessfulPlay()
+        missingAlbumRun.clear()
+        burstPaused = true
+        PlayerHolder.playbackErrorAutoSkipInFlight = false
+        PlayerHolder.setPlaybackError("$n tracks failed to play — tap play to resume")
+        ep.pause()
+    }
+
+    /** Shared tail of every successful skip: seeking does not resume by itself. */
+    private fun resumeAfterSkip(ep: Player) {
+        // with playWhenReady=false (audio-focus loss, pause-before-error) the
+        // player would sit in STATE_IDLE forever — Now Playing / QuickSettings
+        // show "stopped". media3's internal error-advance policy would have
+        // prepared + played, which the old retry loop suppressed.
+        ep.playWhenReady = true
+        ep.prepare()
+    }
+
+    /**
+     * Clears every tracker that bounds an error run. [resetCircuit] is false for
+     * terminal stops (the run ended, but it is not a user/verified-play reset).
+     */
+    private fun resetPlaybackErrorTrackers(src: String, resetCircuit: Boolean = true) {
+        val hadRun = sourceErrorCircuit.consecutiveErrors > 0 ||
+            autoSkipBurst.count > 0 ||
+            burstPaused ||
+            missingAlbumRun.peekAlbumId() != null
+        if (resetCircuit) {
+            sourceErrorCircuit = sourceErrorCircuit.onUserSeek()
+        }
+        missingAlbumRun.clear()
+        autoSkipBurst.drainSummary()?.let {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w("ftpmusic-playback", it)
+        }
+        burstPaused = false
+        if (hadRun && resetCircuit) {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-playback",
+                "circuit clear src=$src",
+            )
         }
     }
 
@@ -1579,9 +1889,14 @@ class MediaService : MediaLibraryService() {
                 lastTrackedPositionMs = player.currentPosition
                 if (player.playerError == null &&
                     lastTrackedPositionMs >= SOURCE_ERROR_CIRCUIT_SUCCESS_PLAY_MS &&
-                    sourceErrorCircuit.consecutiveErrors > 0
+                    (
+                        sourceErrorCircuit.consecutiveErrors > 0 ||
+                            autoSkipBurst.count > 0 ||
+                            missingAlbumRun.peekAlbumId() != null ||
+                            burstPaused
+                        )
                 ) {
-                    sourceErrorCircuit = sourceErrorCircuit.onSuccessfulPlay()
+                    resetPlaybackErrorTrackers(src = "verified-play")
                 }
                 if (!hasMetScrobbleThreshold &&
                     hasMetScrobbleThreshold(player.duration, accumulatedHeardMs)
@@ -2094,6 +2409,11 @@ class MediaService : MediaLibraryService() {
      */
     @VisibleForTesting
     internal fun performDestroyCleanup() {
+        // N7: the export needs a process/teardown boundary.
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-service",
+            "service teardown reason=destroy pid=${android.os.Process.myPid()}",
+        )
         // Persist state BEFORE any cleanup. State is snapshotted synchronously
         // here; the Room writes drain async on persistenceScope (never parking
         // main — an idle-stop teardown blocking main on Room was the 09-07
@@ -2192,6 +2512,11 @@ class MediaService : MediaLibraryService() {
      *  Bounded sync (<= lastChancePersistBoundMs each) — the process may be killed
      *  right after this returns. */
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // N7: distinguishes a process kill from a network outage in the export.
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-service",
+            "service teardown reason=task_removed pid=${android.os.Process.myPid()}",
+        )
         persistPlaybackState(waitBoundedMs = lastChancePersistBoundMs)
         saveQueueStateSync(waitBoundedMs = lastChancePersistBoundMs)
         // NOTE: Do NOT remove the SessionManagerListener here. On Android 14+ the
@@ -4493,6 +4818,33 @@ class MediaService : MediaLibraryService() {
                     "ftpmusic",
                     "[PLAY_PAUSE] player=${player::class.simpleName} isPlaying=${player.isPlaying} state=${player.playbackState} casting=${PlayerHolder.isCasting}",
                 )
+                // N1-C: a burst paused on the failed run. Resuming must move past
+                // it — never retry the item that just failed 8+ times.
+                if (burstPaused) {
+                    val fromIdx = player.currentMediaItemIndex
+                    playerErrorCount = 0
+                    sourceErrorCircuit = sourceErrorCircuit.onSuccessfulPlay()
+                    missingAlbumRun.clear()
+                    autoSkipBurst.clear()
+                    burstPaused = false
+                    PlayerHolder.playbackErrorAutoSkipInFlight = false
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "autoSkip action=BURST_RESUME fromIdx=$fromIdx " +
+                            "next=${player.hasNextMediaItem()}",
+                    )
+                    if (player.hasNextMediaItem()) {
+                        player.seekToNextMediaItem()
+                        resumeAfterSkip(player)
+                    } else {
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                            "ftpmusic-playback",
+                            "autoSkip action=BURST_RESUME_END fromIdx=$fromIdx",
+                        )
+                        player.stop()
+                    }
+                    return
+                }
                 if (player.playbackState == Player.STATE_IDLE) {
                     if (PlayerHolder.isCasting && player.mediaItemCount == 0) {
                         val rmc = castCtx?.sessionManager?.currentCastSession?.remoteMediaClient
@@ -4550,6 +4902,9 @@ class MediaService : MediaLibraryService() {
             }
 
             is PlaybackControl.SEEK_TO -> {
+                // N1: an explicit in-app seek is user intent and clears the run
+                // before the coalescer (a dropped/coalesced seek still counts).
+                resetPlaybackErrorTrackers(src = "user-seek")
                 // Serialize seeks: coalesce rapid fast-forwards so a stale
                 // fraction can't land in the wrong track after a seek-triggered
                 // transition. No clamping — end-of-track skip is intentional.

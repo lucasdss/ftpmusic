@@ -72,6 +72,10 @@ object DiagnosticLog {
         albumTracksAlbumsZero: Int = -1,
         homeRecentResult: String = "",
         wmSummary: String = "",
+        lastSyncAttemptMs: Long = -1L,
+        lastSyncOutcome: String = "",
+        softStopStreak: Int = -1,
+        lastDrainCompleteMs: Long = -1L,
     ): String {
         val header = buildString {
             appendLine("ftpmusic diagnostics")
@@ -102,6 +106,18 @@ object DiagnosticLog {
             appendLine(
                 "syncMode mode=${mode.ifEmpty { "-" }} skip=${skipReason.ifEmpty { "-" }}",
             )
+            if (lastSyncAttemptMs >= 0L || lastSyncOutcome.isNotEmpty() || softStopStreak >= 0 ||
+                lastDrainCompleteMs >= 0L
+            ) {
+                appendLine(
+                    formatSyncFreshness(
+                        attemptMs = lastSyncAttemptMs,
+                        outcome = lastSyncOutcome,
+                        streak = softStopStreak,
+                        drainCompleteMs = lastDrainCompleteMs,
+                    ),
+                )
+            }
             if (albums >= 0 || artists >= 0 || tracks >= 0 || corpus >= 0) {
                 // F4 / D5: three different SoTs, labelled; ghost-row count exposed.
                 appendLine(
@@ -123,17 +139,15 @@ object DiagnosticLog {
     }
 
     private fun append(level: String, tag: String, msg: String, t: Throwable?) {
-        val nowMs = System.currentTimeMillis()
-        val ts = Instant.ofEpochMilli(nowMs).toString()
         val safeMsg = sanitize(msg)
-        val suffix = if (t != null) {
-            val tMsg = t.message?.let { sanitize(it) }
-            if (tMsg.isNullOrEmpty()) " | ${t.javaClass.simpleName}" else " | ${t.javaClass.simpleName}: $tMsg"
-        } else {
-            ""
-        }
-        val line = "$ts | $level | $tag | $safeMsg$suffix"
+        val suffix = if (t != null) " | ${throwableChain(t)}" else ""
         synchronized(lock) {
+            // N9: stamp inside the lock so append order == timestamp order. The
+            // old code formatted before acquiring it, so two threads could print
+            // T1<T2 with T2 first (observed in the 17:45Z export).
+            val nowMs = System.currentTimeMillis()
+            val ts = Instant.ofEpochMilli(nowMs).toString()
+            val line = "$ts | $level | $tag | $safeMsg$suffix"
             lines.addLast(line)
             lineTimes.addLast(nowMs)
             while (lines.size > CAP) {
@@ -149,6 +163,45 @@ object DiagnosticLog {
                 else -> android.util.Log.d(tag, msg)
             }
         }
+    }
+
+    /**
+     * N5: display-only freshness. `lastFullSyncMs`/`lastDeltaSyncMs` are ADR-0068
+     * cadence stamps that only advance on a full track drain, so a soft-stopped
+     * run reads as "never synced" in the header even though it just ran.
+     */
+    internal fun formatSyncFreshness(attemptMs: Long, outcome: String, streak: Int, drainCompleteMs: Long): String =
+        "syncFreshness " +
+            "lastAttemptMs=${if (attemptMs <= 0L) "never" else attemptMs} " +
+            "lastOutcome=${outcome.ifEmpty { "-" }} " +
+            "softStopStreak=${streak.coerceAtLeast(0)} " +
+            "lastDrainCompleteMs=${if (drainCompleteMs <= 0L) "never" else drainCompleteMs}"
+
+    /**
+     * N11-1: one level of cause in the suffix. media3 wraps the HTTP/parse
+     * failure inside a `PlaybackException`, so the top-level class alone said
+     * nothing about a 404 vs a decode failure.
+     */
+    private fun throwableChain(t: Throwable): String {
+        val parts = ArrayList<String>(2)
+        var current: Throwable? = t
+        var depth = 0
+        while (current != null && depth < 2) {
+            val text = current.message?.let { sanitize(it) }
+            parts.add(
+                if (text.isNullOrEmpty()) {
+                    current.javaClass.simpleName
+                } else {
+                    "${current.javaClass.simpleName}: $text"
+                },
+            )
+            current = current.cause
+            depth++
+        }
+        // R4 (audit): the joined chain is a single field, so it must respect the
+        // same [MAX_FIELD_LEN] bound as every other field (two unbounded levels
+        // would double the PII/Intent surface).
+        return parts.joinToString(" caused_by ").take(MAX_FIELD_LEN)
     }
 
     /** Redact http(s) URLs + bound field length for Intent/EXTRA_TEXT safety. */

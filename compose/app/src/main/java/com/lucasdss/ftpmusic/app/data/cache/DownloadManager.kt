@@ -348,13 +348,13 @@ class DownloadManager @Inject constructor(
             val request = okhttp3.Request.Builder().url(item.remoteUrl).build()
             downloadClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    handleRetry(item)
+                    handleRetry(item, "http_${response.code}")
                     return
                 }
                 val body = response.body
                 if (body == null) {
                     // Don't leave the item stuck in "processing"
-                    handleRetry(item)
+                    handleRetry(item, "empty_body")
                     return
                 }
                 val contentType = response.header("Content-Type")
@@ -393,12 +393,12 @@ class DownloadManager @Inject constructor(
                 // Re-read isDownload — user may have tapped Download while transfer was in flight
                 val isDownloadNow = item.isDownload ||
                     (cacheQueueDao.getByTrackId(item.trackId)?.isDownload ?: false)
-                val success = cacheService.writeCachedTrackFromFile(
+                val outcome = cacheService.writeCachedTrackFromFileDetailed(
                     item.trackId,
                     tmpFile,
                     isDownload = isDownloadNow,
                 )
-                if (success) {
+                if (outcome.isSuccess()) {
                     cacheQueueDao.updateStatus(item.id, "completed")
                     android.util.Log.d("ftpmusic-download", "[worker] completed: ${item.trackId} (${downloaded}B)")
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
@@ -408,13 +408,14 @@ class DownloadManager @Inject constructor(
                 } else {
                     android.util.Log.w(
                         "ftpmusic-download",
-                        "[worker] cache write failed for ${item.trackId} — will retry",
+                        "[worker] cache write failed for ${item.trackId} (${outcome.reason()}) — will retry",
                     )
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-download",
-                        "worker write fail trackId=${item.trackId} priority=${item.priority}",
+                        "worker write fail trackId=${item.trackId} priority=${item.priority} " +
+                            "reason=${outcome.reason()} bytes=$downloaded attempt=${item.retryCount + 1}/$MAX_RETRIES",
                     )
-                    handleRetry(item)
+                    handleRetry(item, outcome.reason())
                 }
             }
         } catch (e: Exception) {
@@ -423,7 +424,7 @@ class DownloadManager @Inject constructor(
                 "worker fail trackId=${item.trackId} err=${e.javaClass.simpleName}",
                 e,
             )
-            handleRetry(item)
+            handleRetry(item, "exception_${e.javaClass.simpleName}")
         } finally {
             // writeCachedTrackFromFile consumes the file on success — anything
             // left behind here is a failed/partial download
@@ -467,7 +468,7 @@ class DownloadManager @Inject constructor(
         )
     }
 
-    private suspend fun handleRetry(item: CacheQueueItemEntity) {
+    private suspend fun handleRetry(item: CacheQueueItemEntity, reason: String) {
         val nextRetry = item.retryCount + 1
         cacheQueueDao.updateRetryCount(item.id, nextRetry)
         if (nextRetry < MAX_RETRIES) {
@@ -480,6 +481,13 @@ class DownloadManager @Inject constructor(
             cacheQueueDao.updateStatus(item.id, "pending")
         } else {
             cacheQueueDao.updateStatus(item.id, STATUS_FAILED)
+            // N3: exhaustion used to be silent. The row is terminal and invisible
+            // (failed rows re-arm only while retryCount < MAX_RETRIES).
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-download",
+                "worker terminal trackId=${item.trackId} priority=${item.priority} " +
+                    "reason=retry_exhausted attempts=$MAX_RETRIES last=$reason",
+            )
         }
     }
 }

@@ -151,4 +151,94 @@ class DiagnosticLogTest {
         assertEquals("hit <url> ok", DiagnosticLog.sanitize("hit http://a.b/c ok"))
         assertEquals("hit <url> ok", DiagnosticLog.sanitize("hit HTTPS://A.B/C ok"))
     }
+
+    @Test
+    fun syncFreshness_neverReadsAsNever() {
+        val line = DiagnosticLog.formatSyncFreshness(
+            attemptMs = 0L,
+            outcome = "",
+            streak = 0,
+            drainCompleteMs = 0L,
+        )
+        assertTrue(line.contains("lastAttemptMs=never"))
+        assertTrue(line.contains("lastOutcome=-"))
+        assertTrue(line.contains("lastDrainCompleteMs=never"))
+    }
+
+    @Test
+    fun syncFreshness_reportsAttemptAndSoftStop() {
+        val line = DiagnosticLog.formatSyncFreshness(
+            attemptMs = 1_700_000_000_000L,
+            outcome = "soft_stop",
+            streak = 3,
+            drainCompleteMs = 1_699_000_000_000L,
+        )
+        assertTrue(line.contains("lastAttemptMs=1700000000000"))
+        assertTrue(line.contains("lastOutcome=soft_stop"))
+        assertTrue(line.contains("softStopStreak=3"))
+        assertTrue(line.contains("lastDrainCompleteMs=1699000000000"))
+    }
+
+    @Test
+    fun snapshot_includesSyncFreshnessWhenProvided() {
+        val snap = DiagnosticLog.snapshot(
+            context,
+            offline = false,
+            reachable = true,
+            lastSyncAttemptMs = 123L,
+            lastSyncOutcome = "success",
+            softStopStreak = 0,
+        )
+        assertTrue(snap.contains("syncFreshness lastAttemptMs=123 lastOutcome=success"))
+    }
+
+    @Test
+    fun append_includesOneLevelOfCause() {
+        DiagnosticLog.e(
+            "playback",
+            "player error",
+            RuntimeException("wrapper", IllegalStateException("body is HTML")),
+        )
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertTrue(snap.contains("RuntimeException: wrapper caused_by IllegalStateException: body is HTML"))
+    }
+
+    @Test
+    fun append_causeChainStopsAtTwoLevels() {
+        val deep = IllegalStateException(
+            "level3",
+            IllegalArgumentException("level4"),
+        )
+        DiagnosticLog.e("playback", "player error", RuntimeException("level2", deep))
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertTrue(snap.contains("level2"))
+        assertTrue(snap.contains("level3"))
+        assertFalse(snap.contains("level4"))
+    }
+
+    @Test
+    fun append_causeChainSanitisesUrls() {
+        DiagnosticLog.e(
+            "playback",
+            "player error",
+            RuntimeException("boom", java.io.IOException("GET https://music.example.com/x failed")),
+        )
+        val snap = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+        assertTrue(snap.contains("<url>"))
+        assertFalse(snap.contains("music.example.com"))
+    }
+
+    @Test
+    fun append_causeChainIsBounded() {
+        DiagnosticLog.e(
+            "playback",
+            "player error",
+            RuntimeException("x".repeat(500), IllegalStateException("y".repeat(500))),
+        )
+        val line = DiagnosticLog.snapshot(context, offline = false, reachable = true)
+            .lineSequence()
+            .first { it.contains("player error") }
+        val suffix = line.substringAfterLast(" | ")
+        assertTrue("suffix length=${suffix.length}", suffix.length <= DiagnosticLog.MAX_FIELD_LEN)
+    }
 }

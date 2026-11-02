@@ -177,6 +177,20 @@ class MetadataSyncWorker(
         const val PREF_LAST_WM_ATTEMPT_MS = "last_wm_attempt_ms"
         const val PREF_LAST_WM_SKIP_REASON = "last_wm_skip_reason"
 
+        /**
+         * N5 (2026-11-01): display-only freshness. The cadence stamps above only
+         * advance on a full track drain (ADR-0068), so a soft-stopped DELTA that
+         * refreshed the corpus still reads as "never synced" in the header.
+         */
+        const val PREF_LAST_SYNC_ATTEMPT_MS = "last_sync_attempt_ms"
+        const val PREF_LAST_SYNC_OUTCOME = "last_sync_outcome"
+        const val PREF_SOFT_STOP_STREAK = "soft_stop_streak"
+        const val PREF_LAST_DRAIN_COMPLETE_MS = "last_drain_complete_ms"
+
+        const val SYNC_OUTCOME_COMPLETE = "complete"
+        const val SYNC_OUTCOME_SOFT_STOPPED = "soft-stopped"
+        const val SYNC_OUTCOME_ERROR = "error"
+
         const val PREF_HOME_RECENT_IDS = HomeRecentCache.PREF_HOME_RECENT_IDS
         const val PREF_HOME_RECENT_FETCHED_MS = HomeRecentCache.PREF_HOME_RECENT_FETCHED_MS
 
@@ -234,6 +248,23 @@ class MetadataSyncWorker(
     private val trackLimiter = AdaptiveSyncLimiter()
 
     @Volatile private var lastSyncFinishMs: Long = 0L
+
+    /**
+     * N4: what the track drain actually did. `syncAlbumTracks` returns only a
+     * Boolean, so the export could not tell a complete drain from a soft-stop
+     * that deferred albums (and printed "complete" either way).
+     */
+    private data class TrackDrainReport(
+        val complete: Boolean = true,
+        val failed: Int = 0,
+        val pending: Int = 0,
+        val fetchedTracks: Int = 0,
+        val softStopStreak: Int = 0,
+        val firstFailedAlbumId: String? = null,
+        val lastFailReason: String? = null,
+    )
+
+    @Volatile private var lastTrackDrain = TrackDrainReport()
 
     /** Album IDs whose metadata (songCount/duration) changed since last sync —
      *  their tracks are re-fetched during the tracks phase (incremental staleness). */
@@ -358,6 +389,10 @@ class MetadataSyncWorker(
         val job = scope.launch syncJob@{
             syncJobs.add(coroutineContext[kotlinx.coroutines.Job]!!)
             val startMs = System.currentTimeMillis()
+            // N5: attempt stamp is independent of the ADR-0068 cadence stamps.
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putLong(PREF_LAST_SYNC_ATTEMPT_MS, startMs)
+                .apply()
             trackLimiter.reset()
             // ADR-0139: long uncapped syncs need a dataSync FGS while the process is alive.
             com.lucasdss.ftpmusic.app.data.sync.LibrarySyncService.start(context)
@@ -377,6 +412,9 @@ class MetadataSyncWorker(
                 }
                 Log.w(TAG, "Aborting sync — cellular policy mid-run")
                 DiagnosticLog.d(TAG, "abort sync — cellular policy")
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                    .putString(PREF_LAST_SYNC_OUTCOME, SYNC_OUTCOME_ERROR)
+                    .apply()
                 _status.value = _status.value.copy(
                     phase = "error",
                     isRunning = false,
@@ -439,6 +477,7 @@ class MetadataSyncWorker(
                     force = forceTrackResync,
                     retryExhausted = resolvedMode == LibrarySyncMode.FULL,
                 )
+                val drain = lastTrackDrain
                 if (abortIfCellularPolicyViolated()) return@syncJob
                 // Recompute artist album counts AFTER tracks are cached so
                 // track-artist attribution is included (Navidrome attributes
@@ -489,7 +528,12 @@ class MetadataSyncWorker(
                     if (e is CancellationException) throw e
                     metadataDao.cachedTrackCount()
                 }
-                DiagnosticLog.d(TAG, "phase=tracks tracks=$finalTrackCount")
+                // N6: `tracks=` was trackCountAll() — the corpus, not this run.
+                // In the export it read as "fetched 30 674 tracks in 94 s".
+                DiagnosticLog.d(
+                    TAG,
+                    "phase=tracks fetched=${drain.fetchedTracks} corpus=$finalTrackCount",
+                )
                 // Phase-4: FTS rebuild after populate (enrich is async — ADR-0085)
                 try {
                     searchIndexRebuilder?.rebuildAll()
@@ -537,15 +581,29 @@ class MetadataSyncWorker(
                     val durationMs = System.currentTimeMillis() - startMs
                     val now = System.currentTimeMillis()
                     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    val priorStreak = prefs.getInt(PREF_SOFT_STOP_STREAK, 0)
                     val editor = prefs.edit()
                         .putLong(PREF_LAST_METADATA_SYNC_MS, now)
                         .putLong(PREF_METADATA_SYNC_DURATION_MS, durationMs)
                         .putString(PREF_LAST_SYNC_MODE, resolvedMode.name)
                         .putString(PREF_LAST_SYNC_SKIP_REASON, "")
+                        .putString(
+                            PREF_LAST_SYNC_OUTCOME,
+                            if (tracksDrainComplete) {
+                                SYNC_OUTCOME_COMPLETE
+                            } else {
+                                SYNC_OUTCOME_SOFT_STOPPED
+                            },
+                        )
+                        .putInt(
+                            PREF_SOFT_STOP_STREAK,
+                            if (tracksDrainComplete) 0 else priorStreak + 1,
+                        )
                     if (tracksDrainComplete) {
                         // Schema refetch ledger + cadence only on full drain —
                         // soft-stop must not clear METADATA_VERSION force-resync.
                         editor.putInt("metadata_version", METADATA_VERSION)
+                        editor.putLong(PREF_LAST_DRAIN_COMPLETE_MS, now)
                         if (resolvedMode == LibrarySyncMode.FULL) {
                             editor.putLong(PREF_LAST_FULL_SYNC_MS, now)
                         } else {
@@ -557,13 +615,19 @@ class MetadataSyncWorker(
                             "Soft-stopped track drain — skipping cadence watermark " +
                                 "and metadata_version stamp (mode=$resolvedMode)",
                         )
-                        DiagnosticLog.d(TAG, "soft-stop: cadence+metadata_version skipped")
+                        DiagnosticLog.d(
+                            TAG,
+                            "sync watermark skip cadence=true metadataVersion=true reason=soft-stop",
+                        )
                     }
                     editor.apply()
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Metadata sync failed: ${e.message}")
                 DiagnosticLog.e(TAG, "sync failed: ${e.message}", e)
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                    .putString(PREF_LAST_SYNC_OUTCOME, SYNC_OUTCOME_ERROR)
+                    .apply()
                 _status.value = _status.value.copy(
                     isRunning = false,
                     phase = "error",
@@ -575,9 +639,14 @@ class MetadataSyncWorker(
                 syncJobs.remove(coroutineContext[kotlinx.coroutines.Job]!!)
                 com.lucasdss.ftpmusic.app.data.sync.LibrarySyncService.stop(context)
                 val phase = _status.value.phase
+                val drain = lastTrackDrain
                 DiagnosticLog.d(
                     TAG,
-                    "sync end phase=$phase elapsed=${System.currentTimeMillis() - startMs}ms albums=${_status.value.albums} artists=${_status.value.artists} tracks=${_status.value.trackCount}",
+                    "sync end phase=$phase drain=${if (drain.complete) "complete" else "soft-stopped"} " +
+                        "failed=${drain.failed} pending=${drain.pending} " +
+                        "elapsed=${System.currentTimeMillis() - startMs}ms " +
+                        "albums=${_status.value.albums} artists=${_status.value.artists} " +
+                        "tracks=${_status.value.trackCount}",
                 )
             }
         }
@@ -1349,6 +1418,10 @@ class MetadataSyncWorker(
         val password = SubsonicCredentials.password
         if (username.isEmpty() || password.isEmpty()) return true
 
+        // Conservative default: if this run throws, the completion block must not
+        // read the previous run's "complete" report.
+        lastTrackDrain = TrackDrainReport(complete = false)
+
         val wm = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val lock = wm?.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "ftpmusic:tracksync")
         lock?.acquire()
@@ -1392,12 +1465,17 @@ class MetadataSyncWorker(
                 isRunning = true,
             )
 
-            if (pendingAlbums.isEmpty()) return true
+            if (pendingAlbums.isEmpty()) {
+                lastTrackDrain = TrackDrainReport(complete = true, pending = 0)
+                return true
+            }
 
             val count = AtomicInteger(0)
             val totalTracks = AtomicInteger(0)
             val failedCount = AtomicInteger(0)
             val consecutiveFailures = AtomicInteger(0)
+            val firstFailedAlbumId = java.util.concurrent.atomic.AtomicReference<String?>(null)
+            val softStopStreak = AtomicInteger(0)
             val softStopped = AtomicBoolean(false)
 
             // Helper: fetch one album's tracks (called from parallel coroutines).
@@ -1466,6 +1544,7 @@ class MetadataSyncWorker(
                             if (tracks == null) {
                                 failedCount.incrementAndGet()
                                 batchFailures.incrementAndGet()
+                                firstFailedAlbumId.compareAndSet(null, album.id)
                                 val streak = consecutiveFailures.incrementAndGet()
                                 try {
                                     val fails = syncSkipAlbumDao?.recordFailure(
@@ -1484,9 +1563,20 @@ class MetadataSyncWorker(
                                 }
                                 if (streak >= TRACK_CONSECUTIVE_FAIL_SOFT_STOP) {
                                     softStopped.set(true)
+                                    softStopStreak.set(streak)
                                     Log.w(
                                         TAG,
                                         "Soft-stopping track drain after $streak consecutive failures",
+                                    )
+                                    // N4: the export's last word on this run used to be
+                                    // "complete". Record the cause at the trip, not only
+                                    // in logcat.
+                                    DiagnosticLog.w(
+                                        TAG,
+                                        "sync soft-stop trackDrain streak=$streak " +
+                                            "albumId=${album.id} reason=get_album_null " +
+                                            "failed=${failedCount.get()} pending=$pendingTotal " +
+                                            "fetched=${count.get()}",
                                     )
                                 }
                                 emptyList<CachedAlbumTrackEntity>()
@@ -1564,6 +1654,15 @@ class MetadataSyncWorker(
             }
             _status.value = _status.value.copy(albumTracksProgress = count.get(), trackCount = corpusCount)
             if (count.get() > 0) Log.d(TAG, "Background-synced tracks for ${count.get()} albums")
+            lastTrackDrain = TrackDrainReport(
+                complete = !softStopped.get(),
+                failed = f,
+                pending = pendingTotal,
+                fetchedTracks = totalTracks.get(),
+                softStopStreak = softStopStreak.get(),
+                firstFailedAlbumId = firstFailedAlbumId.get(),
+                lastFailReason = if (f > 0) "get_album_null" else null,
+            )
             changedAlbumIds.clear()
             return !softStopped.get()
         } finally {

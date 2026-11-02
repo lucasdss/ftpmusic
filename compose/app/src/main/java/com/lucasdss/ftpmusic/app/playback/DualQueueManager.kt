@@ -234,6 +234,26 @@ class DualQueueManager @Inject constructor() {
     }
 
     /**
+     * N11-3: drop every queue entry whose album was confirmed removed on the
+     * server. Removing by descending merged index keeps lower indices valid;
+     * [PlaybackManager.currentCanonicalIndex] finds the playing item by
+     * `queueEntryId`, so the persisted index stays correct after the prune.
+     * Returns the number of removed entries.
+     */
+    @Synchronized
+    fun removeAllByAlbumId(albumId: String): Int {
+        if (albumId.isBlank() || entries.isEmpty()) return 0
+        var removed = 0
+        for (i in entries.indices.reversed()) {
+            val itemAlbumId = entries[i].item.mediaMetadata.extras?.getString("albumId")
+            if (itemAlbumId == albumId) {
+                if (remove(i) != null) removed++
+            }
+        }
+        return removed
+    }
+
+    /**
      * Move within merged list. Cross-section drag changes origin so the
      * industry contiguous layout is preserved after rebuild.
      */

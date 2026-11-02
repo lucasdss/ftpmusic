@@ -65,6 +65,14 @@ class FtpmusicApp :
 
     override fun onCreate() {
         super.onCreate()
+        // N7: a process boundary in the ring. Without it a process death reads
+        // as a multi-hour network outage between the last teardown line and the
+        // first line of the new process.
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-app",
+            "app start pid=${android.os.Process.myPid()} " +
+                "ver=${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE})",
+        )
         // Single authoritative server-config restore — runs before any worker,
         // ViewModel, playback or UI composition. A transient read failure keeps
         // the store uninitialized so splash/MediaService/UI can retry.

@@ -205,7 +205,9 @@ class SyncScheduleWorkerTest {
 
     @Test
     fun `doWork retries when server unreachable`() = runBlocking {
-        ReachabilityStateHolder.onApiFailure()
+        // N8: a single interceptor failure no longer flips reachability (hysteresis);
+        // the probe verdict is the trusted signal used here.
+        ReachabilityStateHolder.resetForTests(reachable = false)
         val result = worker.doWork()
         verify(exactly = 0) { metadataSyncWorker.syncNowAsync(any(), any()) }
         assertTrue(result is ListenableWorker.Result.Retry)

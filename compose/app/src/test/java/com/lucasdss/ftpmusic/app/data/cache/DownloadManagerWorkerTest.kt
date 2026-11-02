@@ -98,7 +98,8 @@ class DownloadManagerWorkerTest {
         try {
             val item = CacheQueueItemEntity(id = 1, trackId = "t1", remoteUrl = url, priority = 0)
             coEvery { dao.getByTrackId("t1") } returns null
-            coEvery { cacheService.writeCachedTrackFromFile(eq("t1"), any(), isDownload = any()) } returns true
+            coEvery { cacheService.writeCachedTrackFromFileDetailed(eq("t1"), any(), isDownload = any()) } returns
+                CacheWriteOutcome.OK
             val mgr = managerWithPicks(item, null)
             try {
                 mgr.start()
@@ -137,7 +138,7 @@ class DownloadManagerWorkerTest {
                 coVerify(exactly = 0) { dao.updateRetryCount(any(), any()) }
                 coVerify(exactly = 0) { dao.updateStatus(item.id, "completed") }
                 coVerify(exactly = 0) {
-                    cacheService.writeCachedTrackFromFile(any(), any(), isDownload = any())
+                    cacheService.writeCachedTrackFromFileDetailed(any(), any(), isDownload = any())
                 }
             } finally {
                 manager.stop()
@@ -175,7 +176,8 @@ class DownloadManagerWorkerTest {
         try {
             val item = CacheQueueItemEntity(id = 3, trackId = "t3", remoteUrl = url, priority = 0)
             coEvery { dao.getByTrackId("t3") } returns null
-            coEvery { cacheService.writeCachedTrackFromFile(eq("t3"), any(), isDownload = any()) } returns false
+            coEvery { cacheService.writeCachedTrackFromFileDetailed(eq("t3"), any(), isDownload = any()) } returns
+                CacheWriteOutcome.IO
             val mgr = managerWithPicks(item, null)
             try {
                 mgr.start()
@@ -200,9 +202,9 @@ class DownloadManagerWorkerTest {
             // The worker deletes the temp file after the handoff — capture the
             // bytes inside the stub, while the file still exists.
             val capturedBytes = java.util.concurrent.atomic.AtomicReference<ByteArray>()
-            coEvery { cacheService.writeCachedTrackFromFile(eq("t4"), any(), isDownload = any()) } answers {
+            coEvery { cacheService.writeCachedTrackFromFileDetailed(eq("t4"), any(), isDownload = any()) } answers {
                 capturedBytes.set(secondArg<File>().readBytes())
-                true
+                CacheWriteOutcome.OK
             }
             val mgr = managerWithPicks(item, null)
             try {
@@ -263,7 +265,8 @@ class DownloadManagerWorkerTest {
         try {
             val item = CacheQueueItemEntity(id = 6, trackId = "t6", remoteUrl = url, priority = 0)
             coEvery { dao.getByTrackId("t6") } returns null
-            coEvery { cacheService.writeCachedTrackFromFile(eq("t6"), any(), isDownload = any()) } returns true
+            coEvery { cacheService.writeCachedTrackFromFileDetailed(eq("t6"), any(), isDownload = any()) } returns
+                CacheWriteOutcome.OK
             val mgr = managerWithPicks(item, null)
             try {
                 mgr.start()

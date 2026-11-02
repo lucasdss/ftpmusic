@@ -11,6 +11,44 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** N11-3: three-valued album existence — only [ABSENT] may purge. */
+enum class AlbumPresence {
+    PRESENT,
+    ABSENT,
+    UNKNOWN,
+}
+
+/** Subsonic generic "not found" error code. */
+internal const val SUBSONIC_ERROR_NOT_FOUND = 70
+
+/**
+ * N11-3: pure three-valued parser so the "only code 70 is ABSENT" contract is
+ * testable without the network. Anything ambiguous (auth failure, other codes,
+ * malformed body) is UNKNOWN and must not purge.
+ */
+internal fun parseAlbumPresence(response: Map<String, Any>): AlbumPresence {
+    val subsonicResponse = response["subsonic-response"] as? Map<*, *>
+        ?: return AlbumPresence.UNKNOWN
+    when (subsonicResponse["status"] as? String) {
+        "ok" -> return if (subsonicResponse["album"] is Map<*, *>) {
+            AlbumPresence.PRESENT
+        } else {
+            AlbumPresence.UNKNOWN
+        }
+
+        "failed" -> {
+            val error = subsonicResponse["error"] as? Map<*, *>
+            val code = (error?.get("code") as? Number)?.toInt()
+            return if (code == SUBSONIC_ERROR_NOT_FOUND) {
+                AlbumPresence.ABSENT
+            } else {
+                AlbumPresence.UNKNOWN
+            }
+        }
+    }
+    return AlbumPresence.UNKNOWN
+}
+
 @Singleton
 class AlbumRepository @Inject constructor(private val api: SubsonicApi) {
     /**
@@ -21,6 +59,26 @@ class AlbumRepository @Inject constructor(private val api: SubsonicApi) {
         val auth = SubsonicAuthHelper().buildAuthParams(username, password)
         val response = api.getAlbum(albumId, auth)
         return parseAlbumResponse(response)
+    }
+
+    /**
+     * N11-3: authenticated deletion check. Only an explicit Subsonic
+     * `status=failed, error.code=70` (not found) counts as ABSENT. An auth
+     * failure, a network error or any other error code is UNKNOWN and must never
+     * purge anything.
+     */
+    suspend fun albumPresence(albumId: String, username: String, password: String): AlbumPresence {
+        if (albumId.isBlank() || username.isEmpty() || password.isEmpty()) {
+            return AlbumPresence.UNKNOWN
+        }
+        return try {
+            val auth = SubsonicAuthHelper().buildAuthParams(username, password)
+            parseAlbumPresence(api.getAlbum(albumId, auth))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            AlbumPresence.UNKNOWN
+        }
     }
 
     private fun parseAlbumResponse(response: Map<String, Any>): AlbumWithTracks? {

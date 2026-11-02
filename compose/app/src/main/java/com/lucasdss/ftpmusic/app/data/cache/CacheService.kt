@@ -189,13 +189,29 @@ class CacheService @Inject constructor(
     }
 
     /** Write a cached track from a temp file into the unified SimpleCache.
-     *  Returns true if the file was successfully cached. */
-    suspend fun writeCachedTrackFromFile(trackId: String, sourceFile: File, isDownload: Boolean = false): Boolean {
+     *  Returns true if the file was successfully cached (or already was). */
+    suspend fun writeCachedTrackFromFile(trackId: String, sourceFile: File, isDownload: Boolean = false): Boolean =
+        writeCachedTrackFromFileDetailed(trackId, sourceFile, isDownload).isSuccess()
+
+    /**
+     * N3: same import with the failure cause preserved. The Boolean wrapper above
+     * stays for the legacy call sites; DownloadManager uses this to log
+     * `reason=` and to report retry exhaustion with the last cause.
+     */
+    suspend fun writeCachedTrackFromFileDetailed(
+        trackId: String,
+        sourceFile: File,
+        isDownload: Boolean = false,
+    ): CacheWriteOutcome {
         val size = sourceFile.length()
         if (size == 0L) {
             android.util.Log.w("ftpmusic-cache", "[writeCached] zero-length file for $trackId — deleting")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-cache",
+                "writeCached reject trackId=$trackId bytes=0 reason=zero_length",
+            )
             sourceFile.delete()
-            return false
+            return CacheWriteOutcome.ZERO_LENGTH
         }
         if (!AudioCacheValidation.looksLikeAudio(sourceFile)) {
             android.util.Log.w(
@@ -207,9 +223,10 @@ class CacheService @Inject constructor(
                 "writeCached reject trackId=$trackId bytes=$size reason=non_audio",
             )
             sourceFile.delete()
-            return false
+            return CacheWriteOutcome.NON_AUDIO
         }
-        if (!importIntoCache(trackId, sourceFile, size)) return false
+        val outcome = importIntoCache(trackId, sourceFile, size)
+        if (!outcome.isSuccess()) return outcome
         if (isDownload) markDownloaded(trackId)
 
         val spanPath = getSpanFile(trackId)?.absolutePath
@@ -241,7 +258,7 @@ class CacheService @Inject constructor(
             "writeCached trackId=$trackId bytes=$size isDownload=$isDownload",
         )
         cacheEventFlow.tryEmit(Pair(trackId, isDownload))
-        return true
+        return outcome
     }
 
     /** Write track data from memory (test/proxy path). */
@@ -257,7 +274,7 @@ class CacheService @Inject constructor(
     }
 
     /** Moves [sourceFile] into the SimpleCache as a single full span for [trackId]. */
-    private fun importIntoCache(trackId: String, sourceFile: File, length: Long): Boolean {
+    private fun importIntoCache(trackId: String, sourceFile: File, length: Long): CacheWriteOutcome {
         var holeSpan: CacheSpan? = null
         return try {
             // Never contend with another writer. SimpleCache has no
@@ -268,8 +285,12 @@ class CacheService @Inject constructor(
             val probe = audioCache.startReadWriteNonBlocking(trackId, 0, length)
             if (probe == null) {
                 android.util.Log.w("ftpmusic-cache", "[import] $trackId is locked (streaming?) — deferring import")
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-cache",
+                    "cacheImport trackId=$trackId bytes=$length result=locked",
+                )
                 sourceFile.delete()
-                return false
+                return CacheWriteOutcome.LOCKED
             }
             // A partial resource may already cover position 0. In that case
             // SimpleCache returns a cached span, not a lock-bearing hole span;
@@ -283,8 +304,13 @@ class CacheService @Inject constructor(
             if (span == null || span.isCached) {
                 // Another writer holds the lock (or content re-appeared) — abort
                 android.util.Log.w("ftpmusic-cache", "[import] cache busy for $trackId — skipping")
+                val result = if (span?.isCached == true) CacheWriteOutcome.OK_ALREADY_CACHED else CacheWriteOutcome.BUSY
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-cache",
+                    "cacheImport trackId=$trackId bytes=$length result=${result.reason()}",
+                )
                 sourceFile.delete()
-                return span?.isCached == true
+                return result
             }
             holeSpan = span
             val mutations = ContentMetadataMutations()
@@ -298,11 +324,15 @@ class CacheService @Inject constructor(
                 sourceFile.delete()
             }
             audioCache.commitFile(cacheFile, length)
-            true
+            CacheWriteOutcome.OK
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-cache", "[import] failed for $trackId: ${e::class.simpleName}: ${e.message}")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-cache",
+                "cacheImport trackId=$trackId bytes=$length result=io err=${e.javaClass.simpleName}",
+            )
             sourceFile.delete()
-            false
+            CacheWriteOutcome.IO
         } finally {
             holeSpan?.let {
                 try {
@@ -333,6 +363,23 @@ class CacheService @Inject constructor(
     fun hasPlayableSpan(trackId: String): Boolean {
         val file = getSpanFile(trackId) ?: return false
         return AudioCacheValidation.classify(file) == AudioCacheValidation.PayloadVerdict.PLAYABLE
+    }
+
+    /**
+     * N11-2: three-valued span state for the Source-error classifier. Unlike
+     * [hasPlayableSpan] this keeps "no local span" and "poison local span"
+     * distinguishable, so a remote 404 never evicts and a corrupt span still heals.
+     * Read-only; the caller must not run this on the main thread (it reads the file).
+     */
+    fun spanState(trackId: String): CacheSpanState {
+        val file = getSpanFile(trackId) ?: return CacheSpanState.NONE
+        return when (AudioCacheValidation.classify(file)) {
+            AudioCacheValidation.PayloadVerdict.PLAYABLE,
+            AudioCacheValidation.PayloadVerdict.UNKNOWN,
+            -> CacheSpanState.PLAYABLE
+
+            AudioCacheValidation.PayloadVerdict.POISON -> CacheSpanState.UNPLAYABLE
+        }
     }
 
     /**
@@ -535,8 +582,14 @@ class CacheService @Inject constructor(
         } catch (_: Exception) {
             null
         }
+        // N2: `result=ok` is emitted even when no span existed, so the burst's 58
+        // identical lines proved calls, not evictions. hadSpan/bytes makes the two
+        // distinguishable without another log line.
+        val spanFile = getSpanFile(trackId)
+        val hadSpan = spanFile != null
+        val spanBytes = spanFile?.length() ?: 0L
         if (existing?.isDownloaded == true) {
-            val file = getSpanFile(trackId)
+            val file = spanFile
             if (file != null &&
                 AudioCacheValidation.classify(file) == AudioCacheValidation.PayloadVerdict.POISON
             ) {
@@ -546,7 +599,7 @@ class CacheService @Inject constructor(
                 )
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                     "ftpmusic-cache",
-                    "removeCached trackId=$trackId result=heal_poison_pinned",
+                    "removeCached trackId=$trackId result=heal_poison_pinned hadSpan=$hadSpan bytes=$spanBytes",
                 )
                 healPoisonSpan(trackId, file.length())
                 return
@@ -554,7 +607,7 @@ class CacheService @Inject constructor(
             android.util.Log.i("ftpmusic-cache", "[removeCached] $trackId is a pinned download — refusing to delete")
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                 "ftpmusic-cache",
-                "removeCached trackId=$trackId result=refused_pinned",
+                "removeCached trackId=$trackId result=refused_pinned hadSpan=$hadSpan bytes=$spanBytes",
             )
             return
         }
@@ -562,13 +615,13 @@ class CacheService @Inject constructor(
             audioCache.removeResource(trackId)
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-cache",
-                "removeCached trackId=$trackId result=ok",
+                "removeCached trackId=$trackId result=ok hadSpan=$hadSpan bytes=$spanBytes",
             )
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-cache", "[removeCached] $trackId: ${e.message}")
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                 "ftpmusic-cache",
-                "removeCached trackId=$trackId result=fail",
+                "removeCached trackId=$trackId result=fail hadSpan=$hadSpan bytes=$spanBytes",
                 e,
             )
         }

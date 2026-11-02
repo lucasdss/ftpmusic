@@ -966,6 +966,10 @@ class SettingsViewModel @Inject constructor(
             albumTracksAlbumsZero = albumTracksAlbumsZero,
             homeRecentResult = HomeRecentCache.readResult(prefs),
             wmSummary = workManagerSummary(),
+            lastSyncAttemptMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_SYNC_ATTEMPT_MS, -1L),
+            lastSyncOutcome = prefs.getString(MetadataSyncWorker.PREF_LAST_SYNC_OUTCOME, "") ?: "",
+            softStopStreak = prefs.getInt(MetadataSyncWorker.PREF_SOFT_STOP_STREAK, -1),
+            lastDrainCompleteMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_DRAIN_COMPLETE_MS, -1L),
         )
     }
 

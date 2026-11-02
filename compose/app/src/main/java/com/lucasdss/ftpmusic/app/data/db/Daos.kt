@@ -416,6 +416,20 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE album_id IN (:albumIds)")
     suspend fun getTracksByAlbumIds(albumIds: List<String>): List<TrackEntity>
 
+    /**
+     * N11-3 purge guard: an album containing a pinned download must never be
+     * removed from the library (the files would remain on disk with no row).
+     */
+    @Query("SELECT COUNT(*) FROM tracks WHERE album_id = :albumId AND is_downloaded = 1")
+    suspend fun countDownloadedTracksInAlbum(albumId: String): Int
+
+    /** Diagnostic: local-weight rows preserved by the corpus reconcile. */
+    @Query(
+        "SELECT COUNT(*) FROM tracks WHERE album_id = :albumId " +
+            "AND (cached_file_path IS NOT NULL OR is_downloaded = 1)",
+    )
+    suspend fun countCachedTracksInAlbum(albumId: String): Int
+
     /** All tracks for a genre — used for local-first Daily Mix generation. */
     @Query("SELECT * FROM tracks WHERE genre = :genre")
     suspend fun getTracksByGenre(genre: String): List<TrackEntity>
@@ -1421,6 +1435,10 @@ interface CachedMetadataDao {
     /** True when ledger row exists and is currently disliked. */
     @Query("SELECT COUNT(*) > 0 FROM albums WHERE id = :albumId AND is_disliked = 1")
     suspend fun isAlbumDisliked(albumId: String): Boolean
+
+    /** N11-3: a pending local unstar is user intent and blocks a library purge. */
+    @Query("SELECT COUNT(*) > 0 FROM albums WHERE id = :albumId AND pending_unstar_at IS NOT NULL")
+    suspend fun isAlbumPendingUnstar(albumId: String): Boolean
 
     /** Reactive variant — screens observe this so album like state updates live. */
     @Query("SELECT id FROM albums WHERE starred_at IS NOT NULL")
