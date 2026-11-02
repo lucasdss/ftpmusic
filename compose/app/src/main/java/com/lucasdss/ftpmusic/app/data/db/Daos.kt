@@ -565,6 +565,56 @@ interface TrackDao {
             "is_auto_cached = 0 WHERE id = :trackId",
     )
     suspend fun clearStaleCachePath(trackId: String)
+
+    // ── MET-9: targeted cache-column writes ─────────────────────────────────
+    // CacheService must never read-copy the whole TrackEntity: a concurrent
+    // incrementPlayCount()/star/dislike write would be clobbered. These
+    // statements touch cache columns only and are atomic at the SQL level.
+
+    /** Mark a fully cached payload as an explicit download (wins over auto-cache). */
+    @Query(
+        "UPDATE tracks SET cached_file_path = :path, cache_size_bytes = :size, " +
+            "cached_at = :cachedAt, is_downloaded = 1, is_auto_cached = 0 " +
+            "WHERE id = :trackId",
+    )
+    suspend fun markCachedAsDownload(trackId: String, path: String?, size: Int?, cachedAt: Long)
+
+    /** Mark a cached payload as auto-cache; preserves an existing explicit download. */
+    @Query(
+        "UPDATE tracks SET cached_file_path = :path, cache_size_bytes = :size, " +
+            "cached_at = :cachedAt, " +
+            "is_auto_cached = CASE WHEN is_downloaded = 1 THEN 0 ELSE 1 END " +
+            "WHERE id = :trackId",
+    )
+    suspend fun markCachedAsAuto(trackId: String, path: String?, size: Int?, cachedAt: Long)
+
+    /** Clear all cache state (poison payload, stale span, removed download). */
+    @Query(
+        "UPDATE tracks SET cached_file_path = NULL, cache_size_bytes = NULL, " +
+            "is_auto_cached = 0, is_downloaded = 0 WHERE id = :trackId",
+    )
+    suspend fun clearCacheState(trackId: String)
+
+    /** Clear auto-cache state only; explicit downloads are filtered by the caller. */
+    @Query(
+        "UPDATE tracks SET cached_file_path = NULL, cache_size_bytes = NULL, " +
+            "is_auto_cached = 0 WHERE id = :trackId",
+    )
+    suspend fun clearAutoCacheState(trackId: String)
+
+    /** Clear an explicit download without touching local-weight columns. */
+    @Query(
+        "UPDATE tracks SET cached_file_path = NULL, cache_size_bytes = NULL, " +
+            "is_downloaded = 0, is_auto_cached = 0 WHERE id = :trackId",
+    )
+    suspend fun clearDownloadState(trackId: String)
+
+    /** Promote auto-cache → explicit download. Guarded so a removed row is not resurrected. */
+    @Query(
+        "UPDATE tracks SET is_downloaded = 1, is_auto_cached = 0 " +
+            "WHERE id = :trackId AND is_downloaded = 0 AND is_auto_cached = 1",
+    )
+    suspend fun promoteAutoCacheToDownload(trackId: String): Int
 }
 
 @Dao

@@ -54,7 +54,8 @@ class CacheServiceTest {
         val path = service.getCachedPath(trackId)
         assertNotNull(path)
         assertArrayEquals(data, File(path!!).readBytes())
-        coVerify { trackDao.upsert(match { it.id == trackId && it.isAutoCached && !it.isDownloaded }) }
+        coVerify { trackDao.ensureTrackRow(trackId) }
+        coVerify { trackDao.markCachedAsAuto(trackId, any(), any(), any()) }
     }
 
     @Test
@@ -172,7 +173,7 @@ class CacheServiceTest {
         assertFalse(service.isStoredInCache(dlId))
         assertEquals(0, service.getDownloadBytes())
         coVerify { waveformRepo.deleteByTrackIds(listOf(dlId)) }
-        coVerify { trackDao.update(match { it.id == dlId && !it.isDownloaded && it.cachedFilePath == null }) }
+        coVerify { trackDao.clearDownloadState(dlId) }
     }
 
     @Test
@@ -188,11 +189,12 @@ class CacheServiceTest {
 
         service.writeCachedTrackFromFile(trackId, tempFile, isDownload = false)
 
-        val slot = slot<TrackEntity>()
-        coVerify { trackDao.upsert(capture(slot)) }
-        assertEquals("Real Song Name", slot.captured.title)
-        assertEquals("Real Artist", slot.captured.artist)
-        assertTrue(slot.captured.isAutoCached)
+        // MET-9: metadata preservation is now structural (INSERT OR IGNORE +
+        // cache-column UPDATE), not "copy the entity and hope it is current".
+        coVerify { trackDao.ensureTrackRow(trackId) }
+        coVerify { trackDao.markCachedAsAuto(trackId, any(), any(), any()) }
+        coVerify(exactly = 0) { trackDao.upsert(any()) }
+        coVerify(exactly = 0) { trackDao.update(any()) }
     }
 
     @Test
@@ -231,13 +233,13 @@ class CacheServiceTest {
         val entity =
             TrackEntity(id = trackId, title = "T", cachedFilePath = service.getCachedPath(trackId), isAutoCached = true)
         coEvery { trackDao.getTrack(trackId) } returns entity
-        coEvery { trackDao.update(any()) } just Runs
+        coEvery { trackDao.promoteAutoCacheToDownload(trackId) } returns 1
 
         assertTrue(service.promoteToDownload(trackId))
 
         assertTrue(evictor.isPinned(trackId))
         assertEquals(fakeAudioBytes().size.toLong(), service.getDownloadBytes())
-        coVerify { trackDao.update(match { it.isDownloaded && !it.isAutoCached }) }
+        coVerify { trackDao.promoteAutoCacheToDownload(trackId) }
     }
 
     @Test
@@ -271,7 +273,7 @@ class CacheServiceTest {
         service.initialize()
 
         assertTrue(evictor.isPinned(dlId))
-        coVerify { trackDao.update(match { it.id == "gone" && it.cachedFilePath == null && !it.isAutoCached }) }
+        coVerify { trackDao.clearCacheState("gone") }
         coVerify(exactly = 2) { trackDao.getCachedPaginated(any(), any()) }
 
         service.initialize()
@@ -353,14 +355,7 @@ class CacheServiceTest {
 
         assertFalse(service.isStoredInCache(trackId))
         assertFalse(evictor.isPinned(trackId))
-        coVerify {
-            trackDao.update(
-                match {
-                    it.id == trackId && it.cachedFilePath == null && !it.isDownloaded &&
-                        !it.isAutoCached
-                },
-            )
-        }
+        coVerify { trackDao.clearCacheState(trackId) }
     }
 
     @Test
@@ -383,7 +378,7 @@ class CacheServiceTest {
         // deletion (clearDownloads) may remove a download.
         assertTrue(service.isStoredInCache(trackId))
         assertTrue(evictor.isPinned(trackId))
-        coVerify(exactly = 0) { trackDao.update(any()) }
+        coVerify(exactly = 0) { trackDao.clearCacheState(any()) }
     }
 
     @Test
@@ -404,9 +399,7 @@ class CacheServiceTest {
 
         assertFalse(service.isStoredInCache(trackId))
         assertFalse(evictor.isPinned(trackId))
-        coVerify {
-            trackDao.update(match { !it.isDownloaded && it.cachedFilePath == null })
-        }
+        coVerify { trackDao.clearCacheState(trackId) }
     }
 
     @Test
@@ -444,9 +437,7 @@ class CacheServiceTest {
         coEvery { trackDao.update(any()) } just Runs
         assertFalse(service.isPlayableCached("tr-poison"))
         assertFalse(service.isStoredInCache("tr-poison"))
-        coVerify {
-            trackDao.update(match { !it.isDownloaded && it.cachedFilePath == null })
-        }
+        coVerify { trackDao.clearCacheState("tr-poison") }
     }
 
     @Test
@@ -459,7 +450,7 @@ class CacheServiceTest {
             TrackEntity(id = "tr-unk", title = "U", isDownloaded = true, cachedFilePath = "/u")
         assertFalse(service.isPlayableCached("tr-unk"))
         assertTrue(service.isStoredInCache("tr-unk"))
-        coVerify(exactly = 0) { trackDao.update(any()) }
+        coVerify(exactly = 0) { trackDao.clearCacheState(any()) }
     }
 
     @OptIn(UnstableApi::class)

@@ -1316,4 +1316,102 @@ class DaosRoomTest {
         assertFalse(ids.contains("other-va"))
         assertEquals(3, tracks.countTracksForArtistView("ar-cae", "Caetano"))
     }
+
+    // ── MET-9: targeted cache writes preserve local-weight columns ──────────
+
+    @Test
+    fun `ensureTrackRow preserves existing metadata for the cache write path`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(
+            TrackEntity(
+                id = "meta1",
+                title = "Real Title",
+                artist = "Real Artist",
+                album = "Real Album",
+                durationSeconds = 240,
+                playCount = 9,
+            ),
+        )
+
+        tracks.ensureTrackRow("meta1")
+
+        val row = tracks.getTrack("meta1")!!
+        assertEquals("Real Title", row.title)
+        assertEquals("Real Artist", row.artist)
+        assertEquals("Real Album", row.album)
+        assertEquals(240, row.durationSeconds)
+        assertEquals(9, row.playCount)
+    }
+
+    @Test
+    fun `cache updates never clobber play count star rating or dislike`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(
+            TrackEntity(
+                id = "m1",
+                title = "Metrics",
+                playCount = 17,
+                lastPlayedAt = 1_700_000_000_000,
+                starredAt = 1_700_000_000_001,
+                userRating = 5,
+                isDisliked = true,
+            ),
+        )
+
+        tracks.markCachedAsAuto("m1", "/cache/m1", 4096, 1_700_000_000_002)
+        var row = tracks.getTrack("m1")!!
+        assertEquals(17, row.playCount)
+        assertEquals(1_700_000_000_000, row.lastPlayedAt)
+        assertEquals(1_700_000_000_001, row.starredAt)
+        assertEquals(5, row.userRating)
+        assertTrue(row.isDisliked)
+        assertEquals("/cache/m1", row.cachedFilePath)
+        assertTrue(row.isAutoCached)
+        assertFalse(row.isDownloaded)
+
+        tracks.markCachedAsDownload("m1", "/cache/m1", 4096, 1_700_000_000_003)
+        row = tracks.getTrack("m1")!!
+        assertTrue(row.isDownloaded)
+        assertFalse(row.isAutoCached)
+        assertEquals(17, row.playCount)
+
+        tracks.clearCacheState("m1")
+        row = tracks.getTrack("m1")!!
+        assertNull(row.cachedFilePath)
+        assertNull(row.cacheSizeBytes)
+        assertFalse(row.isDownloaded)
+        assertFalse(row.isAutoCached)
+        assertEquals(17, row.playCount)
+        assertEquals(1_700_000_000_001, row.starredAt)
+        assertEquals(5, row.userRating)
+    }
+
+    @Test
+    fun `auto-cache marker preserves an existing download`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(TrackEntity(id = "d1", title = "Download"))
+        tracks.markCachedAsDownload("d1", "/cache/d1", 2048, 123L)
+        tracks.markCachedAsAuto("d1", "/cache/d1", 2048, 456L)
+
+        val row = tracks.getTrack("d1")!!
+        assertTrue(row.isDownloaded)
+        assertFalse(row.isAutoCached)
+    }
+
+    @Test
+    fun `promote auto-cache is guarded and does not resurrect a cleared row`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(TrackEntity(id = "p1", title = "Auto"))
+        tracks.markCachedAsAuto("p1", "/cache/p1", 1024, 1L)
+
+        assertEquals(1, tracks.promoteAutoCacheToDownload("p1"))
+        assertTrue(tracks.getTrack("p1")!!.isDownloaded)
+        assertFalse(tracks.getTrack("p1")!!.isAutoCached)
+        assertEquals(0, tracks.promoteAutoCacheToDownload("p1"))
+
+        tracks.clearDownloadState("p1")
+        val cleared = tracks.getTrack("p1")!!
+        assertFalse(cleared.isDownloaded)
+        assertFalse(cleared.isAutoCached)
+    }
 }

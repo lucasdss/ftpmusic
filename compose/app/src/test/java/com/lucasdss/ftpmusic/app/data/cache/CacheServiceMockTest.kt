@@ -92,14 +92,7 @@ class CacheServiceMockTest {
 
         coVerify(exactly = 1) { audioCache.removeResource("t1") }
         assertFalse(evictor.isPinned("t1"))
-        coVerify(exactly = 1) {
-            trackDao.update(
-                match {
-                    !it.isDownloaded && !it.isAutoCached &&
-                        it.cachedFilePath == null
-                },
-            )
-        }
+        coVerify(exactly = 1) { trackDao.clearCacheState("t1") }
         coVerify(exactly = 1) { waveformRepo.deleteByTrackIds(listOf("t1")) }
     }
 
@@ -150,12 +143,13 @@ class CacheServiceMockTest {
         coVerify(atLeast = 1) { audioCache.releaseHoleSpan(hole) }
         coVerify(exactly = 1) { audioCache.removeResource("t1") }
         assertTrue("download must be pinned", evictor.isPinned("t1"))
+        coVerify(exactly = 1) { trackDao.ensureTrackRow("t1") }
         coVerify(exactly = 1) {
-            trackDao.upsert(
-                match {
-                    it.isDownloaded &&
-                        it.cacheSizeBytes == AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt()
-                },
+            trackDao.markCachedAsDownload(
+                "t1",
+                any(),
+                AudioCacheValidation.MIN_CACHED_AUDIO_BYTES.toInt(),
+                any(),
             )
         }
     }
@@ -208,7 +202,7 @@ class CacheServiceMockTest {
         coEvery { trackDao.getTrack("t1") } returns TrackEntity(id = "t1", title = "T", isDownloaded = true)
 
         assertTrue(service.promoteToDownload("t1"))
-        coVerify(exactly = 0) { trackDao.update(any()) }
+        coVerify(exactly = 0) { trackDao.promoteAutoCacheToDownload(any()) }
     }
 
     @Test
@@ -216,6 +210,7 @@ class CacheServiceMockTest {
         coEvery { trackDao.getTrack("t1") } returns TrackEntity(id = "t1", title = "T", isAutoCached = false)
 
         assertFalse(service.promoteToDownload("t1"))
+        coVerify(exactly = 0) { trackDao.promoteAutoCacheToDownload(any()) }
     }
 
     @Test
@@ -223,13 +218,29 @@ class CacheServiceMockTest {
         coEvery { trackDao.getTrack("t1") } returns TrackEntity(id = "t1", title = "T", isAutoCached = true)
         coEvery { audioCache.getCachedSpans("t1") } returns java.util.TreeSet<CacheSpan>().apply { add(cachedSpan()) }
         coEvery { audioCache.getContentMetadata("t1") } returns mockk(relaxed = true)
-        coEvery { trackDao.update(any()) } just runs
+        coEvery { trackDao.promoteAutoCacheToDownload("t1") } returns 1
 
         val ok = service.promoteToDownload("t1")
 
         assertTrue(ok)
         assertTrue("download must be pinned", evictor.isPinned("t1"))
-        coVerify(exactly = 1) { trackDao.update(match { it.isDownloaded && !it.isAutoCached }) }
+        coVerify(exactly = 1) { trackDao.promoteAutoCacheToDownload("t1") }
+    }
+
+    @Test
+    fun `promoteToDownload unpins when the guarded update loses the race`() = runTest {
+        coEvery { audioCache.getCachedSpans("t1") } returns java.util.TreeSet<CacheSpan>().apply { add(cachedSpan()) }
+        coEvery { audioCache.getContentMetadata("t1") } returns mockk(relaxed = true)
+        coEvery { trackDao.promoteAutoCacheToDownload("t1") } returns 0
+        // First read sees the auto-cached row; the post-update read simulates a
+        // concurrent removeDownload() clearing the download flag.
+        coEvery { trackDao.getTrack("t1") } returnsMany listOf(
+            TrackEntity(id = "t1", title = "T", isAutoCached = true),
+            TrackEntity(id = "t1", title = "T", isDownloaded = false, isAutoCached = false),
+        )
+
+        assertFalse(service.promoteToDownload("t1"))
+        assertFalse("lost promotion must not leave an untracked pin", evictor.isPinned("t1"))
     }
 
     // ── getCachedPath ────────────────────────────────────────────────────

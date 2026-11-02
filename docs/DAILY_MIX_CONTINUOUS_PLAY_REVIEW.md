@@ -2109,3 +2109,17 @@ trade-offs.
 - **Residual risks** in §10.7 still apply. In particular, MET-1 has no meaningful
   unit seam (§10.7 item 4); its fix is verified by code inspection and the
   process-scoped `@Singleton` wiring, not by a destroy-cleanup test.
+
+### 11.5 Iteration log — MET-9, DM-3, DM-7 hardening (2026-11-02)
+
+| ID | Change |
+|---|---|
+| MET-9 | Added targeted `TrackDao` cache-column writes (`markCachedAsDownload`, `markCachedAsAuto` with a download-preserving `CASE`, `clearCacheState`, `clearAutoCacheState`, `clearDownloadState`, guarded `promoteAutoCacheToDownload`). `CacheService` no longer read-copies or `upsert`s whole `TrackEntity` rows on cache writes; promotion that loses a race clears the SimpleCache download marker and unpins. |
+| DM-3 | Weight map now covers primary + supplemental; supplemental is deduped against primary; Phase 3 uses a fresh-only soft pass with album-aware selection; hard-fill prefers fresh, different artist/album, then familiar. `albumKey` is `albumId` or a per-single key. |
+| DM-7 | Added DAO tests for MET-9 column preservation and guarded promotion; generator tests for exact supplemental size, full weight map, fresh-before-familiar ordering, album adjacency, duplicate IDs, and seeded determinism. Updated cache tests to assert the targeted contract. |
+
+Verification: full `:app:testDebugUnitTest` green; `ktlintTestSourceSetCheck`
+green; `ktlintMainSourceSetCheck` reports only the pre-existing unrelated
+violations in `PlaySuppressionWatch.kt`, `LibraryScreen.kt`, and
+`LibraryViewModel.kt`. Cross-model: DeepSeek audit → Mistral challenge →
+fixes → DeepSeek re-audit OK → Mistral challenge OK.

@@ -143,16 +143,9 @@ class CacheService @Inject constructor(
         }
         // Clear stale rows in a second pass — avoids offset drift from mid-iteration deletions
         for (trackId in staleIds) {
-            trackDao.getTrack(trackId)?.let { existing ->
-                trackDao.update(
-                    existing.copy(
-                        cachedFilePath = null,
-                        cacheSizeBytes = null,
-                        isAutoCached = false,
-                        isDownloaded = false,
-                    ),
-                )
-            }
+            // MET-9: targeted columns only; a concurrent scrobble/star/dislike
+            // write must survive this cache reconciliation.
+            trackDao.clearCacheState(trackId)
         }
         initialized = true
     }
@@ -230,27 +223,25 @@ class CacheService @Inject constructor(
         if (isDownload) markDownloaded(trackId)
 
         val spanPath = getSpanFile(trackId)?.absolutePath
-        val existing = trackDao.getTrack(trackId)
-        val entity = if (existing != null) {
-            existing.copy(
-                cachedFilePath = spanPath,
-                cacheSizeBytes = size.toInt(),
+        // MET-9: never REPLACE/read-copy the whole row here. ensureTrackRow is
+        // INSERT OR IGNORE, so an existing metadata/weight row is preserved;
+        // the follow-up UPDATE touches cache columns only.
+        trackDao.ensureTrackRow(trackId)
+        if (isDownload) {
+            trackDao.markCachedAsDownload(
+                trackId = trackId,
+                path = spanPath,
+                size = size.toInt(),
                 cachedAt = System.currentTimeMillis(),
-                isDownloaded = isDownload || existing.isDownloaded,
-                isAutoCached = !isDownload && !existing.isDownloaded,
             )
         } else {
-            TrackEntity(
-                id = trackId,
-                title = trackId,
-                cachedFilePath = spanPath,
-                cacheSizeBytes = size.toInt(),
+            trackDao.markCachedAsAuto(
+                trackId = trackId,
+                path = spanPath,
+                size = size.toInt(),
                 cachedAt = System.currentTimeMillis(),
-                isDownloaded = isDownload,
-                isAutoCached = !isDownload,
             )
         }
-        trackDao.upsert(entity)
 
         android.util.Log.d("ftpmusic-cache", "[writeCached] $trackId ${size}B isDownload=$isDownload")
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
@@ -441,17 +432,9 @@ class CacheService @Inject constructor(
         } catch (_: Exception) {
         }
         try {
-            trackDao.getTrack(trackId)?.let {
-                trackDao.update(
-                    it.copy(
-                        cachedFilePath = null,
-                        cacheSizeBytes = null,
-                        isAutoCached = false,
-                        // Poison payload is not a real download — clear pin so UI re-queues.
-                        isDownloaded = false,
-                    ),
-                )
-            }
+            // Poison payload is not a real download — clear both cache flags so
+            // the UI re-queues. Targeted write keeps metrics/ratings intact.
+            trackDao.clearCacheState(trackId)
             evictor.unpin(trackId)
         } catch (_: Exception) {
         }
@@ -510,7 +493,7 @@ class CacheService @Inject constructor(
             try {
                 audioCache.removeResource(it.id)
             } catch (_: Exception) {}
-            trackDao.update(it.copy(cachedFilePath = null, cacheSizeBytes = null, isAutoCached = false))
+            trackDao.clearAutoCacheState(it.id)
         }
         waveformRepo.deleteByTrackIds(cached.filter { !it.isDownloaded }.map { it.id })
         // Also drop unpinned cache entries that have no Room row (e.g. stream spans)
@@ -530,7 +513,7 @@ class CacheService @Inject constructor(
                 audioCache.removeResource(it.id)
             } catch (_: Exception) {}
             evictor.unpin(it.id)
-            trackDao.update(it.copy(cachedFilePath = null, cacheSizeBytes = null, isDownloaded = false))
+            trackDao.clearDownloadState(it.id)
         }
         waveformRepo.deleteByTrackIds(cached.filter { it.isDownloaded }.map { it.id })
     }
@@ -543,14 +526,7 @@ class CacheService @Inject constructor(
             audioCache.removeResource(trackId)
         } catch (_: Exception) {}
         evictor.unpin(trackId)
-        trackDao.update(
-            existing.copy(
-                cachedFilePath = null,
-                cacheSizeBytes = null,
-                isDownloaded = false,
-                isAutoCached = false,
-            ),
-        )
+        trackDao.clearDownloadState(trackId)
         waveformRepo.deleteByTrackIds(listOf(trackId))
     }
 
@@ -626,16 +602,7 @@ class CacheService @Inject constructor(
             )
         }
         evictor.unpin(trackId)
-        trackDao.getTrack(trackId)?.let {
-            trackDao.update(
-                it.copy(
-                    cachedFilePath = null,
-                    cacheSizeBytes = null,
-                    isAutoCached = false,
-                    isDownloaded = false,
-                ),
-            )
-        }
+        trackDao.clearCacheState(trackId)
         waveformRepo.deleteByTrackIds(listOf(trackId))
     }
 
@@ -647,12 +614,21 @@ class CacheService @Inject constructor(
         if (!isPlayableCached(trackId)) return false // missing or poison payload
 
         markDownloaded(trackId)
-        trackDao.update(
-            existing.copy(
-                isDownloaded = true,
-                isAutoCached = false,
-            ),
-        )
-        return true
+        // Guarded UPDATE: only flips a still-auto-cached row, so a concurrent
+        // remove/cleanup cannot be resurrected as a download. If the guard lost
+        // the race, unpin the SimpleCache entry we just marked so it cannot
+        // become an untracked pinned orphan.
+        if (trackDao.promoteAutoCacheToDownload(trackId) > 0) return true
+        if (trackDao.getTrack(trackId)?.isDownloaded == true) return true
+        // Undo the SimpleCache download marker too: initialize()/onSpanTouched
+        // can otherwise re-pin the orphan from content metadata after restart.
+        try {
+            val mutations = ContentMetadataMutations()
+                .set(AdjustableCacheEvictor.METADATA_IS_DOWNLOADED, 0L)
+            audioCache.applyContentMetadataMutations(trackId, mutations)
+        } catch (_: Exception) {
+        }
+        evictor.unpin(trackId)
+        return false
     }
 }

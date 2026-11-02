@@ -117,14 +117,7 @@ class CacheServiceBranchTest {
         service.initialize()
 
         assertTrue(evictor.isPinned("t1"))
-        coVerify {
-            trackDao.update(
-                match {
-                    it.id == "t2" && it.cachedFilePath == null && !it.isDownloaded &&
-                        !it.isAutoCached
-                },
-            )
-        }
+        coVerify { trackDao.clearCacheState("t2") }
     }
 
     @Test
@@ -145,7 +138,9 @@ class CacheServiceBranchTest {
 
         service.initialize()
 
-        coVerify(exactly = 0) { trackDao.update(any()) }
+        // Targeted UPDATE is a harmless no-op when the row vanished; the old
+        // read-then-write path needed an explicit null guard.
+        coVerify { trackDao.clearCacheState("gone") }
     }
 
     @Test
@@ -163,7 +158,8 @@ class CacheServiceBranchTest {
         service.initialize()
 
         assertFalse("legacy parking dir must be dropped after import", legacyDir.exists())
-        coVerify { trackDao.upsert(match { it.id == "trackA" }) }
+        coVerify { trackDao.ensureTrackRow("trackA") }
+        coVerify { trackDao.markCachedAsAuto("trackA", any(), any(), any()) }
     }
 
     // ── clearAutoCache / clearDownloads ─────────────────────────────────────
@@ -261,7 +257,7 @@ class CacheServiceBranchTest {
                 any<androidx.media3.datasource.cache.ContentMetadataMutations>(),
             )
         } throws RuntimeException("boom")
-        coEvery { trackDao.update(any()) } just runs
+        coEvery { trackDao.promoteAutoCacheToDownload("a1") } returns 1
 
         assertTrue(service.promoteToDownload("a1"))
         assertTrue("pin must survive metadata failure", evictor.isPinned("a1"))
@@ -297,7 +293,10 @@ class CacheServiceBranchTest {
         val ok = service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
         assertTrue(ok)
-        coVerify { trackDao.upsert(match { it.isDownloaded && !it.isAutoCached }) }
+        // Auto-cache marker carries the CASE guard that preserves the download;
+        // the DAO test verifies the resulting flags.
+        coVerify { trackDao.markCachedAsAuto("t1", any(), any(), any()) }
+        coVerify(exactly = 0) { trackDao.markCachedAsDownload(any(), any(), any(), any()) }
     }
 
     @Test
@@ -313,7 +312,7 @@ class CacheServiceBranchTest {
 
         service.writeCachedTrackFromFile("t1", source, isDownload = false)
 
-        coVerify { trackDao.upsert(match { !it.isDownloaded && it.isAutoCached }) }
+        coVerify { trackDao.markCachedAsAuto("t1", any(), any(), any()) }
     }
 
     // ── importIntoCache lock/busy/exception paths ───────────────────────────

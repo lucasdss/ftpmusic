@@ -685,13 +685,126 @@ class DailyMixGeneratorTest {
         val ratings = (primary + supplemental).associate { it.id to 0 }
         val result = DailyMixGenerator.generate(primary, ratings, supplemental, random = kotlin.random.Random(3))
 
-        assertTrue(
-            "Supplemental must fill beyond primary",
-            result.size >= 2,
+        assertEquals(
+            "Supplemental must fill the full target (primary + supplemental)",
+            4,
+            result.size,
         )
         assertTrue(
             "No duplicates in result",
             result.size == result.map { it.id }.toSet().size,
         )
     }
+
+    // ── DM-3 / DM-7: Phase-3 supplemental invariants ───────────────────────
+
+    @Test
+    fun `supplemental fill uses the full weight map, not the default weight`() {
+        val primary = listOf(songWithAlbum("p1", "Primary", "album-p"))
+        val supplemental = listOf(
+            songWithAlbum("high", "Supp", "album-s"),
+            songWithAlbum("low", "Supp", "album-s"),
+        )
+        val ratings = mapOf("p1" to 1, "high" to 5, "low" to 1)
+        val result = DailyMixGenerator.generate(
+            primary,
+            ratings,
+            supplemental,
+            random = Random(11),
+        )
+        assertEquals(3, result.size)
+        assertEquals("p1", result[0].id)
+        assertEquals("Higher-weight supplemental must be picked first", "high", result[1].id)
+        assertEquals("low", result[2].id)
+    }
+
+    @Test
+    fun `fresh supplemental is preferred over previously listened supplemental`() {
+        val primary = listOf(songWithAlbum("p1", "Primary", "album-p"))
+        val familiar = (1..2).map { songWithAlbum("old$it", "Supp", "album-old-$it") }
+        val fresh = (1..5).map { songWithAlbum("new$it", "Supp", "album-new-$it") }
+        val result = DailyMixGenerator.generate(
+            primary,
+            (listOf("p1") + fresh.map { it.id } + familiar.map { it.id }).associateWith { 1 },
+            familiar + fresh,
+            previouslyListenedTrackIds = familiar.mapTo(mutableSetOf()) { it.id },
+            random = Random(12),
+        )
+        assertEquals(8, result.size)
+        val freshIds = fresh.mapTo(mutableSetOf()) { it.id }
+        val familiarIds = familiar.mapTo(mutableSetOf()) { it.id }
+        assertEquals("All fresh supplemental must be used", 5, result.count { it.id in freshIds })
+        assertEquals("Familiar fills the remainder", 2, result.count { it.id in familiarIds })
+        val lastFreshIndex = result.indexOfLast { it.id in freshIds }
+        val firstFamiliarIndex = result.indexOfFirst { it.id in familiarIds }
+        assertTrue(
+            "Every fresh supplemental must precede familiar fill (fresh=$lastFreshIndex, familiar=$firstFamiliarIndex)",
+            lastFreshIndex in 0 until firstFamiliarIndex,
+        )
+    }
+
+    @Test
+    fun `supplemental fill avoids consecutive tracks from the same album`() {
+        // Primary has 2 tracks, so Phase 3 is the only way to reach the target.
+        val primary = listOf(
+            songWithAlbum("p1", "Primary", "album-p1"),
+            songWithAlbum("p2", "Primary", "album-p2"),
+        )
+        val supplemental = listOf(
+            songWithAlbum("a1", "Supp", "album-a"),
+            songWithAlbum("a2", "Supp", "album-a"),
+            songWithAlbum("b1", "Supp", "album-b"),
+        )
+        val result = DailyMixGenerator.generate(
+            primary,
+            mapOf("p1" to 1, "p2" to 1, "a1" to 5, "a2" to 5, "b1" to 1),
+            supplemental,
+            random = Random(13),
+        )
+        assertEquals(5, result.size)
+        for (i in 1 until result.size) {
+            assertNotEquals(
+                "Consecutive supplemental tracks at $i must not share an album",
+                DailyMixGenerator.albumKey(result[i - 1]),
+                DailyMixGenerator.albumKey(result[i]),
+            )
+        }
+    }
+
+    @Test
+    fun `supplemental duplicates of primary ids do not produce duplicate tracks`() {
+        val primary = listOf(songWithAlbum("p1", "Primary", "album-p"))
+        val supplemental = listOf(
+            songWithAlbum("p1", "Primary", "album-p"),
+            songWithAlbum("s1", "SuppA", "album-a"),
+            songWithAlbum("s2", "SuppB", "album-b"),
+        )
+        val result = DailyMixGenerator.generate(
+            primary,
+            emptyMap(),
+            supplemental,
+            random = Random(14),
+        )
+        assertEquals(result.size, result.map { it.id }.toSet().size)
+        assertTrue(result.size <= 3)
+    }
+
+    @Test
+    fun `seeded generation is deterministic`() {
+        val songs = (1..60).map { song("s$it", "Artist${it % 7}") }
+        val supplemental = (1..20).map { song("x$it", "Artist${it % 5}") }
+        val first = DailyMixGenerator.generate(songs, emptyMap(), supplemental, random = Random(99))
+        val second = DailyMixGenerator.generate(songs, emptyMap(), supplemental, random = Random(99))
+        assertEquals(first.map { it.id }, second.map { it.id })
+    }
+
+    private fun songWithAlbum(id: String, artist: String, albumId: String) = DailyMixGenerator.SongInfo(
+        id = id,
+        title = "Track $id",
+        artist = artist,
+        albumId = albumId,
+        duration = 200,
+        trackNumber = 1,
+        coverArt = null,
+    )
 }

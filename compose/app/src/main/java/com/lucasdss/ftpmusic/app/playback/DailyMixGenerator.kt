@@ -29,6 +29,10 @@ object DailyMixGenerator {
 
     internal fun artistKey(artist: String?): String = artist?.trim()?.takeIf { it.isNotEmpty() } ?: UNKNOWN_ARTIST_KEY
 
+    /** Album identity for diversity. A non-null albumId is unique per server;
+     *  null albumId tracks are singles, each with its own pseudo-album. */
+    internal fun albumKey(track: SongInfo): String = track.albumId ?: "single-${track.id}"
+
     /**
      * Per-artist cap that cannot, by itself, prevent reaching [targetSize].
      * The previous `targetSize / 10` cap limited a two-artist recipe to 6–24
@@ -79,11 +83,18 @@ object DailyMixGenerator {
         // Build a candidate pool of unlistened songs first.
         val unlistenedSongs = songs.filter { it.id !in previouslyListenedTrackIds }
         val primaryPool = if (unlistenedSongs.size >= 30) unlistenedSongs else songs
+        val primaryIds = primaryPool.mapTo(mutableSetOf()) { it.id }
+        // Supplemental is a fallback pool: drop IDs already selectable from the
+        // primary pool so Phase 3 cannot waste slots on duplicates.
+        val supplementalPool = supplementalTracks.filter { it.id !in primaryIds }
 
-        val targetSize = random.nextInt(30, 121).coerceAtMost(primaryPool.size + supplementalTracks.size)
+        val targetSize = random.nextInt(30, 121).coerceAtMost(primaryPool.size + supplementalPool.size)
 
-        // Build weight map from the primary pool for tiebreaking (includes yesterday penalty)
-        val weightMap = primaryPool.associate { s ->
+        // DM-3: the weight map must cover BOTH pools. It used to be built from
+        // the primary pool only, so every supplemental lookup fell back to 1
+        // and the Phase-3 sort was a no-op. Yesterday's penalty applies to
+        // supplemental tracks too.
+        val weightMap = (primaryPool.asSequence() + supplementalPool.asSequence()).associate { s ->
             var w = (ratings[s.id] ?: 1).coerceIn(1, 5)
             if (s.id in yesterdayTrackIds) w = (w - 1).coerceAtLeast(1)
             s.id to w
@@ -105,7 +116,7 @@ object DailyMixGenerator {
         val resultIds = mutableSetOf<String>()
         val artistCounts = mutableMapOf<String, Int>()
         val artistRemaining = artistTracks.mapValuesTo(mutableMapOf()) { it.value.size }
-        val albumUsage = mutableMapOf<String, Int>() // "$artist:$albumId"
+        val albumUsage = mutableMapOf<String, Int>() // albumId (or per-single key)
 
         // Round-robin through artists (shuffled to avoid stable ordering)
         val queue = ArrayDeque(artistTracks.keys.shuffled(random))
@@ -141,8 +152,8 @@ object DailyMixGenerator {
             val pick = tracks
                 .filter { it.id !in resultIds }
                 .minByOrNull { track ->
-                    val albumKey = "$artist:${track.albumId ?: "single-${track.id}"}"
-                    val albumCount = albumUsage[albumKey] ?: 0
+                    val key = albumKey(track)
+                    val albumCount = albumUsage[key] ?: 0
                     // Lower = better: prefer 0-album tracks, then higher weight
                     albumCount * 1000 - (weightMap[track.id] ?: 1)
                 }
@@ -152,17 +163,19 @@ object DailyMixGenerator {
                 resultIds.add(pick.id)
                 artistCounts[artist] = count + 1
                 artistRemaining[artist] = (artistRemaining[artist] ?: 1) - 1
-                val ak = "$artist:${pick.albumId ?: "single-${pick.id}"}"
-                albumUsage[ak] = (albumUsage[ak] ?: 0) + 1
+                val key = albumKey(pick)
+                albumUsage[key] = (albumUsage[key] ?: 0) + 1
                 queue.addLast(artist) // re-enter for next round
             }
         }
 
-        // Phase 3: fill remaining from supplemental, with the same soft cap and
-        // adjacency rules. Supplemental stays separate from the primary pool so
-        // cross-mix fill cannot shrink the primary selection (DM-2/DM-3).
+        // Phase 3: fill remaining from supplemental, with the same soft cap,
+        // adjacency and album-diversity rules. Fresh supplemental tracks are
+        // preferred; familiar ones remain available to the hard-fill fallback so
+        // a small fresh pool cannot strand the mix below target (DM-3/DM-2).
         if (result.size < targetSize) {
-            val supplementalByArtist = supplementalTracks
+            val freshSupplemental = supplementalPool.filter { it.id !in previouslyListenedTrackIds }
+            val supplementalByArtist = freshSupplemental
                 .filter { it.id !in resultIds }
                 .groupBy { artistKey(it.artist) }
                 .mapValues { (_, tracks) ->
@@ -191,28 +204,49 @@ object DailyMixGenerator {
                     continue
                 }
 
-                val pick = tracks.removeFirstOrNull() ?: continue
+                // Prefer a different album from the last pick when possible;
+                // otherwise fall back to any track (soft diversity).
+                val lastAlbum = result.lastOrNull()?.let { albumKey(it) }
+                val differentAlbum = tracks.filter { albumKey(it) != lastAlbum }
+                val pick = (differentAlbum.ifEmpty { tracks }).minByOrNull { track ->
+                    val key = albumKey(track)
+                    (albumUsage[key] ?: 0) * 1000 - (weightMap[track.id] ?: 1)
+                } ?: continue
+                tracks.remove(pick)
                 result.add(pick)
                 resultIds.add(pick.id)
                 artistCounts[artist] = (artistCounts[artist] ?: 0) + 1
+                val key = albumKey(pick)
+                albumUsage[key] = (albumUsage[key] ?: 0) + 1
                 if (tracks.isNotEmpty()) suppQueue.addLast(artist)
             }
         }
 
         // Hard fill: if small alternative pools exhausted before the target, the
-        // soft cap must not leave the mix short. Prefer adjacency diversity once,
-        // then allow same-artist runs to reach the requested size.
+        // soft cap must not leave the mix short. Fresh tracks get one adjacency-
+        // aware pass; familiar tracks are then allowed so the mix still reaches
+        // the requested size.
         if (result.size < targetSize) {
-            val leftover = (primaryPool.asSequence() + supplementalTracks.asSequence())
+            val leftover = (primaryPool.asSequence() + supplementalPool.asSequence())
                 .filter { it.id !in resultIds }
                 .sortedByDescending { weightMap[it.id] ?: 1 }
                 .toList()
-            for (track in leftover) {
-                if (result.size >= targetSize) break
-                val last = result.lastOrNull()?.let { artistKey(it.artist) }
-                if (artistKey(track.artist) == last) continue
-                result.add(track)
-                resultIds.add(track.id)
+            val freshLeftover = leftover.filter { it.id !in previouslyListenedTrackIds }
+            // Prefer a different artist AND album, then a different artist, then
+            // stop so the familiar pass can fill. Recompute after each append so
+            // the comparison is against the actual tail, not a static snapshot.
+            while (result.size < targetSize) {
+                val lastArtist = result.lastOrNull()?.let { artistKey(it.artist) }
+                val lastAlbum = result.lastOrNull()?.let { albumKey(it) }
+                val next = freshLeftover.firstOrNull {
+                    it.id !in resultIds &&
+                        artistKey(it.artist) != lastArtist &&
+                        albumKey(it) != lastAlbum
+                } ?: freshLeftover.firstOrNull {
+                    it.id !in resultIds && artistKey(it.artist) != lastArtist
+                } ?: break
+                result.add(next)
+                resultIds.add(next.id)
             }
             if (result.size < targetSize) {
                 for (track in leftover) {
