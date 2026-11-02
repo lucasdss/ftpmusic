@@ -98,4 +98,29 @@ class SubsonicAuthHelperBranchTest {
             helper.getResponseError(mapOf("subsonic-response" to mapOf<String, Any?>())),
         )
     }
+
+    @Test
+    fun `getResponseErrorCode parses number and string codes`() {
+        assertEquals(
+            50,
+            helper.getResponseErrorCode(
+                mapOf(
+                    "subsonic-response" to mapOf(
+                        "error" to mapOf("code" to 50, "message" to "not authorized"),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(
+            40,
+            helper.getResponseErrorCode(
+                mapOf(
+                    "subsonic-response" to mapOf(
+                        "error" to mapOf("code" to "40", "message" to "bad auth"),
+                    ),
+                ),
+            ),
+        )
+        assertNull(helper.getResponseErrorCode(emptyMap()))
+    }
 }

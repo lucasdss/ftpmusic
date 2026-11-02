@@ -1147,6 +1147,12 @@ class LibraryViewModelTest {
         coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { trackDao.getRecentlyPlayed(20) } returns emptyList()
+        coEvery { api.getUser(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "user" to mapOf("username" to "user", "adminRole" to false),
+            ),
+        )
         coEvery { api.getInternetRadioStations(any()) } returns mapOf(
             "subsonic-response" to mapOf(
                 "internetRadioStations" to mapOf(
@@ -1199,6 +1205,7 @@ class LibraryViewModelTest {
         assertEquals(1, state.radioStations.size)
         assertEquals("Synthwave FM", state.radioStations[0].name)
         assertEquals("https://stream.example.com/128", state.radioStations[0].streamUrl)
+        assertFalse(state.isAdmin)
     }
 
     @Test
@@ -1209,6 +1216,12 @@ class LibraryViewModelTest {
         coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { trackDao.getRecentlyPlayed(20) } returns emptyList()
+        coEvery { api.getUser(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "user" to mapOf("adminRole" to true),
+            ),
+        )
         coEvery { api.getInternetRadioStations(any()) } returns mapOf(
             "subsonic-response" to mapOf("internetRadioStations" to emptyMap<String, Any>()),
         )
@@ -1248,6 +1261,7 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.radioStations.isEmpty())
+        assertTrue(viewModel.state.value.isAdmin)
     }
 
     @Test
@@ -1258,6 +1272,12 @@ class LibraryViewModelTest {
         coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { trackDao.getRecentlyPlayed(20) } returns emptyList()
+        coEvery { api.getUser(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "user" to mapOf("adminRole" to false),
+            ),
+        )
         coEvery { api.getInternetRadioStations(any()) } throws RuntimeException("Network error")
 
         viewModel =
@@ -1306,7 +1326,12 @@ class LibraryViewModelTest {
         coEvery { api.getAlbumList2("newest", 50, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { api.getAlbumList2("newest", 10, 0, any()) } returns buildAlbumListResponse(emptyList())
         coEvery { trackDao.getRecentlyPlayed(20) } returns emptyList()
-
+        coEvery { api.getUser(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "ok",
+                "user" to mapOf("adminRole" to "true"),
+            ),
+        )
         coEvery { api.getInternetRadioStations(any()) } returns mapOf(
             "subsonic-response" to mapOf(
                 "internetRadioStations" to mapOf(
@@ -1363,6 +1388,170 @@ class LibraryViewModelTest {
         assertEquals("http://jazz.fm/stream", stations[0].streamUrl)
         assertEquals("http://jazz.fm", stations[0].homePageUrl)
         assertEquals("r1", stations[0].id)
+        assertTrue(viewModel.state.value.isAdmin)
+    }
+
+    @Test
+    fun `createRadioStation reloads list and sets success`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { api.createInternetRadioStation(any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok"),
+        )
+        coEvery { api.getInternetRadioStations(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "internetRadioStations" to mapOf(
+                    "internetRadioStation" to listOf(
+                        mapOf(
+                            "id" to "r-new",
+                            "name" to "New FM",
+                            "streamUrl" to "https://new.fm/stream",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val favorites = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        viewModel = LibraryViewModel(
+            api, trackDao, genreDao, genreMixDao, playlistDao,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), mockk(relaxed = true),
+            downloadManager, storage, playbackManager,
+            mockk(relaxed = true), favorites, mockk(relaxed = true),
+            dailyMixRepository = dailyMixRepository,
+            ioDispatcher = testDispatcher,
+        )
+
+        viewModel.createRadioStation("New FM", "https://new.fm/stream", "https://new.fm")
+        advanceUntilIdle()
+
+        coVerify {
+            api.createInternetRadioStation(
+                any(),
+                streamUrl = "https://new.fm/stream",
+                name = "New FM",
+                homepageUrl = "https://new.fm",
+            )
+        }
+        assertTrue(viewModel.state.value.radioMutationSuccess)
+        assertNull(viewModel.state.value.radioMutationError)
+        assertEquals(1, viewModel.state.value.radioStations.size)
+        assertEquals("New FM", viewModel.state.value.radioStations[0].name)
+    }
+
+    @Test
+    fun `createRadioStation maps error 50 to admin message`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { api.createInternetRadioStation(any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "status" to "failed",
+                "error" to mapOf("code" to 50, "message" to "User is not authorized"),
+            ),
+        )
+        viewModel = LibraryViewModel(
+            api, trackDao, genreDao, genreMixDao, playlistDao,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), mockk(relaxed = true),
+            downloadManager, storage, playbackManager,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            dailyMixRepository = dailyMixRepository,
+            ioDispatcher = testDispatcher,
+        )
+
+        viewModel.createRadioStation("X", "https://x.example/stream")
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.radioMutationSuccess)
+        assertEquals(
+            "Admin privileges required to manage radio stations",
+            viewModel.state.value.radioMutationError,
+        )
+    }
+
+    @Test
+    fun `deleteRadioStation cleans bookmark and reloads`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { api.deleteInternetRadioStation(any(), "r1") } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok"),
+        )
+        coEvery { api.getInternetRadioStations(any()) } returns mapOf(
+            "subsonic-response" to mapOf("internetRadioStations" to emptyMap<String, Any>()),
+        )
+        val favorites = mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true)
+        viewModel = LibraryViewModel(
+            api, trackDao, genreDao, genreMixDao, playlistDao,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), mockk(relaxed = true),
+            downloadManager, storage, playbackManager,
+            mockk(relaxed = true), favorites, mockk(relaxed = true),
+            dailyMixRepository = dailyMixRepository,
+            ioDispatcher = testDispatcher,
+        )
+
+        viewModel.deleteRadioStation("r1")
+        advanceUntilIdle()
+
+        coVerify { api.deleteInternetRadioStation(any(), "r1") }
+        coVerify { favorites.unbookmarkRadio("r1") }
+        assertTrue(viewModel.state.value.radioMutationSuccess)
+        assertTrue(viewModel.state.value.radioStations.isEmpty())
+    }
+
+    @Test
+    fun `updateRadioStation calls API and reloads`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { api.updateInternetRadioStation(any(), any(), any(), any(), any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok"),
+        )
+        coEvery { api.getInternetRadioStations(any()) } returns mapOf(
+            "subsonic-response" to mapOf(
+                "internetRadioStations" to mapOf(
+                    "internetRadioStation" to mapOf(
+                        "id" to "r1",
+                        "name" to "Renamed",
+                        "streamUrl" to "https://renamed.example/stream",
+                    ),
+                ),
+            ),
+        )
+        viewModel = LibraryViewModel(
+            api, trackDao, genreDao, genreMixDao, playlistDao,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), mockk(relaxed = true),
+            downloadManager, storage, playbackManager,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            dailyMixRepository = dailyMixRepository,
+            ioDispatcher = testDispatcher,
+        )
+
+        viewModel.updateRadioStation("r1", "Renamed", "https://renamed.example/stream")
+        advanceUntilIdle()
+
+        coVerify {
+            api.updateInternetRadioStation(
+                any(),
+                id = "r1",
+                streamUrl = "https://renamed.example/stream",
+                name = "Renamed",
+                homepageUrl = null,
+            )
+        }
+        assertEquals("Renamed", viewModel.state.value.radioStations.single().name)
+        assertTrue(viewModel.state.value.radioMutationSuccess)
+    }
+
+    @Test
+    fun `parseAdminRole accepts boolean string and number`() {
+        assertTrue(parseAdminRole(true))
+        assertTrue(parseAdminRole("true"))
+        assertTrue(parseAdminRole(1))
+        assertFalse(parseAdminRole(false))
+        assertFalse(parseAdminRole("false"))
+        assertFalse(parseAdminRole(null))
+        assertFalse(parseAdminRole(0))
     }
 
     // ── New methods: searchAlbums, searchArtists, importPlaylist, loadServerPlaylists ──

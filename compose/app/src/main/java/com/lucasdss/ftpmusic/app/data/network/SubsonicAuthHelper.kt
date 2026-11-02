@@ -102,6 +102,17 @@ class SubsonicAuthHelper @Inject constructor() {
         return "${error["code"]}: ${error["message"]}"
     }
 
+    /** Subsonic error code from a failed response, or null if absent/malformed. */
+    fun getResponseErrorCode(response: Map<String, Any>): Int? {
+        val sr = response["subsonic-response"] as? Map<*, *> ?: return null
+        val error = sr["error"] as? Map<*, *> ?: return null
+        return when (val code = error["code"]) {
+            is Number -> code.toInt()
+            is String -> code.toIntOrNull()
+            else -> null
+        }
+    }
+
     /**
      * Subsonic returns HTTP 200 even for auth failures — the truth is in
      * `subsonic-response.status`. Throw when status is failed so callers

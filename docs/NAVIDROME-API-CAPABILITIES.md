@@ -32,6 +32,11 @@
 | 20 | `updatePlaylist` | Add tracks to playlist | LibraryViewModel, AlbumDetailViewModel |
 | 21* | `stream` | Audio playback (proxy) | PlaybackProxy (direct URL, not through Retrofit) |
 | 22* | `getCoverArt` | Album/artist cover images | All screens (direct URL construction) |
+| 23 | `getInternetRadioStations` | Library Radio + Auto Live Radio | LibraryViewModel, AutoRadioStationsSource |
+| 24 | `createInternetRadioStation` | Admin add radio (ADR-0151) | LibraryViewModel |
+| 25 | `updateInternetRadioStation` | Admin edit radio (ADR-0151) | LibraryViewModel |
+| 26 | `deleteInternetRadioStation` | Admin delete radio (ADR-0151) | LibraryViewModel |
+| 27 | `getUser` | `adminRole` gate for radio CRUD | LibraryViewModel |
 
 *Not in SubsonicApi interface, called as raw URLs
 
@@ -44,7 +49,7 @@
 | **Lyrics** (Now Playing tab) | `getLyrics` / `getLyricsBySongId` (OpenSubsonic) | ⚠️ PARTIAL | `getLyrics` + Room cache + Now Playing synced/plain overlay shipped. `getLyricsBySongId` / OpenSubsonic `songLyrics` still missing (artist+title key can mismatch multi-disc). |
 | **Star Ratings** (albums/tracks) | `setRating` + parse `userRating` from `getAlbum`/`search3` | ❌ | Design shows StarRating on album cards + track rows. No `getRating` endpoint exists; ratings embedded in entity responses. Need to parse `userRating` field from existing API responses and implement `setRating`. |
 | **"Play Similar"** (Now Playing) | `getSimilarSongs2` + OpenSubsonic `sonicSimilarity` | ⚠️ PARTIAL | `getSimilarSongs2` is implemented. But design calls for "Play more like this" / "Play similar artists" — the current implementation uses a local fallback (same-artist → same-genre → random). Should use API first. |
-| **Internet Radio** (Android Auto) | `getInternetRadioStations` | ✅ | Auto Live Radio node (ADR-0131). Library UI + Auto browse; bookmarks offline via `radio_favorites`. |
+| **Internet Radio** (Android Auto + admin CRUD) | `getInternetRadioStations` + create/update/delete | ✅ | Auto Live Radio (ADR-0131). Admin CRUD gated on `getUser.adminRole` (ADR-0151). Bookmarks remain local `radio_favorites`. |
 | **Artist Images** | `getArtistInfo2` (last.fm) | ⚠️ PARTIAL | Background enrich writes biography / aliases into Room + FTS (search). Artist Detail still uses iTunes `CoverArtFallbackService` for images. |
 | **Album Info** | `getAlbumInfo2` | ⚠️ PARTIAL | Background enrich writes `cached_albums.notes` into Room + FTS (search). Album Detail UI does not yet surface notes. |
 
@@ -65,10 +70,10 @@
 **Implementation:** `getSimilarSongs2` IS in SubsonicApi and called by ScrobbleService. But the local fallback in `sonic_similarity_service` (same-artist → same-genre → random) acts as primary, not fallback. The API should be the primary source.  
 **Gap:** OpenSubsonic `sonicSimilarity` extension (AI-driven server-side similarity) not checked or used.
 
-#### 3.3 Internet Radio (`getInternetRadioStations`) ✅
-**Design:** "Live Radio" virtual folder for Android Auto browse tree.  
-**Server:** Navidrome fully supports all 4 radio endpoints.  
-**Implementation:** Auto browse node + Library radio tab (ADR-0131). Offline fallback: `RadioFavoriteDao` bookmarks.
+#### 3.3 Internet Radio (`getInternetRadioStations` + CRUD) ✅
+**Design:** "Live Radio" virtual folder for Android Auto browse tree; admin add/remove on Library Radio.  
+**Server:** Navidrome fully supports all 4 radio endpoints; create/update/delete require admin (error 50 otherwise).  
+**Implementation:** Auto browse + Library radio tab (ADR-0131). Admin create/update/delete + `getUser` gate (ADR-0151). Offline fallback: `RadioFavoriteDao` bookmarks.
 
 #### 3.4 Star Ratings (`setRating` + parse `userRating`)
 **Design:** StarRating component on album cards (Home, Library, Queue) and track rows.  
@@ -150,7 +155,7 @@ Fields returned by Subsonic API but NOT mapped in Kotlin models:
 |---|----------|--------|--------|
 | 1 | 🔴 HIGH | Wire `getLyricsBySongId` / OpenSubsonic `songLyrics` (getLyrics + UI already shipped) | Medium |
 | 2 | 🔴 HIGH | Parse `getSimilarSongs2` response properly, make it primary for "Play Similar" | Low |
-| 3 | ✅ DONE | Implement `getInternetRadioStations` for Android Auto browse tree (ADR-0131) | — |
+| 3 | ✅ DONE | Implement `getInternetRadioStations` for Android Auto browse tree (ADR-0131); admin create/update/delete (ADR-0151) | — |
 | 4 | 🔴 HIGH | Implement `setRating` + parse `userRating` from entity responses + add StarRating UI | Medium |
 | 5 | 🟡 MEDIUM | Surface `getArtistInfo2` images on Artist Detail (bio already in search index) | Low |
 | 6 | 🟡 MEDIUM | Parse `getStarred2` into entities (artists + albums + tracks) | Low |

@@ -155,6 +155,39 @@ interface SubsonicApi {
     @GET("rest/getInternetRadioStations")
     suspend fun getInternetRadioStations(@QueryMap params: Map<String, String>): Map<String, Any>
 
+    /** Admin-only. Adds a shared internet radio station (Subsonic 1.16.0+). */
+    @GET("rest/createInternetRadioStation")
+    suspend fun createInternetRadioStation(
+        @QueryMap params: Map<String, String>,
+        @Query("streamUrl") streamUrl: String,
+        @Query("name") name: String,
+        @Query("homepageUrl") homepageUrl: String? = null,
+    ): Map<String, Any>
+
+    /** Admin-only. Updates a shared internet radio station. */
+    @GET("rest/updateInternetRadioStation")
+    suspend fun updateInternetRadioStation(
+        @QueryMap params: Map<String, String>,
+        @Query("id") id: String,
+        @Query("streamUrl") streamUrl: String,
+        @Query("name") name: String,
+        @Query("homepageUrl") homepageUrl: String? = null,
+    ): Map<String, Any>
+
+    /** Admin-only. Deletes a shared internet radio station. */
+    @GET("rest/deleteInternetRadioStation")
+    suspend fun deleteInternetRadioStation(
+        @QueryMap params: Map<String, String>,
+        @Query("id") id: String,
+    ): Map<String, Any>
+
+    /**
+     * Returns the authenticated user (Navidrome ignores the username param).
+     * Used to read `adminRole` before showing radio mutate UI.
+     */
+    @GET("rest/getUser")
+    suspend fun getUser(@QueryMap params: Map<String, String>): Map<String, Any>
+
     @GET("rest/getRandomSongs")
     suspend fun getRandomSongs(
         @QueryMap auth: Map<String, String>,

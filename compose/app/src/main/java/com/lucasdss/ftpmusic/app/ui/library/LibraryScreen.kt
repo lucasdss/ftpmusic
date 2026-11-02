@@ -113,6 +113,15 @@ fun LibraryContent(
     var pendingRemovePlaylist by remember { mutableStateOf<PlaylistView?>(null) }
     var coverEditPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     val playlistsForCover by viewModel.state.collectAsStateWithLifecycle()
+    // Admin radio CRUD (shared server catalog)
+    var showRadioEditorSheet by remember { mutableStateOf(false) }
+    var editingRadioStation by remember { mutableStateOf<RadioStation?>(null) }
+    var radioName by remember { mutableStateOf("") }
+    var radioStreamUrl by remember { mutableStateOf("") }
+    var radioHomepageUrl by remember { mutableStateOf("") }
+    var menuRadioStation by remember { mutableStateOf<RadioStation?>(null) }
+    var pendingDeleteRadio by remember { mutableStateOf<RadioStation?>(null) }
+    var showDeleteRadioConfirm by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
@@ -658,122 +667,208 @@ fun LibraryContent(
                             } else {
                                 state.radioStations.filter { it.name.contains(searchQuery, ignoreCase = true) }
                             }
-                            if (filteredRadio.isEmpty()) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            Icons.Default.SettingsInputAntenna,
-                                            null,
-                                            tint = Color(0xFF333333),
-                                            modifier = Modifier.size(iconLarge()),
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-                                        Text(
-                                            "No radio stations found",
-                                            color = Color(0xFF888888),
-                                            fontSize = textBodyM(),
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            "via getInternetRadioStations",
-                                            color = Color(0xFF666666),
-                                            fontSize = textLabelM(),
-                                        )
-                                    }
-                                }
-                            } else {
-                                val radioListState = rememberLazyListState(
-                                    cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
-                                        aheadFraction = 0.5f,
-                                        behindFraction = 0.2f,
-                                    ),
-                                )
-                                LazyColumn(
-                                    state = radioListState,
-                                    contentPadding = PaddingValues(top = spacingS()),
-                                ) {
-                                    item {
-                                        Row(
-                                            Modifier.padding(horizontal = spacingL(), vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
+                            Box(Modifier.fillMaxSize()) {
+                                if (filteredRadio.isEmpty()) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(
                                                 Icons.Default.SettingsInputAntenna,
                                                 null,
-                                                tint = BrandTeal,
-                                                modifier = Modifier.size(iconMicro()),
+                                                tint = Color(0xFF333333),
+                                                modifier = Modifier.size(iconLarge()),
                                             )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text("Internet Radio", color = Color(0xFF888888), fontSize = textLabelM())
+                                            Spacer(Modifier.height(12.dp))
+                                            Text(
+                                                "No radio stations found",
+                                                color = Color(0xFF888888),
+                                                fontSize = textBodyM(),
+                                            )
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                if (state.isAdmin) {
+                                                    "Add a station with +"
+                                                } else {
+                                                    "via getInternetRadioStations"
+                                                },
+                                                color = Color(0xFF666666),
+                                                fontSize = textLabelM(),
+                                            )
                                         }
-                                        HorizontalDivider(
-                                            color = Surface,
-                                            modifier = Modifier.padding(horizontal = spacingL()),
-                                        )
                                     }
-                                    items(filteredRadio, key = { it.id }, contentType = { "radio" }) { station ->
-                                        Row(
-                                            Modifier.fillMaxWidth().clickable {
-                                                onRadioStationClick(station)
-                                            }.padding(horizontal = spacingL(), vertical = spacingM()),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Box(
-                                                Modifier.size(
-                                                    iconLarge(),
-                                                ).clip(RoundedCornerShape(cornerM())).background(Color(0xFF1E1E1E)),
-                                                contentAlignment = Alignment.Center,
+                                } else {
+                                    val radioListState = rememberLazyListState(
+                                        cacheWindow = androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow(
+                                            aheadFraction = 0.5f,
+                                            behindFraction = 0.2f,
+                                        ),
+                                    )
+                                    LazyColumn(
+                                        state = radioListState,
+                                        contentPadding = PaddingValues(
+                                            top = spacingS(),
+                                            bottom = if (state.isAdmin) 88.dp else spacingS(),
+                                        ),
+                                    ) {
+                                        item {
+                                            Row(
+                                                Modifier.padding(horizontal = spacingL(), vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 Icon(
                                                     Icons.Default.SettingsInputAntenna,
                                                     null,
                                                     tint = BrandTeal,
-                                                    modifier = Modifier.size(24.dp),
+                                                    modifier = Modifier.size(iconMicro()),
                                                 )
-                                            }
-                                            Spacer(Modifier.width(12.dp))
-                                            Column(Modifier.weight(1f)) {
+                                                Spacer(Modifier.width(8.dp))
                                                 Text(
-                                                    station.name,
-                                                    color = Color.White,
-                                                    fontSize = textHeadingS(),
-                                                    fontWeight = FontWeight.Medium,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                                Text(
-                                                    station.streamUrl,
+                                                    "Internet Radio",
                                                     color = Color(0xFF888888),
                                                     fontSize = textLabelM(),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
                                                 )
                                             }
-                                            // v43: Bookmark ribbon (local-only favorite)
-                                            RadioBookmarkIcon(
-                                                bookmarked = station.id in state.bookmarkedStationIds,
-                                                onClick = { viewModel.toggleRadioBookmark(station) },
-                                                inactiveTint = NavUnselected,
+                                            HorizontalDivider(
+                                                color = Surface,
+                                                modifier = Modifier.padding(horizontal = spacingL()),
                                             )
-                                            Spacer(Modifier.width(10.dp))
-                                            Box(
-                                                Modifier.size(
-                                                    36.dp,
-                                                ).clip(CircleShape).background(BrandTeal.copy(alpha = 0.15f)),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.PlayArrow,
-                                                    null,
-                                                    tint = BrandTeal,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            }
                                         }
-                                        HorizontalDivider(
-                                            color = Surface,
-                                            modifier = Modifier.padding(horizontal = spacingL()),
-                                        )
+                                        items(filteredRadio, key = { it.id }, contentType = { "radio" }) { station ->
+                                            Row(
+                                                Modifier.fillMaxWidth()
+                                                    .combinedClickable(
+                                                        onClick = { onRadioStationClick(station) },
+                                                        onLongClick = {
+                                                            if (state.isAdmin) menuRadioStation = station
+                                                        },
+                                                    )
+                                                    .padding(horizontal = spacingL(), vertical = spacingM()),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Box(
+                                                    Modifier.size(iconLarge())
+                                                        .clip(RoundedCornerShape(cornerM()))
+                                                        .background(Color(0xFF1E1E1E)),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.SettingsInputAntenna,
+                                                        null,
+                                                        tint = BrandTeal,
+                                                        modifier = Modifier.size(24.dp),
+                                                    )
+                                                }
+                                                Spacer(Modifier.width(12.dp))
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(
+                                                        station.name,
+                                                        color = Color.White,
+                                                        fontSize = textHeadingS(),
+                                                        fontWeight = FontWeight.Medium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                    Text(
+                                                        station.streamUrl,
+                                                        color = Color(0xFF888888),
+                                                        fontSize = textLabelM(),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                }
+                                                RadioBookmarkIcon(
+                                                    bookmarked = station.id in state.bookmarkedStationIds,
+                                                    onClick = { viewModel.toggleRadioBookmark(station) },
+                                                    inactiveTint = NavUnselected,
+                                                )
+                                                if (state.isAdmin) {
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Box {
+                                                        IconButton(
+                                                            onClick = { menuRadioStation = station },
+                                                            modifier = Modifier.size(36.dp),
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.MoreVert,
+                                                                contentDescription = "Station options",
+                                                                tint = Color(0xFF888888),
+                                                                modifier = Modifier.size(20.dp),
+                                                            )
+                                                        }
+                                                        DropdownMenu(
+                                                            expanded = menuRadioStation?.id == station.id,
+                                                            onDismissRequest = { menuRadioStation = null },
+                                                        ) {
+                                                            DropdownMenuItem(
+                                                                text = { Text("Edit") },
+                                                                onClick = {
+                                                                    editingRadioStation = station
+                                                                    radioName = station.name
+                                                                    radioStreamUrl = station.streamUrl
+                                                                    radioHomepageUrl = station.homePageUrl.orEmpty()
+                                                                    viewModel.clearRadioMutationError()
+                                                                    viewModel.clearRadioMutationSuccess()
+                                                                    showRadioEditorSheet = true
+                                                                    menuRadioStation = null
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(Icons.Default.Edit, null)
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text("Delete from Server") },
+                                                                onClick = {
+                                                                    pendingDeleteRadio = station
+                                                                    menuRadioStation = null
+                                                                    showDeleteRadioConfirm = true
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        Icons.Default.Delete,
+                                                                        null,
+                                                                        tint = Color(0xFFE84040),
+                                                                    )
+                                                                },
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(Modifier.width(6.dp))
+                                                Box(
+                                                    Modifier.size(36.dp)
+                                                        .clip(CircleShape)
+                                                        .background(BrandTeal.copy(alpha = 0.15f)),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.PlayArrow,
+                                                        null,
+                                                        tint = BrandTeal,
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
+                                                }
+                                            }
+                                            HorizontalDivider(
+                                                color = Surface,
+                                                modifier = Modifier.padding(horizontal = spacingL()),
+                                            )
+                                        }
+                                    }
+                                }
+                                if (state.isAdmin) {
+                                    FloatingActionButton(
+                                        onClick = {
+                                            editingRadioStation = null
+                                            radioName = ""
+                                            radioStreamUrl = ""
+                                            radioHomepageUrl = ""
+                                            viewModel.clearRadioMutationError()
+                                            viewModel.clearRadioMutationSuccess()
+                                            showRadioEditorSheet = true
+                                        },
+                                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                                        containerColor = BrandTeal,
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = "Add radio station", tint = Color.White)
                                     }
                                 }
                             }
@@ -811,6 +906,244 @@ fun LibraryContent(
                 }) { Text("Cancel") }
             },
         )
+    }
+
+    if (showDeleteRadioConfirm) {
+        val mutating by viewModel.state.collectAsStateWithLifecycle()
+        AlertDialog(
+            onDismissRequest = {
+                if (!mutating.isMutatingRadio) {
+                    pendingDeleteRadio = null
+                    showDeleteRadioConfirm = false
+                }
+            },
+            title = { Text("Delete radio station") },
+            text = {
+                Text(
+                    "Delete \"${pendingDeleteRadio?.name ?: ""}\" from the server? " +
+                        "This removes it for all users.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val id = pendingDeleteRadio?.id ?: return@TextButton
+                        viewModel.deleteRadioStation(id)
+                    },
+                    enabled = !mutating.isMutatingRadio,
+                ) {
+                    Text("Delete", color = Color(0xFFE84040))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteRadio = null
+                        showDeleteRadioConfirm = false
+                    },
+                    enabled = !mutating.isMutatingRadio,
+                ) { Text("Cancel") }
+            },
+        )
+        LaunchedEffect(mutating.radioMutationSuccess) {
+            if (mutating.radioMutationSuccess && showDeleteRadioConfirm) {
+                pendingDeleteRadio = null
+                showDeleteRadioConfirm = false
+                viewModel.clearRadioMutationSuccess()
+            }
+        }
+        LaunchedEffect(mutating.radioMutationError) {
+            mutating.radioMutationError?.let {
+                Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                viewModel.clearRadioMutationError()
+            }
+        }
+    }
+
+    if (showRadioEditorSheet) {
+        val radioState by viewModel.state.collectAsStateWithLifecycle()
+        val isEdit = editingRadioStation != null
+        LaunchedEffect(radioState.radioMutationSuccess) {
+            if (radioState.radioMutationSuccess && showRadioEditorSheet) {
+                showRadioEditorSheet = false
+                editingRadioStation = null
+                radioName = ""
+                radioStreamUrl = ""
+                radioHomepageUrl = ""
+                viewModel.clearRadioMutationSuccess()
+            }
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                if (!radioState.isMutatingRadio) {
+                    viewModel.clearRadioMutationError()
+                    showRadioEditorSheet = false
+                    editingRadioStation = null
+                }
+            },
+            containerColor = Surface,
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        ) {
+            Column(Modifier.padding(bottom = 32.dp)) {
+                Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.width(32.dp).height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)),
+                    )
+                }
+                Text(
+                    if (isEdit) "Edit Radio Station" else "Add Radio Station",
+                    color = Color.White,
+                    fontSize = textHeadingS(),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+                OutlinedTextField(
+                    value = radioName,
+                    onValueChange = {
+                        radioName = it
+                        viewModel.clearRadioMutationError()
+                    },
+                    singleLine = true,
+                    placeholder = { Text("Station name…", color = Color(0xFF666666)) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = BrandTeal,
+                        unfocusedBorderColor = Color(0xFF333344),
+                        focusedContainerColor = Color(0xFF252538),
+                        unfocusedContainerColor = Color(0xFF252538),
+                        cursorColor = BrandTeal,
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    shape = RoundedCornerShape(12.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = radioStreamUrl,
+                    onValueChange = {
+                        radioStreamUrl = it
+                        viewModel.clearRadioMutationError()
+                    },
+                    singleLine = true,
+                    placeholder = { Text("Stream URL…", color = Color(0xFF666666)) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = BrandTeal,
+                        unfocusedBorderColor = Color(0xFF333344),
+                        focusedContainerColor = Color(0xFF252538),
+                        unfocusedContainerColor = Color(0xFF252538),
+                        cursorColor = BrandTeal,
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    shape = RoundedCornerShape(12.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = radioHomepageUrl,
+                    onValueChange = { radioHomepageUrl = it },
+                    singleLine = true,
+                    placeholder = { Text("Homepage URL (optional)…", color = Color(0xFF666666)) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = BrandTeal,
+                        unfocusedBorderColor = Color(0xFF333344),
+                        focusedContainerColor = Color(0xFF252538),
+                        unfocusedContainerColor = Color(0xFF252538),
+                        cursorColor = BrandTeal,
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    shape = RoundedCornerShape(12.dp),
+                )
+                if (radioState.radioMutationError != null) {
+                    FittingText(
+                        text = radioState.radioMutationError!!,
+                        color = Color(0xFFFF5252),
+                        fontSize = textLabelM(),
+                        minFontSize = textMicro(),
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Button(
+                        onClick = {
+                            if (!radioState.isMutatingRadio) {
+                                viewModel.clearRadioMutationError()
+                                showRadioEditorSheet = false
+                                editingRadioStation = null
+                            }
+                        },
+                        enabled = !radioState.isMutatingRadio,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF252538)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(48.dp),
+                    ) {
+                        Text("Cancel", color = Color(0xFF888888))
+                    }
+                    val canSave = radioName.isNotBlank() &&
+                        radioStreamUrl.isNotBlank() &&
+                        !radioState.isMutatingRadio
+                    Button(
+                        onClick = {
+                            if (!canSave) return@Button
+                            val homepage = radioHomepageUrl.trim().takeIf { it.isNotEmpty() }
+                            val existing = editingRadioStation
+                            if (existing != null) {
+                                viewModel.updateRadioStation(
+                                    id = existing.id,
+                                    name = radioName.trim(),
+                                    streamUrl = radioStreamUrl.trim(),
+                                    homepageUrl = homepage,
+                                )
+                            } else {
+                                viewModel.createRadioStation(
+                                    name = radioName.trim(),
+                                    streamUrl = radioStreamUrl.trim(),
+                                    homepageUrl = homepage,
+                                )
+                            }
+                        },
+                        enabled = canSave,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(48.dp)
+                            .background(
+                                Brush.linearGradient(listOf(BrandTeal, BrandPurple)),
+                                RoundedCornerShape(12.dp),
+                            ),
+                    ) {
+                        if (radioState.isMutatingRadio) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text(
+                                if (isEdit) "Save" else "Add",
+                                color = Color.White,
+                                fontSize = textLabelL(),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Synced via create/updateInternetRadioStation (admin)",
+                    color = Color(0xFF666666),
+                    fontSize = textLabelS(),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+            }
+        }
     }
 
     if (showCreatePlaylistSheet) {

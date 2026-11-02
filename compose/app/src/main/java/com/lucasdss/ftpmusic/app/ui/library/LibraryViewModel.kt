@@ -88,6 +88,13 @@ data class LibraryState(
     val playlists: List<PlaylistView> = emptyList(),
     val alphaLetters: List<String> = emptyList(),
     val radioStations: List<RadioStation> = emptyList(),
+    /** True when `getUser.adminRole` is true — gates server radio CRUD UI. */
+    val isAdmin: Boolean = false,
+    /** True while create/update/delete radio is in flight. */
+    val isMutatingRadio: Boolean = false,
+    val radioMutationError: String? = null,
+    /** Set true after a successful create/update so the sheet can dismiss. */
+    val radioMutationSuccess: Boolean = false,
     val isLoading: Boolean = false,
     /** True once any DB-backed loader produced data — the full-screen loading
      *  spinner only shows until the first content render (data-first). */
@@ -158,6 +165,14 @@ data class LibraryShellUi(
 )
 
 data class RadioStation(val id: String, val name: String, val streamUrl: String, val homePageUrl: String? = null)
+
+/** Parse Subsonic/Navidrome `adminRole` which may arrive as Boolean, String, or Number. */
+internal fun parseAdminRole(value: Any?): Boolean = when (value) {
+    is Boolean -> value
+    is String -> value.equals("true", ignoreCase = true)
+    is Number -> value.toInt() != 0
+    else -> false
+}
 
 @androidx.compose.runtime.Stable
 data class MixCard(
@@ -988,28 +1003,167 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun loadRadioStations() {
-        if (isLocalOnly()) return
+        if (isLocalOnly()) {
+            _state.value = _state.value.copy(isAdmin = false)
+            return
+        }
         viewModelScope.launch {
+            refreshAdminRoleInternal()
+            reloadRadioStationsInternal()
+        }
+    }
+
+    fun clearRadioMutationError() {
+        if (_state.value.radioMutationError != null) {
+            _state.value = _state.value.copy(radioMutationError = null)
+        }
+    }
+
+    fun clearRadioMutationSuccess() {
+        if (_state.value.radioMutationSuccess) {
+            _state.value = _state.value.copy(radioMutationSuccess = false)
+        }
+    }
+
+    /**
+     * Admin-only: create a shared internet radio station on the Navidrome server,
+     * then reload the list. Non-admins receive Subsonic error 50.
+     */
+    fun createRadioStation(name: String, streamUrl: String, homepageUrl: String? = null) {
+        mutateRadio {
+            val auth = authHelper.buildAuthParams(username(), password())
+            val response = api.createInternetRadioStation(
+                auth,
+                streamUrl = streamUrl.trim(),
+                name = name.trim(),
+                homepageUrl = homepageUrl?.trim()?.takeIf { it.isNotEmpty() },
+            )
+            requireRadioOk(response)
+        }
+    }
+
+    /**
+     * Admin-only: update an existing shared station, then reload the list.
+     */
+    fun updateRadioStation(
+        id: String,
+        name: String,
+        streamUrl: String,
+        homepageUrl: String? = null,
+    ) {
+        mutateRadio {
+            val auth = authHelper.buildAuthParams(username(), password())
+            val response = api.updateInternetRadioStation(
+                auth,
+                id = id,
+                streamUrl = streamUrl.trim(),
+                name = name.trim(),
+                homepageUrl = homepageUrl?.trim()?.takeIf { it.isNotEmpty() },
+            )
+            requireRadioOk(response)
+        }
+    }
+
+    /**
+     * Admin-only: delete a shared station from the server, drop any local
+     * bookmark for that id, then reload the list.
+     */
+    fun deleteRadioStation(id: String) {
+        mutateRadio {
+            val auth = authHelper.buildAuthParams(username(), password())
+            val response = api.deleteInternetRadioStation(auth, id)
+            requireRadioOk(response)
             try {
-                val authParams = authHelper.buildAuthParams(username(), password())
-                val response = api.getInternetRadioStations(authParams)
-                val sr = response["subsonic-response"] as? Map<*, *>
-                val radioData = sr?.get("internetRadioStations") as? Map<*, *>
-                val stations = radioData?.get("internetRadioStation") as? List<*>
-                val parsed = stations?.mapNotNull { s ->
-                    val m = s as? Map<*, *> ?: return@mapNotNull null
-                    RadioStation(
-                        id = m["id"] as? String ?: (m["streamUrl"] as? String ?: ""),
-                        name = m["name"] as? String ?: "Unknown Station",
-                        streamUrl = m["streamUrl"] as? String ?: "",
-                        homePageUrl = m["homePageUrl"] as? String,
-                    )
-                } ?: emptyList()
-                _state.value = _state.value.copy(radioStations = parsed)
+                favoriteRepository.unbookmarkRadio(id)
             } catch (e: Exception) {
-                android.util.Log.w("ftpmusic-library", "loadRadioStations: ${e.message}")
-                // Radio stations are optional — silently ignore failures
+                android.util.Log.w("ftpmusic-library", "orphan bookmark cleanup failed: ${e.message}")
             }
+        }
+    }
+
+    private fun mutateRadio(block: suspend () -> Unit) {
+        if (isLocalOnly()) {
+            _state.value = _state.value.copy(
+                radioMutationError = "Connect to the server to manage radio stations",
+            )
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                isMutatingRadio = true,
+                radioMutationError = null,
+                radioMutationSuccess = false,
+            )
+            try {
+                block()
+                reloadRadioStationsInternal()
+                loadFavorites()
+                _state.value = _state.value.copy(
+                    isMutatingRadio = false,
+                    radioMutationSuccess = true,
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-library", "radio mutation failed: ${e.message}")
+                _state.value = _state.value.copy(
+                    isMutatingRadio = false,
+                    radioMutationError = e.message ?: "Failed to update radio station",
+                )
+            }
+        }
+    }
+
+    private fun requireRadioOk(response: Map<String, Any>) {
+        if (authHelper.checkResponseStatus(response)) return
+        val code = authHelper.getResponseErrorCode(response)
+        val message = when (code) {
+            50 -> "Admin privileges required to manage radio stations"
+            else -> authHelper.getResponseError(response)
+        }
+        throw IllegalStateException(message)
+    }
+
+    private suspend fun refreshAdminRoleInternal() {
+        try {
+            val authParams = authHelper.buildAuthParams(username(), password())
+            val response = api.getUser(authParams)
+            if (!authHelper.checkResponseStatus(response)) {
+                _state.value = _state.value.copy(isAdmin = false)
+                return
+            }
+            val sr = response["subsonic-response"] as? Map<*, *>
+            val user = sr?.get("user") as? Map<*, *>
+            _state.value = _state.value.copy(isAdmin = parseAdminRole(user?.get("adminRole")))
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "refreshAdminRole: ${e.message}")
+            _state.value = _state.value.copy(isAdmin = false)
+        }
+    }
+
+    private suspend fun reloadRadioStationsInternal() {
+        try {
+            val authParams = authHelper.buildAuthParams(username(), password())
+            val response = api.getInternetRadioStations(authParams)
+            val sr = response["subsonic-response"] as? Map<*, *>
+            val radioData = sr?.get("internetRadioStations") as? Map<*, *>
+            val raw = radioData?.get("internetRadioStation")
+            val stations: List<*> = when (raw) {
+                is List<*> -> raw
+                is Map<*, *> -> listOf(raw)
+                else -> emptyList<Any>()
+            }
+            val parsed = stations.mapNotNull { s ->
+                val m = s as? Map<*, *> ?: return@mapNotNull null
+                RadioStation(
+                    id = m["id"] as? String ?: (m["streamUrl"] as? String ?: ""),
+                    name = m["name"] as? String ?: "Unknown Station",
+                    streamUrl = m["streamUrl"] as? String ?: "",
+                    homePageUrl = (m["homePageUrl"] as? String) ?: (m["homepageUrl"] as? String),
+                )
+            }
+            _state.value = _state.value.copy(radioStations = parsed)
+        } catch (e: Exception) {
+            android.util.Log.w("ftpmusic-library", "loadRadioStations: ${e.message}")
+            // Radio stations are optional — silently ignore failures
         }
     }
 
