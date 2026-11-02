@@ -851,6 +851,12 @@ class MediaService : MediaLibraryService() {
             .build()
     private val handler = Handler(Looper.getMainLooper())
 
+    /** ADR-0148 V4: diagnostics-only muted-play detector (not positionPoller). */
+    private val playSuppressionWatch = PlaySuppressionWatch(
+        schedule = { delayMs, token, runnable -> handler.postDelayed(runnable, token, delayMs) },
+        cancelScheduled = { token -> handler.removeCallbacksAndMessages(token) },
+    )
+
     // ADR-0122: fire-and-forget jobs must not kill the process on throw.
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO +
@@ -911,10 +917,34 @@ class MediaService : MediaLibraryService() {
             }
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            val p = PlayerHolder.player
+            playSuppressionWatch.onPlayerSnapshot(
+                playWhenReady = playWhenReady,
+                isPlaying = p?.isPlaying == true,
+                playbackState = p?.playbackState ?: Player.STATE_IDLE,
+                casting = PlayerHolder.isCasting,
+            )
+            // V4: media-notif / System UI Play → USER_REQUEST (not handlePlaybackControl).
+            if (playWhenReady &&
+                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST &&
+                !PlayerHolder.isCasting
+            ) {
+                armPlaySuppressionWatch("user_play")
+            }
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             android.util.Log.d(
                 "ftpmusic-playback",
                 "[DEBUG-aud] isPlaying=$isPlaying player=${PlayerHolder.player} casting=${PlayerHolder.isCasting}",
+            )
+            val p = PlayerHolder.player
+            playSuppressionWatch.onPlayerSnapshot(
+                playWhenReady = p?.playWhenReady == true,
+                isPlaying = isPlaying,
+                playbackState = p?.playbackState ?: Player.STATE_IDLE,
+                casting = PlayerHolder.isCasting,
             )
             notificationProvider?.notifyChanged()
             if (isPlaying) {
@@ -2473,6 +2503,7 @@ class MediaService : MediaLibraryService() {
         } catch (_: Exception) {
         }
         btWarmAudioDeviceMonitor = null
+        playSuppressionWatch.cancel("destroy")
         scrobbleService.dispose()
         playbackManager.destroy()
         playbackProvider.disconnect()
@@ -2822,6 +2853,20 @@ class MediaService : MediaLibraryService() {
                 )
             }
         }
+        // F3: already playing — market no-op (do not pause on seat_only path).
+        if (!userInitiated && player?.isPlaying == true) {
+            cancelResumeNotif(this)
+            android.util.Log.i(
+                "ftpmusic-bt",
+                "BT seat skip — already playing sdk=$sdkInt",
+            )
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "result=skip_playing sdk=$sdkInt",
+            )
+            BtResumeEvents.record("skip_playing", "sdk=$sdkInt")
+            return
+        }
         if (PlaybackResumptionMapper.shouldPlayAfterBtSeat(sdkInt, userInitiated)) {
             if (player == null) {
                 android.util.Log.w(
@@ -2847,6 +2892,7 @@ class MediaService : MediaLibraryService() {
                 "result=$resultToken sdk=$sdkInt",
             )
             BtResumeEvents.record(resultToken, "sdk=$sdkInt")
+            armPlaySuppressionWatch(resultToken)
         } else {
             // ADR-0148: API ≥37 seat-only. No app-specific Resume (ID 1002) — the paused
             // media notification, System UI resumption, and head-unit AVRCP PLAY all
@@ -2865,6 +2911,19 @@ class MediaService : MediaLibraryService() {
         }
     }
 
+    private fun armPlaySuppressionWatch(src: String) {
+        val sdk = android.os.Build.VERSION.SDK_INT
+        playSuppressionWatch.arm(src, sdk) {
+            val p = PlayerHolder.player
+            playSuppressionWatch.evaluate(
+                playWhenReady = p?.playWhenReady == true,
+                isPlaying = p?.isPlaying == true,
+                playbackState = p?.playbackState ?: Player.STATE_IDLE,
+                casting = PlayerHolder.isCasting,
+            )
+        }
+    }
+
     /** Offline / no OS net / unreachable / cellular hard-local — OfflineAwareHttpDataSource gates. */
     @VisibleForTesting
     internal fun isBtPlaybackNetworkBlocked(): Boolean = computeBtPlaybackNetworkBlocked(
@@ -2878,6 +2937,7 @@ class MediaService : MediaLibraryService() {
      * ADR-0071/0088/0148: when BT resume is pending and a player already has media,
      * start playback (API≤36) or seat-only (API≥37) and clear the flag.
      * ADR-0133: Resume notif tap sets [MediaServiceStartRequest.userInitiatedResume].
+     * F3: if already playing and not a user tap, skip (market no-op — do not pause).
      */
     @VisibleForTesting
     internal fun handleBtAutoplayIfNeeded() {
@@ -2892,6 +2952,17 @@ class MediaService : MediaLibraryService() {
             return
         }
         val tapResume = MediaServiceStartRequest.userInitiatedResume
+        // F3: A2DP reconnect while audible must not pause on API ≥37 seat_only path.
+        if (!tapResume && p.isPlaying) {
+            MediaServiceStartRequest.clearBtAutoplayFlags()
+            android.util.Log.i("ftpmusic-bt", "BT autoplay skip — already playing")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "result=skip_playing",
+            )
+            BtResumeEvents.record("skip_playing")
+            return
+        }
         MediaServiceStartRequest.clearBtAutoplayFlags()
         applyBtPlayAfterSeat(p, userInitiated = tapResume)
     }

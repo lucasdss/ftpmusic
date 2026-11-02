@@ -10,8 +10,9 @@
     <string name="bt_resume_notif_action">Resume</string>
     <string name="bt_resume_section_label">Bluetooth</string>
     <string name="bt_resume_toggle">Resume on Bluetooth</string>
-    <string name="bt_resume_subtitle">When a Bluetooth audio device connects, restore the last queue. On Android 17, playback readies for the headset instead of auto-playing.</string>
-    <string name="bt_resume_doze_note">After long sleep, unrestricted battery improves auto-resume. On Android 17, resume via the headset play button or the media notification.</string>
+    <string name="bt_resume_subtitle">When a Bluetooth audio device connects, seat the last queue. On Android 17, playback stays paused until headset or media Play.</string>
+    <string name="bt_resume_car_play_tip">Car play starts when the head unit or Android Auto sends Play to your last media app. Enable Resume on Bluetooth to seat the queue; press Play on the wheel if needed.</string>
+    <string name="bt_resume_doze_note">After long sleep, set battery usage to Unrestricted so Bluetooth resume can start in the background.</string>
     <string name="bt_resume_battery_cta">Unrestricted battery</string>
     <string name="bt_resume_battery_cta_ok">Battery unrestricted — background resume after sleep is allowed</string>
     <string name="bt_resume_battery_cta_needed">Open system Settings and set battery usage to Unrestricted for reliable Bluetooth resume after deep sleep</string>
@@ -24,9 +25,11 @@
     <string name="bt_resume_devices_label">Devices</string>
     <string name="bt_resume_devices_empty">No paired Bluetooth devices. Pair a device in system Settings first.</string>
     <string name="bt_resume_devices_need_permission">Bluetooth permission required to list paired devices</string>
-    <string name="bt_resume_default_music_app">Set as default music app</string>
-    <string name="bt_resume_default_music_app_subtitle">Prefer FTP Music for system media controls and Bluetooth play</string>
-    <string name="bt_resume_default_music_app_held">FTP Music is the default music app</string>
+    <string name="bt_resume_default_music_app">Open Default apps settings</string>
+    <string name="bt_resume_default_music_app_subtitle">Android has no music default-app role. Soft routing prefers the last media app you played — play FTP Music once before driving.</string>
+    <string name="bt_resume_default_music_app_hint">Open system Default apps if your OEM lists a media preference.</string>
+    <!-- Kept for older references; unused in UI after G2 honesty fix. -->
+    <string name="bt_resume_default_music_app_held">FTP Music is preferred for system media when it was last playing</string>
     <!-- ADR-0148: informational notices (empty queue / offline) -->
     <string name="bt_info_channel_name">Bluetooth updates</string>
     <string name="bt_info_channel_desc">Informational notices when playback cannot resume after a Bluetooth connection</string>

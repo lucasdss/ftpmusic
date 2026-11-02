@@ -64,7 +64,11 @@ object BtAutoplayStarter {
             )
             StartResult.Started
         } catch (e: Exception) {
+            // F1: clear static BT flags so a later unrelated app open cannot autoplay
+            // on API ≤36. Resume notif PendingIntent re-arms via onStartCommand +
+            // EXTRA_USER_INITIATED_RESUME.
             MediaServiceStartRequest.foregroundRequested = false
+            MediaServiceStartRequest.clearBtAutoplayFlags()
             val fgsBlocked = sdkInt >= Build.VERSION_CODES.S &&
                 e.javaClass.name.endsWith("ForegroundServiceStartNotAllowedException")
             android.util.Log.w(

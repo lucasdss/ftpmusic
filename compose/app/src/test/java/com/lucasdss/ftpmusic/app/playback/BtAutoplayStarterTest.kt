@@ -74,6 +74,9 @@ class BtAutoplayStarterTest {
         assertEquals(BtAutoplayStarter.StartResult.NotificationFallback, result)
         assertEquals(1, fallback)
         assertFalse(MediaServiceStartRequest.foregroundRequested)
+        // F1: static BT flags must clear so a later app open cannot autoplay.
+        assertFalse(MediaServiceStartRequest.btAutoplayRequested)
+        assertFalse(MediaServiceStartRequest.userInitiatedResume)
         val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             ctx,
             offline = false,
@@ -81,6 +84,25 @@ class BtAutoplayStarterTest {
         )
         assertTrue(snap.contains("fgsBlocked=true"))
         assertTrue(snap.contains("result=NotificationFallback"))
+    }
+
+    @Test
+    fun `startAutoplay failure clears stale btAutoplayRequested from prior attempt`() {
+        MediaServiceStartRequest.btAutoplayRequested = true
+        MediaServiceStartRequest.userInitiatedResume = false
+        MediaServiceStartRequest.foregroundRequested = true
+        val ctx = mockk<Context>(relaxed = true)
+        class ForegroundServiceStartNotAllowedException(msg: String) : Exception(msg)
+        BtAutoplayStarter.startAutoplay(
+            context = ctx,
+            startForegroundService = { _, _ ->
+                throw ForegroundServiceStartNotAllowedException("blocked")
+            },
+            postFallback = {},
+            sdkInt = 31,
+        )
+        assertFalse(MediaServiceStartRequest.btAutoplayRequested)
+        assertFalse(MediaServiceStartRequest.foregroundRequested)
     }
 }
 

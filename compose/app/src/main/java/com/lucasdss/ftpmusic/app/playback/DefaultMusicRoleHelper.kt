@@ -7,12 +7,12 @@ import android.net.Uri
 import android.provider.Settings
 
 /**
- * Guides the user toward making FTP Music the preferred system media app.
+ * Opens system Default apps / app-details settings.
  *
- * Note: [android.app.role.RoleManager] has no ROLE_MUSIC on current SDKs
- * (API 36). We deep-link to default-apps / app-details settings instead and
- * rely on [MediaLibrarySession.setSessionActivity] + an active MediaSession
- * for lock-screen / car steering-wheel routing (ADR-0071).
+ * [android.app.role.RoleManager] has no ROLE_MUSIC on current SDKs (API 36).
+ * Soft routing prefers the last active MediaSession — use
+ * [MediaLibrarySession.setSessionActivity] + play FTP Music before driving
+ * (ADR-0071 / G2 honesty fix). Settings UI must not show a held/not-held badge.
  */
 object DefaultMusicRoleHelper {
     const val REQUEST_CODE_MUSIC_ROLE = 7101
@@ -21,9 +21,10 @@ object DefaultMusicRoleHelper {
     fun isRoleAvailable(context: Context): Boolean = true
 
     /**
-     * Platform cannot report a music default role. Always false; UI uses subtitle
-     * copy that does not claim "already default".
+     * Platform cannot report a music default role. Always false; Settings uses a
+     * badge-less CTA instead of held/not-held status.
      */
+    @Deprecated("No ROLE_MUSIC; Settings no longer branches on this")
     @Suppress("UNUSED_PARAMETER")
     fun isRoleHeld(context: Context): Boolean = false
 

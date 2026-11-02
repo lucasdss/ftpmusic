@@ -5,12 +5,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,12 +34,14 @@ import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.playback.BatteryOptimizationHelper
 import com.lucasdss.ftpmusic.app.playback.DefaultMusicRoleHelper
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
+import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.components.OverwriteBehaviorOption
 import com.lucasdss.ftpmusic.app.ui.components.SectionCard
 import com.lucasdss.ftpmusic.app.ui.components.SectionDivider
 import com.lucasdss.ftpmusic.app.ui.components.SectionToggleRow
 import com.lucasdss.ftpmusic.app.ui.components.SettingsPageScaffold
 import com.lucasdss.ftpmusic.app.ui.components.SystemStatusRow
+import com.lucasdss.ftpmusic.app.ui.iconSmall
 import com.lucasdss.ftpmusic.app.ui.spacingL
 import com.lucasdss.ftpmusic.app.ui.spacingM
 import com.lucasdss.ftpmusic.app.ui.spacingS
@@ -89,6 +97,14 @@ fun BluetoothSettingsScreen(
                         ).show()
                     }
                 }
+                Text(
+                    stringResource(R.string.bt_resume_car_play_tip),
+                    color = Color(0xFF888888),
+                    fontSize = textLabelS(),
+                    modifier = Modifier
+                        .padding(horizontal = spacingL(), vertical = spacingS())
+                        .testTag("settings_bt_car_play_tip"),
+                )
                 SectionToggleRow(
                     label = stringResource(R.string.bt_resume_toggle),
                     subtitle = stringResource(R.string.bt_resume_subtitle),
@@ -258,25 +274,51 @@ fun BluetoothSettingsScreen(
                     }
                 }
                 SectionDivider()
-                SystemStatusRow(
-                    title = stringResource(R.string.bt_resume_default_music_app),
-                    subtitle = if (state.isDefaultMusicApp) {
-                        stringResource(R.string.bt_resume_default_music_app_held)
-                    } else {
-                        stringResource(R.string.bt_resume_default_music_app_subtitle)
-                    },
-                    ok = state.isDefaultMusicApp,
-                    onOpen = {
-                        val activity = context as? ComponentActivity
-                        if (activity != null) {
-                            DefaultMusicRoleHelper.requestDefaultMusicApp(activity)
-                        } else {
-                            DefaultMusicRoleHelper.openDefaultAppsSettings(context)
+                // G2: badge-less CTA — no ROLE_MUSIC; never show permanent Action needed / OK.
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                        .clickable {
+                            val activity = context as? ComponentActivity
+                            if (activity != null) {
+                                DefaultMusicRoleHelper.requestDefaultMusicApp(activity)
+                            } else {
+                                DefaultMusicRoleHelper.openDefaultAppsSettings(context)
+                            }
+                            viewModel.refreshBtResumeState()
                         }
-                        viewModel.refreshBtResumeState()
-                    },
-                    testTag = "settings_default_music_app",
-                )
+                        .testTag("settings_default_music_app")
+                        .padding(horizontal = spacingL(), vertical = spacingM()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.bt_resume_default_music_app),
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            stringResource(R.string.bt_resume_default_music_app_subtitle),
+                            color = Color(0xFF888888),
+                            fontSize = textLabelM(),
+                            maxLines = 2,
+                        )
+                        Text(
+                            stringResource(R.string.bt_resume_default_music_app_hint),
+                            color = Color(0xFF666666),
+                            fontSize = textLabelS(),
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = NavUnselected,
+                        modifier = Modifier.size(iconSmall()),
+                    )
+                }
             }
         }
     }

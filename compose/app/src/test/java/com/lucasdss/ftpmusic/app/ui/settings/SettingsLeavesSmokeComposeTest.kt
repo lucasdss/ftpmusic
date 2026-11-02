@@ -60,6 +60,22 @@ class SettingsLeavesSmokeComposeTest {
     }
 
     @Test
+    fun `bluetooth leaf shows car play tip and default apps CTA`() {
+        val vm = mockViewModel()
+        composeRule.setContent { BluetoothSettingsScreen(viewModel = vm) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings_bt_car_play_tip")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.bt_resume_default_music_app))
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_default_music_app")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun `cast leaf toggles cast from phone`() {
         val vm = mockViewModel(SettingsUiState(castFromPhone = false))
         composeRule.setContent { CastSettingsScreen(viewModel = vm) }

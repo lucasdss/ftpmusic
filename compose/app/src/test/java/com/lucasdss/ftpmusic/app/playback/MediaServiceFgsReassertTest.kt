@@ -320,6 +320,24 @@ class MediaServiceFgsReassertTest {
         assertTrue(BtResumeEvents.recent().any { it.contains("seat_only") })
     }
 
+    @Test
+    fun `applyBtPlayAfterSeat A17 skips when already playing — F3 no pause`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
+        every { player.isPlaying } returns true
+        var cancelled = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            userInitiated = false,
+            networkBlocked = false,
+            cancelResumeNotif = { cancelled++ },
+        )
+        assertEquals(1, cancelled)
+        verify(exactly = 0) { player.pause() }
+        verify(exactly = 0) { player.play() }
+        assertTrue(BtResumeEvents.recent().any { it.contains("skip_playing") })
+    }
+
     private fun mockOfflineQueuePlayer(currentIndex: Int, ids: List<String>): Player {
         val player = mockk<Player>(relaxed = true)
         every { player.mediaItemCount } returns ids.size
