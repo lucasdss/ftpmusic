@@ -224,6 +224,28 @@ class PlaybackManager @Inject constructor(
         )
     }
 
+    // ── Journal coverage (CP-1) ──────────────────────────────────────────────
+
+    // Journal-only context metadata. Passing this records a queue_journal row
+    // without the Priority-clearing side effect of sourceType on playAlbum /
+    // shuffleAlbum (CP-12). sourceName keeps its display role.
+    data class JournalSource(val type: String, val id: String, val name: String? = null)
+
+    /** Explicit [journalSource] wins; legacy `sourceType`/`sourceId` still journal. */
+    private fun resolveJournalSource(
+        sourceType: String?,
+        sourceId: String?,
+        sourceName: String?,
+        journalSource: JournalSource?,
+    ): JournalSource? {
+        journalSource?.takeIf { it.type.isNotBlank() && it.id.isNotBlank() }?.let { return it }
+        return if (!sourceType.isNullOrBlank() && !sourceId.isNullOrBlank()) {
+            JournalSource(sourceType, sourceId, sourceName)
+        } else {
+            null
+        }
+    }
+
     // ── Overwrite protection ─────────────────────────────────────────────────
     data class PendingPlayback(
         val tracks: List<Track>,
@@ -464,6 +486,7 @@ class PlaybackManager @Inject constructor(
         sourceType: String? = null,
         sourceId: String? = null,
         sourceName: String? = null,
+        journalSource: JournalSource? = null,
     ) {
         ensurePlayer()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "playAlbum")
@@ -484,8 +507,8 @@ class PlaybackManager @Inject constructor(
         enqueuePlayQueue(alignedTracks, alignedUrls, si, src = "playAlbum")
         if (!skipPersistence) persistenceSave(alignedTracks, alignedUrls, si, src = "playAlbum")
 
-        if (sourceType != null && sourceId != null) {
-            journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, si)
+        resolveJournalSource(sourceType, sourceId, sourceName, journalSource)?.let { js ->
+            journalQueue(js.type, js.id, js.name, alignedTracks.map { it.id }, si)
         }
 
         emitClearAndPlayOrCommit(merged, si)
@@ -563,6 +586,7 @@ class PlaybackManager @Inject constructor(
         sourceType: String? = null,
         sourceId: String? = null,
         sourceName: String? = null,
+        journalSource: JournalSource? = null,
     ) {
         ensurePlayer()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "shuffleAlbum")
@@ -583,8 +607,8 @@ class PlaybackManager @Inject constructor(
         enqueuePlayQueue(alignedTracks, alignedUrls, 0, src = "shuffleAlbum")
         persistenceSave(alignedTracks, alignedUrls, 0, src = "shuffleAlbum")
 
-        if (sourceType != null && sourceId != null) {
-            journalQueue(sourceType, sourceId, sourceName, alignedTracks.map { it.id }, 0)
+        resolveJournalSource(sourceType, sourceId, sourceName, journalSource)?.let { js ->
+            journalQueue(js.type, js.id, js.name, alignedTracks.map { it.id }, 0)
         }
 
         emitClearAndPlayOrCommit(merged, 0)
@@ -596,6 +620,7 @@ class PlaybackManager @Inject constructor(
         sourceType: String? = null,
         sourceId: String? = null,
         sourceName: String? = null,
+        journalSource: JournalSource? = null,
     ) {
         ensurePlayer()
         val mimeType = MimeTypeResolver.resolve(track.contentType, track.suffix)
@@ -612,8 +637,8 @@ class PlaybackManager @Inject constructor(
         playMergedQueue(merged, 0)
         persistenceSave(listOf(track), listOf(streamUrl), 0)
 
-        if (sourceType != null && sourceId != null) {
-            journalQueue(sourceType, sourceId, sourceName, listOf(track.id), 0)
+        resolveJournalSource(sourceType, sourceId, sourceName, journalSource)?.let { js ->
+            journalQueue(js.type, js.id, js.name, listOf(track.id), 0)
         }
 
         emitClearAndPlayOrCommit(listOf(item), 0)

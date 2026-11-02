@@ -580,6 +580,9 @@ class FavoritesViewModelTest {
                 match { it.size == 3 },
                 eq(1),
                 eq(false),
+                journalSource = match {
+                    it?.type == "favorites" && it.id == "liked" && it.name == "Favorites"
+                },
             )
         }
         verify(exactly = 0) { playbackManager.playSingleTrack(any(), any()) }
@@ -613,6 +616,7 @@ class FavoritesViewModelTest {
                 match { it.size == 2 },
                 eq(0),
                 eq(false),
+                journalSource = isNull(),
             )
         }
     }

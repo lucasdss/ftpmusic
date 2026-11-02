@@ -103,6 +103,7 @@ class DownloadsViewModelTest {
                 match { it.size == 2 && it[1].id == "d2" },
                 any(),
                 startIndex = 1,
+                journalSource = match { it?.type == "downloads" && it.id == "downloads" },
             )
         }
     }

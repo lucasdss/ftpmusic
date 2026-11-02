@@ -152,7 +152,8 @@ class FavoritesViewModel @Inject constructor(
      * PRIORITY kept (ADR 0061). Uses current mode's track list.
      */
     fun playTrack(index: Int) {
-        val entities = when (_state.value.mode) {
+        val mode = _state.value.mode
+        val entities = when (mode) {
             FavoritesMode.LIKED -> _state.value.tracks
             FavoritesMode.DISLIKED -> _state.value.dislikedTracks
             FavoritesMode.DESIRED -> emptyList()
@@ -171,7 +172,13 @@ class FavoritesViewModel @Inject constructor(
             )
         }
         val urls = tracks.map { buildStreamUrl(it.id) }
-        playbackManager.playAlbum(tracks, urls, startIndex = index)
+        // Journal only the LIKED list: a DISLIKED context must never seed CP.
+        val journalSource = if (mode == FavoritesMode.LIKED) {
+            PlaybackManager.JournalSource(type = "favorites", id = "liked", name = "Favorites")
+        } else {
+            null
+        }
+        playbackManager.playAlbum(tracks, urls, startIndex = index, journalSource = journalSource)
     }
 
     fun buildStreamUrl(trackId: String): String {

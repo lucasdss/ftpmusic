@@ -118,7 +118,16 @@ class AlbumDetailViewModel @Inject constructor(
         val tracks = _state.value.tracks
         if (index < 0 || index >= tracks.size) return
         val urls = tracks.map { buildStreamUrl(it.id) }
-        playbackManager.playAlbum(tracks, urls, startIndex = index)
+        val album = _state.value.album
+        // Journal-only source: keep Priority intact on a track tap (CP-1/CP-12).
+        playbackManager.playAlbum(
+            tracks,
+            urls,
+            startIndex = index,
+            journalSource = album?.let {
+                PlaybackManager.JournalSource(type = "album", id = it.id, name = it.name)
+            },
+        )
     }
 
     fun playAll() {
@@ -154,10 +163,6 @@ class AlbumDetailViewModel @Inject constructor(
             sourceName = album?.name ?: "this album",
         )
         if (!started) _showOverwriteModal.value = true
-    }
-
-    private fun playAlbumWithoutJournal(tracks: List<Track>, urls: List<String>) {
-        playbackManager.playAlbum(tracks, urls)
     }
 
     fun addToQueue() {

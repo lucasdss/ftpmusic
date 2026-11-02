@@ -1266,6 +1266,9 @@ class ArtistDetailViewModelTest {
                 match { it.size == 2 },
                 eq(1),
                 eq(false),
+                journalSource = match {
+                    it?.type == "artist" && it.id == "ar-1" && it.name == "Test Artist"
+                },
             )
         }
         coVerify(exactly = 0) { playbackManager.playSingleTrack(any(), any()) }

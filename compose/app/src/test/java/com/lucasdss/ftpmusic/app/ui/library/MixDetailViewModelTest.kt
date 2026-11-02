@@ -201,6 +201,7 @@ class MixDetailViewModelTest {
                 match { it.size == 3 },
                 eq(1),
                 eq(false),
+                journalSource = match { it?.type == "genremix" && it.id == "5" },
             )
         }
         verify(exactly = 0) { playbackManager.playSingleTrack(any(), any()) }

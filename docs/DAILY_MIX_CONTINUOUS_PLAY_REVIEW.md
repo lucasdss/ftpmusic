@@ -2123,3 +2123,22 @@ green; `ktlintMainSourceSetCheck` reports only the pre-existing unrelated
 violations in `PlaySuppressionWatch.kt`, `LibraryScreen.kt`, and
 `LibraryViewModel.kt`. Cross-model: DeepSeek audit → Mistral challenge →
 fixes → DeepSeek re-audit OK → Mistral challenge OK.
+
+### 11.6 Iteration log — CP-1 + CP-12 journal coverage (2026-11-02)
+
+| ID | Change |
+|---|---|
+| CP-1 | `PlaybackManager` now accepts a journal-only `JournalSource(type, id, name)` on `playAlbum`, `shuffleAlbum`, and `playSingleTrack`. Track taps pass a full-context source for album/artist/playlist/mix/favorites/downloads and a single-track source for search/profile. Favorites journals only LIKED mode; DISLIKED/DESIRED stay silent. Removed the dead `AlbumDetailViewModel.playAlbumWithoutJournal`. |
+| CP-12 | `clearPriority()` remains gated on `sourceType != null`; `journalSource` never clears Priority. Legacy Play All/Shuffle call sites still pass `sourceType` and keep their overwrite semantics. Journaling falls back to `sourceType`/`sourceId` when no explicit journal source is supplied. |
+
+Verification: full `:app:testDebugUnitTest` green; `ktlintTestSourceSetCheck`
+green; `ktlintMainSourceSetCheck` reports only the same pre-existing unrelated
+violations. Added regression tests for journal-source Priority preservation,
+legacy `sourceType` clearing, single-track search journaling, repeated search
+taps sharing one key, and `PlaybackViewModel` forwarding a non-null journal
+source. Cross-model: Mistral design challenge → implementation → DeepSeek
+audit OK → Mistral final challenge OK.
+
+Known non-blocking gap: `tryStartContext`/`PendingPlayback` do not carry
+`journalSource`. No tap path uses them today; any future tap that needs
+overwrite protection must extend that path before relying on journaling.

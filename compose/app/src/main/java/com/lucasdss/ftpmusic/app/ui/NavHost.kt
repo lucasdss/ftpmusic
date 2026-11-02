@@ -57,6 +57,7 @@ import com.lucasdss.ftpmusic.app.di.LyricsCacheEntryPoint
 import com.lucasdss.ftpmusic.app.di.MetadataEntryPoint
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import com.lucasdss.ftpmusic.app.di.WaveformDbEntryPoint
+import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.playback.PlaybackViewModel
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import com.lucasdss.ftpmusic.app.ui.*
@@ -716,7 +717,15 @@ fun FtpmusicNavHost() {
                             onGenreClick = { navController.navigate("genre/$it") },
                             onTrackClick = { track ->
                                 val streamUrl = playbackViewModel.buildStreamUrl(track.id)
-                                playbackViewModel.playSingleTrack(track, streamUrl)
+                                playbackViewModel.playSingleTrack(
+                                    track,
+                                    streamUrl,
+                                    journalSource = PlaybackManager.JournalSource(
+                                        type = "search",
+                                        id = "search",
+                                        name = "Search",
+                                    ),
+                                )
                             },
                             onPlaylistClick = { navController.navigate("playlist/$it") },
                         )
@@ -730,7 +739,15 @@ fun FtpmusicNavHost() {
                             onGenreClick = { navController.navigate("genre/$it") },
                             onTrackClick = { track ->
                                 val streamUrl = playbackViewModel.buildStreamUrl(track.id)
-                                playbackViewModel.playSingleTrack(track, streamUrl)
+                                playbackViewModel.playSingleTrack(
+                                    track,
+                                    streamUrl,
+                                    journalSource = PlaybackManager.JournalSource(
+                                        type = "search",
+                                        id = "search",
+                                        name = "Search",
+                                    ),
+                                )
                             },
                             onPlaylistClick = { navController.navigate("playlist/$it") },
                         )
@@ -944,7 +961,15 @@ fun FtpmusicNavHost() {
                                     contentType = track.contentType,
                                 )
                                 val streamUrl = playbackViewModel.buildStreamUrl(track.id)
-                                playbackViewModel.playSingleTrack(trackModel, streamUrl)
+                                playbackViewModel.playSingleTrack(
+                                    trackModel,
+                                    streamUrl,
+                                    journalSource = PlaybackManager.JournalSource(
+                                        type = "profile",
+                                        id = "profile",
+                                        name = "Profile",
+                                    ),
+                                )
                                 navController.navigate("nowplaying")
                             },
                         )

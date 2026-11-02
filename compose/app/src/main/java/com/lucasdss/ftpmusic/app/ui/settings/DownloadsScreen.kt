@@ -271,7 +271,17 @@ class DownloadsViewModel @Inject constructor(
             )
         }
         val urls = tracks.map { buildStreamUrl(it.id) }
-        playbackManager.playAlbum(tracks, urls, startIndex = index)
+        // Journal-only source: keep Priority intact on a track tap (CP-1/CP-12).
+        playbackManager.playAlbum(
+            tracks,
+            urls,
+            startIndex = index,
+            journalSource = PlaybackManager.JournalSource(
+                type = "downloads",
+                id = "downloads",
+                name = "Downloads",
+            ),
+        )
     }
 
     fun remove(trackId: String) {

@@ -706,7 +706,18 @@ class MixDetailViewModel @Inject constructor(
     fun playTrack(index: Int) {
         val (tracks, urls) = toPlayable()
         if (index < 0 || index >= tracks.size) return
-        playbackManager.playAlbum(tracks, urls, startIndex = index)
+        val mixId = loadedMixId?.toString() ?: autoGenMixId?.toString() ?: "unknown"
+        // Journal-only source: a track tap must not clear the Priority queue (CP-12).
+        playbackManager.playAlbum(
+            tracks,
+            urls,
+            startIndex = index,
+            journalSource = com.lucasdss.ftpmusic.app.playback.PlaybackManager.JournalSource(
+                type = "genremix",
+                id = mixId,
+                name = _mixName.value,
+            ),
+        )
     }
 
     fun playAll() {

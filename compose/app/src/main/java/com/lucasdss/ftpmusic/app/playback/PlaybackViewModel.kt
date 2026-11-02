@@ -463,8 +463,12 @@ class PlaybackViewModel @Inject constructor(
     }
 
     /** Play a single track using the playback manager. */
-    fun playSingleTrack(track: com.lucasdss.ftpmusic.app.data.model.Track, streamUrl: String) {
-        playbackManager.playSingleTrack(track, streamUrl)
+    fun playSingleTrack(
+        track: com.lucasdss.ftpmusic.app.data.model.Track,
+        streamUrl: String,
+        journalSource: PlaybackManager.JournalSource? = null,
+    ) {
+        playbackManager.playSingleTrack(track, streamUrl, journalSource = journalSource)
     }
 
     fun playAll(

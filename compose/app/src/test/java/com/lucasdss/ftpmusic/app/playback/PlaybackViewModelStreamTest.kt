@@ -85,6 +85,45 @@ class PlaybackViewModelStreamTest {
     }
 
     @Test
+    fun `playSingleTrack forwards a non-null journalSource`() {
+        val provider: PlaybackStateProvider = mockk(relaxed = true)
+        val playbackManager: PlaybackManager = mockk(relaxed = true)
+        val favoriteRepo: FavoriteRepository = mockk(relaxed = true)
+        val storage: SecureStorage = mockk(relaxed = true)
+
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { playbackManager.playSingleTrack(any(), any(), journalSource = any()) } just Runs
+
+        val viewModel =
+            PlaybackViewModel(
+                provider,
+                playbackManager,
+                favoriteRepo,
+                storage,
+                mockk(relaxed = true),
+                mockk<com.lucasdss.ftpmusic.app.data.db.QueueDao>(relaxed = true),
+                mockk(relaxed = true), // playlistRepository
+            )
+        val track = Track(id = "t1", title = "Test", artist = "Artist")
+        viewModel.playSingleTrack(
+            track,
+            "http://example.com/stream",
+            PlaybackManager.JournalSource("search", "search", "Search"),
+        )
+
+        verify {
+            playbackManager.playSingleTrack(
+                track,
+                "http://example.com/stream",
+                journalSource = match {
+                    it?.type == "search" && it.id == "search" && it.name == "Search"
+                },
+            )
+        }
+    }
+
+    @Test
     fun `buildStreamUrl should handle empty credentials gracefully`() {
         val provider: PlaybackStateProvider = mockk(relaxed = true)
         val playbackManager: PlaybackManager = mockk(relaxed = true)

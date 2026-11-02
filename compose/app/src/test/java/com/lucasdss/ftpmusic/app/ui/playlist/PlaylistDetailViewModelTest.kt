@@ -372,6 +372,9 @@ class PlaylistDetailViewModelTest {
                 match { it.size == 3 },
                 eq(2),
                 eq(false),
+                journalSource = match {
+                    it?.type == "playlist" && it.id == "pl-1" && it.name == "Test Playlist"
+                },
             )
         }
     }

@@ -154,6 +154,9 @@ class AlbumDetailViewModelTest {
                 },
                 eq(1),
                 eq(false),
+                journalSource = match {
+                    it?.type == "album" && it.id == "al-1" && it.name == "Test"
+                },
             )
         }
     }
@@ -253,7 +256,16 @@ class AlbumDetailViewModelTest {
 
         viewModel.playTrack(0)
 
-        verify { playbackManager.playAlbum(any(), any(), eq(0), eq(false)) }
+        verify {
+            playbackManager.playAlbum(
+                any(),
+                any(),
+                eq(0),
+                eq(false),
+                sourceType = null,
+                journalSource = match { it?.type == "album" && it.id == "al-1" },
+            )
+        }
         verify(exactly = 0) {
             playbackManager.tryStartContext(any(), any(), any(), any(), any(), any())
         }

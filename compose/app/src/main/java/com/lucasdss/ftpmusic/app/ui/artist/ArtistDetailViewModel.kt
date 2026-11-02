@@ -383,7 +383,18 @@ class ArtistDetailViewModel @Inject constructor(
         val tracks = _state.value.tracks
         if (index < 0 || index >= tracks.size) return
         val urls = tracks.map { buildStreamUrl(it.id) }
-        playbackManager.playAlbum(tracks, urls, startIndex = index)
+        val state = _state.value
+        // Journal-only source: keep Priority intact on a track tap (CP-1/CP-12).
+        playbackManager.playAlbum(
+            tracks,
+            urls,
+            startIndex = index,
+            journalSource = PlaybackManager.JournalSource(
+                type = "artist",
+                id = state.artistId,
+                name = state.name,
+            ),
+        )
     }
 
     /**
