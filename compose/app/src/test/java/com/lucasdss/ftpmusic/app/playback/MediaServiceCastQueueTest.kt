@@ -619,6 +619,233 @@ class MediaServiceCastQueueTest {
     }
 
     @Test
+    fun `syncLocalToRemote RemoveThenAddAll removes then inserts`() {
+        injectField(service, "castMediaQueue", mockMediaQueue)
+        val pm = mockk<PlaybackManager>(relaxed = true)
+        every { pm.getLastQueueSnapshot() } returns OptimisticQueueDelegate.Snapshot(
+            items = emptyList(),
+            revision = 42L,
+        )
+        injectField(service, "playbackManager", pm)
+        val removeCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val removePending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        val insertPending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        every { mockRmc.queueRemoveItems(any(), any()) } returns removePending
+        every { mockRmc.queueInsertItems(any(), any(), any()) } returns insertPending
+        every { removePending.setResultCallback(capture(removeCb)) } just Runs
+
+        val items = listOf(
+            buildTestMediaItem("a", "A").withQueueEntryId(10),
+            buildTestMediaItem("b", "B").withQueueEntryId(11),
+        )
+        service.syncLocalToRemote(CastQueueAction.RemoveThenAddAll(listOf(2, 4, 99), items))
+
+        verify(exactly = 1) {
+            mockRmc.queueRemoveItems(
+                match { it.size == 2 && it.contains(2) && it.contains(4) },
+                isNull(),
+            )
+        }
+        verify(exactly = 0) { mockRmc.queueInsertItems(any(), any(), any()) }
+
+        val removeResult = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { removeResult.status.isSuccess } returns true
+        removeCb.captured.onResult(removeResult)
+
+        verify(exactly = 1) {
+            mockRmc.queueInsertItems(
+                match { it.size == 2 },
+                eq(MediaQueueItem.INVALID_ITEM_ID),
+                isNull(),
+            )
+        }
+    }
+
+    @Test
+    fun `syncLocalToRemote RemoveThenAddAll remove failure acks without insert`() {
+        injectField(service, "castMediaQueue", mockMediaQueue)
+        val pm = mockk<PlaybackManager>(relaxed = true)
+        every { pm.getLastQueueSnapshot() } returns OptimisticQueueDelegate.Snapshot(
+            items = emptyList(),
+            revision = 7L,
+        )
+        injectField(service, "playbackManager", pm)
+        val removeCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val removePending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        every { mockRmc.queueRemoveItems(any(), any()) } returns removePending
+        every { removePending.setResultCallback(capture(removeCb)) } just Runs
+
+        service.syncLocalToRemote(
+            CastQueueAction.RemoveThenAddAll(
+                listOf(2),
+                listOf(buildTestMediaItem("a", "A").withQueueEntryId(10)),
+            ),
+        )
+
+        val removeResult = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { removeResult.status.isSuccess } returns false
+        removeCb.captured.onResult(removeResult)
+
+        verify(exactly = 0) { mockRmc.queueInsertItems(any(), any(), any()) }
+        verify(exactly = 1) { pm.onCastCommandAck(7L, false) }
+    }
+
+    @Test
+    fun `syncLocalToRemote RemoveThenAddAll insert failure after remove heals via queueLoad`() {
+        injectField(service, "castMediaQueue", mockMediaQueue)
+        val pm = mockk<PlaybackManager>(relaxed = true)
+        every { pm.getLastQueueSnapshot() } returns OptimisticQueueDelegate.Snapshot(
+            items = emptyList(),
+            revision = 11L,
+        )
+        every { pm.dualQueueSize } returns 5
+        injectField(service, "playbackManager", pm)
+        val removeCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val insertCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val healCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val removePending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        val insertPending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        val healPending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        every { mockRmc.queueRemoveItems(any(), any()) } returns removePending
+        every { mockRmc.queueInsertItems(any(), any(), any()) } returns insertPending
+        every { mockRmc.queueLoad(any(), any(), any(), any(), any()) } returns healPending
+        every { removePending.setResultCallback(capture(removeCb)) } just Runs
+        every { insertPending.setResultCallback(capture(insertCb)) } just Runs
+        every { healPending.setResultCallback(capture(healCb)) } just Runs
+
+        service.syncLocalToRemote(
+            CastQueueAction.RemoveThenAddAll(
+                listOf(2),
+                listOf(buildTestMediaItem("a", "A").withQueueEntryId(10)),
+            ),
+        )
+
+        val removeOk = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { removeOk.status.isSuccess } returns true
+        removeCb.captured.onResult(removeOk)
+
+        val insertFail = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { insertFail.status.isSuccess } returns false
+        insertCb.captured.onResult(insertFail)
+
+        verify(exactly = 1) { mockRmc.queueLoad(any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { pm.onCastCommandAck(any(), any()) }
+
+        val healOk = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { healOk.status.isSuccess } returns true
+        healCb.captured.onResult(healOk)
+
+        // Must not roll the phone back — receiver already pruned.
+        verify(exactly = 0) { pm.onCastCommandAck(11L, false) }
+        verify(exactly = 1) { pm.onCastCommandAck(11L, true) }
+    }
+
+    @Test
+    fun `syncLocalToRemote RemoveThenAddAll still commits when heal queueLoad fails`() {
+        injectField(service, "castMediaQueue", mockMediaQueue)
+        val pm = mockk<PlaybackManager>(relaxed = true)
+        every { pm.getLastQueueSnapshot() } returns OptimisticQueueDelegate.Snapshot(
+            items = emptyList(),
+            revision = 12L,
+        )
+        every { pm.dualQueueSize } returns 5
+        injectField(service, "playbackManager", pm)
+        val removeCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val insertCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val healCb =
+            slot<com.google.android.gms.common.api.ResultCallback<RemoteMediaClient.MediaChannelResult>>()
+        val removePending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        val insertPending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        val healPending =
+            mockk<com.google.android.gms.common.api.PendingResult<RemoteMediaClient.MediaChannelResult>>(
+                relaxed = true,
+            )
+        every { mockRmc.queueRemoveItems(any(), any()) } returns removePending
+        every { mockRmc.queueInsertItems(any(), any(), any()) } returns insertPending
+        every { mockRmc.queueLoad(any(), any(), any(), any(), any()) } returns healPending
+        every { removePending.setResultCallback(capture(removeCb)) } just Runs
+        every { insertPending.setResultCallback(capture(insertCb)) } just Runs
+        every { healPending.setResultCallback(capture(healCb)) } just Runs
+
+        service.syncLocalToRemote(
+            CastQueueAction.RemoveThenAddAll(
+                listOf(2),
+                listOf(buildTestMediaItem("a", "A").withQueueEntryId(10)),
+            ),
+        )
+        val removeOk = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { removeOk.status.isSuccess } returns true
+        removeCb.captured.onResult(removeOk)
+        val insertFail = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { insertFail.status.isSuccess } returns false
+        insertCb.captured.onResult(insertFail)
+        val healFail = mockk<RemoteMediaClient.MediaChannelResult>(relaxed = true)
+        every { healFail.status.isSuccess } returns false
+        healCb.captured.onResult(healFail)
+
+        verify(exactly = 0) { pm.onCastCommandAck(12L, false) }
+        verify(exactly = 1) { pm.onCastCommandAck(12L, true) }
+    }
+
+    @Test
+    fun `syncLocalToRemote RemoveThenAddAll with no receiver match inserts only`() {
+        injectField(service, "castMediaQueue", mockMediaQueue)
+        val pm = mockk<PlaybackManager>(relaxed = true)
+        every { pm.getLastQueueSnapshot() } returns OptimisticQueueDelegate.Snapshot(
+            items = emptyList(),
+            revision = 9L,
+        )
+        injectField(service, "playbackManager", pm)
+
+        service.syncLocalToRemote(
+            CastQueueAction.RemoveThenAddAll(
+                listOf(98, 99),
+                listOf(buildTestMediaItem("a", "A").withQueueEntryId(10)),
+            ),
+        )
+
+        verify(exactly = 0) { mockRmc.queueRemoveItems(any(), any()) }
+        verify(exactly = 1) {
+            mockRmc.queueInsertItems(
+                match { it.size == 1 },
+                eq(MediaQueueItem.INVALID_ITEM_ID),
+                isNull(),
+            )
+        }
+    }
+
+    @Test
     fun `syncLocalToRemote JumpTo sends queueJumpToItem`() {
         injectField(service, "castMediaQueue", mockMediaQueue)
         service.syncLocalToRemote(CastQueueAction.JumpTo(3))

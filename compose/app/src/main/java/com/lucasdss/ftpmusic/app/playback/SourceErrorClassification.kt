@@ -163,8 +163,9 @@ internal fun findNextAlbumIndex(albums: List<String?>, fromIndex: Int): Int {
  * items in 3.95 s because the per-track counter resets on every transition and
  * the cross-track circuit was cleared by the programmatic seek. This class holds
  * the aggregate for the summary line and the bound that trips [PAUSE_BURST];
- * [disruptive] entries are the ones that count toward the bound (album jumps
- * and cached jumps are recoveries, not failed items).
+ * [disruptive] entries are the ones that count toward the bound. Album-run
+ * collapses stay non-disruptive recoveries; offline cached jumps are
+ * disruptive so a long bad-span cascade still pauses at the threshold.
  */
 internal class AutoSkipBurst(
     private val threshold: Int = AUTO_SKIP_BURST_THRESHOLD,
@@ -223,6 +224,20 @@ internal class AutoSkipBurst(
         itemsSkipped = 0
         disruptive = 0
     }
+}
+
+/**
+ * Offline unreachable path: count a cached jump as disruptive and report
+ * whether the burst bound has tripped (caller then pauses).
+ */
+internal fun recordUnreachableCachedJump(burst: AutoSkipBurst, fromIdx: Int, cachedIdx: Int, nowMs: Long): Boolean {
+    burst.record(
+        index = fromIdx,
+        nowMs = nowMs,
+        skipped = (cachedIdx - fromIdx).coerceAtLeast(1),
+        disruptiveEntry = true,
+    )
+    return burst.atThreshold()
 }
 
 internal const val AUTO_SKIP_BURST_THRESHOLD = 8

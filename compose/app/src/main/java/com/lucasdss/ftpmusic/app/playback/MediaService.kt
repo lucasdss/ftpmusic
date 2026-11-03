@@ -1704,7 +1704,10 @@ class MediaService : MediaLibraryService() {
     /**
      * N8: server unreachable → jump to the next fully cached item, or stop when
      * nothing ahead is playable offline. Runs on main; the span scan already ran
-     * on IO.
+     * on IO. Cached jumps that reach this path (typically provisional
+     * REMOTE_MISSING decode/parse with a real span, which bypasses the 3/15s
+     * stuck circuit) count as disruptive and pause at 8/120s. Unreachable
+     * UNKNOWN/NETWORK/file-not-found still trip CIRCUIT_STOP at 3 by design.
      */
     private fun applyUnreachableSkip(ep: Player, failedId: String?, fromIdx: Int, cachedIdx: Int?) {
         if (cachedIdx != null) {
@@ -1717,12 +1720,11 @@ class MediaService : MediaLibraryService() {
                 "autoSkip action=CACHED_JUMP trackId=$failedId fromIdx=$fromIdx toIdx=$cachedIdx " +
                     "errorCount=$playerErrorCount reachable=false",
             )
-            autoSkipBurst.record(
-                index = fromIdx,
-                nowMs = android.os.SystemClock.elapsedRealtime(),
-                skipped = cachedIdx - fromIdx,
-                disruptiveEntry = false,
-            )
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            if (recordUnreachableCachedJump(autoSkipBurst, fromIdx, cachedIdx, nowMs)) {
+                pauseAfterBurst(ep, fromIdx, SourceErrorKind.NETWORK, failedId)
+                return
+            }
             ep.seekTo(cachedIdx, 0L)
             resumeAfterSkip(ep)
             return
@@ -1820,9 +1822,10 @@ class MediaService : MediaLibraryService() {
 
     /** N1-C: pause (not stop) so index/position survive; the next play resumes past it. */
     private fun pauseAfterBurst(ep: Player, fromIdx: Int, kind: SourceErrorKind, failedId: String?) {
-        // The bound that can fire is `disruptive >= threshold`; album/cached jumps
-        // are recoveries and inflate `count`. The circuit path pauses on the
-        // tripping error before it is recorded, so take the larger of the two.
+        // The bound that can fire is `disruptive >= threshold`; album-run
+        // collapses stay non-disruptive (inflate `count` only). Offline cached
+        // jumps are disruptive. The circuit path pauses on the tripping error
+        // before it is recorded, so take the larger of the two.
         val burstDisruptive = autoSkipBurst.disruptive
         val n = maxOf(burstDisruptive, sourceErrorCircuit.consecutiveErrors)
         autoSkipBurst.drainSummary()?.let {
@@ -5336,6 +5339,13 @@ class MediaService : MediaLibraryService() {
         }
         val converter = SubsonicMediaItemConverter(castPreferences)
         val revision = playbackManager.getLastQueueSnapshot()?.revision ?: 0L
+        // CP-7: prune+append must share one optimistic revision — chain remove
+        // then insert and emit a single final castAck. Running both through the
+        // generic executor would overwrite `pending` and commit on the first ack.
+        if (action is CastQueueAction.RemoveThenAddAll) {
+            syncRemoveThenAddAll(rmc, converter, revision, action)
+            return
+        }
         var pending: com.google.android.gms.common.api.PendingResult<*>? = null
         var skipAck = action is CastQueueAction.JumpTo
         var playerReplaceSuccess = false
@@ -5407,18 +5417,129 @@ class MediaService : MediaLibraryService() {
         val captured = pending
         if (captured != null) {
             captured.setResultCallback { result ->
-                val ok = result.status.isSuccess
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
-                    "ftpmusic-cast",
-                    "castAck revision=$revision success=$ok",
-                )
-                playbackManager.onCastCommandAck(revision, ok)
+                ackCastCommand(revision, result.status.isSuccess)
             }
         } else if (playerReplaceSuccess || action is CastQueueAction.ClearAndPlay) {
-            playbackManager.onCastCommandAck(revision, true)
+            ackCastCommand(revision, true)
         } else {
             // Missing remote item: local already mutated; commit.
-            playbackManager.onCastCommandAck(revision, true)
+            ackCastCommand(revision, true)
+        }
+    }
+
+    /**
+     * CP-7 Cast prune+append: one optimistic revision across remove→insert.
+     * Remove failure rolls back without inserting. Empty remove (receiver
+     * already trimmed) still holds the snapshot until the insert acks.
+     * Insert failure after a successful remove must NOT roll the phone back
+     * (receiver already pruned) — reload Dual onto the receiver and commit.
+     */
+    private fun syncRemoveThenAddAll(
+        rmc: RemoteMediaClient,
+        converter: SubsonicMediaItemConverter,
+        revision: Long,
+        action: CastQueueAction.RemoveThenAddAll,
+    ) {
+        val itemIds = castMediaQueue?.getItemIds()?.toSet().orEmpty()
+        val resolved = action.entryIds.filter(itemIds::contains).toIntArray()
+        fun insertThenAck(removeAlreadyApplied: Boolean) {
+            if (action.mediaItems.isEmpty()) {
+                ackCastCommand(revision, true)
+                return
+            }
+            val beforeId = action.beforeEntryId?.takeIf(itemIds::contains)
+                ?: MediaQueueItem.INVALID_ITEM_ID
+            val items = action.mediaItems.map(converter::toMediaQueueItem).toTypedArray()
+            val insertPending = rmc.queueInsertItems(items, beforeId, null)
+            insertPending.setResultCallback { result ->
+                if (result.status.isSuccess) {
+                    ackCastCommand(revision, true)
+                    return@setResultCallback
+                }
+                if (removeAlreadyApplied) {
+                    // Phone Dual/Exo already hold the intended post-prune+append
+                    // queue. Rolling back would put oversized autoplay rows back
+                    // on the phone while the receiver stays pruned — worse
+                    // divergence. Best-effort queueLoad, then always commit.
+                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                        "ftpmusic-cast",
+                        "RemoveThenAddAll insert failed after remove — " +
+                            "healing receiver from Dual revision=$revision",
+                    )
+                    healReceiverFromDualAfterPartialPrune(rmc, converter) { healOk ->
+                        if (!healOk) {
+                            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                                "ftpmusic-cast",
+                                "RemoveThenAddAll heal incomplete — " +
+                                    "committing phone post-prune state revision=$revision",
+                            )
+                        }
+                        ackCastCommand(revision, true)
+                    }
+                } else {
+                    ackCastCommand(revision, false)
+                }
+            }
+        }
+        if (resolved.isEmpty()) {
+            insertThenAck(removeAlreadyApplied = false)
+            return
+        }
+        val removePending = rmc.queueRemoveItems(resolved, null)
+        removePending.setResultCallback { removeResult ->
+            if (!removeResult.status.isSuccess) {
+                ackCastCommand(revision, false)
+                return@setResultCallback
+            }
+            insertThenAck(removeAlreadyApplied = true)
+        }
+    }
+
+    private fun ackCastCommand(revision: Long, success: Boolean) {
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-cast",
+            "castAck revision=$revision success=$success",
+        )
+        playbackManager.onCastCommandAck(revision, success)
+    }
+
+    /**
+     * Session-direct [RemoteMediaClient.queueLoad] of the Dual/Exo queue so the
+     * heal reports a PendingResult. Prefer this over CastPlayer.setMediaItems
+     * when recovering from a partial RemoveThenAddAll.
+     */
+    private fun healReceiverFromDualAfterPartialPrune(
+        rmc: RemoteMediaClient,
+        converter: SubsonicMediaItemConverter,
+        onDone: (Boolean) -> Unit,
+    ) {
+        ensureExoMatchesDual()
+        val exo = PlayerHolder.exoPlayer
+        if (exo == null || exo.mediaItemCount == 0) {
+            onDone(false)
+            return
+        }
+        val allItems = (0 until exo.mediaItemCount).mapNotNull { exo.getMediaItemAt(it) }
+        if (allItems.isEmpty()) {
+            onDone(false)
+            return
+        }
+        val startIdx = rmc.mediaStatus?.currentItemId
+            ?.let { resolveLocalIndexFromReceiverId(exo, it) }
+            ?: exo.currentMediaItemIndex.coerceIn(0, allItems.lastIndex)
+        val position = PlayerHolder.player?.currentPosition ?: 0L
+        lastPreloadedItemId = null
+        lastAdvanceItemId = null
+        val queueItems = allItems.map { converter.toMediaQueueItem(it) }.toTypedArray()
+        val healPending = rmc.queueLoad(
+            queueItems,
+            startIdx,
+            MediaStatus.REPEAT_MODE_REPEAT_OFF,
+            position,
+            null,
+        )
+        healPending.setResultCallback { result ->
+            onDone(result.status.isSuccess)
         }
     }
 }

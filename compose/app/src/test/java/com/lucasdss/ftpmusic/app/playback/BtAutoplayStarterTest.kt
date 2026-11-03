@@ -242,5 +242,22 @@ class BtAutoplayStarterRobolectricTest {
             com.lucasdss.ftpmusic.app.R.string.bt_resume_notif_body_empty,
         )
         assertTrue(BtResumeEvents.recent().any { it.contains("info_notif_disabled") })
+        assertFalse(
+            "must not call notify() when disabled — SecurityException on API 33+",
+            nm.activeNotifications.any { it.id == BtAutoplayStarter.INFO_NOTIFICATION_ID },
+        )
+    }
+
+    @Test
+    fun `postResumeNotification skips notify when notifications disabled`() {
+        BtResumeEvents.clear()
+        val ctx = RuntimeEnvironment.getApplication()
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        org.robolectric.Shadows.shadowOf(nm).setNotificationsEnabled(false)
+        BtAutoplayStarter.postResumeNotification(ctx)
+        assertTrue(BtResumeEvents.recent().any { it.contains("notif_disabled") })
+        assertFalse(
+            nm.activeNotifications.any { it.id == BtAutoplayStarter.RESUME_NOTIFICATION_ID },
+        )
     }
 }

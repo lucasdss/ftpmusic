@@ -109,10 +109,20 @@ Method:
 
 ### Verdict
 
-The market thesis still holds: opt-in A2DP resume + Media3 `onPlaybackResumption` + FGS-fallback notification is the right architecture, and ADR-0148's seat-only happy path is directionally market-aligned. The shipped implementation is **not fully correct for Android 17**, for three concrete reasons:
+The market thesis still holds: opt-in A2DP resume + Media3 `onPlaybackResumption` + FGS-fallback notification is the right architecture, and ADR-0148's seat-only happy path is directionally market-aligned.
 
-1. **F1** — an FGS start denial leaves `btAutoplayRequested` armed, so a later unrelated app open can start playback on API ≤36.
-2. **F3** — an A2DP connect/reconnect while audio is already playing pauses it on API ≥37.
+> **Supersession (2.1.0):** F1 (clear BT flags on FGS denial) and F3
+> (skip Path B when already playing) were fixed in `501d123` / car-connect
+> parity work. 2.1.0 also early-returns BT `notify()` when notifications are
+> disabled (no `SecurityException` kill). Treat the F1/F3 “blocker” narrative
+> below as historical; see
+> [CAR_CONNECT_AUTOPLAY_SPOTIFY_PARITY_REVIEW.md](CAR_CONNECT_AUTOPLAY_SPOTIFY_PARITY_REVIEW.md)
+> and [POST_2_0_0_RELEASE_REVIEW_BEHAVIOR_REPORT.md](POST_2_0_0_RELEASE_REVIEW_BEHAVIOR_REPORT.md).
+
+Historical blockers at review time (now closed):
+
+1. ~~**F1**~~ — FGS start denial left `btAutoplayRequested` armed.
+2. ~~**F3**~~ — A2DP connect while already playing paused on API ≥37.
 3. Several platform statements in the body are imprecise (E1–E9).
 
 The Resume-notification tap itself is **not** broken (see F2): `onStartCommand` re-arms the flags and the tap plays. At worst it produces a transient seat-only pause when F1 has forced the early synchronous seat.

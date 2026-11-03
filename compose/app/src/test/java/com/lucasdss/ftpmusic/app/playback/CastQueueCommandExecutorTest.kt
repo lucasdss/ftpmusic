@@ -94,6 +94,41 @@ class CastQueueCommandExecutorTest {
     }
 
     @Test
+    fun `removeThenAddAll removes then inserts in one execute`() {
+        val receiver = FakeReceiver(setOf(1, 2, 3))
+        val items = listOf(item("a"), item("b"))
+
+        executor.execute(
+            CastQueueAction.RemoveThenAddAll(listOf(1, 99), items),
+            receiver,
+        )
+
+        assertEquals(listOf("removeAll:1", "insertAll:2:${MediaQueueItem.INVALID_ITEM_ID}"), receiver.calls)
+        assertEquals(2, receiver.convertedItems.size)
+    }
+
+    @Test
+    fun `removeThenAddAll with no receiver ids still inserts`() {
+        val receiver = FakeReceiver(setOf(1))
+        val items = listOf(item("a"))
+
+        executor.execute(
+            CastQueueAction.RemoveThenAddAll(listOf(98, 99), items),
+            receiver,
+        )
+
+        assertEquals(listOf("insertAll:1:${MediaQueueItem.INVALID_ITEM_ID}"), receiver.calls)
+    }
+
+    @Test
+    fun `castQueueActionDiag covers RemoveThenAddAll`() {
+        assertEquals(
+            "RemoveThenAddAll remove=2 add=1",
+            castQueueActionDiag(CastQueueAction.RemoveThenAddAll(listOf(1, 2), listOf(item("a")))),
+        )
+    }
+
+    @Test
     fun `move uses receiver insert-before ID and end sentinel`() {
         val receiver = FakeReceiver(setOf(3, 5))
 

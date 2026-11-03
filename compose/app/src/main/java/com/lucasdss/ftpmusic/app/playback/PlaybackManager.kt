@@ -892,16 +892,19 @@ class PlaybackManager @Inject constructor(
         // Persist the DUAL queue (authoritative, captures the grown contextSize).
         val (allTracks, allUrls) = buildQueueStateFromDual()
         persistenceSave(allTracks, allUrls, currentCanonicalIndex())
-        // Bi-directional sync during Cast — append at the end of the remote queue.
-        // RemoveAll goes first so it carries the pre-burst snapshot revision: a
-        // failed prune rolls the local queue back instead of being silently
-        // accepted after AddAll's ack cleared the snapshot. Absent receiver ids
-        // are filtered by the executor, which is the common case once the
-        // receiver has trimmed rows behind the playhead.
+        // Bi-directional sync during Cast — prune+append as one optimistic
+        // revision (RemoveThenAddAll). Separate RemoveAll→AddAll would commit
+        // on the first ack and leave the second unable to roll back. Absent
+        // receiver ids are filtered at execute time (receiver already trimmed
+        // behind the playhead); an empty remove still holds the snapshot until
+        // the insert acks.
         if (evictedEntryIds.isNotEmpty()) {
-            emitCastOrCommit { CastQueueAction.RemoveAll(evictedEntryIds) }
+            emitCastOrCommit {
+                CastQueueAction.RemoveThenAddAll(evictedEntryIds, items)
+            }
+        } else {
+            emitCastAddsOrCommit(items)
         }
-        emitCastAddsOrCommit(items)
     }
 
     /** Per merged index: Continuous Play autoplay-tail rows. */

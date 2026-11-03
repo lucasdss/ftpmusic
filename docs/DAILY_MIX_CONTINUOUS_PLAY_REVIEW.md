@@ -2098,14 +2098,16 @@ trade-offs.
 
 ### 11.4 Remaining work
 
-- **MET-9** (paired with MET-3): `CacheService` still performs read-copy
-  `trackDao.update`/`upsert` for cache flags. Add targeted cache-column updates
-  so a cache finish cannot clobber a concurrent `incrementPlayCount`.
-- **DM-3, CP-3/5/6, CP-1 (+CP-12)** remain the rest of P1.
-- **DM-5 follow-ups:** the freshness check is N+1 across mixes (cheap at personal
-  scale per §7.4, but batch it if Home-open latency regresses); Home still
-  shares the repository's generation mutex with the sync screen, which can show
-  the generation spinner while waiting.
+> **Superseded (2.1.0 cut):** MET-9 / DM-3 / CP-1 / CP-3 / CP-5 / CP-6 / CP-12
+> landed in §11.5–11.11. The bullets below are a historical snapshot from the
+> first P0/P1 implementation pass, not open work.
+
+- ~~**MET-9**~~ → §11.5
+- ~~**DM-3, CP-3/5/6, CP-1 (+CP-12)**~~ → §11.5–11.8
+- **DM-5 follow-ups (still open, non-blocking):** the freshness check is N+1
+  across mixes (cheap at personal scale per §7.4, but batch it if Home-open
+  latency regresses); Home still shares the repository's generation mutex with
+  the sync screen, which can show the generation spinner while waiting.
 - **Residual risks** in §10.7 still apply. In particular, MET-1 has no meaningful
   unit seam (§10.7 item 4); its fix is verified by code inspection and the
   process-scoped `@Singleton` wiring, not by a destroy-cleanup test.

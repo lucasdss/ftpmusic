@@ -11,6 +11,18 @@ sealed class CastQueueAction {
 
     /** One RMC remove for many items — receiver autoplay-tail prune (ADR-0053). */
     data class RemoveAll(val entryIds: List<Int>) : CastQueueAction()
+
+    /**
+     * CP-7 Cast prune+append as one optimistic revision: remove then insert,
+     * with a single final castAck (ADR-0111). Separate RemoveAll→AddAll would
+     * commit on the first ack and leave the second unable to roll back.
+     */
+    data class RemoveThenAddAll(
+        val entryIds: List<Int>,
+        val mediaItems: List<MediaItem>,
+        val beforeEntryId: Int? = null,
+    ) : CastQueueAction()
+
     data class Remove(val entryId: Int) : CastQueueAction()
     data class Move(val entryId: Int, val beforeEntryId: Int?) : CastQueueAction()
     data class JumpTo(val entryId: Int) : CastQueueAction()
@@ -21,11 +33,20 @@ sealed class CastQueueAction {
 /** Stable diagnostic token — never R8-minified simpleName alone (ADR-0111). */
 internal fun castQueueActionDiag(action: CastQueueAction): String = when (action) {
     is CastQueueAction.Add -> "Add"
+
     is CastQueueAction.AddAll -> "AddAll count=${action.mediaItems.size}"
+
     is CastQueueAction.RemoveAll -> "RemoveAll count=${action.entryIds.size}"
+
+    is CastQueueAction.RemoveThenAddAll ->
+        "RemoveThenAddAll remove=${action.entryIds.size} add=${action.mediaItems.size}"
+
     is CastQueueAction.Remove -> "Remove"
+
     is CastQueueAction.Move -> "Move"
+
     is CastQueueAction.JumpTo -> "JumpTo"
+
     is CastQueueAction.ClearAndPlay -> "ClearAndPlay count=${action.mediaItems.size}"
 }
 
@@ -74,6 +95,15 @@ class CastQueueCommandExecutor(private val toQueueItem: (MediaItem) -> MediaQueu
                 // Absent ids mean the receiver already trimmed the prefix; never
                 // send INVALID_ITEM_ID as a removal target.
                 if (resolved.isNotEmpty()) receiver.removeAll(resolved)
+            }
+
+            is CastQueueAction.RemoveThenAddAll -> {
+                val itemIds = receiver.itemIds
+                val resolved = action.entryIds.filter(itemIds::contains).toIntArray()
+                if (resolved.isNotEmpty()) receiver.removeAll(resolved)
+                if (action.mediaItems.isEmpty()) return
+                val beforeId = resolve(action.beforeEntryId, receiver.itemIds)
+                receiver.insertAll(action.mediaItems.map(toQueueItem).toTypedArray(), beforeId)
             }
 
             is CastQueueAction.Remove -> {

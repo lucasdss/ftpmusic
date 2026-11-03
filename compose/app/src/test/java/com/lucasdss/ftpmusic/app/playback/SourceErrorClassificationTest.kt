@@ -310,9 +310,9 @@ class SourceErrorClassificationTest {
 
     @Test
     fun `recoveries inflate the aggregate but not the bound`() {
-        // Album/cached jumps are recoveries: they extend the summary but the trip
-        // stays on `disruptive`, so the PAUSE_BURST line can report n=8 while the
-        // aggregate count is higher.
+        // Album-run collapses stay non-disruptive recoveries: they extend the
+        // summary but the trip stays on `disruptive`, so PAUSE_BURST can report
+        // n=8 while the aggregate count is higher.
         val burst = AutoSkipBurst()
         repeat(AUTO_SKIP_BURST_THRESHOLD) { i ->
             burst.record(i * 2, nowMs = 1_000L + i, disruptiveEntry = true)
@@ -323,6 +323,39 @@ class SourceErrorClassificationTest {
         assertEquals(AUTO_SKIP_BURST_THRESHOLD, burst.disruptive)
         assertEquals(2 * AUTO_SKIP_BURST_THRESHOLD - 1, burst.count)
         assertTrue(burst.atThreshold())
+    }
+
+    @Test
+    fun `unreachable cached jumps are disruptive and trip the burst bound`() {
+        val burst = AutoSkipBurst()
+        repeat(AUTO_SKIP_BURST_THRESHOLD - 1) { i ->
+            assertFalse(
+                recordUnreachableCachedJump(
+                    burst,
+                    fromIdx = i,
+                    cachedIdx = i + 2,
+                    nowMs = 1_000L + i,
+                ),
+            )
+        }
+        assertTrue(
+            recordUnreachableCachedJump(
+                burst,
+                fromIdx = AUTO_SKIP_BURST_THRESHOLD - 1,
+                cachedIdx = AUTO_SKIP_BURST_THRESHOLD + 1,
+                nowMs = 2_000L,
+            ),
+        )
+        assertEquals(AUTO_SKIP_BURST_THRESHOLD, burst.disruptive)
+        assertEquals(2 * AUTO_SKIP_BURST_THRESHOLD, burst.itemsSkipped)
+    }
+
+    @Test
+    fun `unreachable jump with equal indices still counts one skipped`() {
+        val burst = AutoSkipBurst()
+        assertFalse(recordUnreachableCachedJump(burst, fromIdx = 3, cachedIdx = 3, nowMs = 1_000L))
+        assertEquals(1, burst.itemsSkipped)
+        assertEquals(1, burst.disruptive)
     }
 
     @Test

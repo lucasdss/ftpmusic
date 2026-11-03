@@ -143,6 +143,9 @@ object BtAutoplayStarter {
                 "result=notif_disabled",
             )
             BtResumeEvents.record("notif_disabled")
+            // API 33+: notify() without POST_NOTIFICATIONS throws SecurityException
+            // and would kill the BT receiver after an FGS denial.
+            return
         }
         val launch = Intent(context, MediaService::class.java).apply {
             action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY
@@ -170,7 +173,16 @@ object BtAutoplayStarter {
             )
             .build()
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(RESUME_NOTIFICATION_ID, notification)
+        try {
+            manager.notify(RESUME_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            android.util.Log.w("ftpmusic-bt", "Resume notify SecurityException: ${e.message}")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-bt",
+                "result=notif_security",
+            )
+            BtResumeEvents.record("notif_security")
+        }
     }
 
     /**
@@ -191,6 +203,7 @@ object BtAutoplayStarter {
                 "result=info_notif_disabled",
             )
             BtResumeEvents.record("info_notif_disabled")
+            return
         }
         val launch = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -206,7 +219,16 @@ object BtAutoplayStarter {
             .setContentIntent(pending)
             .build()
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(INFO_NOTIFICATION_ID, notification)
+        try {
+            manager.notify(INFO_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            android.util.Log.w("ftpmusic-bt", "Info notify SecurityException: ${e.message}")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                "ftpmusic-bt",
+                "result=info_notif_security",
+            )
+            BtResumeEvents.record("info_notif_security")
+        }
     }
 
     enum class StartResult {

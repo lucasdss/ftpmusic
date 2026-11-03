@@ -212,7 +212,7 @@ class AutoplayTailCapTest {
     }
 
     @Test
-    fun `casting emits AddAll then one RemoveAll and never ClearAndPlay`() {
+    fun `casting emits one RemoveThenAddAll and never ClearAndPlay`() {
         val mgr = manager()
         mgr.playAlbum(listOf(Track("base", "Base")), listOf("http://base"), skipPersistence = true)
         repeat(5) { appendBurst(mgr, "b$it") }
@@ -227,12 +227,13 @@ class AutoplayTailCapTest {
 
         appendBurst(mgr, "b5")
 
-        assertEquals(2, actions.size)
-        val remove = actions[0] as CastQueueAction.RemoveAll
-        assertEquals(10, remove.entryIds.size)
-        val add = actions[1] as CastQueueAction.AddAll
-        assertEquals(10, add.mediaItems.size)
+        assertEquals(1, actions.size)
+        val compound = actions.single() as CastQueueAction.RemoveThenAddAll
+        assertEquals(10, compound.entryIds.size)
+        assertEquals(10, compound.mediaItems.size)
         assertTrue(actions.none { it is CastQueueAction.ClearAndPlay })
+        assertTrue(actions.none { it is CastQueueAction.RemoveAll })
+        assertTrue(actions.none { it is CastQueueAction.AddAll })
     }
 
     @Test
