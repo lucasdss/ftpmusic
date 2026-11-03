@@ -26,6 +26,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -455,6 +456,81 @@ class DailyMixRepositoryTest {
             reachable = true,
         )
         assertTrue(snap.contains("skip regen mixId=1"))
+        // DM-15: the skip path holds the only freshness/penalty anchor, so it
+        // must never prune.
+        coVerify(exactly = 0) { genreMixDao.deleteDailyMixesBefore(any(), any<Long>()) }
+    }
+
+    @Test
+    fun `generateAllOutcome counts produced and empty-eligible mixes`() = runTest {
+        val rock = mixEntity(id = 1L, genres = "Rock")
+        val jazz = mixEntity(id = 2L, genres = "Jazz")
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(rock, jazz)
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
+        coEvery { trackDao.getMixTrackIdsByGenre("Jazz") } returns emptyList()
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"))
+        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
+
+        val result = repository.generateAllOutcome(today, manual = false)
+
+        assertEquals(1, result.produced)
+        assertEquals(0, result.skippedFresh)
+        assertEquals(1, result.emptyEligible)
+        assertEquals(2, result.attempted)
+        assertFalse("one mix produced, so this is not an empty outcome", result.isEmptyOutcome)
+    }
+
+    @Test
+    fun `generateAllOutcome reports an all-fresh run as not empty`() = runTest {
+        val rock = mixEntity(id = 1L, genres = "Rock")
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"))
+        coEvery { genreMixDao.getDailyMix(any(), 1L) } returns null
+        coEvery { genreMixDao.getLatestDailyMix(1L) } returns
+            DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = System.currentTimeMillis())
+        coEvery { genreMixDao.getDailyMixTrackIds(3) } returns listOf("r1")
+
+        val result = repository.generateAllOutcome(today, manual = false)
+
+        assertEquals(0, result.produced)
+        assertEquals(1, result.skippedFresh)
+        assertEquals(0, result.emptyEligible)
+        assertEquals(0, result.attempted)
+        assertFalse("a fresh skip must not suppress same-day retries", result.isEmptyOutcome)
+    }
+
+    @Test
+    fun `generateAllOutcome reports an all-empty run as empty`() = runTest {
+        val mine = mixEntity(id = 1L, genres = "Rock")
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(mine)
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns emptyList()
+
+        val result = repository.generateAllOutcome(today, manual = false)
+
+        assertEquals(0, result.produced)
+        assertEquals(0, result.skippedFresh)
+        assertEquals(1, result.emptyEligible)
+        assertEquals(1, result.attempted)
+        assertTrue(result.isEmptyOutcome)
+    }
+
+    @Test
+    fun `successful regeneration prunes history older than yesterday`() = runTest {
+        val rock = mixEntity(id = 1L, genres = "Rock")
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"))
+        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
+
+        repository.generateAll(today, manual = false)
+
+        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+        coVerify(exactly = 1) { genreMixDao.deleteDailyMixesBefore(yesterday, 1L) }
     }
 
     @Test
@@ -555,7 +631,7 @@ class DailyMixRepositoryTest {
         assertEquals(0, repository.generateAll(today, manual = false))
         coVerify { genreMixDao.deleteDailyMix(today, 1L) }
         coVerify { genreMixDao.deleteDailyMix(yesterday, 1L) }
-        coVerify { genreMixDao.deleteDailyMixesBefore(yesterday, 1L) }
+        coVerify(exactly = 1) { genreMixDao.deleteDailyMixesBefore(yesterday, 1L) }
         coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
     }
 

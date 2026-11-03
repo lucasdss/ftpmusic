@@ -908,7 +908,9 @@ class LibraryViewModel @Inject constructor(
      * Returns true when a run was attempted (callers re-read the mixes after).
      * Suppressed while: another generation is in-flight (global gate), a
      * metadata sync is repopulating the library, or a same-day run already
-     * produced nothing (empty pools — retry tomorrow).
+     * produced nothing from eligible mixes (empty pools — retry tomorrow).
+     * A run where every mix was merely skipped as fresh is not an empty
+     * outcome and must not suppress later attempts the same day (DM-14).
      */
     private suspend fun maybeGenerateMixes(): Boolean {
         val today = java.time.LocalDate.now().toString()
@@ -917,16 +919,19 @@ class LibraryViewModel @Inject constructor(
             if (metadataSyncWorker.status.value.isRunning) return false
             if (!DailyMixGenerationCoordinator.shouldAttemptToday(today)) return false
             _state.value = _state.value.copy(isGeneratingMixes = true)
-            val produced = withContext(ioDispatcher) {
-                dailyMixRepository.generateAll(today, manual = false)
+            val result = withContext(ioDispatcher) {
+                dailyMixRepository.generateAllOutcome(today, manual = false)
             }
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-dailymix",
-                "maybeGenerateMixes date=$today produced=$produced",
+                "maybeGenerateMixes date=$today produced=${result.produced} " +
+                    "skippedFresh=${result.skippedFresh} emptyEligible=${result.emptyEligible}",
             )
-            if (produced == 0) {
-                // Empty outcome (e.g. no genres populated yet) — suppress
-                // same-day retries so every Home open doesn't re-run generation.
+            if (result.isEmptyOutcome) {
+                // Every eligible mix produced nothing (e.g. no genres populated
+                // yet) — suppress same-day retries so every Home open doesn't
+                // re-run generation. Never suppress on a fresh skip: the list
+                // may cross the age/listen threshold later today (DM-14).
                 DailyMixGenerationCoordinator.markEmptyAttempt(today)
             }
             return true

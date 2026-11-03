@@ -2283,6 +2283,17 @@ class LibraryViewModelTest {
         isDefault = true,
     )
 
+    private fun generatedAll(
+        produced: Int = 0,
+        skippedFresh: Int = 0,
+        emptyEligible: Int = 0,
+    ): com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository.GenerateAllResult =
+        com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository.GenerateAllResult(
+            produced = produced,
+            skippedFresh = skippedFresh,
+            emptyEligible = emptyEligible,
+        )
+
     @Test
     fun `loadDailyMixes returns empty when no albums synced`() = runTest(testDispatcher) {
         coEvery { metadataDao.albumCount() } returns 0
@@ -2315,7 +2326,7 @@ class LibraryViewModelTest {
         vm.loadDailyMixes()
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { dailyMixRepository.generateAll(any(), any(), any()) }
+        coVerify(exactly = 0) { dailyMixRepository.generateAllOutcome(any(), any(), any()) }
         assertEquals(1, vm.state.value.mixCards.size)
         assertEquals("Rock Mix", vm.state.value.mixCards[0].name)
         assertEquals(2, vm.state.value.mixCards[0].songCount)
@@ -2349,13 +2360,14 @@ class LibraryViewModelTest {
     fun `loadDailyMixes generates when no visible mixes exist`() = runTest(testDispatcher) {
         coEvery { metadataDao.albumCount() } returns 1
         coEvery { dailyMixRepository.getAll() } returns listOf(rockMix())
-        coEvery { dailyMixRepository.generateAll(any(), false, any()) } returns 1
+        coEvery { dailyMixRepository.generateAllOutcome(any(), false, any()) } returns
+            generatedAll(produced = 1)
         val vm = mixVm(dailyMixRepository)
 
         vm.loadDailyMixes()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { dailyMixRepository.generateAll(any(), false, any()) }
+        coVerify(exactly = 1) { dailyMixRepository.generateAllOutcome(any(), false, any()) }
         assertFalse(vm.state.value.isGeneratingMixes)
     }
 
@@ -2373,13 +2385,14 @@ class LibraryViewModelTest {
             com.lucasdss.ftpmusic.app.data.db.DailyMixTrackCount(mixId = 10, trackCount = 1),
         )
         coEvery { genreMixDao.getDailyMixCovers(10) } returns emptyList()
-        coEvery { dailyMixRepository.generateAll(any(), false, any()) } returns 1
+        coEvery { dailyMixRepository.generateAllOutcome(any(), false, any()) } returns
+            generatedAll(produced = 1)
         val vm = mixVm(dailyMixRepository)
 
         vm.loadDailyMixes()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { dailyMixRepository.generateAll(any(), false, any()) }
+        coVerify(exactly = 1) { dailyMixRepository.generateAllOutcome(any(), false, any()) }
     }
 
     @Test
@@ -2395,14 +2408,15 @@ class LibraryViewModelTest {
         vm.loadDailyMixes()
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { dailyMixRepository.generateAll(any(), any(), any()) }
+        coVerify(exactly = 0) { dailyMixRepository.generateAllOutcome(any(), any(), any()) }
     }
 
     @Test
     fun `loadDailyMixes does not retry same-day after an empty outcome`() = runTest(testDispatcher) {
         coEvery { metadataDao.albumCount() } returns 1
         coEvery { dailyMixRepository.getAll() } returns listOf(rockMix())
-        coEvery { dailyMixRepository.generateAll(any(), false, any()) } returns 0
+        coEvery { dailyMixRepository.generateAllOutcome(any(), false, any()) } returns
+            generatedAll(emptyEligible = 1)
         val vm = mixVm(dailyMixRepository)
 
         vm.loadDailyMixes()
@@ -2410,7 +2424,42 @@ class LibraryViewModelTest {
         vm.loadDailyMixes()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { dailyMixRepository.generateAll(any(), false, any()) }
+        coVerify(exactly = 1) { dailyMixRepository.generateAllOutcome(any(), false, any()) }
+    }
+
+    @Test
+    fun `loadDailyMixes retries when every mix was skipped as fresh`() = runTest(testDispatcher) {
+        coEvery { metadataDao.albumCount() } returns 1
+        coEvery { dailyMixRepository.getAll() } returns listOf(rockMix())
+        coEvery { dailyMixRepository.generateAllOutcome(any(), false, any()) } returns
+            generatedAll(skippedFresh = 1)
+        val vm = mixVm(dailyMixRepository)
+
+        // A missing card with a still-fresh list is not an empty outcome: the
+        // list can cross the age threshold later today, so a second load must
+        // be allowed to retry (DM-14).
+        vm.loadDailyMixes()
+        advanceUntilIdle()
+        vm.loadDailyMixes()
+        advanceUntilIdle()
+
+        coVerify(exactly = 2) { dailyMixRepository.generateAllOutcome(any(), false, any()) }
+    }
+
+    @Test
+    fun `loadDailyMixes retries when fresh and empty outcomes are mixed`() = runTest(testDispatcher) {
+        coEvery { metadataDao.albumCount() } returns 1
+        coEvery { dailyMixRepository.getAll() } returns listOf(rockMix(1L), rockMix(2L))
+        coEvery { dailyMixRepository.generateAllOutcome(any(), false, any()) } returns
+            generatedAll(skippedFresh = 1, emptyEligible = 1)
+        val vm = mixVm(dailyMixRepository)
+
+        vm.loadDailyMixes()
+        advanceUntilIdle()
+        vm.loadDailyMixes()
+        advanceUntilIdle()
+
+        coVerify(exactly = 2) { dailyMixRepository.generateAllOutcome(any(), false, any()) }
     }
 
     @Test
@@ -2423,7 +2472,7 @@ class LibraryViewModelTest {
         vm.loadDailyMixes()
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { dailyMixRepository.generateAll(any(), any(), any()) }
+        coVerify(exactly = 0) { dailyMixRepository.generateAllOutcome(any(), any(), any()) }
     }
 
     @Test

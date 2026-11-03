@@ -39,4 +39,17 @@ class DailyMixGenerationCoordinatorTest {
         assertFalse("Same-day retry must be suppressed", DailyMixGenerationCoordinator.shouldAttemptToday("2026-08-19"))
         assertTrue("Next-day attempt must be allowed", DailyMixGenerationCoordinator.shouldAttemptToday("2026-08-20"))
     }
+
+    @Test
+    fun `clearEmptyAttempt allows a same-day retry`() {
+        DailyMixGenerationCoordinator.markEmptyAttempt("2026-08-19")
+        assertFalse(DailyMixGenerationCoordinator.shouldAttemptToday("2026-08-19"))
+
+        DailyMixGenerationCoordinator.clearEmptyAttempt()
+
+        assertTrue(
+            "Adding a mix must unblock the same day",
+            DailyMixGenerationCoordinator.shouldAttemptToday("2026-08-19"),
+        )
+    }
 }

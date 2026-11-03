@@ -14,6 +14,7 @@ import com.lucasdss.ftpmusic.app.data.repository.CustomMix
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.data.repository.MixFilters
 import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
+import com.lucasdss.ftpmusic.app.playback.DailyMixGenerationCoordinator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -436,6 +437,10 @@ class CustomDailyMixesViewModel @Inject constructor(
                         return@launch
                     }
                     _toast.value = "\"$name\" added"
+                    // The new recipe has no tracklist yet. A same-day empty
+                    // attempt on Home would otherwise keep it card-less until
+                    // tomorrow (DM-14).
+                    DailyMixGenerationCoordinator.clearEmptyAttempt()
                     id
                 } else {
                     repository.updateMix(

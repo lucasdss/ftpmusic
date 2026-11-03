@@ -112,6 +112,38 @@ class DailyMixRepository @Inject constructor(
         val pools: Map<Long, List<DailyMixGenerator.SongInfo>>,
     )
 
+    /** Why a single mix's generation attempt ended the way it did. */
+    enum class MixGenerationStatus {
+        /** A tracklist was generated and persisted. */
+        PRODUCED,
+
+        /** The persisted list is still fresh; nothing was written. */
+        SKIPPED_FRESH,
+
+        /** The recipe was eligible but yielded nothing (empty pool / no tracks). */
+        EMPTY_ELIGIBLE,
+    }
+
+    /** Result of one [generateForMix] attempt. */
+    data class MixGenerationOutcome(val trackIds: List<String>, val status: MixGenerationStatus)
+
+    /**
+     * Aggregate result of one [generateAllOutcome] run.
+     *
+     * [skippedFresh] is kept separate from [emptyEligible] because a run where
+     * every mix was merely still fresh must not be recorded as an empty
+     * outcome: the list can cross the age/listen threshold later the same day
+     * (DM-14).
+     */
+    data class GenerateAllResult(val produced: Int, val skippedFresh: Int, val emptyEligible: Int) {
+        /** Mixes that actually reached generation or were eligible but empty. */
+        val attempted: Int get() = produced + emptyEligible
+
+        /** True only when every attempted mix was eligible but produced nothing. */
+        val isEmptyOutcome: Boolean
+            get() = produced == 0 && skippedFresh == 0 && emptyEligible > 0
+    }
+
     /** Per-run dimension caches: a genre/decade shared by several mixes is
      *  resolved once. Favorites and disliked artist names (name-only tracks)
      *  are fetched once too. Album/artist-id dislike is applied in SQL JOINs. */
@@ -330,11 +362,18 @@ class DailyMixRepository @Inject constructor(
 
     /**
      * Generate/refresh one mix's tracklist for [context.date]. Never persists
-     * an empty mix. Returns the generated track ids (empty when skipped or
-     * when the source pool yields nothing).
+     * an empty mix.
+     *
+     * The returned [MixGenerationOutcome] distinguishes a fresh skip from an
+     * eligible-but-empty recipe so callers can tell "nothing to do yet" apart
+     * from "produced nothing" (DM-14).
      */
-    suspend fun generateForMix(context: GenerationContext, mix: CustomMixEntity, manual: Boolean): List<String> {
-        val songs = context.pools[mix.id] ?: return emptyList()
+    suspend fun generateForMix(
+        context: GenerationContext,
+        mix: CustomMixEntity,
+        manual: Boolean,
+    ): MixGenerationOutcome {
+        val songs = context.pools[mix.id].orEmpty()
         if (songs.isEmpty()) {
             // The recipe no longer matches anything: drop any stale tracklist
             // so Home/detail stop serving tracks that violate the filters.
@@ -350,7 +389,7 @@ class DailyMixRepository @Inject constructor(
                 "ftpmusic-dailymix",
                 "empty pool delete mixId=${mix.id} date=${context.date}",
             )
-            return emptyList()
+            return MixGenerationOutcome(emptyList(), MixGenerationStatus.EMPTY_ELIGIBLE)
         }
 
         val existingMix = genreMixDao.getLatestDailyMix(mix.id)
@@ -396,7 +435,7 @@ class DailyMixRepository @Inject constructor(
                 "ftpmusic-dailymix",
                 "skip regen mixId=${mix.id} listened=$listenedCount total=${existingIds.size} manual=$manual",
             )
-            return emptyList()
+            return MixGenerationOutcome(emptyList(), MixGenerationStatus.SKIPPED_FRESH)
         }
 
         val poolIds = songs.mapTo(mutableSetOf()) { it.id }
@@ -427,40 +466,63 @@ class DailyMixRepository @Inject constructor(
             yesterdayIds,
             previouslyListenedTrackIds = previouslyListenedIds,
         )
-        if (generated.isEmpty()) return emptyList()
+        if (generated.isEmpty()) {
+            return MixGenerationOutcome(emptyList(), MixGenerationStatus.EMPTY_ELIGIBLE)
+        }
 
         genreMixDao.replaceDailyMix(
             context.date,
             mix.id,
             generated.mapIndexed { idx, s -> DailyMixTrackEntity(mixId = 0, trackId = s.id, position = idx) },
         )
+        // DM-15: bound the history at today + yesterday. Every reader only
+        // uses today/yesterday or the latest row. Best-effort: if the process
+        // dies before this DELETE, the next successful generation prunes the
+        // leftovers; a crash can never leave orphaned tracks (FK CASCADE).
+        genreMixDao.deleteDailyMixesBefore(context.yesterday, mix.id)
         val generatedIds = generated.map { it.id }
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-dailymix",
             "regen persist mixId=${mix.id} count=${generatedIds.size} manual=$manual date=${context.date}",
         )
         mixCacheCoordinator.onGenerated(mix, generatedIds)
-        return generatedIds
+        return MixGenerationOutcome(generatedIds, MixGenerationStatus.PRODUCED)
     }
 
-    /** Generate every mix once. [onProgress] receives (done, total). */
+    /**
+     * Generate every mix once and report what each outcome was.
+     * [onProgress] receives (done, total).
+     */
+    suspend fun generateAllOutcome(
+        date: String,
+        manual: Boolean,
+        onProgress: (suspend (done: Int, total: Int) -> Unit)? = null,
+    ): GenerateAllResult = generationMutex.withLock {
+        withContext(ioDispatcher) {
+            val context = prepare(date)
+            val mixes = context.mixes
+            if (mixes.isEmpty()) return@withContext GenerateAllResult(0, 0, 0)
+            var produced = 0
+            var skippedFresh = 0
+            var emptyEligible = 0
+            mixes.forEachIndexed { index, mix ->
+                when (generateForMix(context, mix, manual).status) {
+                    MixGenerationStatus.PRODUCED -> produced++
+                    MixGenerationStatus.SKIPPED_FRESH -> skippedFresh++
+                    MixGenerationStatus.EMPTY_ELIGIBLE -> emptyEligible++
+                }
+                onProgress?.invoke(index + 1, mixes.size)
+            }
+            GenerateAllResult(produced, skippedFresh, emptyEligible)
+        }
+    }
+
+    /** Generate every mix once. Returns the number of mixes produced. */
     suspend fun generateAll(
         date: String,
         manual: Boolean,
         onProgress: (suspend (done: Int, total: Int) -> Unit)? = null,
-    ): Int = generationMutex.withLock {
-        withContext(ioDispatcher) {
-            val context = prepare(date)
-            val mixes = context.mixes
-            if (mixes.isEmpty()) return@withContext 0
-            var produced = 0
-            mixes.forEachIndexed { index, mix ->
-                if (generateForMix(context, mix, manual).isNotEmpty()) produced++
-                onProgress?.invoke(index + 1, mixes.size)
-            }
-            produced
-        }
-    }
+    ): Int = generateAllOutcome(date, manual, onProgress).produced
 
     /**
      * Home freshness check (DM-5): true when at least one recipe's latest list
@@ -496,7 +558,7 @@ class DailyMixRepository @Inject constructor(
         withContext(ioDispatcher) {
             val mix = customMixDao.getById(mixId) ?: return@withContext emptyList()
             val context = prepare(LocalDate.now().toString())
-            generateForMix(context, mix, manual)
+            generateForMix(context, mix, manual).trackIds
         }
     }
 

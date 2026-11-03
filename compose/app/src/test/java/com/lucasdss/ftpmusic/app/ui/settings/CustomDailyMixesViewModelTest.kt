@@ -9,6 +9,7 @@ import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.repository.CustomMix
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.data.repository.MixFilters
+import com.lucasdss.ftpmusic.app.playback.DailyMixGenerationCoordinator
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -39,6 +40,7 @@ class CustomDailyMixesViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        DailyMixGenerationCoordinator.resetForTest()
         coEvery { repository.getAll() } returns emptyList()
         coEvery { repository.allGenres() } returns emptyList()
         coEvery { metadataDao.getAllStarredArtists() } returns emptyList()
@@ -49,6 +51,7 @@ class CustomDailyMixesViewModelTest {
 
     @After
     fun tearDown() {
+        DailyMixGenerationCoordinator.resetForTest()
         Dispatchers.resetMain()
     }
 
@@ -331,6 +334,46 @@ class CustomDailyMixesViewModelTest {
         }
         assertNull(model.state.value.editor)
         assertEquals("\"My Mix\" added", model.toast.value)
+    }
+
+    @Test
+    fun `saving a new mix clears the same-day empty attempt`() = runTest(testDispatcher) {
+        val today = java.time.LocalDate.now().toString()
+        DailyMixGenerationCoordinator.markEmptyAttempt(today)
+        assertFalse(DailyMixGenerationCoordinator.shouldAttemptToday(today))
+        val model = vm()
+        advanceUntilIdle()
+        model.openNew()
+        model.setName("My Mix")
+        model.toggleGenre("Rock")
+
+        model.save()
+        advanceUntilIdle()
+
+        assertTrue(
+            "Home must be allowed to generate the new mix today",
+            DailyMixGenerationCoordinator.shouldAttemptToday(today),
+        )
+    }
+
+    @Test
+    fun `a rejected add keeps the same-day empty attempt`() = runTest(testDispatcher) {
+        val today = java.time.LocalDate.now().toString()
+        DailyMixGenerationCoordinator.markEmptyAttempt(today)
+        coEvery { repository.addMix(any(), any(), any(), any()) } returns null
+        val model = vm()
+        advanceUntilIdle()
+        model.openNew()
+        model.setName("My Mix")
+        model.toggleGenre("Rock")
+
+        model.save()
+        advanceUntilIdle()
+
+        assertFalse(
+            "A failed add changed nothing, so suppression must stand",
+            DailyMixGenerationCoordinator.shouldAttemptToday(today),
+        )
     }
 
     @Test

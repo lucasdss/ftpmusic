@@ -8,9 +8,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Guards:
  * - [tryBegin]/[finish]: only one generation may run at a time (Home resume
  *   events, repeated opens, and the refresh button can otherwise overlap).
- * - [shouldAttemptToday]/[markEmptyAttempt]: when a generation run produces no
- *   mixes (empty genre pools), retrying on every Home open is wasted work — the
- *   next attempt is deferred until tomorrow (or whenever the library changes).
+ * - [shouldAttemptToday]/[markEmptyAttempt]/[clearEmptyAttempt]: when a
+ *   generation run produces no mixes (empty genre pools), retrying on every
+ *   Home open is wasted work — the next attempt is deferred until tomorrow, or
+ *   until a mix is added and [clearEmptyAttempt] runs.
  *
  * Not a coroutine scope and holds no references — purely a coordination flag.
  */
@@ -38,6 +39,15 @@ object DailyMixGenerationCoordinator {
     /** Records that a run produced no mixes on [today] (suppresses retries). */
     fun markEmptyAttempt(today: String) {
         lastEmptyAttemptDate = today
+    }
+
+    /**
+     * Clears a same-day empty mark so the next Home open may run generation
+     * again. Called after a mix is added: the new recipe has no tracklist yet,
+     * and waiting until tomorrow would leave Home without a card (DM-14).
+     */
+    fun clearEmptyAttempt() {
+        lastEmptyAttemptDate = null
     }
 
     /** Test hook — resets both guards between tests (the state is global). */

@@ -397,6 +397,39 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `daily mix pruning keeps today and yesterday and cascades older tracks`() = runBlocking {
+        val mixDao = db.customMixDao()
+        val mixId = mixDao.insert(CustomMixEntity(name = "Rock Mix", sourceKind = "genres", genresJson = "Rock"))
+        val genreMixDao = db.genreMixDao()
+        genreMixDao.replaceDailyMix(
+            "2026-09-08",
+            mixId,
+            listOf(DailyMixTrackEntity(mixId = 0, trackId = "old", position = 0)),
+        )
+        genreMixDao.replaceDailyMix(
+            "2026-09-09",
+            mixId,
+            listOf(DailyMixTrackEntity(mixId = 0, trackId = "y", position = 0)),
+        )
+        genreMixDao.replaceDailyMix(
+            "2026-09-10",
+            mixId,
+            listOf(DailyMixTrackEntity(mixId = 0, trackId = "t", position = 0)),
+        )
+        val oldRow = genreMixDao.getDailyMix("2026-09-08", mixId)!!
+
+        // DM-15 retention floor: yesterday is the anti-repeat/fallback anchor.
+        genreMixDao.deleteDailyMixesBefore("2026-09-09", mixId)
+
+        assertNull(genreMixDao.getDailyMix("2026-09-08", mixId))
+        assertEquals("older tracks must cascade", 0, genreMixDao.getDailyMixTrackCount(oldRow.id))
+        assertNotNull(genreMixDao.getDailyMix("2026-09-09", mixId))
+        val today = genreMixDao.getDailyMix("2026-09-10", mixId)!!
+        assertEquals(listOf("t"), genreMixDao.getDailyMixTrackIds(today.id))
+        assertEquals("2026-09-10", genreMixDao.getLatestDailyMix(mixId)!!.date)
+    }
+
+    @Test
     fun `getDailyMixCovers returns distinct covers in position order`() = runBlocking {
         val mixDao = db.customMixDao()
         val mixId = mixDao.insert(CustomMixEntity(name = "Rock Mix", sourceKind = "genres", genresJson = "Rock"))
