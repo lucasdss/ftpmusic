@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
@@ -44,6 +45,7 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.adp
 import com.lucasdss.ftpmusic.app.ui.components.MetricRow
+import com.lucasdss.ftpmusic.app.ui.components.PRIVACY_POLICY_URL
 import com.lucasdss.ftpmusic.app.ui.components.SectionCard
 import com.lucasdss.ftpmusic.app.ui.components.SectionDivider
 import com.lucasdss.ftpmusic.app.ui.components.SectionLabel
@@ -53,6 +55,7 @@ import com.lucasdss.ftpmusic.app.ui.components.SettingsPageScaffold
 import com.lucasdss.ftpmusic.app.ui.components.UpdateCheckRow
 import com.lucasdss.ftpmusic.app.ui.components.formatBytes
 import com.lucasdss.ftpmusic.app.ui.components.formatDurationMs
+import com.lucasdss.ftpmusic.app.ui.components.openHttpsUrl
 import com.lucasdss.ftpmusic.app.ui.components.openPlayStoreListing
 import com.lucasdss.ftpmusic.app.ui.components.timeAgo
 import com.lucasdss.ftpmusic.app.ui.cornerL
@@ -113,6 +116,36 @@ fun AboutSettingsScreen(
             SectionLabel("ABOUT / DIAGNOSTICS")
             SectionCard {
                 SectionRow("Version", viewModel.appVersionLabel())
+                SectionDivider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { openHttpsUrl(context, PRIVACY_POLICY_URL) }
+                        .padding(horizontal = spacingL(), vertical = spacingM())
+                        .testTag("settings_privacy_policy"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.OpenInNew,
+                        null,
+                        tint = BrandTeal,
+                        modifier = Modifier.size(iconSmall()),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.settings_about_privacy_title),
+                            color = Color.White,
+                            fontSize = textHeadingS(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            stringResource(R.string.settings_about_privacy_subtitle),
+                            color = Color(0xFF888888),
+                            fontSize = textLabelM(),
+                        )
+                    }
+                }
                 SectionDivider()
                 UpdateCheckRow(
                     updateCheck = state.updateCheck,

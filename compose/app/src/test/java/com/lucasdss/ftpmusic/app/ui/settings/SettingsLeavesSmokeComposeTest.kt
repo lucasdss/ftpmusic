@@ -135,4 +135,15 @@ class SettingsLeavesSmokeComposeTest {
             context.getString(R.string.settings_advanced_headers).uppercase(),
         ).assertIsDisplayed()
     }
+
+    @Test
+    fun `about leaf shows privacy policy row`() {
+        val vm = mockViewModel()
+        composeRule.setContent { AboutSettingsScreen(viewModel = vm) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(context.getString(R.string.settings_page_about)).assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_privacy_policy").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.settings_about_privacy_title))
+            .assertIsDisplayed()
+    }
 }

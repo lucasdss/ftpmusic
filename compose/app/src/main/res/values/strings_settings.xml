@@ -72,6 +72,8 @@
     <string name="settings_page_lastfm">Last.fm</string>
     <string name="settings_page_advanced">Advanced</string>
     <string name="settings_page_about">About</string>
+    <string name="settings_about_privacy_title">Privacy policy</string>
+    <string name="settings_about_privacy_subtitle">How FTP Music handles credentials, library data, and diagnostics</string>
 
     <!-- Shared chrome -->
     <string name="settings_status_ok">OK</string>

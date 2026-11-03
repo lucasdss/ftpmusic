@@ -621,3 +621,19 @@ fun openPlayStoreListing(context: android.content.Context, packageName: String) 
         }
     }
 }
+
+/** Opens an https URL in the default browser (About privacy policy, etc.). */
+fun openHttpsUrl(context: android.content.Context, url: String) {
+    val intent = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse(url),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (_: android.content.ActivityNotFoundException) {
+        // No browser — ignore.
+    }
+}
+
+/** Canonical Play / in-app privacy policy URL (PRIVACY.md). */
+const val PRIVACY_POLICY_URL = "https://blog.xdsa.net/posts/ftp-music-privacy-policy/"
