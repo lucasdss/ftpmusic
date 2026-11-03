@@ -3,6 +3,7 @@
 Date: 2026-10-01
 Status: Accepted
 Related: ADR-0052 (Surprise Me vs CP), ADR-0039 (dual queue),
+ADR-0093 (Cast CP), ADR-0094 (similar songs), ADR-0095 (Cast timeline),
 docs/CONTINUOUS_PLAY_BEHAVIOR_REPORT.md
 
 ## Context
@@ -38,3 +39,14 @@ toggle, not a hidden append.
 - Process death: Room `queue_items.is_autoplay` (v56) restores Autoplay section;
   `hasLoadedContinuation` set when any autoplay row restored (no double CP append).
 - In-process `AutoplayFlagMemory` remains JVM Bundle-stub only — not death SoT.
+
+## Amendment (2026-11-02)
+
+Decision #5's "out of scope" list is historical, not current behavior.
+ADR-0094 made server similarity the primary CP candidate source
+(`getSimilarSongs2`, up to 20 per burst) with the queue journal as fallback;
+ADR-0093 enabled CP appends while casting (`appendToContext` mutates Dual and
+emits one Cast `AddAll`, ADR-0111); ADR-0095 defines Dual as the Cast timeline
+source of truth. Server similarity is used only when online: local-only/offline
+mode skips the API and relies on the journal plus the local fallback ladder.
+Familiar/Discover chips remain out of scope.

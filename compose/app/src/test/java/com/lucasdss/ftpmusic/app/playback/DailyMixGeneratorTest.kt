@@ -113,7 +113,7 @@ class DailyMixGeneratorTest {
     }
 
     @Test
-    fun `higher rated tracks appear more frequently`() {
+    fun `rated artist with many tracks is represented in the mix`() {
         val rng = Random(42)
         val songs = (1..500).map {
             if (it <= 10) {
@@ -127,9 +127,10 @@ class DailyMixGeneratorTest {
         (6..10).forEach { ratings["star-$it"] = 4 }
         val result = DailyMixGenerator.generate(songs, ratings, emptyList(), random = rng)
         val starCount = result.count { it.id.startsWith("star-") }
-        // With 10 starred tracks × weight 5 = 50 weighted copies vs 490 × 1 = 490,
-        // expect roughly 50/540 ≈ 9% of result to be starred => ~6-9 in 60-120
-        assertTrue("Starred tracks should appear (got $starCount)", starCount >= 2)
+        // Weight orders tracks within an artist but does not make the artist
+        // appear "more often" in a statistical sense. StarArtist enters the
+        // round-robin like every other artist; this asserts representation.
+        assertTrue("Starred artist should appear (got $starCount)", starCount >= 2)
     }
 
     @Test
@@ -154,9 +155,11 @@ class DailyMixGeneratorTest {
     }
 
     @Test
-    fun `rating 5 gives roughly 5x weight over unrated`() {
+    fun `all rated unique-artist tracks are selected`() {
         val rng = Random(42)
-        // Rated tracks each have unique artists — all appear in round-robin
+        // Each rated track has its own artist, so round-robin visits every one.
+        // This is not evidence of a 5x probability; it checks that a rated
+        // track is not starved by a busier artist.
         val songs = mutableListOf<DailyMixGenerator.SongInfo>()
         repeat(10) { songs.add(song("star-$it", "StarArtist$it")) }
         repeat(90) { songs.add(song("u$it", "Artist${it % 15}")) }
@@ -164,6 +167,30 @@ class DailyMixGeneratorTest {
         val result = DailyMixGenerator.generate(songs, ratings, emptyList(), random = rng)
         val starCount = result.count { it.id.startsWith("star-") }
         assertTrue("All rated tracks appear (got $starCount)", starCount >= 10)
+    }
+
+    @Test
+    fun `weight determines deterministic priority order within an artist`() {
+        val weight5Ids = (1..5).map { "high-$it" }
+        val weight1Ids = (1..5).map { "low-$it" }
+        // Unique pseudo-albums keep album diversity equal, and the single
+        // artist removes round-robin/adjacency effects, so weight decides the
+        // order. This is a characterization of a rank, not a probability.
+        val songs = (weight5Ids + weight1Ids).map { song(it, "SoloArtist") }
+        val ratings = weight5Ids.associateWith { 5 }
+
+        val result = DailyMixGenerator.generate(
+            songs = songs,
+            ratings = ratings,
+            supplementalTracks = emptyList(),
+            random = Random(7),
+        )
+        val ids = result.map { it.id }
+
+        assertEquals(10, ids.size)
+        assertEquals(10, ids.distinct().size)
+        assertEquals(weight5Ids.toSet(), ids.take(5).toSet())
+        assertEquals(weight1Ids.toSet(), ids.drop(5).toSet())
     }
 
     @Test
@@ -226,7 +253,7 @@ class DailyMixGeneratorTest {
     }
 
     @Test
-    fun `ratings with mixed star levels produce weighted distribution`() {
+    fun `mixed ratings keep both rating tiers represented`() {
         val rng = Random(42)
         val songs = (1..200).map {
             when {
@@ -240,17 +267,19 @@ class DailyMixGeneratorTest {
             }
         }
         val ratings = mutableMapOf<String, Int>()
-        (1..10).forEach { ratings["r5-$it"] = 5 } // weight 5 each = 50
-        (11..20).forEach { ratings["r3-$it"] = 3 } // weight 3 each = 30
-        // unrated: 180 tracks × weight 1 = 180
-        // total pool: 50 + 30 + 180 = 260
+        (1..10).forEach { ratings["r5-$it"] = 5 }
+        (11..20).forEach { ratings["r3-$it"] = 3 }
+        // Unrated tracks use weight 1. Weight only orders picks within an
+        // artist here; it is not a sampling probability.
 
         val result = DailyMixGenerator.generate(songs, ratings, emptyList(), random = rng)
         val r5Count = result.count { it.id.startsWith("r5-") }
         val r3Count = result.count { it.id.startsWith("r3-") }
 
-        // r5 (weight 5) should appear more often than r3 (weight 3)
-        assertTrue("r5 should appear more than r3 (got r5=$r5Count, r3=$r3Count)", r5Count >= r3Count)
+        assertTrue(
+            "Both rating tiers should be represented (got r5=$r5Count, r3=$r3Count)",
+            r5Count > 0 && r3Count > 0,
+        )
     }
 
     @Test

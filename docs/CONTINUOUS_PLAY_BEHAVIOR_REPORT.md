@@ -1,13 +1,20 @@
 # Continuous Play — Behavior Report
 
-Date: 2026-10-01
-Related: ADR-0052, ADR-0053, `docs/SURPRISE_ME_BEHAVIOR_REPORT.md`, ADR-0039
+Date: 2026-11-02
+Related: ADR-0039, ADR-0052, ADR-0053, ADR-0093, ADR-0094, ADR-0095,
+ADR-0111, `docs/SURPRISE_ME_BEHAVIOR_REPORT.md`
 
 ## Scope
 
-When playback reaches the **last** timeline item (or `STATE_ENDED` on last) and
-Continuous Play is ON, append up to 10 journal-selected tracks to **CONTEXT**
-stamped as **Autoplay** (`is_autoplay`). Never Priority. Separate from Surprise Me.
+Continuous Play (CP) appends a labeled **Autoplay** tail to **CONTEXT** when
+the active queue nears its end. Every appended item is stamped
+`is_autoplay=true` and stays CONTEXT — never PRIORITY. CP is separate from
+Surprise Me (ADR-0052) and is a user-visible, toggleable queue section, not a
+hidden append.
+
+CP runs on the local player and while casting. While casting, Dual is the
+timeline source of truth and `appendToContext` mutates Dual then emits one Cast
+`AddAll` (ADR-0093, ADR-0111).
 
 ## Settings + Queue UI
 
@@ -15,45 +22,137 @@ stamped as **Autoplay** (`is_autoplay`). Never Priority. Separate from Surprise 
 |---|---|---|
 | Continuous Play toggle | `KEY_CONTINUOUS_PLAY_ENABLED` | `PlaybackManager.continuousPlayEnabled` |
 | Journal history size | `KEY_QUEUE_JOURNAL_CAP` | `PlaybackManager.setJournalCap` |
-| Queue · Autoplay Switch | same key | `PlaybackViewModel.setContinuousPlayEnabled` |
+| Queue · Autoplay switch | same key | `PlaybackViewModel.setContinuousPlayEnabled` |
 | Clear Autoplay | — | `clearAutoplayQueue()` removes `is_autoplay` rows only |
 
 Hydrated at boot via `PreferenceBootstrap.hydrateJournalAndContinuousPlay()`.
+The switch stays interactive while casting (ADR-0093). `setJournalCap` clamps
+to 10..500 (default 100); the Settings slider exposes 100..500 in steps of 50.
+
+## Trigger
+
+`ContinuousPlayGate.shouldLoadContinuation` fires when all of the following
+hold:
+
+- Continuous Play is enabled.
+- The once-per-stint latch (`hasLoadedContinuation`) is unspent.
+- The timeline index is valid (`0 <= index < count`; a Cast/Dual `-1` or a
+  windowed index fails closed).
+- At most **3** tracks remain after the current one
+  (`remaining = count - 1 - index <= LOW_WATER_MARK`).
+
+The load is prefetched at that low-water mark so the similar-songs/journal
+round trip can finish before the queue ends (CP-5). `STATE_ENDED` remains the
+last-chance trigger. If a `STATE_ENDED` retry arrives while a load is still in
+flight, `ContinuousPlayRetry` remembers it and replays it once after the load
+finishes, provided nothing was appended and the coroutine was not cancelled
+(CP-14). A deferred retry is suppressed when the user has skipped to another
+track (`lastTrackId != mediaId`).
+
+## Candidate order (one burst per load)
+
+`MediaService.maybeLoadContinuousPlay` tries these in order. The first
+non-empty source is appended and the load returns; the sources are **not**
+additive.
+
+1. **Similar songs (online only).** When not in local-only mode and the media
+   id is non-blank: `fetchSimilarSongs(mediaId, count = 20)`; exclude ids
+   already in the active queue and apply the CP-2 dislike ledgers. If
+   non-empty, append up to 20 and return.
+2. **Queue journal.** Read recent entries, parse with
+   `JournalTrackSelector.parse(entryCap = journalCap, poolCap = 800)`, score
+   and select up to 10 with `JournalTrackSelector.select`, then resolve through
+   `ContinuousPlayLoader.resolve`. The selector excludes the whole active
+   queue and the track/album/artist dislike ledgers. If non-empty, append and
+   return. Journal candidates are hydrated in 500-id chunks.
+3. **Local fallback ladder (CP-6).** `SAME_GENRE` → `SAME_ARTIST` →
+   `MOST_PLAYED` → `RANDOM`, skipping tiers whose context is unavailable.
+   Each tier reads at most 50 rows; picks accumulate across tiers up to a
+   target of 10. The whole active queue, the playing id, and the dislike
+   ledgers are filtered before slicing. Online uses the uncached queries;
+   offline uses the cached-only variants and the loader re-checks playability.
+
+If all three miss, nothing is appended, the latch stays unspent, and the
+diagnostic log records `continuous-play exhausted`. The next transition or
+`STATE_ENDED` retries.
+
+**Offline / local-only.** `LocalOnlyPolicy.isLocalOnly(offlineMode)` skips the
+similar-songs API. A journal or fallback candidate is playable only when its
+`cachedFilePath` is non-blank (`ContinuousPlayLoader.isPlayableOffline`).
+`isDownloaded = 1` alone is not sufficient (ADR-0095).
+
+**Whole-queue exclusion (CP-3).** The journal excludes every id already in the
+active queue, not just the played prefix. CP appends to that same context, so
+prefix-only exclusion would re-append upcoming or already-played rows depending
+on the cursor rule. A cursor-based prefix policy is deferred; when the whole
+pool is excluded the CP-6 ladder still uses the current track's genre/artist.
+
+## Latch and reset
+
+`hasLoadedContinuation` is set only after at least one track is appended. It is
+reset when the media id changes and on a forced `STATE_ENDED` retry. An empty
+result must not spend the latch, otherwise a temporarily empty journal/offline
+pool would permanently disable CP for that queue.
+
+## Counts and caps
+
+| Item | Value |
+|---|---|
+| Similar-songs API | up to 20 per burst |
+| Journal entry cap (`journalCap`) | 10..500, default 100 |
+| Journal pool cap | 800 de-duplicated ids |
+| Journal hydration chunk | 500 ids |
+| Journal select | up to 10 |
+| Fallback rows per tier | up to 50 |
+| Fallback burst target | up to 10 |
+
+`JournalTrackSelector.parse` sets `truncated` when the 800-id pool cap cuts
+ids; callers surface it in diagnostics. `getAllRecent()` itself is not row
+bounded by those caps: the journal table is evicted to `journalCap`, so the read
+returns at most that many entries, and the 800-id pool cap bounds parsed
+candidates rather than the row read. The older review wording
+"50-entry/5-track selector caps" is stale.
 
 ## Journal write
 
-Upsert on sourced context start when **both** `sourceType` + `sourceId` set:
-`playAlbum`, `shuffleAlbum`, `pushContext`, `playSingleTrack`, Surprise Me,
-**genre mixes** (`genremix` / mix id).
+`PlaybackManager.journalQueue` upserts a `QueueJournalEntity` when both a
+source type and id are non-blank, then evicts to `journalCap`. An explicit
+`journalSource` wins over the legacy `sourceType`/`sourceId` pair. Current
+call sites:
 
-**Not journaled:** add-to-queue, play-next, radio, Continuous Play appends.
+- `playAlbum` / `shuffleAlbum`: album, artist, playlist, Downloads.
+- `playSingleTrack`: search and profile track taps.
+- `pushContext`: only when both legacy source args are supplied.
+- Genre mixes: `genremix` with the mix id.
+- Surprise Me: `tryStartContext` with `random` / `surprise-me`.
+- Favorites: `favorites` / `liked` in LIKED mode only.
 
-## Trigger (MediaService)
+**Not journaled:** add-to-queue, play-next, radio, Continuous Play appends, and
+Favorites DISLIKED mode.
 
-`maybeLoadContinuousPlay`:
+**CP-1/CP-12 caveat.** An explicit `journalSource` journals without clearing
+Priority, which is why tap paths use it. The legacy `sourceType` +
+`sourceId` path still clears Priority in `playAlbum`/`shuffleAlbum`; do not use
+it for a track tap that must preserve Priority.
 
-1. Gate via `ContinuousPlayGate` (!cast, enabled, last index, !already loaded).
-2. IO: journal → `JournalTrackSelector` → `ContinuousPlayLoader.resolve`
-   (offline: downloaded/cached only).
-3. Empty candidates → **do not** set `hasLoadedContinuation` (retry on
-   STATE_ENDED / later transition).
-4. Main: one `appendToContext(..., asAutoplay=true)` → then set flag.
+## Queue sections
 
-## Queue sections (ADR-0053)
+1. **Queue** — PRIORITY (Play Next / Add to Queue at the manual-end position).
+2. **Continue Playing** — CONTEXT rows that are not autoplay.
+3. **Autoplay** — CONTEXT rows with `is_autoplay=true`, plus the CP toggle and
+   Clear Autoplay.
+4. **Queued later** — LATE rows (Add to Queue with session-end placement),
+   after CONTEXT (ADR-0135).
 
-1. **Queue** — Priority  
-2. **Continue Playing** — context `!isAutoplay`  
-3. **Autoplay** — context `isAutoplay` + toggle
-
-## Cast
-
-Continuous Play skipped while casting (`ContinuousPlayGate`).
-
-**UI honesty (2026-10):** Queue sheet Autoplay Switch is disabled while casting
-with caption “Unavailable while casting” so the preference ON state does not
-imply CP will extend the Cast timeline. Preference still applies after Cast ends.
+Clear Autoplay removes only autoplay rows. While casting it re-syncs the
+remaining Dual queue to the receiver; non-autoplay rows are preserved.
 
 ## Tests
 
-`ContinuousPlayLoaderTest`, `ContinuousPlayGateTest`, `ContinuousPlayTest`,
-`QueueJournalTest`, QueueProjection autoplay flags.
+`ContinuousPlayGateTest`, `ContinuousPlayRetryTest`,
+`ContinuousPlayFallbackTest`, `JournalTrackSelectorTest`,
+`ContinuousPlayLoaderTest`, `ContinuousPlayTest`, `QueueJournalTest`,
+`DaosRoomTest` fallback queries, QueueProjection autoplay flags, and the Cast
+queue tests. There is no service-level harness that exercises
+`maybeLoadContinuousPlay` end to end; the pure gate, selector, fallback, and
+retry holders carry that coverage.

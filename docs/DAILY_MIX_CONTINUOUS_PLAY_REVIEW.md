@@ -2226,10 +2226,49 @@ the pure holder tests plus compile-time checks, not by a service harness.
 ADR-0053 Decision #1 now records the low-water prefetch, in-flight retry, and
 the corrected offline filter. Cross-model: DeepSeek plan → Mistral challenge
 (3 vs 2 low-water, cancellation, ENDED resume) → DeepSeek reconciliation →
-implementation → Phase-5 audits below. DeepSeek audit returned reasoned OK
+implementation → Phase-5 audits. DeepSeek audit returned reasoned OK
 with non-blocking test/doc notes (count=1 and real-cancellation tests added;
 service-level wiring documented as untested); Mistral challenged back-to-back
 refiring and a stale-`mediaId` retry, the stale-track retry was fixed with the
 `lastTrackId` guard, and Mistral withdrew the refiring finding after the call
 sites showed a cooldown would suppress CP-14's intended ENDED retry. Both
 returned reasoned OK.
+
+### 11.9 Iteration log — CP-8 + DM-6 + MET-5/6 docs and tests (2026-11-02)
+
+| ID | Change |
+|---|---|
+| CP-8 | Rewrote `docs/CONTINUOUS_PLAY_BEHAVIOR_REPORT.md` for the current flow: 3-track low-water prefetch, `STATE_ENDED` last chance, one burst per load (similar ≤20 online **or** journal ≤10 **or** fallback ≤10), CP-3 whole-queue exclusion, CP-2 dislike ledgers, offline `cachedFilePath` eligibility, CP-14 retry/stale-track suppression, Cast support, actual journal call sites, and current caps (journal rows are `journalCap`-bounded by eviction; the 800-id pool cap bounds parsed candidates after the read). Appended an ADR-0053 amendment referencing ADR-0093/0094/0095; Decision #5's "out of scope" list is now historical, not current behavior. |
+| DM-6 | Documented `DailyMixGenerator` weight as a **deterministic priority rank**, not a probability, and corrected the stale "max 4 tracks per artist" note to the dynamic `maxTracksPerArtist` soft cap. Renamed the misleading tests to presence/representation checks, removed the "5x" and "weighted distribution" claims, and added a characterization test proving that within one artist the five weight-5 tracks are selected before the five weight-1 tracks (unique ids, target 10). |
+| MET-5 | Closed as an **accepted trade-off** (ADR-0046 thresholded listens by design). No `listen_events` schema change, no migration; skip/context learning remains a future enhancement. |
+| MET-6 | Closed as **informational**. The 52→53 recursive CTE only runs for databases ≤52; the app schema is v68. `MIGRATION_52_53` was not edited. Backfill rows are synthetic and excluded from honest minutes. |
+
+Decisions and rejected alternatives:
+
+- **No weighted sampling.** DM-6's alternative (Efraimidis–Spirakis sampling)
+  would change mix behavior and need statistical tests; the review explicitly
+  permits documenting deterministic ranking instead. A statistical test would
+  encode a model the code does not implement.
+- **No `listen_events` expansion.** MET-5 is a schema/product decision, not a
+  bug fix; adding nullable columns and a retention policy belongs in its own
+  migration iteration.
+- **No migration cap edit.** MET-6 is unreachable for current installs; editing
+  an already-shipped migration would add risk without user benefit.
+- **Documented caveats rather than blessing bugs:** legacy
+  `sourceType`+`sourceId` still clears Priority (tap paths use `journalSource`);
+  the 800-id pool cap can truncate with `poolTruncated` diagnostics; runtime
+  `journalCap` clamps 10..500 while the Settings slider exposes 100..500.
+
+Verification: `DailyMixGeneratorTest` green; full `:app:testDebugUnitTest`
+green; `ktlintTestSourceSetCheck` green; `ktlintMainSourceSetCheck` reports only
+the same pre-existing unrelated violations in `PlaySuppressionWatch.kt`,
+`LibraryScreen.kt`, and `LibraryViewModel.kt`. Cross-model: DeepSeek plan →
+Mistral challenge (several file/line citations were fabricated and rejected;
+valid coverage gaps for CP-2/3/5/6/14 and Cast were folded in) → DeepSeek
+reconciliation returned OK. Phase-5: DeepSeek audit returned reasoned OK after
+a journal-cap wording correction (`getAllRecent()` is row-bounded by
+`journalCap` eviction, not by the 800-id pool cap); Mistral challenged the
+DM-6 mixed-tier assertion, then withdrew after the probability-vs-contract
+clarification and returned reasoned OK. Remaining P2 work: **CP-7**
+(autoplay-tail cap, prune, restore bound, Cast-aware removal), then CP-15/CP-16
+documentation cleanup if still in scope.

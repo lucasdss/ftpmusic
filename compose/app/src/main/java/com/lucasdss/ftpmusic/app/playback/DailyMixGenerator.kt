@@ -4,16 +4,22 @@ import kotlin.random.Random
 
 /**
  * Generates a Daily Mix that maximizes artist and album diversity before
- * applying weight-based selection. Uses a round-robin approach through artists,
+ * applying weight-based priority. Uses a round-robin approach through artists,
  * preferring unplayed albums within each artist.
+ *
+ * Weight is a deterministic priority rank, not a probability: within an artist
+ * the highest-weight tracks are chosen first, and no track is sampled
+ * proportionally. Once an artist's soft cap is reached, a high-weight track
+ * does not get extra picks.
  *
  * Rules:
  * - Random target size between 30 and 120
  * - No two consecutive tracks from the same artist
  * - Phase 1: round-robin through artists (1 track per artist per round)
  * - Phase 2: within artist, prefer tracks from unused albums
- * - Phase 3: fill remaining with highest-weight tracks (play count + star/rating)
- * - Max 4 tracks per artist (maxPerArtist)
+ * - Phase 3: fill remaining in descending weight order (play count + star/rating)
+ * - Per-artist cap is a soft dynamic limit (maxTracksPerArtist), relaxed when
+ *   no uncapped alternative remains
  * - Yesterday's tracks get weight penalty
  */
 object DailyMixGenerator {
