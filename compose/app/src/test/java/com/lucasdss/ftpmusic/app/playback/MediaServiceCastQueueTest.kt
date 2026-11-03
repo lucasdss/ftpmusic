@@ -598,6 +598,27 @@ class MediaServiceCastQueueTest {
     }
 
     @Test
+    fun `syncLocalToRemote RemoveAll sends one batched queueRemoveItems`() {
+        injectField(service, "castMediaQueue", mockMediaQueue)
+        service.syncLocalToRemote(CastQueueAction.RemoveAll(listOf(2, 4, 99)))
+
+        verify(exactly = 1) {
+            mockRmc.queueRemoveItems(
+                match { it.size == 2 && it.contains(2) && it.contains(4) },
+                isNull(),
+            )
+        }
+    }
+
+    @Test
+    fun `syncLocalToRemote RemoveAll with no receiver match sends no RMC call`() {
+        injectField(service, "castMediaQueue", mockMediaQueue)
+        service.syncLocalToRemote(CastQueueAction.RemoveAll(listOf(98, 99)))
+
+        verify(exactly = 0) { mockRmc.queueRemoveItems(any(), any()) }
+    }
+
+    @Test
     fun `syncLocalToRemote JumpTo sends queueJumpToItem`() {
         injectField(service, "castMediaQueue", mockMediaQueue)
         service.syncLocalToRemote(CastQueueAction.JumpTo(3))

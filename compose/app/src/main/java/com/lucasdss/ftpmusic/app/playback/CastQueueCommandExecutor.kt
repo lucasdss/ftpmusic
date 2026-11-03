@@ -8,6 +8,9 @@ sealed class CastQueueAction {
 
     /** One RMC insert for many items — single optimistic revision / castAck (ADR-0111). */
     data class AddAll(val mediaItems: List<MediaItem>, val beforeEntryId: Int? = null) : CastQueueAction()
+
+    /** One RMC remove for many items — receiver autoplay-tail prune (ADR-0053). */
+    data class RemoveAll(val entryIds: List<Int>) : CastQueueAction()
     data class Remove(val entryId: Int) : CastQueueAction()
     data class Move(val entryId: Int, val beforeEntryId: Int?) : CastQueueAction()
     data class JumpTo(val entryId: Int) : CastQueueAction()
@@ -19,6 +22,7 @@ sealed class CastQueueAction {
 internal fun castQueueActionDiag(action: CastQueueAction): String = when (action) {
     is CastQueueAction.Add -> "Add"
     is CastQueueAction.AddAll -> "AddAll count=${action.mediaItems.size}"
+    is CastQueueAction.RemoveAll -> "RemoveAll count=${action.entryIds.size}"
     is CastQueueAction.Remove -> "Remove"
     is CastQueueAction.Move -> "Move"
     is CastQueueAction.JumpTo -> "JumpTo"
@@ -31,6 +35,10 @@ interface CastQueueReceiver {
     fun insert(item: MediaQueueItem, beforeItemId: Int)
     fun insertAll(items: Array<MediaQueueItem>, beforeItemId: Int)
     fun remove(itemId: Int)
+
+    /** Batch remove — one RMC revision (CP-7 autoplay-tail prune). */
+    fun removeAll(itemIds: IntArray)
+
     fun move(itemId: Int, beforeItemId: Int)
     fun jumpTo(itemId: Int)
 
@@ -58,6 +66,14 @@ class CastQueueCommandExecutor(private val toQueueItem: (MediaItem) -> MediaQueu
                 if (action.mediaItems.isEmpty()) return
                 val beforeId = resolve(action.beforeEntryId, receiver.itemIds)
                 receiver.insertAll(action.mediaItems.map(toQueueItem).toTypedArray(), beforeId)
+            }
+
+            is CastQueueAction.RemoveAll -> {
+                val itemIds = receiver.itemIds
+                val resolved = action.entryIds.filter(itemIds::contains).toIntArray()
+                // Absent ids mean the receiver already trimmed the prefix; never
+                // send INVALID_ITEM_ID as a removal target.
+                if (resolved.isNotEmpty()) receiver.removeAll(resolved)
             }
 
             is CastQueueAction.Remove -> {

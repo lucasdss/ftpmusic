@@ -18,6 +18,50 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
+ * CP-7: cap on autoplay-stamped CONTEXT rows in the merged queue. CP bursts are
+ * 10–20 tracks, so 50 keeps 2–3 bursts of headroom while bounding Room writes,
+ * restore time, and Up Next noise (ADR-0053 amendment).
+ */
+internal const val CONTINUOUS_PLAY_AUTOPLAY_CAP = 50
+
+/**
+ * Merged indices of autoplay rows to evict so that
+ * `existingAutoplay + incoming <= cap`. Ascending (oldest first) so callers can
+ * remove descending without index drift. The currently playing row is never
+ * evicted: [protectedEntryId] wins, then [protectedIndex] for legacy rows
+ * without a stamped id, then [protectedMediaId]. Index precedence avoids
+ * protecting the wrong copy when the same media id appears twice.
+ */
+internal fun autoplayEvictionIndices(
+    merged: List<MediaItem>,
+    incoming: Int,
+    protectedEntryId: Int,
+    protectedMediaId: String?,
+    protectedIndex: Int = -1,
+    cap: Int = CONTINUOUS_PLAY_AUTOPLAY_CAP,
+): List<Int> {
+    if (cap <= 0) return emptyList()
+    val autoplayIndices = merged.indices.filter { merged[it].isAutoplay() }
+    var overflow = autoplayIndices.size + incoming - cap
+    if (overflow <= 0) return emptyList()
+    val evictions = ArrayList<Int>(overflow)
+    for (index in autoplayIndices) {
+        if (overflow == 0) break
+        val item = merged[index]
+        val isProtected = when {
+            protectedEntryId > 0 -> item.queueEntryId() == protectedEntryId
+            protectedIndex >= 0 -> index == protectedIndex
+            protectedMediaId != null -> item.mediaId == protectedMediaId
+            else -> false
+        }
+        if (isProtected) continue
+        evictions.add(index)
+        overflow--
+    }
+    return evictions
+}
+
+/**
  * Centralizes playback commands: play album, shuffle album, play single track, add to queue.
  * Builds MediaItems from Track objects + pre-built stream URLs,
  * delegates to QueueManager.
@@ -574,9 +618,39 @@ class PlaybackManager @Inject constructor(
         }
         if (nextEntryId > 0) dualQueue.adoptNextEntryId(nextEntryId)
         val merged = dualQueue.getMerged()
-        val si = startIndex.coerceIn(0, merged.lastIndex.coerceAtLeast(0))
-        queueManager.playAll(merged, si, positionMs, playWhenReady = playWhenReady)
-        enqueuePlayQueue(alignedTracks, alignedUrls, si, src = "restoreQueue")
+        val requestedIndex = startIndex.coerceIn(0, merged.lastIndex.coerceAtLeast(0))
+        // CP-7: older builds persisted an unbounded autoplay tail. Trim on
+        // restore so a legacy snapshot can never keep more than the cap in Dual
+        // (and, below, in Room). The playing row is protected and remapped by
+        // entry id because removals before it shift merged indices.
+        val protectedItem = merged.getOrNull(requestedIndex)
+        val protectedEntryId = protectedItem?.queueEntryId() ?: 0
+        val evictions = autoplayEvictionIndices(
+            merged = merged,
+            incoming = 0,
+            protectedEntryId = protectedEntryId,
+            protectedMediaId = protectedItem?.mediaId,
+            protectedIndex = requestedIndex,
+        )
+        for (index in evictions.asReversed()) {
+            dualQueue.remove(index)
+        }
+        val restoredMerged = dualQueue.getMerged()
+        val restoredIndex = if (protectedEntryId > 0) {
+            restoredMerged.indexOfFirst { it.queueEntryId() == protectedEntryId }
+                .takeIf { it >= 0 }
+                ?: requestedIndex.coerceIn(0, restoredMerged.lastIndex.coerceAtLeast(0))
+        } else {
+            requestedIndex.coerceIn(0, restoredMerged.lastIndex.coerceAtLeast(0))
+        }
+        queueManager.playAll(restoredMerged, restoredIndex, positionMs, playWhenReady = playWhenReady)
+        if (evictions.isNotEmpty()) {
+            val (trimmedTracks, trimmedUrls) = buildQueueStateFromDual()
+            enqueuePlayQueue(trimmedTracks, trimmedUrls, restoredIndex, src = "restoreQueue")
+            persistenceSave(trimmedTracks, trimmedUrls, restoredIndex, src = "restoreTrim")
+        } else {
+            enqueuePlayQueue(alignedTracks, alignedUrls, restoredIndex, src = "restoreQueue")
+        }
         return true
     }
 
@@ -751,11 +825,54 @@ class PlaybackManager @Inject constructor(
     fun appendToContext(tracks: List<Track>, streamUrls: List<String>, asAutoplay: Boolean = false) {
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "appendToContext")
         if (alignedTracks.isEmpty()) return
-        val items = buildMediaItems(alignedTracks, alignedUrls)
+        // CP-7: evict the oldest autoplay rows before appending so the tail can
+        // never exceed the cap. The playing row is protected; pre-append merged
+        // indices stay valid when removed descending.
+        val mergedBefore = dualQueue.getMerged()
+        val currentIndexBefore = currentCanonicalIndex()
+        val currentItem = mergedBefore.getOrNull(currentIndexBefore)
+        val protectedEntryId = currentItem?.queueEntryId() ?: 0
+        val maxAppend = if (currentItem?.isAutoplay() == true) {
+            (CONTINUOUS_PLAY_AUTOPLAY_CAP - 1).coerceAtLeast(1)
+        } else {
+            CONTINUOUS_PLAY_AUTOPLAY_CAP
+        }
+        var built = buildMediaItems(alignedTracks, alignedUrls)
+        if (asAutoplay && built.size > maxAppend) {
+            // Defensive: no current CP burst exceeds the cap (10–20), but never
+            // let a single oversized append persist more than the cap.
+            built = built.takeLast(maxAppend)
+        }
+        val items = built
             .map { it.ensureEntryId() }
             .map { if (asAutoplay) it.withAutoplay(true) else it }
+        val evictions = if (asAutoplay) {
+            autoplayEvictionIndices(
+                merged = mergedBefore,
+                incoming = items.size,
+                protectedEntryId = protectedEntryId,
+                protectedMediaId = currentItem?.mediaId,
+                protectedIndex = currentIndexBefore,
+            )
+        } else {
+            emptyList()
+        }
+        val evictedEntryIds = evictions.mapNotNull { index ->
+            mergedBefore.getOrNull(index)?.queueEntryId()?.takeIf { it > 0 }
+        }
         val contextBefore = dualQueue.contextSize
         optimist.snapshot()
+        for (index in evictions.asReversed()) {
+            dualQueue.remove(index)
+        }
+        if (!PlayerHolder.isCasting && evictions.isNotEmpty()) {
+            val player = PlayerHolder.player
+            if (player != null) {
+                for (index in evictions.asReversed()) {
+                    if (index in 0 until player.mediaItemCount) player.removeMediaItem(index)
+                }
+            }
+        }
         dualQueue.addAllToContext(items)
         if (!PlayerHolder.isCasting) {
             PlayerHolder.player?.addMediaItems(items)
@@ -767,6 +884,7 @@ class PlaybackManager @Inject constructor(
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playback",
             "appendToContext asAutoplay=$asAutoplay adding=${items.size} " +
+                "evicted=${evictions.size} cap=$CONTINUOUS_PLAY_AUTOPLAY_CAP " +
                 "contextBefore=$contextBefore contextAfter=${dualQueue.contextSize} " +
                 "playerItems=${PlayerHolder.player?.mediaItemCount ?: 0}",
         )
@@ -775,6 +893,14 @@ class PlaybackManager @Inject constructor(
         val (allTracks, allUrls) = buildQueueStateFromDual()
         persistenceSave(allTracks, allUrls, currentCanonicalIndex())
         // Bi-directional sync during Cast — append at the end of the remote queue.
+        // RemoveAll goes first so it carries the pre-burst snapshot revision: a
+        // failed prune rolls the local queue back instead of being silently
+        // accepted after AddAll's ack cleared the snapshot. Absent receiver ids
+        // are filtered by the executor, which is the common case once the
+        // receiver has trimmed rows behind the playhead.
+        if (evictedEntryIds.isNotEmpty()) {
+            emitCastOrCommit { CastQueueAction.RemoveAll(evictedEntryIds) }
+        }
         emitCastAddsOrCommit(items)
     }
 

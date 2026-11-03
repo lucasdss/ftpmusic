@@ -50,3 +50,24 @@ emits one Cast `AddAll`, ADR-0111); ADR-0095 defines Dual as the Cast timeline
 source of truth. Server similarity is used only when online: local-only/offline
 mode skips the API and relies on the journal plus the local fallback ladder.
 Familiar/Discover chips remain out of scope.
+
+## Amendment (2026-11-03) — CP-7 tail bound
+
+The autoplay tail is capped at **50 autoplay-stamped CONTEXT rows**
+(`CONTINUOUS_PLAY_AUTOPLAY_CAP`). `appendToContext(asAutoplay=true)` evicts the
+oldest autoplay rows *before* appending, never the currently playing row
+(`queueEntryId`, then merged index for legacy unstamped rows, then `mediaId`),
+and persists only the capped Dual queue.
+Non-autoplay CONTEXT/PRIORITY/LATE rows are untouched. `restoreQueue` applies
+the same bound to legacy Room snapshots, protects/remaps the playing row by
+entry id, and rewrites the trimmed queue (`src=restoreTrim`) so an old oversized
+tail cannot survive a process restart. `clearAutoplayQueue()` stays an explicit
+manual removal and may remove the current autoplay row.
+
+While casting, an append that evicts sends one batched
+`CastQueueAction.RemoveAll` (one `queueRemoveItems`) **before** the existing
+`AddAll`, so it carries the pre-burst snapshot revision; a failed prune rolls the
+local queue back rather than being silently accepted. This prunes receiver rows
+that may still sit ahead of the playhead after a jump-back. A failed `AddAll`
+can leave the receiver as a subset of the phone queue; the next full queue load
+(not the prefix watchdog) repairs that subset divergence.

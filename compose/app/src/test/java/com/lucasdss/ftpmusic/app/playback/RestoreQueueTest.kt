@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.playback
 
 import android.net.Uri
+import androidx.media3.common.Player
 import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
@@ -17,6 +18,7 @@ import org.junit.Test
 class RestoreQueueTest {
 
     private val mockAppContext: android.app.Application = mockk(relaxed = true)
+    private val mockPlayer: Player = mockk(relaxed = true)
     private val queueManager = QueueManager(mockk())
     private val mockPersistenceManager: QueuePersistenceManager = mockk(relaxed = true)
     private val mockOfflineModeManager: OfflineModeManager = mockk(relaxed = true)
@@ -38,7 +40,7 @@ class RestoreQueueTest {
     fun setup() {
         mockkStatic(Uri::class)
         every { Uri.parse(any()) } returns Uri.EMPTY
-        PlayerHolder.player = mockk(relaxed = true)
+        PlayerHolder.player = mockPlayer
     }
 
     @After
@@ -240,5 +242,83 @@ class RestoreQueueTest {
             ),
         )
         assertEquals(listOf(false, true), mgr.isAutoplayFlags())
+    }
+
+    /** base + [autoplayCount] autoplay rows, in merged order. */
+    private fun autoplayTracks(autoplayCount: Int): Triple<List<Track>, List<String>, List<Boolean>> {
+        val tracks = listOf(Track("base", "Base", duration = 100)) +
+            (1..autoplayCount).map { Track("ap$it", "AP $it", duration = 100) }
+        val urls = tracks.map { "http://s/${it.id}" }
+        val flags = listOf(false) + List(autoplayCount) { true }
+        return Triple(tracks, urls, flags)
+    }
+
+    @Test
+    fun `restoreQueue trims a legacy oversized autoplay tail and persists it`() {
+        val mgr = manager()
+        val (tracks, urls, autoplay) = autoplayTracks(65)
+        val mergedSlot = slot<List<androidx.media3.common.MediaItem>>()
+        val indexSlot = slot<Int>()
+
+        assertTrue(
+            mgr.restoreQueue(
+                tracks,
+                urls,
+                startIndex = 65,
+                isPriorityFlags = List(tracks.size) { false },
+                isAutoplayFlags = autoplay,
+            ),
+        )
+
+        // base + the 50 newest autoplay rows.
+        assertEquals(51, mgr.dualQueueSize)
+        assertEquals(50, mgr.isAutoplayFlags().count { it })
+        val mediaIds = mgr.currentQueueMediaIds()
+        assertTrue(mediaIds.contains("base"))
+        assertFalse(mediaIds.contains("ap1"))
+        assertTrue(mediaIds.contains("ap65"))
+        verify { mockPlayer.setMediaItems(capture(mergedSlot), capture(indexSlot), any()) }
+        assertEquals(51, mergedSlot.captured.size)
+        assertEquals(50, indexSlot.captured)
+        coVerify(timeout = 2_000) {
+            mockPersistenceManager.save(
+                match { it.size == 51 },
+                any(),
+                eq(50),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        }
+    }
+
+    @Test
+    fun `restoreQueue trim protects the playing autoplay row and remaps its index`() {
+        val mgr = manager()
+        val (tracks, urls, autoplay) = autoplayTracks(65)
+        val mergedSlot = slot<List<androidx.media3.common.MediaItem>>()
+        val indexSlot = slot<Int>()
+
+        assertTrue(
+            mgr.restoreQueue(
+                tracks,
+                urls,
+                startIndex = 1,
+                isPriorityFlags = List(tracks.size) { false },
+                isAutoplayFlags = autoplay,
+            ),
+        )
+
+        assertEquals(51, mgr.dualQueueSize)
+        assertTrue(mgr.currentQueueMediaIds().contains("ap1"))
+        assertFalse(mgr.currentQueueMediaIds().contains("ap2"))
+        verify { mockPlayer.setMediaItems(capture(mergedSlot), capture(indexSlot), any()) }
+        assertEquals("ap1", mergedSlot.captured[indexSlot.captured].mediaId)
     }
 }

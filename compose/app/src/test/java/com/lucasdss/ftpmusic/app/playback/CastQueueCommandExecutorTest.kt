@@ -54,6 +54,7 @@ class CastQueueCommandExecutorTest {
             "AddAll count=2",
             castQueueActionDiag(CastQueueAction.AddAll(listOf(item("a"), item("b")))),
         )
+        assertEquals("RemoveAll count=2", castQueueActionDiag(CastQueueAction.RemoveAll(listOf(1, 2))))
         assertEquals("Remove", castQueueActionDiag(CastQueueAction.Remove(1)))
         assertEquals("JumpTo", castQueueActionDiag(CastQueueAction.JumpTo(1)))
         assertEquals(
@@ -72,6 +73,24 @@ class CastQueueCommandExecutorTest {
         executor.execute(CastQueueAction.JumpTo(7), receiver)
 
         assertEquals(listOf("remove:7", "jump:7"), receiver.calls)
+    }
+
+    @Test
+    fun `removeAll batches existing ids in one call`() {
+        val receiver = FakeReceiver(setOf(1, 2, 3))
+
+        executor.execute(CastQueueAction.RemoveAll(listOf(3, 1, 99)), receiver)
+
+        assertEquals(listOf("removeAll:3,1"), receiver.calls)
+    }
+
+    @Test
+    fun `removeAll with no receiver ids is a no-op`() {
+        val receiver = FakeReceiver(setOf(1))
+
+        executor.execute(CastQueueAction.RemoveAll(listOf(98, 99)), receiver)
+
+        assertTrue(receiver.calls.isEmpty())
     }
 
     @Test
@@ -129,6 +148,10 @@ class CastQueueCommandExecutorTest {
 
         override fun remove(itemId: Int) {
             calls += "remove:$itemId"
+        }
+
+        override fun removeAll(itemIds: IntArray) {
+            calls += "removeAll:${itemIds.joinToString(",")}"
         }
 
         override fun move(itemId: Int, beforeItemId: Int) {

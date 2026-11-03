@@ -1,6 +1,6 @@
 # Continuous Play — Behavior Report
 
-Date: 2026-11-02
+Date: 2026-11-03
 Related: ADR-0039, ADR-0052, ADR-0053, ADR-0093, ADR-0094, ADR-0095,
 ADR-0111, `docs/SURPRISE_ME_BEHAVIOR_REPORT.md`
 
@@ -14,7 +14,9 @@ hidden append.
 
 CP runs on the local player and while casting. While casting, Dual is the
 timeline source of truth and `appendToContext` mutates Dual then emits one Cast
-`AddAll` (ADR-0093, ADR-0111).
+`AddAll` (ADR-0093, ADR-0111). When the same append also prunes the autoplay
+tail (CP-7), it emits a batched `RemoveAll` **before** the `AddAll` so the
+receiver cannot replay evicted rows on a jump-back.
 
 ## Settings + Queue UI
 
@@ -105,6 +107,17 @@ pool would permanently disable CP for that queue.
 | Journal select | up to 10 |
 | Fallback rows per tier | up to 50 |
 | Fallback burst target | up to 10 |
+| Autoplay tail cap | 50 autoplay rows (CP-7) |
+
+**Autoplay tail cap (CP-7).** `appendToContext(asAutoplay=true)` evicts the
+oldest autoplay rows before appending so the merged queue never holds more than
+50 autoplay rows; a burst of 10–20 therefore keeps 2–3 bursts of headroom. The
+currently playing row is never evicted (matched by `queueEntryId`, falling back
+to `mediaId` for legacy rows). Non-autoplay CONTEXT, PRIORITY, and LATE rows are
+untouched, and the capped state is what `persistenceSave` writes. `restoreQueue`
+applies the same cap to legacy oversized snapshots, protects/remaps the playing
+row, and writes the trimmed queue back with `src=restoreTrim`. Clear Autoplay
+remains a manual, uncapped removal of every autoplay row.
 
 `JournalTrackSelector.parse` sets `truncated` when the 800-id pool cap cuts
 ids; callers surface it in diagnostics. `getAllRecent()` itself is not row
@@ -145,14 +158,16 @@ it for a track tap that must preserve Priority.
    after CONTEXT (ADR-0135).
 
 Clear Autoplay removes only autoplay rows. While casting it re-syncs the
-remaining Dual queue to the receiver; non-autoplay rows are preserved.
+remaining Dual queue to the receiver; non-autoplay rows are preserved. Unlike
+the CP-7 cap, Clear Autoplay may remove the currently playing autoplay row
+because it is an explicit user action.
 
 ## Tests
 
 `ContinuousPlayGateTest`, `ContinuousPlayRetryTest`,
 `ContinuousPlayFallbackTest`, `JournalTrackSelectorTest`,
 `ContinuousPlayLoaderTest`, `ContinuousPlayTest`, `QueueJournalTest`,
-`DaosRoomTest` fallback queries, QueueProjection autoplay flags, and the Cast
-queue tests. There is no service-level harness that exercises
+`AutoplayTailCapTest`, `RestoreQueueTest`, `DaosRoomTest` fallback queries,
+QueueProjection autoplay flags, and the Cast queue tests. There is no service-level harness that exercises
 `maybeLoadContinuousPlay` end to end; the pure gate, selector, fallback, and
 retry holders carry that coverage.

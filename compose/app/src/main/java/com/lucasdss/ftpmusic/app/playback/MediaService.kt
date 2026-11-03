@@ -5358,6 +5358,11 @@ class MediaService : MediaLibraryService() {
                     pending = rmc.queueRemoveItems(intArrayOf(itemId), null)
                 }
 
+                override fun removeAll(itemIds: IntArray) {
+                    if (itemIds.isEmpty()) return
+                    pending = rmc.queueRemoveItems(itemIds, null)
+                }
+
                 override fun move(itemId: Int, beforeItemId: Int) {
                     pending = rmc.queueReorderItems(intArrayOf(itemId), beforeItemId, null)
                 }
