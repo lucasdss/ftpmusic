@@ -1996,8 +1996,8 @@ override §10 for severity or recommended fix shape.
 | CP-12 | Medium | `sourceType != null` clears Priority — journal coverage fix must split that gate. |
 | CP-13 | Medium | Recency weighting effectively flat; single-entry journal ≤5 candidates. |
 | CP-14 | Medium | `continuousPlayInFlight` drops STATE_ENDED `forceRetry` while a load is in flight. |
-| CP-15 | Medium | Offline fallback DAO helpers exist unused; ADR-0053 offline filter text stale (`cachedFilePath` only). |
-| CP-16 | Low | Dead string `player_autoplay_unavailable_cast`; ADR-0053 missing supersede note for 0093/0094. |
+| CP-15 | Medium | ~~Offline fallback DAO helpers exist unused; ADR-0053 offline filter text stale (`cachedFilePath` only).~~ **Resolved (2026-11-03):** the cached helper queries are live in the CP-6 fallback ladder (`MediaService.kt`) and Library; ADR-0053 + behavior report already state `cachedFilePath` is required and `isDownloaded` alone is not playable (ADR-0095). |
+| CP-16 | Low | ~~Dead string `player_autoplay_unavailable_cast`; ADR-0053 missing supersede note for 0093/0094.~~ **Resolved (2026-11-03):** string removed (no source reference); ADR-0053's 2026-11-02 amendment already records 0093/0094/0095 as the current behavior after the original out-of-scope note. |
 
 Optional / low-confidence (do not elevate without more evidence):
 
@@ -2289,3 +2289,12 @@ Decisions and rejected alternatives:
 - **No mutable cap setting.** 50 is a constant; Settings keeps the journal cap only. The helper takes `cap` so tests can exercise smaller bounds.
 
 Verification: new `AutoplayTailCapTest` (helper edges incl. duplicate-mediaId index precedence, 5×10 bursts, oldest-burst eviction, protected jump-back row, non-autoplay/priority intact, Cast RemoveAll→AddAll, below-cap AddAll only, local player removals), `RestoreQueueTest` legacy 65-row trim + index remap + `restoreTrim` save, `CastQueueCommandExecutorTest` RemoveAll batching/filtering, and `MediaServiceCastQueueTest` one batched `queueRemoveItems` (or none when ids are absent). Targeted queue/Cast suites green; full `:app:testDebugUnitTest` green; `ktlintTestSourceSetCheck` green; `ktlintMainSourceSetCheck` reports only the same pre-existing unrelated violations in `PlaySuppressionWatch.kt`, `LibraryScreen.kt`, and `LibraryViewModel.kt`. Cross-model: DeepSeek plan → Mistral challenge raised ordering, two-action Cast atomicity, and deferred restore persistence → DeepSeek rebutted the index-shift claim, agreed on prune-first and immediate restore persistence, and rejected ClearAndPlay-per-burst as a receiver re-seat regression → revised plan (prune-first, RemoveAll-then-AddAll, restore-then-trim + `restoreTrim` save, constant cap) → DeepSeek agreed on the final failure-mode analysis → Mistral final challenge returned reasoned OK. Phase-5 DeepSeek audit then flagged the AddAll-first revision-0 hole and the legacy mediaId-twin risk; both were fixed (RemoveAll first; merged-index protection precedence). Phase-5 Mistral challenge recorded below.
+
+### 11.11 Iteration log — CP-15 / CP-16 closure (2026-11-03)
+
+| ID | Outcome |
+|---|---|
+| CP-15 | **Closed as already-fixed.** The CP-6 fallback ladder now calls `getRandomCachedTracksByGenre`, `getRandomTracksByGenre`, `getRandomCachedTracksByArtist`, and `getRandomCachedTracks` (`MediaService.kt`); `getRandomCachedTracks` also serves Library. No unused-helper defect remains. Offline playability is documented consistently: `ContinuousPlayLoader.isPlayableOffline` and ADR-0053 both require a non-blank `cachedFilePath` (`isDownloaded` alone is insufficient, ADR-0095). No code change. |
+| CP-16 | **Closed.** Removed the unreferenced `player_autoplay_unavailable_cast` string from `values/strings_player.xml` (verified no Kotlin/XML/SourceSet reference). ADR-0053's 2026-11-02 amendment already supersedes the original out-of-scope wording for ADR-0093/0094/0095, so no further ADR note is needed. |
+
+Verification: `:app:processDebugResources` green after string removal; full `:app:testDebugUnitTest` green; `ktlintTestSourceSetCheck` green; `ktlintMainSourceSetCheck` still reports only the pre-existing unrelated violations in `PlaySuppressionWatch.kt`, `LibraryScreen.kt`, and `LibraryViewModel.kt`. No behavior, schema, or persistence change in this iteration. Cross-model: DeepSeek closure audit → Mistral challenge, both reasoned OK.
