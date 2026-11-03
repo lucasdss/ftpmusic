@@ -56,12 +56,7 @@ class PlaySuppressionWatch(
      * Forward from [Player.Listener]. Cancels when audible or user paused;
      * ignores snapshots while not armed.
      */
-    fun onPlayerSnapshot(
-        playWhenReady: Boolean,
-        isPlaying: Boolean,
-        playbackState: Int,
-        casting: Boolean,
-    ) {
+    fun onPlayerSnapshot(playWhenReady: Boolean, isPlaying: Boolean, playbackState: Int, casting: Boolean) {
         if (armedSrc == null) return
         if (casting) {
             cancel("casting")
@@ -80,12 +75,7 @@ class PlaySuppressionWatch(
      * Grace-timer / test entry. Records only when READY + playWhenReady + !isPlaying.
      * Buffering/idle cancels without recording (not AudioHardening).
      */
-    fun evaluate(
-        playWhenReady: Boolean,
-        isPlaying: Boolean,
-        playbackState: Int,
-        casting: Boolean,
-    ) {
+    fun evaluate(playWhenReady: Boolean, isPlaying: Boolean, playbackState: Int, casting: Boolean) {
         if (armedSrc == null) return
         onPlayerSnapshot(playWhenReady, isPlaying, playbackState, casting)
         if (armedSrc == null) return

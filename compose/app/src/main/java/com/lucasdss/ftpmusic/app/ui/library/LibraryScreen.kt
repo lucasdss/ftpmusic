@@ -868,7 +868,11 @@ fun LibraryContent(
                                         modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                                         containerColor = BrandTeal,
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = "Add radio station", tint = Color.White)
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = "Add radio station",
+                                            tint = Color.White,
+                                        )
                                     }
                                 }
                             }

@@ -1054,12 +1054,7 @@ class LibraryViewModel @Inject constructor(
     /**
      * Admin-only: update an existing shared station, then reload the list.
      */
-    fun updateRadioStation(
-        id: String,
-        name: String,
-        streamUrl: String,
-        homepageUrl: String? = null,
-    ) {
+    fun updateRadioStation(id: String, name: String, streamUrl: String, homepageUrl: String? = null) {
         mutateRadio {
             val auth = authHelper.buildAuthParams(username(), password())
             val response = api.updateInternetRadioStation(
