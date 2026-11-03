@@ -24,8 +24,10 @@ Takeaway: default **Shuffle albums** matches Apple; song shuffle remains optiona
   - Albums by name — A–Z / Z–A (chips)
 - Within album (non–song-shuffle): `disc → track → title → id`.
 - Play All / Play Next All / Add All to Queue load **full** artist catalog from Room.
-- Songs tab stays title-paginated for browse; playback order independent.
-- **No** Song title A–Z option (legacy key → albums A–Z).
+- Songs tab browse order is now its own preference (ADR-0152, default most
+  played first); Play All order stays independent.
+- **No** Song title A–Z *Play All* option (legacy key → albums A–Z). The Songs
+  **browse** list does have track-name A–Z since ADR-0152.
 
 ## Membership (ADR-0145)
 
@@ -46,3 +48,17 @@ Takeaway: default **Shuffle albums** matches Apple; song shuffle remains optiona
 | Overwrite modal | Song shuffle → tryShuffleContext; album modes → tryStartContext |
 | Sheet / toast count | Uses `catalogTrackCount` (full artist-view count) |
 | Download All / Add to Playlist | Full artist-view catalog (ADR-0145) |
+
+## Browse sort vs Play All (ADR-0152, 2026-11-03)
+
+| Surface | Preference | Default | Modes |
+|---------|-----------|---------|-------|
+| Artist **Songs** list + tap-through window | `artist_songs_sort` | play count desc | play count, random, album name, album year, track name (± direction) |
+| **Play All** / Play Next All / Add All | `artist_play_order` | shuffle albums | shuffle albums, shuffle songs, album year, album name |
+
+- Changing the Songs sort never mutates `artist_play_order`, and vice versa.
+- Membership is shared; only the order differs.
+- Album-block / random Songs modes reuse `AlbumTrackOrdering`, the same helper
+  `ArtistPlayOrderer` uses, so within-album order is identical across surfaces.
+- Two distinct Random surfaces: Songs Random = browse shuffle of the list;
+  Play All "Shuffle all songs" = playback shuffle.

@@ -1007,4 +1007,88 @@ class AlbumDetailViewModelTest {
         }
         assertFalse(viewModel.state.value.isDesired)
     }
+
+    // ── ADR-0152: album track order preference ────────────────────────────
+
+    private fun cachedTrack(id: String, title: String, disc: Int? = 1, trackNum: Int? = 1) =
+        com.lucasdss.ftpmusic.app.data.db.CachedAlbumTrackEntity(
+            id = id,
+            albumId = "al-order",
+            title = title,
+            discNumber = disc,
+            trackNumber = trackNum,
+        )
+
+    @Test
+    fun `default disc track order never queries play counts`() = runTest {
+        every { storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT) } returns null
+        coEvery { metadataDao.getAlbumTracks("al-order") } returns listOf(
+            cachedTrack("t2", "Two", trackNum = 2),
+            cachedTrack("t1", "One", trackNum = 1),
+        )
+
+        viewModel.loadAlbum("al-order", "user", "pass")
+        val state = viewModel.state.first { !it.isLoading && it.tracks.isNotEmpty() }
+
+        assertEquals(listOf("t1", "t2"), state.tracks.map { it.id })
+        coVerify(exactly = 0) { trackDao.getTrackPlayCounts(any()) }
+    }
+
+    @Test
+    fun `most played first applies batch counts and missing ids default to zero`() = runTest {
+        every { storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT) } returns "play_count_desc"
+        coEvery { metadataDao.getAlbumTracks("al-order") } returns listOf(
+            cachedTrack("t1", "One", trackNum = 1),
+            cachedTrack("t2", "Two", trackNum = 2),
+            cachedTrack("t3", "Three", trackNum = 3),
+        )
+        coEvery { trackDao.getTrackPlayCounts(listOf("t1", "t2", "t3")) } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.PlayCountInfo("t2", 9),
+            com.lucasdss.ftpmusic.app.data.db.PlayCountInfo("t1", 2),
+        )
+
+        viewModel.loadAlbum("al-order", "user", "pass")
+        val state = viewModel.state.first { !it.isLoading && it.tracks.isNotEmpty() }
+
+        // t3 is absent from the DAO result (play_count = 0 filtered) → 0.
+        assertEquals(listOf("t2", "t1", "t3"), state.tracks.map { it.id })
+        assertEquals(9, state.tracks[0].playCount)
+        assertEquals(0, state.tracks[2].playCount)
+    }
+
+    @Test
+    fun `least played first puts zero and missing counts before played tracks`() = runTest {
+        every { storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT) } returns "play_count_asc"
+        coEvery { metadataDao.getAlbumTracks("al-order") } returns listOf(
+            cachedTrack("t1", "One", trackNum = 1),
+            cachedTrack("t2", "Two", trackNum = 2),
+            cachedTrack("t3", "Three", trackNum = 3),
+        )
+        coEvery { trackDao.getTrackPlayCounts(any()) } returns listOf(
+            com.lucasdss.ftpmusic.app.data.db.PlayCountInfo("t3", 4),
+        )
+
+        viewModel.loadAlbum("al-order", "user", "pass")
+        val state = viewModel.state.first { !it.isLoading && it.tracks.isNotEmpty() }
+
+        assertEquals(listOf("t1", "t2", "t3"), state.tracks.map { it.id })
+    }
+
+    @Test
+    fun `play count failure degrades to normal track order instead of failing the album`() = runTest {
+        every { storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT) } returns "play_count_desc"
+        coEvery { metadataDao.getAlbumTracks("al-order") } returns listOf(
+            cachedTrack("t2", "Two", trackNum = 2),
+            cachedTrack("t1", "One", trackNum = 1),
+        )
+        coEvery { trackDao.getTrackPlayCounts(any()) } throws RuntimeException("db boom")
+        // Offline keeps the load on the cached branch — no API call to stub.
+        every { offlineModeManager.isOffline } returns kotlinx.coroutines.flow.MutableStateFlow(true)
+
+        viewModel.loadAlbum("al-order", "user", "pass")
+        val state = viewModel.state.first { !it.isLoading && it.tracks.isNotEmpty() }
+
+        assertNull(state.error)
+        assertEquals(listOf("t1", "t2"), state.tracks.map { it.id })
+    }
 }

@@ -52,8 +52,27 @@ No DataStore. No ThemeMode. No download-quality pref.
 | Prefer iTunes album art | `KEY_PREFER_ITUNES_ART` | CoverArtResolver |
 | Hide navigation labels | `KEY_NAV_HIDE_LABELS` (default OFF) | FtpmusicNavHost (activity-scoped SettingsVM) |
 | Scroll lists to now playing | `KEY_LIST_AUTO_CENTER_NOW_PLAYING` (default ON) | `LocalListChromePrefs` → Mix/Playlist/Album/Artist/Queue (ADR-0126) |
+| Album track order (Track number / Most played / Least played) | `KEY_ALBUM_TRACK_SORT` (default `disc_track`) | `AlbumDetailViewModel.prepareAlbumTracks` (ADR-0152) |
 
 Dark Mode / Accent Color stubs **removed**.
+
+### Album track order (ADR-0152)
+
+- Section lives on Appearance under "Album track order"; three radios tagged
+  `settings_album_track_sort_disc_track`, `…_play_count_desc`, `…_play_count_asc`.
+- Loaded in `SettingsViewModel.init` (not `refresh()`); setter persists
+  immediately and the new order applies the **next** time an album opens.
+- Scope: album detail list + Play All / Play Next All / Add to Queue / row tap
+  (all read the sorted `state.tracks`). Download-all therefore enqueues in the
+  same order.
+- **Not** applied to `getAlbumTracks` SQL — Android Auto browse and the
+  assistant `expandToAlbum` path stay disc → track. Album Shuffle always
+  shuffles.
+- Settings search keywords "album order", "track order", "play count",
+  "most played", "least played", "disc" deep-link to
+  `SettingsAnchors.ALBUM_TRACK_SORT`.
+- Play-count lookup failure degrades to disc → track; missing ids (count 0) are
+  treated as zero and sorted by the normal tie-breakers.
 
 ### Notifications / Home
 | Control | Persist | Consumer |

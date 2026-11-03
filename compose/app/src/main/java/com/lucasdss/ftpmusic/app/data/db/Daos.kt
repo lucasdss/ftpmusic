@@ -6,6 +6,30 @@ import kotlinx.coroutines.flow.Flow
 /** SQLite host-parameter budget for IN (...) clauses — keep below ~999. */
 private const val SQLITE_IN_CHUNK = 500
 
+/**
+ * Artist Songs / Play All membership (ADR-0145) — split from the Albums tab:
+ * - track `artist_id` = this artist, OR
+ * - track on an album owned by this artist (album `artist_id` / name) → whole album, OR
+ * - track row in `cached_album_tracks` attributed to this artist (foreign/VA/OST →
+ *   this artist's tracks only; join on track id, not album id).
+ * Pass empty `artistName` to skip the album-name branch.
+ *
+ * Extracted so every artist-view query shares one definition; `@Query` receives
+ * this as a compile-time constant and the host parameters stay named.
+ */
+private const val ARTIST_VIEW_MEMBERSHIP_SQL = """
+    SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
+    UNION
+    SELECT t2.id FROM tracks t2
+    INNER JOIN cached_albums ca ON t2.album_id = ca.id
+    WHERE ca.artist_id = :artistId
+       OR (:artistName != '' AND ca.artist = :artistName)
+    UNION
+    SELECT t3.id FROM tracks t3
+    INNER JOIN cached_album_tracks cat ON t3.id = cat.id
+    WHERE cat.artist_id = :artistId
+"""
+
 @Dao
 interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id = :trackId")
@@ -374,28 +398,12 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id IN (:trackIds)")
     fun watchTracksByIds(trackIds: List<String>): Flow<List<TrackEntity>>
 
-    /**
-     * Artist Songs / Play All membership (ADR-0145) — split from Albums tab:
-     * - track `artist_id` = this artist, OR
-     * - track on an album owned by this artist (album `artist_id` / name) → whole album, OR
-     * - track row in `cached_album_tracks` attributed to this artist (foreign/VA/OST →
-     *   this artist's tracks only; join on track id, not album id).
-     * Pass empty [artistName] to skip the album-name branch.
-     */
+    /** Full artist-view membership — Play All / Download All / catalog count. */
     @Query(
         """
         SELECT t.* FROM tracks t
         WHERE t.id IN (
-            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
-            UNION
-            SELECT t2.id FROM tracks t2
-            INNER JOIN cached_albums ca ON t2.album_id = ca.id
-            WHERE ca.artist_id = :artistId
-               OR (:artistName != '' AND ca.artist = :artistName)
-            UNION
-            SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
-            WHERE cat.artist_id = :artistId
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
         )
         """,
     )
@@ -405,35 +413,18 @@ interface TrackDao {
         """
         SELECT COUNT(*) FROM tracks t
         WHERE t.id IN (
-            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
-            UNION
-            SELECT t2.id FROM tracks t2
-            INNER JOIN cached_albums ca ON t2.album_id = ca.id
-            WHERE ca.artist_id = :artistId
-               OR (:artistName != '' AND ca.artist = :artistName)
-            UNION
-            SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
-            WHERE cat.artist_id = :artistId
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
         )
         """,
     )
     suspend fun countTracksForArtistView(artistId: String, artistName: String): Int
 
+    /** Songs page 1 — title A–Z (legacy browse order). */
     @Query(
         """
         SELECT t.* FROM tracks t
         WHERE t.id IN (
-            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
-            UNION
-            SELECT t2.id FROM tracks t2
-            INNER JOIN cached_albums ca ON t2.album_id = ca.id
-            WHERE ca.artist_id = :artistId
-               OR (:artistName != '' AND ca.artist = :artistName)
-            UNION
-            SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
-            WHERE cat.artist_id = :artistId
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
         )
         ORDER BY t.title ASC, t.id ASC LIMIT :limit
         """,
@@ -448,16 +439,7 @@ interface TrackDao {
             t.title > :cursorTitle
             OR (t.title = :cursorTitle AND t.id > :cursorId)
         ) AND t.id IN (
-            SELECT t1.id FROM tracks t1 WHERE t1.artist_id = :artistId
-            UNION
-            SELECT t2.id FROM tracks t2
-            INNER JOIN cached_albums ca ON t2.album_id = ca.id
-            WHERE ca.artist_id = :artistId
-               OR (:artistName != '' AND ca.artist = :artistName)
-            UNION
-            SELECT t3.id FROM tracks t3
-            INNER JOIN cached_album_tracks cat ON t3.id = cat.id
-            WHERE cat.artist_id = :artistId
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
         )
         ORDER BY t.title ASC, t.id ASC LIMIT :limit
         """,
@@ -465,6 +447,125 @@ interface TrackDao {
     suspend fun getTracksForArtistViewAfter(
         artistId: String,
         artistName: String,
+        cursorTitle: String,
+        cursorId: String,
+        limit: Int,
+    ): List<TrackEntity>
+
+    /** Songs page 1 — title Z–A. `id ASC` is the keyset tiebreak. */
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE t.id IN (
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
+        )
+        ORDER BY t.title DESC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistViewByTitleDesc(artistId: String, artistName: String, limit: Int): List<TrackEntity>
+
+    /** Next title Z–A page: `title < cursor OR (title = cursor AND id > cursor)`. */
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE (
+            t.title < :cursorTitle
+            OR (t.title = :cursorTitle AND t.id > :cursorId)
+        ) AND t.id IN (
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
+        )
+        ORDER BY t.title DESC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistViewAfterByTitleDesc(
+        artistId: String,
+        artistName: String,
+        cursorTitle: String,
+        cursorId: String,
+        limit: Int,
+    ): List<TrackEntity>
+
+    /** Songs page 1 — most played first, then title BINARY asc, id asc. */
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE t.id IN (
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
+        )
+        ORDER BY t.play_count DESC, t.title ASC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistViewByPlayCountDesc(
+        artistId: String,
+        artistName: String,
+        limit: Int,
+    ): List<TrackEntity>
+
+    /** Next most-played page. Cursor comes from the raw page's last row. */
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE (
+            t.play_count < :cursorPlayCount
+            OR (t.play_count = :cursorPlayCount AND t.title > :cursorTitle)
+            OR (
+                t.play_count = :cursorPlayCount
+                AND t.title = :cursorTitle
+                AND t.id > :cursorId
+            )
+        ) AND t.id IN (
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
+        )
+        ORDER BY t.play_count DESC, t.title ASC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistViewAfterByPlayCountDesc(
+        artistId: String,
+        artistName: String,
+        cursorPlayCount: Int,
+        cursorTitle: String,
+        cursorId: String,
+        limit: Int,
+    ): List<TrackEntity>
+
+    /** Songs page 1 — least played first. Only the play_count comparison flips. */
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE t.id IN (
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
+        )
+        ORDER BY t.play_count ASC, t.title ASC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistViewByPlayCountAsc(
+        artistId: String,
+        artistName: String,
+        limit: Int,
+    ): List<TrackEntity>
+
+    /** Next least-played page. Only the play_count comparison flips. */
+    @Query(
+        """
+        SELECT t.* FROM tracks t
+        WHERE (
+            t.play_count > :cursorPlayCount
+            OR (t.play_count = :cursorPlayCount AND t.title > :cursorTitle)
+            OR (
+                t.play_count = :cursorPlayCount
+                AND t.title = :cursorTitle
+                AND t.id > :cursorId
+            )
+        ) AND t.id IN (
+        """ + ARTIST_VIEW_MEMBERSHIP_SQL + """
+        )
+        ORDER BY t.play_count ASC, t.title ASC, t.id ASC LIMIT :limit
+        """,
+    )
+    suspend fun getTracksForArtistViewAfterByPlayCountAsc(
+        artistId: String,
+        artistName: String,
+        cursorPlayCount: Int,
         cursorTitle: String,
         cursorId: String,
         limit: Int,

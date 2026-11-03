@@ -1260,6 +1260,85 @@ class DaosRoomTest {
         )
     }
 
+    // ── Artist-view Songs sort keysets (ADR-0152) ─────────────────────────
+
+    @Test
+    fun `play count desc pages duplicate counts via title and id tiebreak`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(TrackEntity(id = "b2", title = "Beta", artistId = "ar-1", playCount = 5))
+        tracks.upsert(TrackEntity(id = "a2", title = "Alpha", artistId = "ar-1", playCount = 5))
+        tracks.upsert(TrackEntity(id = "a1", title = "Alpha", artistId = "ar-1", playCount = 5))
+        tracks.upsert(TrackEntity(id = "zero", title = "Zero", artistId = "ar-1", playCount = 0))
+        tracks.upsert(TrackEntity(id = "other", title = "Other", artistId = "ar-2", playCount = 99))
+
+        val page1 = tracks.getTracksForArtistViewByPlayCountDesc("ar-1", "Artist", limit = 2)
+        // Same count → title asc, then id asc. The ar-2 row is outside membership.
+        assertEquals(listOf("a1", "a2"), page1.map { it.id })
+
+        val page2 = tracks.getTracksForArtistViewAfterByPlayCountDesc(
+            artistId = "ar-1",
+            artistName = "Artist",
+            cursorPlayCount = page1.last().playCount,
+            cursorTitle = page1.last().title,
+            cursorId = page1.last().id,
+            limit = 2,
+        )
+        assertEquals(listOf("b2", "zero"), page2.map { it.id })
+
+        val page3 = tracks.getTracksForArtistViewAfterByPlayCountDesc(
+            artistId = "ar-1",
+            artistName = "Artist",
+            cursorPlayCount = page2.last().playCount,
+            cursorTitle = page2.last().title,
+            cursorId = page2.last().id,
+            limit = 2,
+        )
+        assertTrue("cursor exhausted", page3.isEmpty())
+    }
+
+    @Test
+    fun `play count asc is the mirror image and never skips duplicates`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(TrackEntity(id = "b2", title = "Beta", artistId = "ar-1", playCount = 1))
+        tracks.upsert(TrackEntity(id = "a2", title = "Alpha", artistId = "ar-1", playCount = 1))
+        tracks.upsert(TrackEntity(id = "a1", title = "Alpha", artistId = "ar-1", playCount = 1))
+        tracks.upsert(TrackEntity(id = "zero", title = "Zero", artistId = "ar-1", playCount = 0))
+
+        val page1 = tracks.getTracksForArtistViewByPlayCountAsc("ar-1", "Artist", limit = 2)
+        assertEquals(listOf("zero", "a1"), page1.map { it.id })
+
+        val page2 = tracks.getTracksForArtistViewAfterByPlayCountAsc(
+            artistId = "ar-1",
+            artistName = "Artist",
+            cursorPlayCount = page1.last().playCount,
+            cursorTitle = page1.last().title,
+            cursorId = page1.last().id,
+            limit = 2,
+        )
+        assertEquals(listOf("a2", "b2"), page2.map { it.id })
+    }
+
+    @Test
+    fun `title desc pages duplicate titles via id tiebreak`() = runBlocking {
+        val tracks = db.trackDao()
+        tracks.upsert(TrackEntity(id = "z1", title = "Zebra", artistId = "ar-1"))
+        tracks.upsert(TrackEntity(id = "i1", title = "Intro", artistId = "ar-1"))
+        tracks.upsert(TrackEntity(id = "i2", title = "Intro", artistId = "ar-1"))
+        tracks.upsert(TrackEntity(id = "i3", title = "Intro", artistId = "ar-1"))
+
+        val page1 = tracks.getTracksForArtistViewByTitleDesc("ar-1", "Artist", limit = 2)
+        assertEquals(listOf("z1", "i1"), page1.map { it.id })
+
+        val page2 = tracks.getTracksForArtistViewAfterByTitleDesc(
+            artistId = "ar-1",
+            artistName = "Artist",
+            cursorTitle = page1.last().title,
+            cursorId = page1.last().id,
+            limit = 2,
+        )
+        assertEquals(listOf("i2", "i3"), page2.map { it.id })
+    }
+
     // ── Artist-view membership split (ADR-0145) ───────────────────────────
 
     @Test

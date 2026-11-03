@@ -73,6 +73,9 @@ data class SettingsUiState(
     /** ADR-0145: Artist Play All order (default Shuffle albums). */
     val artistPlayOrder: com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder =
         com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.SHUFFLE_ALBUMS,
+    /** ADR-0152: Album detail track order (default disc → track ascending). */
+    val albumTrackSort: com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort =
+        com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.DISC_TRACK,
     // Library Metrics
     val albumCount: Int = 0,
     val artistCount: Int = 0,
@@ -242,6 +245,9 @@ class SettingsViewModel @Inject constructor(
             ),
             artistPlayOrder = com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder.fromKey(
                 storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER),
+            ),
+            albumTrackSort = com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.fromKey(
+                storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT),
             ),
             syncIntervalHours = syncHours,
             homeRecentTtlMinutes = savedHomeRecentTtl,
@@ -686,6 +692,12 @@ class SettingsViewModel @Inject constructor(
     fun setArtistPlayOrder(order: com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder) {
         _state.value = _state.value.copy(artistPlayOrder = order)
         storage.put(SecureStorage.KEY_ARTIST_PLAY_ORDER, order.key)
+    }
+
+    /** ADR-0152: album track order applies on the next album open (no live jump). */
+    fun setAlbumTrackSort(sort: com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort) {
+        _state.value = _state.value.copy(albumTrackSort = sort)
+        storage.put(SecureStorage.KEY_ALBUM_TRACK_SORT, sort.key)
     }
 
     fun setCoverArtQuota(mb: Int) {

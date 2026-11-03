@@ -163,6 +163,17 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
          * album_name_asc | album_name_desc.
          */
         const val KEY_ARTIST_PLAY_ORDER = "artist_play_order"
+
+        /**
+         * ADR-0152: Artist Songs **browse** sort — independent from Play All.
+         * play_count_desc (default) | play_count_asc | random | album_name_asc |
+         * album_name_desc | album_year_asc | album_year_desc | track_name_asc |
+         * track_name_desc.
+         */
+        const val KEY_ARTIST_SONGS_SORT = "artist_songs_sort"
+
+        /** ADR-0152: Album detail track order — disc_track (default) | play_count_desc | play_count_asc. */
+        const val KEY_ALBUM_TRACK_SORT = "album_track_sort"
         const val KEY_CUSTOM_HEADERS = "custom_headers"
         const val KEY_AUTO_DOWNLOAD_PLAYLISTS = "auto_download_playlists"
 

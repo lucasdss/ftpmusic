@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Artist Songs sort sheet (ADR-0152) -->
+    <string name="artist_songs_sort_title">Sort songs</string>
+    <string name="artist_songs_sort_button_cd">Sort songs, current: %1$s</string>
+
+    <string name="artist_songs_sort_play_count">Play count</string>
+    <string name="artist_songs_sort_play_count_sub">Most played first by default</string>
+    <string name="artist_songs_sort_random">Random</string>
+    <string name="artist_songs_sort_random_sub">Shuffle the full artist catalog</string>
+    <string name="artist_songs_sort_album_name">Album name</string>
+    <string name="artist_songs_sort_album_name_sub">Albums alphabetical, tracks in album order</string>
+    <string name="artist_songs_sort_album_year">Album year</string>
+    <string name="artist_songs_sort_album_year_sub">Albums by release year, tracks in album order</string>
+    <string name="artist_songs_sort_track_name">Track name</string>
+    <string name="artist_songs_sort_track_name_sub">All songs alphabetical</string>
+
+    <string name="artist_songs_sort_most_played">Most played first</string>
+    <string name="artist_songs_sort_least_played">Least played first</string>
+    <string name="artist_songs_sort_az">A–Z</string>
+    <string name="artist_songs_sort_za">Z–A</string>
+    <string name="artist_songs_sort_oldest">Oldest first</string>
+    <string name="artist_songs_sort_newest">Newest first</string>
+
+    <string name="artist_songs_sort_summary_play_count_desc">Most played first</string>
+    <string name="artist_songs_sort_summary_play_count_asc">Least played first</string>
+    <string name="artist_songs_sort_summary_album_name_asc">Album name · A–Z</string>
+    <string name="artist_songs_sort_summary_album_name_desc">Album name · Z–A</string>
+    <string name="artist_songs_sort_summary_album_year_asc">Album year · Oldest first</string>
+    <string name="artist_songs_sort_summary_album_year_desc">Album year · Newest first</string>
+    <string name="artist_songs_sort_summary_track_name_asc">Track name · A–Z</string>
+    <string name="artist_songs_sort_summary_track_name_desc">Track name · Z–A</string>
+    <string name="artist_songs_sort_summary_random">Random</string>
+</resources>

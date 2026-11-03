@@ -21,7 +21,7 @@ Hero (adp 130) + back + like/dislike + name + album/track counts
 | Index | Label | Body | Default |
 | :---: | :--- | :--- | :---: |
 | 0 | Albums | 2-col grid (`gridGapH`×`gridGapV`) | Yes |
-| 1 | Songs | Full artist track list (paged) | No |
+| 1 | Songs | Full artist track list (paged, sort bar on top) | No |
 
 Tab state: local `remember`; process death → Albums. No VM persistence.
 
@@ -69,4 +69,24 @@ Tab state: local `remember`; process death → Albums. No VM persistence.
 ## Follow-up
 
 - Reaction thumbs remain ~40dp visible hit (`reactionHitSize`) — dense grids.
-- No “Popular” ranking; Songs = full catalog.
+- Songs = full catalog; ordering is the user's browse sort (ADR-0152), not a
+  server-side “Popular” ranking.
+
+## Amendment (2026-11-03, ADR-0152)
+
+- **Songs sort bar** sits above the list: a compact trigger showing the current
+  summary (`artist_songs_sort_button`) opens `ArtistSongsSortSheet`.
+- Modes: Play count (**default**, most played first), Random, Album name, Album
+  year, Track name. Every mode except Random exposes a direction chip
+  (Most/Least played, A–Z/Z–A, Oldest/Newest).
+- The preference is global (`artist_songs_sort`) and independent from Play All
+  (`artist_play_order`).
+- Play-count and track-name modes page through SQL keyset queries (50/page);
+  album-name, album-year and random load the full artist membership once and
+  page in memory. Random reselect reshuffles; load-more stays stable.
+- Tap-through (`TrackRow` tap) starts a queue from the **loaded** `state.tracks`
+  window only — it does not continue through the unloaded discography.
+- Row sequence numbers are 1…n list ranks, so in play-count / random / album
+  modes they no longer match album track numbers.
+- Changing the sort scrolls to the top and replaces the list; a play-count
+  change does not live-reorder the open list.

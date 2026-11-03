@@ -38,3 +38,17 @@ co-artists (e.g. Caetano Veloso Play All ≈ 358 mixed tracks). Users want:
 - Songs tab and Play All stay aligned; Albums tab can show albums whose Play All
   contribution is a subset of tracks.
 - Existing installs with unset preference flip from song shuffle to album shuffle.
+
+## Amendment (2026-11-03, ADR-0152)
+
+- "Songs tab and Play All stay aligned" no longer holds for **order**: the Songs
+  tab has its own global browse sort (`artist_songs_sort`, default play-count
+  desc) while Play All keeps `artist_play_order` (default shuffle albums).
+  **Membership** is still shared — both use `ArtistViewMembership` /
+  `ARTIST_VIEW_MEMBERSHIP_SQL`.
+- Within-album grouping/ordering was extracted into `AlbumTrackOrdering` so the
+  Songs album-block modes and `ArtistPlayOrderer` cannot drift apart. Play All
+  behaviour is unchanged; `ArtistPlayOrdererTest` pins it.
+- New Songs default: most played first (SQL keyset), then least played, random,
+  album name, album release year, track name.
+

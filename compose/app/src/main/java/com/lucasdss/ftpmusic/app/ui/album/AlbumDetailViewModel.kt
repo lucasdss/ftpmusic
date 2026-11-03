@@ -25,11 +25,14 @@ import com.lucasdss.ftpmusic.app.data.repository.AlbumRepository
 import com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort
+import com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSorter
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -92,6 +95,11 @@ class AlbumDetailViewModel @Inject constructor(
     private val auth = SubsonicAuthHelper()
     private var username: String = ""
     private var password: String = ""
+
+    private companion object {
+        /** Stays under the SQLite host-parameter budget. */
+        const val PLAY_COUNT_ID_CHUNK = 500
+    }
 
     init {
         viewModelScope.launch {
@@ -208,6 +216,7 @@ class AlbumDetailViewModel @Inject constructor(
     fun loadAlbum(albumId: String, username: String, password: String) {
         this.username = username
         this.password = password
+        val trackSort = AlbumTrackSort.fromKey(storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT))
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
             try {
@@ -215,7 +224,7 @@ class AlbumDetailViewModel @Inject constructor(
                 val cachedTracks = metadataDao.getAlbumTracks(albumId)
                 if (cachedTracks.isNotEmpty()) {
                     _state.value = _state.value.copy(
-                        tracks = sortAlbumTracks(
+                        tracks = prepareAlbumTracks(
                             cachedTracks.map { t ->
                                 Track(
                                     id = t.id, title = t.title, artist = t.artist, albumId = t.albumId,
@@ -225,6 +234,7 @@ class AlbumDetailViewModel @Inject constructor(
                                     suffix = t.suffix, contentType = t.contentType,
                                 )
                             },
+                            trackSort,
                         ),
                         isLoading = false,
                     )
@@ -243,7 +253,7 @@ class AlbumDetailViewModel @Inject constructor(
                 }
                 // Fetch from API for fresh data
                 val result = repository.getAlbum(albumId, username, password)
-                val tracks = sortAlbumTracks(result?.tracks ?: emptyList())
+                val tracks = prepareAlbumTracks(result?.tracks ?: emptyList(), trackSort)
                 val album = result?.album
                 val desiredMeta = resolveDesiredFlag(albumId, album)
                 _state.value = _state.value.copy(
@@ -284,13 +294,37 @@ class AlbumDetailViewModel @Inject constructor(
         }
     }
 
-    /** Album list order: disc then track ascending; null tags last; stable by title/id. */
-    private fun sortAlbumTracks(tracks: List<Track>): List<Track> = tracks.sortedWith(
-        compareBy<Track> { it.discNumber ?: Int.MAX_VALUE }
-            .thenBy { it.trackNumber ?: Int.MAX_VALUE }
-            .thenBy { it.title.lowercase() }
-            .thenBy { it.id },
-    )
+    /**
+     * Album list order: preference-driven (ADR-0152). Default is disc → track
+     * ascending; play-count modes apply local counts and fall through to the same
+     * disc/track/title/id tie-breakers.
+     *
+     * The play-count lookup is isolated so a failure degrades to normal order
+     * instead of aborting the album load (N2).
+     */
+    private suspend fun prepareAlbumTracks(tracks: List<Track>, sort: AlbumTrackSort): List<Track> {
+        val withCounts = if (sort.usesPlayCount) applyPlayCounts(tracks) else tracks
+        return AlbumTrackSorter.sort(withCounts, sort)
+    }
+
+    private suspend fun applyPlayCounts(tracks: List<Track>): List<Track> {
+        if (tracks.isEmpty()) return tracks
+        return try {
+            val counts = HashMap<String, Int>(tracks.size)
+            for (chunk in tracks.map { it.id }.chunked(PLAY_COUNT_ID_CHUNK)) {
+                trackDao.getTrackPlayCounts(chunk).forEach { counts[it.id] = it.playCount }
+            }
+            // Missing rows (play_count = 0 filtered out by the DAO) map to zero.
+            tracks.map { track ->
+                val count = counts[track.id] ?: 0
+                if (count == track.playCount) track else track.copy(playCount = count)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            tracks
+        }
+    }
 
     private suspend fun resolveDesiredFlag(
         albumId: String,

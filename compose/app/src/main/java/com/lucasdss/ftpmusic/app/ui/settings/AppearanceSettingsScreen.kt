@@ -77,6 +77,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
+import com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort
 import com.lucasdss.ftpmusic.app.playback.BatteryOptimizationHelper
 import com.lucasdss.ftpmusic.app.playback.DefaultMusicRoleHelper
 import com.lucasdss.ftpmusic.app.ui.BrandBg
@@ -123,6 +124,7 @@ import com.lucasdss.ftpmusic.app.ui.textLabelS
 @Composable
 fun AppearanceSettingsScreen(
     onBack: () -> Unit = {},
+    scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
     ),
@@ -187,6 +189,67 @@ fun AppearanceSettingsScreen(
                     onToggle = { viewModel.setHideNavLabels(it) },
                 )
             }
+
+            Spacer(Modifier.height(spacingXL()))
+
+            // ═══ Album track order (ADR-0152) ═══
+            Column(Modifier.settingsScrollAnchor(SettingsAnchors.ALBUM_TRACK_SORT, scrollToAnchor)) {
+                SectionLabel(stringResource(R.string.settings_album_track_order_title))
+                SectionCard {
+                    Text(
+                        stringResource(R.string.settings_album_track_order_sub),
+                        color = Color(0xFF888888),
+                        fontSize = textLabelS(),
+                        modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+                    )
+                    val trackSort = state.albumTrackSort
+                    AlbumTrackSortOption(
+                        sort = AlbumTrackSort.DISC_TRACK,
+                        label = stringResource(R.string.settings_album_track_order_disc),
+                        subtitle = stringResource(R.string.settings_album_track_order_disc_sub),
+                        selected = trackSort == AlbumTrackSort.DISC_TRACK,
+                        onClick = { viewModel.setAlbumTrackSort(AlbumTrackSort.DISC_TRACK) },
+                    )
+                    SectionDivider()
+                    AlbumTrackSortOption(
+                        sort = AlbumTrackSort.PLAY_COUNT_DESC,
+                        label = stringResource(R.string.settings_album_track_order_most),
+                        subtitle = stringResource(R.string.settings_album_track_order_most_sub),
+                        selected = trackSort == AlbumTrackSort.PLAY_COUNT_DESC,
+                        onClick = { viewModel.setAlbumTrackSort(AlbumTrackSort.PLAY_COUNT_DESC) },
+                    )
+                    SectionDivider()
+                    AlbumTrackSortOption(
+                        sort = AlbumTrackSort.PLAY_COUNT_ASC,
+                        label = stringResource(R.string.settings_album_track_order_least),
+                        subtitle = stringResource(R.string.settings_album_track_order_least_sub),
+                        selected = trackSort == AlbumTrackSort.PLAY_COUNT_ASC,
+                        onClick = { viewModel.setAlbumTrackSort(AlbumTrackSort.PLAY_COUNT_ASC) },
+                    )
+                }
+            }
         }
+    }
+}
+
+/**
+ * Thin wrapper so each album-order row gets a stable test tag
+ * ([OverwriteBehaviorOption] does not accept a modifier).
+ */
+@Composable
+private fun AlbumTrackSortOption(
+    sort: AlbumTrackSort,
+    label: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(Modifier.testTag("settings_album_track_sort_${sort.key}")) {
+        OverwriteBehaviorOption(
+            label = label,
+            subtitle = subtitle,
+            selected = selected,
+            onClick = onClick,
+        )
     }
 }

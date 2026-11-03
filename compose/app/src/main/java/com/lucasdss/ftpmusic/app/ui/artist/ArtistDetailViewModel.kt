@@ -17,6 +17,10 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.data.sort.ArtistSongsCursor
+import com.lucasdss.ftpmusic.app.data.sort.ArtistSongsMode
+import com.lucasdss.ftpmusic.app.data.sort.ArtistSongsSort
+import com.lucasdss.ftpmusic.app.data.sort.ArtistSongsSorter
 import com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder
 import com.lucasdss.ftpmusic.app.playback.ArtistPlayOrderer
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
@@ -24,13 +28,17 @@ import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 data class ArtistDetailState(
     val artistId: String = "",
@@ -46,6 +54,10 @@ data class ArtistDetailState(
     val isLoading: Boolean = false,
     val isLoadingMoreTracks: Boolean = false,
     val hasMoreTracks: Boolean = true,
+    /** ADR-0152: global Songs browse sort (independent from Play All). */
+    val songsSort: ArtistSongsSort = ArtistSongsSort.DEFAULT,
+    /** True while the first Songs page for a newly selected sort loads. */
+    val isLoadingSongs: Boolean = false,
     val publicRating: Double? = null,
     val publicRatingVotes: Int? = null,
     val similarArtists: List<com.lucasdss.ftpmusic.app.data.network.LastFmService.SimilarArtist> = emptyList(),
@@ -128,13 +140,57 @@ class ArtistDetailViewModel @Inject constructor(
 
     companion object {
         private const val TRACKS_PAGE_SIZE = 50
+
+        /** Safety cap for the N1 dedupe page-chase loop. */
+        private const val MAX_PAGE_CHASE = 20
     }
+
+    // ── Songs browse pagination (ADR-0152) ─────────────────────────────
+
+    /** In-flight Songs page load (first page or load-more). */
+    private var songsJob: Job? = null
+
+    /** Invalidates stale pages after a sort change or artist change (N3). */
+    private var songsGeneration = 0
+
+    /** Exact membership artist name used for page 1 — avoids ""/"Unknown" drift. */
+    private var songsArtistName: String = ""
+    private var songsCursor: ArtistSongsCursor? = null
+
+    /** Full ordered catalog for album-block / random modes. */
+    private var songsSource: List<Track>? = null
+    private var songsSourceIndex: Int = 0
+    private var songsRandomSeed: Int = Random.nextInt()
+
+    private data class SongsFirstPage(
+        val tracks: List<Track>,
+        val hasMore: Boolean,
+        val cursor: ArtistSongsCursor? = null,
+        val source: List<Track>? = null,
+        val sourceIndex: Int = 0,
+    )
 
     fun loadArtist(artistId: String) {
         username = storage.get(SecureStorage.KEY_USERNAME) ?: ""
         password = storage.get(SecureStorage.KEY_PASSWORD) ?: ""
+        val savedSort = ArtistSongsSort.fromKey(storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT))
+        // N3: a Songs load from the previous artist must never commit after this one.
+        songsJob?.cancel()
+        songsJob = null
+        songsGeneration++
+        val generation = songsGeneration
+        songsCursor = null
+        songsSource = null
+        songsSourceIndex = 0
+        if (savedSort.isRandom) songsRandomSeed = Random.nextInt()
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.value = _state.value.copy(
+                isLoading = true,
+                error = null,
+                songsSort = savedSort,
+                isLoadingSongs = true,
+                isLoadingMoreTracks = false,
+            )
             try {
                 // Local-first: read artist name + albums from the cached_albums table.
                 // Both the artist list count and this page now come from the same
@@ -147,14 +203,14 @@ class ArtistDetailViewModel @Inject constructor(
                 val localAlbums = cachedAlbums.map { it.toAlbum() }
                 val nameForView = artistNameHint ?: localAlbums.firstOrNull()?.artist
 
-                // Load first page of artist-view tracks (cursor-based, local-first)
-                val firstPage = ArtistViewMembership.loadTracksPage(
-                    trackDao = trackDao,
-                    artistId = artistId,
-                    artistName = nameForView,
-                    limit = TRACKS_PAGE_SIZE,
-                )
-                val localTracks = firstPage.map { it.toTrack() }
+                // Load first page of artist-view tracks (sort-aware, ADR-0152)
+                songsArtistName = nameForView.orEmpty()
+                val firstPage = loadSongsFirstPage(artistId, nameForView, savedSort)
+                if (generation != songsGeneration) return@launch
+                songsCursor = firstPage.cursor
+                songsSource = firstPage.source
+                songsSourceIndex = firstPage.sourceIndex
+                val localTracks = firstPage.tracks
                 val catalogCount = try {
                     ArtistViewMembership.countTracks(trackDao, artistId, nameForView)
                 } catch (_: Exception) {
@@ -173,22 +229,26 @@ class ArtistDetailViewModel @Inject constructor(
                     } catch (_: Exception) {
                         false
                     }
+                    // countTracks / findMatchingDesired are suspend calls: re-check
+                    // so artist A's commit cannot land on artist B after a nav (N3).
+                    if (generation != songsGeneration) return@launch
                     _state.value = _state.value.copy(
                         artistId = artistId,
                         name = name,
                         albums = localAlbums,
                         tracks = localTracks,
-                        hasMoreTracks = firstPage.size >= TRACKS_PAGE_SIZE,
+                        hasMoreTracks = firstPage.hasMore,
                         publicRating = cachedArtist?.publicRating,
                         publicRatingVotes = cachedArtist?.publicRatingVotes,
                         similarArtists = lastFmService.parseStoredJson(cachedArtist?.similarArtistsJson),
                         biography = cachedArtist?.biography?.takeIf { it.isNotBlank() },
                         isLoading = false,
+                        isLoadingSongs = false,
                         showAddDesired = emptyCatalog,
                         isDesired = isDesired,
                         catalogTrackCount = catalogCount,
                     )
-                    loadReactions(firstPage.map { it.id })
+                    loadReactions(localTracks.map { it.id })
                     // Lazy: fetch public rating from MusicBrainz if not yet cached
                     if (cachedArtist?.publicRating == null && !offlineModeManager.isOffline.value) {
                         fetchPublicRating(artistId, cachedArtist?.name)
@@ -209,7 +269,9 @@ class ArtistDetailViewModel @Inject constructor(
                 }
 
                 // Nothing cached for this artist — fall back to the live API only if online.
+                if (generation != songsGeneration) return@launch
                 if (!offlineModeManager.isOffline.value) {
+                    songsArtistName = ""
                     val authParams = auth.buildAuthParams(username, password)
                     val response = api.getArtist(id = artistId, auth = authParams)
                     val sr = response["subsonic-response"] as? Map<*, *>
@@ -226,6 +288,7 @@ class ArtistDetailViewModel @Inject constructor(
                             coverArt = m["coverArt"] as? String,
                         )
                     } ?: emptyList()
+                    if (generation != songsGeneration) return@launch
                     _state.value =
                         _state.value.copy(
                             artistId = artistId,
@@ -234,6 +297,7 @@ class ArtistDetailViewModel @Inject constructor(
                             tracks = emptyList(),
                             hasMoreTracks = false,
                             isLoading = false,
+                            isLoadingSongs = false,
                         )
                 } else {
                     _state.value = _state.value.copy(
@@ -243,11 +307,18 @@ class ArtistDetailViewModel @Inject constructor(
                         tracks = emptyList(),
                         hasMoreTracks = false,
                         isLoading = false,
+                        isLoadingSongs = false,
                         error = "No cached albums for this artist",
                     )
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = e.message, isLoading = false)
+                // N3: never surface artist A's failure on artist B's screen.
+                if (generation != songsGeneration) return@launch
+                _state.value = _state.value.copy(
+                    error = e.message,
+                    isLoading = false,
+                    isLoadingSongs = false,
+                )
             }
         }
     }
@@ -322,33 +393,210 @@ class ArtistDetailViewModel @Inject constructor(
         }
     }
 
+    /** Change the global Songs browse sort (ADR-0152). Persists and reloads page 1. */
+    fun setSongsSort(sort: ArtistSongsSort) {
+        val current = _state.value
+        // Re-selecting Random must reshuffle; other modes are idempotent.
+        if (current.songsSort == sort && !sort.isRandom) return
+        storage.put(SecureStorage.KEY_ARTIST_SONGS_SORT, sort.key)
+        if (current.artistId.isBlank()) {
+            _state.value = current.copy(songsSort = sort)
+            return
+        }
+        if (sort.isRandom) songsRandomSeed = Random.nextInt()
+        startSongsReload(sort)
+    }
+
     /** Cursor-based pagination: next page of artist-view tracks (same membership as Play All). */
     fun loadMoreTracks() {
         val state = _state.value
-        if (state.isLoadingMoreTracks || !state.hasMoreTracks) return
-        viewModelScope.launch {
+        if (state.isLoadingMoreTracks || state.isLoadingSongs || !state.hasMoreTracks) return
+        if (state.artistId.isBlank()) return
+        val generation = songsGeneration
+        songsJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoadingMoreTracks = true)
             try {
-                val last = _state.value.tracks.lastOrNull()
-                val newEntities = ArtistViewMembership.loadTracksPage(
-                    trackDao,
-                    state.artistId,
-                    state.name,
-                    TRACKS_PAGE_SIZE,
-                    titleCursor = last?.title,
-                    idCursor = last?.id,
-                )
-                val newTracks = newEntities.map { it.toTrack() }
-                _state.value = _state.value.copy(
-                    tracks = _state.value.tracks + newTracks,
-                    hasMoreTracks = newEntities.size >= TRACKS_PAGE_SIZE,
-                    isLoadingMoreTracks = false,
-                )
-                loadReactions(newEntities.map { it.id })
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoadingMoreTracks = false)
+                when {
+                    songsSource != null -> appendFullSourcePage(generation)
+                    else -> appendKeysetPages(generation, state.songsSort)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (generation == songsGeneration) {
+                    _state.value = _state.value.copy(isLoadingMoreTracks = false)
+                }
             }
         }
+    }
+
+    private fun startSongsReload(sort: ArtistSongsSort) {
+        songsJob?.cancel()
+        songsGeneration++
+        val generation = songsGeneration
+        songsCursor = null
+        songsSource = null
+        songsSourceIndex = 0
+        _state.value = _state.value.copy(
+            songsSort = sort,
+            tracks = emptyList(),
+            hasMoreTracks = true,
+            isLoadingSongs = true,
+            isLoadingMoreTracks = false,
+        )
+        songsJob = viewModelScope.launch {
+            try {
+                val page = loadSongsFirstPage(_state.value.artistId, songsArtistName.ifEmpty { null }, sort)
+                if (generation != songsGeneration) return@launch
+                songsCursor = page.cursor
+                songsSource = page.source
+                songsSourceIndex = page.sourceIndex
+                _state.value = _state.value.copy(
+                    tracks = page.tracks,
+                    hasMoreTracks = page.hasMore,
+                    isLoadingSongs = false,
+                )
+                loadReactions(page.tracks.map { it.id })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (generation == songsGeneration) {
+                    _state.value = _state.value.copy(isLoadingSongs = false)
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads page 1 for [sort]. Keyset modes hit SQL; album-block/random modes load
+     * the full membership once and keep the ordered source for load-more.
+     *
+     * Pure: no ViewModel fields are mutated, so a stale load cannot corrupt the
+     * cursor/source of a newer generation.
+     */
+    private suspend fun loadSongsFirstPage(
+        artistId: String,
+        artistName: String?,
+        sort: ArtistSongsSort,
+    ): SongsFirstPage {
+        if (sort.isKeyset) {
+            val raw = ArtistViewMembership.loadSongsKeysetPage(
+                trackDao = trackDao,
+                artistId = artistId,
+                artistName = artistName,
+                sort = sort,
+                limit = TRACKS_PAGE_SIZE,
+            )
+            return SongsFirstPage(
+                tracks = raw.map { it.toTrack() },
+                hasMore = raw.size >= TRACKS_PAGE_SIZE,
+                cursor = raw.lastOrNull()?.toSongsCursor(sort),
+            )
+        }
+
+        val seed = songsRandomSeed
+        val allTracks = ArtistViewMembership.loadAllTracks(trackDao, artistId, artistName)
+            .map { it.toTrack() }
+        val albumYearById = if (sort.mode == ArtistSongsMode.ALBUM_YEAR) {
+            ArtistViewMembership.loadAlbumYears(
+                metadataDao,
+                allTracks.mapNotNull { it.albumId }.distinct(),
+            )
+        } else {
+            emptyMap()
+        }
+        val ordered = withContext(Dispatchers.Default) {
+            ArtistSongsSorter.order(
+                tracks = allTracks,
+                sort = sort,
+                albumYearById = albumYearById,
+                // Capture the seed before leaving the caller's thread so a racing
+                // reseed cannot change an in-flight generation's shuffle.
+                random = Random(seed),
+            )
+        }
+        return SongsFirstPage(
+            tracks = ordered.take(TRACKS_PAGE_SIZE),
+            hasMore = ordered.size > TRACKS_PAGE_SIZE,
+            source = ordered,
+            sourceIndex = minOf(TRACKS_PAGE_SIZE, ordered.size),
+        )
+    }
+
+    private fun appendFullSourcePage(generation: Int) {
+        val source = songsSource ?: return
+        if (generation != songsGeneration) return
+        val from = songsSourceIndex
+        if (from >= source.size) {
+            _state.value = _state.value.copy(hasMoreTracks = false, isLoadingMoreTracks = false)
+            return
+        }
+        val to = minOf(from + TRACKS_PAGE_SIZE, source.size)
+        songsSourceIndex = to
+        val existing = _state.value.tracks
+        val existingIds = existing.mapTo(HashSet(existing.size)) { it.id }
+        val fresh = source.subList(from, to).filter { it.id !in existingIds }
+        _state.value = _state.value.copy(
+            tracks = existing + fresh,
+            hasMoreTracks = to < source.size,
+            isLoadingMoreTracks = false,
+        )
+        loadReactions(fresh.map { it.id })
+    }
+
+    /**
+     * Fetches keyset pages until at least one new row is appended or the catalog
+     * ends (N1). Play counts can move rows across the cursor between pages, so a
+     * fully-deduped page must not leave the UI waiting on `tracks.size` forever.
+     */
+    private suspend fun appendKeysetPages(generation: Int, sort: ArtistSongsSort) {
+        val artistId = _state.value.artistId
+        val artistName = songsArtistName.ifEmpty { null }
+        var cursor = songsCursor
+        var hasMore = true
+        var iterations = 0
+        while (iterations++ < MAX_PAGE_CHASE) {
+            val raw = ArtistViewMembership.loadSongsKeysetPage(
+                trackDao = trackDao,
+                artistId = artistId,
+                artistName = artistName,
+                sort = sort,
+                limit = TRACKS_PAGE_SIZE,
+                cursor = cursor,
+            )
+            if (generation != songsGeneration) return
+            // Advance the cursor from the RAW page even when every row is a duplicate.
+            raw.lastOrNull()?.toSongsCursor(sort)?.let { rawCursor ->
+                cursor = rawCursor
+                songsCursor = rawCursor
+            }
+            hasMore = raw.size >= TRACKS_PAGE_SIZE
+            val existing = _state.value.tracks
+            val existingIds = existing.mapTo(HashSet(existing.size)) { it.id }
+            val fresh = raw.map { it.toTrack() }.filter { it.id !in existingIds }
+            if (fresh.isNotEmpty()) {
+                _state.value = _state.value.copy(
+                    tracks = existing + fresh,
+                    hasMoreTracks = hasMore,
+                    isLoadingMoreTracks = false,
+                )
+                loadReactions(fresh.map { it.id })
+                return
+            }
+            if (!hasMore) break
+        }
+        _state.value = _state.value.copy(
+            // Exhausted (or the chase cap was hit with only duplicates): stop the
+            // UI from re-arming a load-more that would spin on the same cursor.
+            hasMoreTracks = false,
+            isLoadingMoreTracks = false,
+        )
+    }
+
+    private fun TrackEntity.toSongsCursor(sort: ArtistSongsSort): ArtistSongsCursor? = when (sort.mode) {
+        ArtistSongsMode.PLAY_COUNT -> ArtistSongsCursor.PlayCount(playCount, title, id)
+        ArtistSongsMode.TRACK_NAME -> ArtistSongsCursor.Title(title, id)
+        else -> null
     }
 
     private fun com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity.toAlbum(): Album = Album(
@@ -372,6 +620,8 @@ class ArtistDetailViewModel @Inject constructor(
         trackNumber = trackNumber,
         discNumber = discNumber,
         coverArt = coverArtUrl,
+        playCount = playCount,
+        lastPlayedAt = lastPlayedAt,
     )
 
     fun buildStreamUrl(trackId: String): String {
@@ -476,14 +726,10 @@ class ArtistDetailViewModel @Inject constructor(
         val catalog = loadFullArtistViewTracks() ?: return null
         val order = ArtistPlayOrder.fromKey(storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER))
         val albumIds = catalog.mapNotNull { it.albumId }.distinct()
-        val albumYearById = if (albumIds.isEmpty()) {
+        val albumYearById = try {
+            ArtistViewMembership.loadAlbumYears(metadataDao, albumIds)
+        } catch (_: Exception) {
             emptyMap()
-        } else {
-            try {
-                metadataDao.getAlbumYearRows(albumIds).associate { it.id to it.year }
-            } catch (_: Exception) {
-                emptyMap()
-            }
         }
         val ordered = ArtistPlayOrderer.order(catalog, order, albumYearById)
         val urls = ordered.map { buildStreamUrl(it.id) }

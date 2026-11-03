@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -47,6 +48,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,9 +58,12 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.model.Album
 import com.lucasdss.ftpmusic.app.data.model.Track
+import com.lucasdss.ftpmusic.app.data.sort.ArtistSongsMode
+import com.lucasdss.ftpmusic.app.data.sort.ArtistSongsSort
 import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.Background
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
@@ -69,7 +76,10 @@ import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
+import com.lucasdss.ftpmusic.app.ui.components.OverwriteBehaviorOption
 import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChip
+import com.lucasdss.ftpmusic.app.ui.components.SegmentedChipRow
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
@@ -569,6 +579,9 @@ private fun TracksTab(
     val listState = rememberLazyListState(
         cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
     )
+    var showSortSheet by remember { mutableStateOf(false) }
+    // A sort change replaces the whole list; start from the top.
+    LaunchedEffect(state.songsSort) { listState.scrollToItem(0) }
     val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
     val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
     val nowPlayingLazyIndex = remember(trackIds, currentTrackId) {
@@ -581,52 +594,234 @@ private fun TracksTab(
         scrollKey = currentTrackId,
         onlyIfNotVisible = true,
     )
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize().padding(horizontal = spacingXL()),
-        contentPadding = PaddingValues(vertical = spacingS()),
-    ) {
-        itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->
-            val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
-            TrackRow(
-                track = track,
-                index = index,
-                isActive = isActive,
-                onClick = { viewModel.playTrack(index) },
-                onLongClick = { onTrackMenu(index) },
-                isLiked = track.id in state.likedTrackIds,
-                isDisliked = track.id in state.dislikedTrackIds,
-                onToggleLike = { viewModel.toggleTrackLike(track.id) },
-                onToggleDislike = { viewModel.toggleTrackDislike(track.id) },
-            )
-        }
-        // Load-more trigger: when near the end, fetch the next page
-        if (state.hasMoreTracks) {
-            item(key = "load-more") {
-                LaunchedEffect(state.tracks.size) { viewModel.loadMoreTracks() }
-                Box(
-                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (state.isLoadingMoreTracks) {
+    Column(Modifier.fillMaxSize()) {
+        ArtistSongsSortBar(
+            sort = state.songsSort,
+            onClick = { showSortSheet = true },
+        )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = spacingXL()),
+            contentPadding = PaddingValues(vertical = spacingS()),
+        ) {
+            itemsIndexed(state.tracks, key = { _, track -> track.id }) { index, track ->
+                val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
+                TrackRow(
+                    track = track,
+                    index = index,
+                    isActive = isActive,
+                    onClick = { viewModel.playTrack(index) },
+                    onLongClick = { onTrackMenu(index) },
+                    isLiked = track.id in state.likedTrackIds,
+                    isDisliked = track.id in state.dislikedTrackIds,
+                    onToggleLike = { viewModel.toggleTrackLike(track.id) },
+                    onToggleDislike = { viewModel.toggleTrackDislike(track.id) },
+                )
+            }
+            if (state.isLoadingSongs && state.tracks.isEmpty()) {
+                item(key = "songs-loading") {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         CircularProgressIndicator(
                             color = BrandTeal,
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
                         )
-                    } else {
-                        Text("Loading more...", color = Color(0xFF666666), fontSize = textLabelM())
                     }
                 }
             }
-        } else if (state.tracks.isEmpty()) {
-            item {
-                Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                    Text("No tracks found", color = Color(0xFF666666), fontSize = textBodyM())
+            // Load-more trigger: when near the end, fetch the next page
+            if (state.hasMoreTracks) {
+                item(key = "load-more") {
+                    LaunchedEffect(state.tracks.size) { viewModel.loadMoreTracks() }
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (state.isLoadingMoreTracks) {
+                            CircularProgressIndicator(
+                                color = BrandTeal,
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text("Loading more...", color = Color(0xFF666666), fontSize = textLabelM())
+                        }
+                    }
+                }
+            } else if (state.tracks.isEmpty() && !state.isLoadingSongs) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                        Text("No tracks found", color = Color(0xFF666666), fontSize = textBodyM())
+                    }
                 }
             }
         }
     }
+    if (showSortSheet) {
+        ArtistSongsSortSheet(
+            sort = state.songsSort,
+            onSelect = { viewModel.setSongsSort(it) },
+            onDismiss = { showSortSheet = false },
+        )
+    }
+}
+
+/** Compact Songs sort trigger — opens [ArtistSongsSortSheet]. */
+@Composable
+private fun ArtistSongsSortBar(sort: ArtistSongsSort, onClick: () -> Unit) {
+    val summary = artistSongsSortSummary(sort)
+    val cd = stringResource(R.string.artist_songs_sort_button_cd, summary)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacingXL(), vertical = spacingXS())
+            .clip(RoundedCornerShape(cornerS()))
+            .clickable(onClick = onClick)
+            .testTag("artist_songs_sort_button")
+            .semantics { contentDescription = cd },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.AutoMirrored.Filled.Sort,
+            contentDescription = null,
+            tint = Color(0xFF888888),
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            summary,
+            color = BrandTeal,
+            fontSize = textLabelM(),
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun artistSongsSortSummary(sort: ArtistSongsSort): String = stringResource(
+    when (sort) {
+        ArtistSongsSort.PLAY_COUNT_DESC -> R.string.artist_songs_sort_summary_play_count_desc
+        ArtistSongsSort.PLAY_COUNT_ASC -> R.string.artist_songs_sort_summary_play_count_asc
+        ArtistSongsSort.RANDOM -> R.string.artist_songs_sort_summary_random
+        ArtistSongsSort.ALBUM_NAME_ASC -> R.string.artist_songs_sort_summary_album_name_asc
+        ArtistSongsSort.ALBUM_NAME_DESC -> R.string.artist_songs_sort_summary_album_name_desc
+        ArtistSongsSort.ALBUM_YEAR_ASC -> R.string.artist_songs_sort_summary_album_year_asc
+        ArtistSongsSort.ALBUM_YEAR_DESC -> R.string.artist_songs_sort_summary_album_year_desc
+        ArtistSongsSort.TRACK_NAME_ASC -> R.string.artist_songs_sort_summary_track_name_asc
+        ArtistSongsSort.TRACK_NAME_DESC -> R.string.artist_songs_sort_summary_track_name_desc
+    },
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ArtistSongsSortSheet(sort: ArtistSongsSort, onSelect: (ArtistSongsSort) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Surface,
+        shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
+    ) {
+        Column(
+            Modifier
+                .padding(bottom = spacing3XL())
+                .testTag("artist_songs_sort_sheet"),
+        ) {
+            Box(Modifier.fillMaxWidth().padding(top = spacingS()), contentAlignment = Alignment.Center) {
+                Box(Modifier.width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)))
+            }
+            Text(
+                stringResource(R.string.artist_songs_sort_title),
+                color = Color.White,
+                fontSize = textHeadingS(),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+            )
+            val modes = listOf(
+                ArtistSongsMode.PLAY_COUNT,
+                ArtistSongsMode.RANDOM,
+                ArtistSongsMode.ALBUM_NAME,
+                ArtistSongsMode.ALBUM_YEAR,
+                ArtistSongsMode.TRACK_NAME,
+            )
+            modes.forEach { mode ->
+                val natural = ArtistSongsSort.natural(mode)
+                val selected = sort.mode == mode
+                Box(Modifier.testTag("artist_songs_sort_${natural.key}")) {
+                    OverwriteBehaviorOption(
+                        label = stringResource(artistSongsModeLabel(mode)),
+                        subtitle = stringResource(artistSongsModeSubtitle(mode)),
+                        selected = selected,
+                        // Re-selecting Random passes RANDOM again so the VM reshuffles.
+                        onClick = { onSelect(if (selected) sort else natural) },
+                    )
+                }
+                if (selected && sort.supportsDirection) {
+                    SegmentedChipRow {
+                        DirectionChip(
+                            label = stringResource(artistSongsDirectionLabel(mode, ascending = true)),
+                            selected = sort.ascending,
+                            tag = "artist_songs_sort_dir_asc",
+                            onClick = { onSelect(sort.withAscending(true)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        DirectionChip(
+                            label = stringResource(artistSongsDirectionLabel(mode, ascending = false)),
+                            selected = !sort.ascending,
+                            tag = "artist_songs_sort_dir_desc",
+                            onClick = { onSelect(sort.withAscending(false)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectionChip(
+    label: String,
+    selected: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SegmentedChip(
+        label = label,
+        selected = selected,
+        onClick = onClick,
+        modifier = modifier.testTag(tag),
+    )
+}
+
+private fun artistSongsModeLabel(mode: ArtistSongsMode): Int = when (mode) {
+    ArtistSongsMode.PLAY_COUNT -> R.string.artist_songs_sort_play_count
+    ArtistSongsMode.RANDOM -> R.string.artist_songs_sort_random
+    ArtistSongsMode.ALBUM_NAME -> R.string.artist_songs_sort_album_name
+    ArtistSongsMode.ALBUM_YEAR -> R.string.artist_songs_sort_album_year
+    ArtistSongsMode.TRACK_NAME -> R.string.artist_songs_sort_track_name
+}
+
+private fun artistSongsModeSubtitle(mode: ArtistSongsMode): Int = when (mode) {
+    ArtistSongsMode.PLAY_COUNT -> R.string.artist_songs_sort_play_count_sub
+    ArtistSongsMode.RANDOM -> R.string.artist_songs_sort_random_sub
+    ArtistSongsMode.ALBUM_NAME -> R.string.artist_songs_sort_album_name_sub
+    ArtistSongsMode.ALBUM_YEAR -> R.string.artist_songs_sort_album_year_sub
+    ArtistSongsMode.TRACK_NAME -> R.string.artist_songs_sort_track_name_sub
+}
+
+private fun artistSongsDirectionLabel(mode: ArtistSongsMode, ascending: Boolean): Int = when (mode) {
+    ArtistSongsMode.PLAY_COUNT ->
+        if (ascending) R.string.artist_songs_sort_least_played else R.string.artist_songs_sort_most_played
+
+    ArtistSongsMode.ALBUM_YEAR ->
+        if (ascending) R.string.artist_songs_sort_oldest else R.string.artist_songs_sort_newest
+
+    else -> if (ascending) R.string.artist_songs_sort_az else R.string.artist_songs_sort_za
 }
 
 @Composable

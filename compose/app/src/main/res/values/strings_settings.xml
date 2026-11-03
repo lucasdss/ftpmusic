@@ -127,4 +127,14 @@
     <!-- Advanced page -->
     <string name="settings_advanced_headers">Custom HTTP headers</string>
     <string name="settings_advanced_headers_sub">Sent with every Subsonic request</string>
+
+    <!-- Appearance page: album track order (ADR-0152) -->
+    <string name="settings_album_track_order_title">Album track order</string>
+    <string name="settings_album_track_order_sub">Choose how album detail lists tracks. Applies the next time you open an album; Shuffle and Android Auto keep their own order.</string>
+    <string name="settings_album_track_order_disc">Track number</string>
+    <string name="settings_album_track_order_disc_sub">Disc then track number, ascending</string>
+    <string name="settings_album_track_order_most">Most played first</string>
+    <string name="settings_album_track_order_most_sub">Local play count, high to low</string>
+    <string name="settings_album_track_order_least">Least played first</string>
+    <string name="settings_album_track_order_least_sub">Local play count, low to high</string>
 </resources>

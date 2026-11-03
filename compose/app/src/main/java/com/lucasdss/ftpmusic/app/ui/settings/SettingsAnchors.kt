@@ -19,6 +19,7 @@ object SettingsAnchors {
     const val CUSTOM_HEADERS = "custom_headers"
     const val BT_RESUME = "bt_resume"
     const val PLAYBACK_NOTIF = "playback_notif"
+    const val ALBUM_TRACK_SORT = "album_track_sort"
 }
 
 fun settingsLeafRoute(base: String, anchor: String? = null): String {

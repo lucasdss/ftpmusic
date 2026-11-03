@@ -884,9 +884,10 @@ fun FtpmusicNavHost() {
                             com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.APPEARANCE,
                         ),
                         arguments = com.lucasdss.ftpmusic.app.ui.settings.SettingsRoutes.leafNavArgs(),
-                    ) {
+                    ) { entry ->
                         com.lucasdss.ftpmusic.app.ui.settings.AppearanceSettingsScreen(
                             onBack = { navController.popBackStack() },
+                            scrollToAnchor = entry.arguments?.getString("anchor")?.takeIf { it.isNotBlank() },
                         )
                     }
                     composable(

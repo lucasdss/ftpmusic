@@ -33,3 +33,13 @@ and no redundant Shuffle chrome on artist.
 - Large artists may hitch on first Play All; prep flag disables the button.
 - Player-level shuffle remains independent of this setting.
 - Song title A–Z removed from UI; legacy `title_asc` maps to `album_name_asc`.
+
+## Amendment (2026-11-03, ADR-0152)
+
+- The Songs tab now has its own **browse** sort (`artist_songs_sort`, default
+  most played first). It is independent from `artist_play_order` and never
+  changes Play All / Play Next All / Add All ordering.
+- The "UI Songs tab pagination unchanged" line above describes the state before
+  ADR-0152; Songs pagination is now sort-aware (SQL keyset for play-count and
+  title modes, full-membership load for album-block and random modes).
+

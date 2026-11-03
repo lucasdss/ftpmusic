@@ -10,13 +10,16 @@ import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.data.sort.ArtistSongsSort
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -50,6 +53,9 @@ class ArtistDetailViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        // Existing pagination tests assert the title A–Z keyset; ADR-0152 makes
+        // play count the default, so pin the browse sort here unless a test overrides.
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns "track_name_asc"
         every { offlineModeManager.isOffline } returns MutableStateFlow(false)
         every { metadataDao.getStarredAlbumIdsFlow() } returns MutableStateFlow(emptyList())
         every { metadataDao.getDislikedAlbumIdsFlow() } returns MutableStateFlow(emptyList())
@@ -421,9 +427,259 @@ class ArtistDetailViewModelTest {
     }
 
     @Test
-    fun `playAll default shuffle albums uses full catalog via tryStartContext`() = runTest(testDispatcher) {
+    fun `default songs sort is most played first via play-count keyset`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns null
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery {
+            trackDao.getTracksForArtistViewByPlayCountDesc("ar-1", "Test Artist", 50)
+        } returns listOf(
+            TrackEntity(id = "hit", title = "Hit", artistId = "ar-1", playCount = 12),
+            TrackEntity(id = "deep", title = "Deep Cut", artistId = "ar-1", playCount = 1),
+        )
+
+        viewModel.loadArtist("ar-1")
+        advanceUntilIdle()
+        val state = viewModel.state.value
+
+        assertEquals(ArtistSongsSort.PLAY_COUNT_DESC, state.songsSort)
+        assertEquals(listOf("hit", "deep"), state.tracks.map { it.id })
+        assertEquals(12, state.tracks[0].playCount)
+        assertFalse(state.hasMoreTracks)
+    }
+
+    @Test
+    fun `saved play-count ascending sort uses ascending keyset`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns "play_count_asc"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery {
+            trackDao.getTracksForArtistViewByPlayCountAsc("ar-1", "Test Artist", 50)
+        } returns listOf(TrackEntity(id = "deep", title = "Deep Cut", artistId = "ar-1", playCount = 1))
+
+        viewModel.loadArtist("ar-1")
+        advanceUntilIdle()
+        val state = viewModel.state.value
+
+        assertEquals(ArtistSongsSort.PLAY_COUNT_ASC, state.songsSort)
+        coVerify(exactly = 1) { trackDao.getTracksForArtistViewByPlayCountAsc("ar-1", "Test Artist", 50) }
+        coVerify(exactly = 0) {
+            trackDao.getTracksForArtistViewByPlayCountDesc(any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `random sort loads full catalog once and pages in place`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns "random"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        val catalog = (1..60).map { i -> trackEntity("t$i", "Track ${i.toString().padStart(3, '0')}") }
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns catalog
+
+        viewModel.loadArtist("ar-1")
+        // Full-catalog modes sort on Dispatchers.Default; await the committed list.
+        val first = viewModel.state.first { !it.isLoadingSongs && it.tracks.isNotEmpty() }
+        assertEquals(ArtistSongsSort.RANDOM, first.songsSort)
+        assertEquals(50, first.tracks.size)
+        assertTrue(first.hasMoreTracks)
+        val firstIds = first.tracks.map { it.id }
+
+        viewModel.loadMoreTracks()
+        val more = viewModel.state.first { !it.isLoadingMoreTracks && it.tracks.size == 60 }
+
+        // Stable across load-more: same shuffled source, appended slice.
+        assertEquals(firstIds, more.tracks.take(50).map { it.id })
+        assertEquals(catalog.map { it.id }.toSet(), more.tracks.map { it.id }.toSet())
+        assertFalse(more.hasMoreTracks)
+        coVerify(exactly = 1) { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") }
+    }
+
+    @Test
+    fun `album name sort orders album blocks and uses album years only for year mode`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns "album_name_asc"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns listOf(
+            trackEntity("z1", "Zed").copy(album = "Zebra", albumId = "z", discNumber = 1, trackNumber = 1),
+            trackEntity("a2", "Second").copy(album = "Alpha", albumId = "a", discNumber = 1, trackNumber = 2),
+            trackEntity("a1", "First").copy(album = "Alpha", albumId = "a", discNumber = 1, trackNumber = 1),
+        )
+
+        viewModel.loadArtist("ar-1")
+        val state = viewModel.state.first { !it.isLoadingSongs && it.tracks.isNotEmpty() }
+
+        assertEquals(listOf("a1", "a2", "z1"), state.tracks.map { it.id })
+        coVerify(exactly = 0) { metadataDao.getAlbumYearRows(any()) }
+    }
+
+    @Test
+    fun `album year sort puts unknown years last in both directions`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns "album_year_desc"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns listOf(
+            trackEntity("old", "Old").copy(album = "Old", albumId = "old"),
+            trackEntity("new", "New").copy(album = "New", albumId = "new"),
+            trackEntity("unknown", "Unknown").copy(album = "Unknown", albumId = "unknown"),
+        )
+        coEvery { metadataDao.getAlbumYearRows(any()) } returns listOf(
+            AlbumYearRow("old", 1990),
+            AlbumYearRow("new", 2020),
+            AlbumYearRow("unknown", null),
+        )
+
+        viewModel.loadArtist("ar-1")
+        val state = viewModel.state.first { !it.isLoadingSongs && it.tracks.isNotEmpty() }
+
+        assertEquals(listOf("new", "old", "unknown"), state.tracks.map { it.id })
+    }
+
+    @Test
+    fun `changing songs sort resets the list and reloads page one`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Test Artist", 50) } returns
+            listOf(trackEntity("a1", "Alpha"))
+        coEvery {
+            trackDao.getTracksForArtistViewByPlayCountDesc("ar-1", "Test Artist", 50)
+        } returns listOf(
+            TrackEntity(id = "hit", title = "Hit", artistId = "ar-1", playCount = 9),
+        )
+
+        viewModel.loadArtist("ar-1")
+        advanceUntilIdle()
+        assertEquals(listOf("a1"), viewModel.state.value.tracks.map { it.id })
+
+        viewModel.setSongsSort(ArtistSongsSort.PLAY_COUNT_DESC)
+        advanceUntilIdle()
+        val state = viewModel.state.value
+
+        assertEquals(1, state.tracks.size)
+        verify { storage.put(SecureStorage.KEY_ARTIST_SONGS_SORT, "play_count_desc") }
+        coVerify(exactly = 1) {
+            trackDao.getTracksForArtistViewByPlayCountDesc("ar-1", "Test Artist", 50)
+        }
+    }
+
+    @Test
+    fun `reselecting random reloads and reshuffles`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns "random"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        val catalog = (1..10).map { i -> trackEntity("t$i", "Track $i") }
+        coEvery { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") } returns catalog
+
+        viewModel.loadArtist("ar-1")
+        viewModel.state.first { !it.isLoadingSongs && it.tracks.isNotEmpty() }
+        assertEquals(ArtistSongsSort.RANDOM, viewModel.state.value.songsSort)
+
+        viewModel.setSongsSort(ArtistSongsSort.RANDOM)
+        viewModel.state.first { !it.isLoadingSongs && it.tracks.isNotEmpty() }
+        coVerify(exactly = 2) { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") }
+
+        viewModel.setSongsSort(ArtistSongsSort.RANDOM)
+        viewModel.state.first { !it.isLoadingSongs && it.tracks.isNotEmpty() }
+        coVerify(exactly = 3) { trackDao.getAllTracksForArtistView("ar-1", "Test Artist") }
+    }
+
+    @Test
+    fun `switching artists mid-load never commits the previous artist tracks`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Artist A")
+        coEvery { metadataDao.getArtistById("ar-2") } returns CachedArtistEntity(id = "ar-2", name = "Artist B")
+        coEvery { metadataDao.getAlbumsByArtistId(any()) } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        coEvery { trackDao.getTracksForArtistView("ar-1", "Artist A", 50) } returns listOf(
+            TrackEntity(id = "a1", title = "A Song", artistId = "ar-1"),
+        )
+        coEvery { trackDao.getTracksForArtistView("ar-2", "Artist B", 50) } returns listOf(
+            TrackEntity(id = "b1", title = "B Song", artistId = "ar-2"),
+        )
+        // Artist A parks on a slow count after its page was already fetched, so its
+        // commit is exactly the one a generation guard must block (N3).
+        coEvery { trackDao.countTracksForArtistView("ar-1", "Artist A") } coAnswers {
+            delay(1_000)
+            1
+        }
+        coEvery { trackDao.countTracksForArtistView("ar-2", "Artist B") } returns 1
+
+        viewModel.loadArtist("ar-1")
+        advanceTimeBy(50)
+        viewModel.loadArtist("ar-2")
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals("ar-2", state.artistId)
+        assertEquals(listOf("b1"), state.tracks.map { it.id })
+        assertFalse("A's commit must not leave the screen loading", state.isLoadingSongs)
+    }
+
+    @Test
+    fun `loadMoreTracks stops at the chase cap when pages only duplicate`() = runTest(testDispatcher) {
+        every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
+        every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
+        every { storage.get(SecureStorage.KEY_ARTIST_SONGS_SORT) } returns "play_count_desc"
+        coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
+        coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()
+        coEvery { metadataDao.getAlbumsByArtistName(any()) } returns emptyList()
+        val firstPage = (1..50).map { i ->
+            TrackEntity(id = "t$i", title = "Track $i", artistId = "ar-1", playCount = 100 - i)
+        }
+        coEvery {
+            trackDao.getTracksForArtistViewByPlayCountDesc("ar-1", "Test Artist", 50)
+        } returns firstPage
+        // Every cursor page returns the 50 rows already on screen: the cursor
+        // never advances, so the loop must terminate at its cap instead of spinning.
+        coEvery {
+            trackDao.getTracksForArtistViewAfterByPlayCountDesc(
+                "ar-1",
+                "Test Artist",
+                50,
+                "Track 50",
+                "t50",
+                50,
+            )
+        } returns firstPage
+
+        viewModel.loadArtist("ar-1")
+        val loaded = viewModel.state.first { !it.isLoadingSongs && it.tracks.size == 50 }
+        assertTrue(loaded.hasMoreTracks)
+
+        viewModel.loadMoreTracks()
+        // Terminal signal is hasMoreTracks = false (set when the chase cap is hit).
+        val after = viewModel.state.first { !it.hasMoreTracks }
+
+        assertEquals(50, after.tracks.size)
+        assertFalse(after.isLoadingMoreTracks)
+        coVerify(exactly = 20) {
+            trackDao.getTracksForArtistViewAfterByPlayCountDesc(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `playAll default shuffle albums uses full catalog via tryStartContext`() = runTest(testDispatcher) {
         every { storage.get(SecureStorage.KEY_ARTIST_PLAY_ORDER) } returns null
         coEvery { metadataDao.getArtistById("ar-1") } returns CachedArtistEntity(id = "ar-1", name = "Test Artist")
         coEvery { metadataDao.getAlbumsByArtistId("ar-1") } returns emptyList()

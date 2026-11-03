@@ -975,4 +975,36 @@ class SettingsViewModelTest {
         verify { storage.put(SecureStorage.KEY_BT_DEVICE_MACS, "[]") }
         assertTrue(viewModel.state.value.btSelectedMacs.isEmpty())
     }
+
+    // ── ADR-0152: album track order preference ────────────────────────────
+
+    @Test
+    fun `album track sort defaults to disc track when unset`() {
+        every { storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT) } returns null
+        val fresh = createViewModel()
+        assertEquals(
+            com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.DISC_TRACK,
+            fresh.state.value.albumTrackSort,
+        )
+    }
+
+    @Test
+    fun `album track sort loads persisted value from storage`() {
+        every { storage.get(SecureStorage.KEY_ALBUM_TRACK_SORT) } returns "play_count_desc"
+        val fresh = createViewModel()
+        assertEquals(
+            com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.PLAY_COUNT_DESC,
+            fresh.state.value.albumTrackSort,
+        )
+    }
+
+    @Test
+    fun `setAlbumTrackSort persists and updates state`() {
+        viewModel.setAlbumTrackSort(com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.PLAY_COUNT_ASC)
+        verify { storage.put(SecureStorage.KEY_ALBUM_TRACK_SORT, "play_count_asc") }
+        assertEquals(
+            com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.PLAY_COUNT_ASC,
+            viewModel.state.value.albumTrackSort,
+        )
+    }
 }

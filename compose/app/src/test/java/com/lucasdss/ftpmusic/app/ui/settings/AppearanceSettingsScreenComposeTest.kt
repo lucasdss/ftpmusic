@@ -63,4 +63,22 @@ class AppearanceSettingsScreenComposeTest {
         composeRule.onNodeWithTag("settings_toggle_Duration_on_track_lists").performClick()
         verify { vm.setShowListDuration(false) }
     }
+
+    @Test
+    fun `album track order options delegate to the view model`() {
+        val vm = mockViewModel(SettingsUiState())
+        composeRule.setContent { AppearanceSettingsScreen(viewModel = vm) }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Track number").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_album_track_sort_play_count_desc")
+            .performScrollTo()
+            .performClick()
+        verify { vm.setAlbumTrackSort(com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.PLAY_COUNT_DESC) }
+
+        composeRule.onNodeWithTag("settings_album_track_sort_play_count_asc")
+            .performScrollTo()
+            .performClick()
+        verify { vm.setAlbumTrackSort(com.lucasdss.ftpmusic.app.data.sort.AlbumTrackSort.PLAY_COUNT_ASC) }
+    }
 }
