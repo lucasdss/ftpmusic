@@ -56,6 +56,7 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.ScrollAwareEqBars
 import com.lucasdss.ftpmusic.app.ui.components.SongListRow
@@ -539,14 +540,25 @@ fun HomeScreen(
                                             .clip(RoundedCornerShape(50))
                                             .background(color.copy(alpha = 0.13f))
                                             .clickable { onGenreClick(genre) }
-                                            .padding(horizontal = spacingS(), vertical = spacingXS()),
+                                            .padding(
+                                                start = spacingXS(),
+                                                end = spacingS(),
+                                                top = spacingXS(),
+                                                bottom = spacingXS(),
+                                            ),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Icon(
-                                            Icons.Filled.PlayArrow,
-                                            null,
-                                            tint = color,
-                                            modifier = Modifier.size(adp(10f)),
+                                        com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt(
+                                            name = genre,
+                                            fixedCoverKind = null,
+                                            fixedCoverValue = null,
+                                            derivedCoverArtIds = emptyList(),
+                                            subject = com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject.GENRE,
+                                            skipDerived = true,
+                                            decodeSize = 28.dp,
+                                            modifier = Modifier
+                                                .size(adp(22f))
+                                                .clip(RoundedCornerShape(50)),
                                         )
                                         Spacer(Modifier.width(spacingXS()))
                                         Text(
@@ -879,6 +891,7 @@ private fun GenreMixCard(
             derivedCoverArtIds = mix.coverArts,
             primaryArtist = mix.primaryArtist,
             primaryAlbum = mix.primaryAlbum,
+            subject = CollectionCoverSubject.MIX,
             decodeSize = decodeSize,
             contentDescription = "${mix.name} cover. Long-press to edit.",
             modifier = Modifier
@@ -940,6 +953,7 @@ private fun HomePlaylistCard(
             serverCoverArtId = playlist.coverArt,
             primaryArtist = playlist.primaryArtist,
             primaryAlbum = playlist.primaryAlbum,
+            subject = CollectionCoverSubject.PLAYLIST,
             decodeSize = decodeSize,
             contentDescription = "${playlist.name} cover. Long-press to edit.",
             modifier = Modifier

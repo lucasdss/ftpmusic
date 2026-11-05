@@ -175,6 +175,40 @@ fun AppearanceSettingsScreen(
                     onToggle = { viewModel.setPreferItunesArt(it) },
                 )
                 SectionDivider()
+                Text(
+                    "Collection cover style",
+                    color = Color.White,
+                    fontSize = textLabelL(),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                )
+                Text(
+                    "Default art pack for genres, Daily Mixes, and playlists without a custom cover",
+                    color = Color(0xFF888888),
+                    fontSize = textLabelS(),
+                    modifier = Modifier.padding(horizontal = spacingL()).padding(bottom = spacingS()),
+                )
+                val packs = listOf(
+                    "anime" to "Anime",
+                    "pixel48" to "Pixel 48",
+                    "futuristic" to "Futuristic",
+                    "vintage" to "Vintage",
+                    "watercolor" to "Watercolor",
+                    "bauhaus" to "Bauhaus",
+                    "clay" to "Clay",
+                    "risograph" to "Risograph",
+                    "noir" to "Noir",
+                )
+                packs.forEachIndexed { index, (id, label) ->
+                    SectionToggleRow(
+                        label = label,
+                        subtitle = if (state.coverStylePackId == id) "Active" else "Tap to use this pack",
+                        checked = state.coverStylePackId == id,
+                        onToggle = { if (it) viewModel.setCoverStylePack(id) },
+                    )
+                    if (index < packs.lastIndex) SectionDivider()
+                }
+                SectionDivider()
                 SectionToggleRow(
                     label = "Search lyrics",
                     subtitle = "Include cached lyrics in local search (rebuilds within ~500ms)",

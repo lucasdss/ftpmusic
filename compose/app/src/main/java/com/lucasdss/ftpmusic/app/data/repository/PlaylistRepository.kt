@@ -4,6 +4,7 @@ import android.util.Log
 import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
+import com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeDao
 import com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
@@ -32,6 +33,7 @@ class PlaylistRepository @Inject constructor(
     private val storage: SecureStorage,
     private val downloadManager: DownloadManager,
     private val coverStore: CollectionCoverStore,
+    private val userCoverLibrary: UserCoverLibrary,
 ) {
     companion object {
         const val COVER_PREFIX = "pl"
@@ -414,16 +416,13 @@ class PlaylistRepository @Inject constructor(
         }
     }
 
-    /** Pin a local-only fixed cover (library navidrome id or gallery relative path). */
+    /**
+     * Pin a local-only fixed cover (navidrome id or library-relative path).
+     * Switching covers does **not** delete prior library files (ADR 0151).
+     */
     suspend fun setFixedCover(playlistId: String, kind: String, value: String) {
         if (!CollectionCoverKind.isValid(kind) || value.isBlank()) return
-        val old = playlistDao.getById(playlistId) ?: return
-        if (old.fixedCoverKind == CollectionCoverKind.LOCAL &&
-            old.fixedCoverValue != null &&
-            old.fixedCoverValue != value
-        ) {
-            coverStore.deleteRelative(old.fixedCoverValue)
-        }
+        playlistDao.getById(playlistId) ?: return
         playlistDao.updateFixedCover(
             id = playlistId,
             kind = kind,
@@ -432,12 +431,9 @@ class PlaylistRepository @Inject constructor(
         )
     }
 
+    /** Clear assignment only — retained library files are kept (ADR 0151). */
     suspend fun clearFixedCover(playlistId: String) {
-        val old = playlistDao.getById(playlistId) ?: return
-        if (old.fixedCoverKind == CollectionCoverKind.LOCAL) {
-            coverStore.deleteRelative(old.fixedCoverValue)
-        }
-        coverStore.deleteForPrefix(COVER_PREFIX, playlistId)
+        playlistDao.getById(playlistId) ?: return
         playlistDao.updateFixedCover(
             id = playlistId,
             kind = null,
@@ -447,27 +443,21 @@ class PlaylistRepository @Inject constructor(
     }
 
     /**
-     * Persist a cropped bitmap as LOCAL fixed cover. Recycles [bitmap].
-     * @return relative path or null on failure.
+     * Persist a cropped bitmap into the personal cover library and pin it.
+     * Recycles [bitmap]. @return library relative path or null on failure.
      */
     suspend fun setFixedCoverFromCroppedBitmap(playlistId: String, bitmap: android.graphics.Bitmap): String? =
         withContext(Dispatchers.IO) {
-            try {
-                val relative = coverStore.importCroppedBitmap(bitmap, COVER_PREFIX, playlistId)
-                    ?: return@withContext null
-                setFixedCover(playlistId, CollectionCoverKind.LOCAL, relative)
-                relative
-            } finally {
-                bitmap.recycle()
-            }
+            val entry = userCoverLibrary.importCroppedBitmap(bitmap) ?: return@withContext null
+            setFixedCover(playlistId, CollectionCoverKind.LOCAL, entry.relativePath)
+            entry.relativePath
         }
 
-    /** Drop local cover files when a playlist is removed. */
+    /**
+     * Playlist delete no longer removes retained library images (ADR 0151).
+     * Legacy entity-scoped files under `pl_{id}.*` are cleaned if present.
+     */
     suspend fun onPlaylistDeleted(playlistId: String) {
-        val old = playlistDao.getById(playlistId)
-        if (old?.fixedCoverKind == CollectionCoverKind.LOCAL) {
-            coverStore.deleteRelative(old.fixedCoverValue)
-        }
         coverStore.deleteForPrefix(COVER_PREFIX, playlistId)
     }
 }

@@ -76,6 +76,42 @@ class CollectionCoverResolverTest {
     }
 
     @Test
+    fun `bundled wins over lettermark when no derived`() {
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "Rock",
+                fixedKind = null,
+                fixedValue = null,
+                bundledPackId = "anime",
+                bundledAssetPath = "collection_defaults/anime/genres/rock.webp",
+            ),
+        )
+        assertEquals(
+            CollectionCoverResolver.Resolved.Bundled(
+                "anime",
+                "collection_defaults/anime/genres/rock.webp",
+            ),
+            r,
+        )
+    }
+
+    @Test
+    fun `genre skipDerived uses bundled before lettermark`() {
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "Rock",
+                fixedKind = null,
+                fixedValue = null,
+                derivedCoverArtIds = listOf("al-1"),
+                skipDerived = true,
+                bundledPackId = "vintage",
+                bundledAssetPath = "collection_defaults/vintage/genres/rock.webp",
+            ),
+        )
+        assertTrue(r is CollectionCoverResolver.Resolved.Bundled)
+    }
+
+    @Test
     fun `initials from two words`() {
         assertEquals("RM", CollectionCoverResolver.initials("Rock Mix"))
     }

@@ -41,6 +41,8 @@ class DailyMixRepositoryTest {
     private val listenEventDao: ListenEventDao = mockk(relaxed = true)
     private val mixCacheCoordinator: MixCacheCoordinator = mockk(relaxed = true)
     private val coverStore: CollectionCoverStore = mockk(relaxed = true)
+    private val userCoverLibrary: com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary =
+        mockk(relaxed = true)
     private val repository = DailyMixRepository(
         customMixDao,
         genreMixDao,
@@ -49,6 +51,7 @@ class DailyMixRepositoryTest {
         listenEventDao,
         mixCacheCoordinator,
         coverStore,
+        userCoverLibrary,
         UnconfinedTestDispatcher(),
     )
 
@@ -1081,14 +1084,14 @@ class DailyMixRepositoryTest {
     }
 
     @Test
-    fun `clearFixedCover wipes columns and local file`() = runTest {
+    fun `clearFixedCover wipes columns but keeps library file`() = runTest {
         val old = mixEntity(id = 3L).copy(
             fixedCoverKind = CollectionCoverKind.LOCAL,
-            fixedCoverValue = "mix_3.jpg",
+            fixedCoverValue = "library/abc.jpg",
         )
         coEvery { customMixDao.getById(3L) } returns old
         repository.clearFixedCover(3L)
-        coVerify { coverStore.deleteRelative("mix_3.jpg") }
+        coVerify(exactly = 0) { coverStore.deleteRelative(any()) }
         coVerify {
             customMixDao.update(match { it.fixedCoverKind == null && it.fixedCoverValue == null })
         }

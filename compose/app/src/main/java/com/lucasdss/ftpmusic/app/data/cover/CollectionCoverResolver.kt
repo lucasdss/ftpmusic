@@ -1,11 +1,10 @@
 package com.lucasdss.ftpmusic.app.data.cover
 
 /**
- * Pure resolution for Daily Mix / playlist collection art (ADR 0115).
+ * Pure resolution for Daily Mix / playlist / genre collection art (ADR 0115 / 0151).
  *
- * Priority: fixed navidrome → fixed local file → derived cover ids → lettermark.
- * UI still runs [rememberPreferredCoverArt] / Coil for network+fallback tiers;
- * this only picks which id/path or lettermark to present.
+ * Priority: fixed navidrome → fixed local file → derived cover ids → bundled pack → lettermark.
+ * UI still runs preferred/fallback for network tiers; this picks id/path/bundled/lettermark.
  */
 object CollectionCoverResolver {
 
@@ -15,6 +14,7 @@ object CollectionCoverResolver {
         data class Derived(val coverArtIds: List<String>) : Resolved() {
             val primary: String? get() = coverArtIds.firstOrNull()
         }
+        data class Bundled(val packId: String, val assetPath: String) : Resolved()
         data class Lettermark(val name: String) : Resolved()
     }
 
@@ -27,6 +27,11 @@ object CollectionCoverResolver {
         val localAbsolutePath: String? = null,
         /** Server playlist coverArt when no fixed cover. */
         val serverCoverArtId: String? = null,
+        /** Bundled default from active style pack (ADR 0151). */
+        val bundledPackId: String? = null,
+        val bundledAssetPath: String? = null,
+        /** When true, skip derived/server and go fixed → bundled → lettermark (genres). */
+        val skipDerived: Boolean = false,
     )
 
     /**
@@ -53,17 +58,24 @@ object CollectionCoverResolver {
                 return Resolved.LocalFile(input.localAbsolutePath)
 
             kind == CollectionCoverKind.LOCAL && value != null -> {
-                // File missing/corrupt — fall through to derived.
+                // File missing/corrupt — fall through.
             }
         }
-        val derived = buildList {
-            input.derivedCoverArtIds.forEach { id ->
-                if (id.isNotBlank() && id !in this) add(id)
+        if (!input.skipDerived) {
+            val derived = buildList {
+                input.derivedCoverArtIds.forEach { id ->
+                    if (id.isNotBlank() && id !in this) add(id)
+                }
+                val server = input.serverCoverArtId?.takeIf { it.isNotBlank() }
+                if (server != null && server !in this) add(server)
             }
-            val server = input.serverCoverArtId?.takeIf { it.isNotBlank() }
-            if (server != null && server !in this) add(server)
+            if (derived.isNotEmpty()) return Resolved.Derived(derived)
         }
-        if (derived.isNotEmpty()) return Resolved.Derived(derived)
+        val pack = input.bundledPackId?.takeIf { it.isNotBlank() }
+        val asset = input.bundledAssetPath?.takeIf { it.isNotBlank() }
+        if (pack != null && asset != null) {
+            return Resolved.Bundled(pack, asset)
+        }
         return Resolved.Lettermark(input.name.ifBlank { "?" })
     }
 

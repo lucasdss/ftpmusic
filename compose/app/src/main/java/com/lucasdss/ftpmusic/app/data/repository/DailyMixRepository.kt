@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.lucasdss.ftpmusic.app.data.cache.MixCacheCoordinator
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
+import com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -71,6 +72,7 @@ class DailyMixRepository @Inject constructor(
     private val listenEventDao: ListenEventDao,
     private val mixCacheCoordinator: MixCacheCoordinator,
     private val coverStore: CollectionCoverStore,
+    private val userCoverLibrary: UserCoverLibrary,
     private val ioDispatcher: CoroutineDispatcher,
 ) {
     companion object {
@@ -294,43 +296,33 @@ class DailyMixRepository @Inject constructor(
      * Pin a fixed cover for a mix recipe (local only). [kind] is
      * [CollectionCoverKind.NAVIDROME] or [CollectionCoverKind.LOCAL].
      */
+    /**
+     * Pin a fixed cover. LOCAL values are library-relative paths (ADR 0151).
+     * Switching covers does **not** delete prior library files.
+     */
     suspend fun setFixedCover(id: Long, kind: String, value: String) = withContext(ioDispatcher) {
         if (!CollectionCoverKind.isValid(kind) || value.isBlank()) return@withContext
         val old = customMixDao.getById(id) ?: return@withContext
-        if (old.fixedCoverKind == CollectionCoverKind.LOCAL &&
-            old.fixedCoverValue != null &&
-            old.fixedCoverValue != value
-        ) {
-            coverStore.deleteRelative(old.fixedCoverValue)
-        }
         customMixDao.update(
             old.copy(fixedCoverKind = kind, fixedCoverValue = value),
         )
     }
 
+    /** Clear assignment only — retained library files are kept (ADR 0151). */
     suspend fun clearFixedCover(id: Long) = withContext(ioDispatcher) {
         val old = customMixDao.getById(id) ?: return@withContext
-        if (old.fixedCoverKind == CollectionCoverKind.LOCAL) {
-            coverStore.deleteRelative(old.fixedCoverValue)
-        }
-        coverStore.deleteForPrefix(COVER_PREFIX, id.toString())
         customMixDao.update(old.copy(fixedCoverKind = null, fixedCoverValue = null))
     }
 
     /**
-     * Persist a cropped bitmap as LOCAL fixed cover. Recycles [bitmap].
-     * @return relative path or null on failure.
+     * Persist a cropped bitmap into the personal cover library and pin it.
+     * Recycles [bitmap]. @return library relative path or null on failure.
      */
     suspend fun setFixedCoverFromCroppedBitmap(id: Long, bitmap: android.graphics.Bitmap): String? =
         withContext(ioDispatcher) {
-            try {
-                val relative = coverStore.importCroppedBitmap(bitmap, COVER_PREFIX, id.toString())
-                    ?: return@withContext null
-                setFixedCover(id, CollectionCoverKind.LOCAL, relative)
-                relative
-            } finally {
-                bitmap.recycle()
-            }
+            val entry = userCoverLibrary.importCroppedBitmap(bitmap) ?: return@withContext null
+            setFixedCover(id, CollectionCoverKind.LOCAL, entry.relativePath)
+            entry.relativePath
         }
 
     /** Build pools + one weight map for the whole run. Run on IO by callers. */

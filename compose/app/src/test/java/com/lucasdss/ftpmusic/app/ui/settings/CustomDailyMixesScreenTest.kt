@@ -50,7 +50,12 @@ class CustomDailyMixesScreenTest {
         composeRule.setContent {
             CustomDailyMixesScreen(
                 onBack = {},
-                viewModel = CustomDailyMixesViewModel(repository, metadataDao, mockk(relaxed = true)),
+                viewModel = CustomDailyMixesViewModel(
+                    repository,
+                    metadataDao,
+                    mockk(relaxed = true),
+                    mockk(relaxed = true),
+                ),
             )
         }
         composeRule.waitForIdle()

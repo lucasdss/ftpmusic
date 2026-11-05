@@ -675,3 +675,29 @@ data class SyncSkipAlbumEntity(
     /** Consecutive sync-run failures; evicted at [SyncSkipAlbumDao.MAX_FAIL_COUNT]. */
     @ColumnInfo(name = "fail_count", defaultValue = "1") val failCount: Int = 1,
 )
+
+/**
+ * Retained personal cover library (ADR 0151). Device crops live here so switching
+ * a mix/playlist/genre cover only changes the pointer — files survive Clear.
+ */
+@Entity(
+    tableName = "user_cover_images",
+    indices = [Index(value = ["created_at_ms"])],
+)
+data class UserCoverImageEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "relative_path") val relativePath: String,
+    @ColumnInfo(name = "created_at_ms") val createdAtMs: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "last_used_at_ms") val lastUsedAtMs: Long = System.currentTimeMillis(),
+)
+
+/**
+ * Per-genre fixed cover keyed by Navidrome genre name (survives genre table rebuilds).
+ */
+@Entity(tableName = "genre_covers")
+data class GenreCoverEntity(
+    @PrimaryKey @ColumnInfo(name = "genre_name") val genreName: String,
+    @ColumnInfo(name = "fixed_cover_kind") val fixedCoverKind: String? = null,
+    @ColumnInfo(name = "fixed_cover_value") val fixedCoverValue: String? = null,
+    @ColumnInfo(name = "updated_at_ms") val updatedAtMs: Long = System.currentTimeMillis(),
+)

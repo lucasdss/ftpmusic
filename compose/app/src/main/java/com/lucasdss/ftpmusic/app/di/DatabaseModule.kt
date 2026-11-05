@@ -7,6 +7,7 @@ import com.lucasdss.ftpmusic.app.data.db.CacheQueueDao
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
 import com.lucasdss.ftpmusic.app.data.db.DesiredItemDao
+import com.lucasdss.ftpmusic.app.data.db.GenreCoverDao
 import com.lucasdss.ftpmusic.app.data.db.GenreDao
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
@@ -21,6 +22,7 @@ import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
 import com.lucasdss.ftpmusic.app.data.db.SyncSkipAlbumDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackWaveformDao
+import com.lucasdss.ftpmusic.app.data.db.UserCoverImageDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
@@ -56,7 +58,7 @@ object DatabaseModule {
         // SupportSQLite path required: existing migrations only override
         // migrate(SupportSQLiteDatabase). BundledSQLiteDriver deferred until
         // all migrations dual-override migrate(SQLiteConnection) — ADR 0084.
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_69)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_70)
         .addCallback(AppDatabase.FTS5_CALLBACK)
         // NO fallbackToDestructiveMigration: all migrations registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
@@ -95,6 +97,10 @@ object DatabaseModule {
     @Provides fun provideListenEventDao(db: AppDatabase): ListenEventDao = db.listenEventDao()
 
     @Provides fun provideDesiredItemDao(db: AppDatabase): DesiredItemDao = db.desiredItemDao()
+
+    @Provides fun provideUserCoverImageDao(db: AppDatabase): UserCoverImageDao = db.userCoverImageDao()
+
+    @Provides fun provideGenreCoverDao(db: AppDatabase): GenreCoverDao = db.genreCoverDao()
 
     @Provides
     @Singleton

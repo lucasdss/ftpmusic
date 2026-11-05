@@ -15,14 +15,22 @@ import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverResolver
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
+import com.lucasdss.ftpmusic.app.data.cover.DefaultCollectionCoverCatalog
+import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
 import java.io.File
 
+enum class CollectionCoverSubject {
+    MIX,
+    PLAYLIST,
+    GENRE,
+}
+
 /**
- * Shared collection cover presenter for Daily Mix + playlist cards/headers.
- * Fixed → derived (with preferred/fallback) → lettermark.
+ * Shared collection cover presenter for Daily Mix / playlist / genre cards.
+ * Fixed → derived (optional) → bundled style pack → lettermark (ADR 0151).
  */
 @Composable
 fun CollectionCoverArt(
@@ -37,9 +45,24 @@ fun CollectionCoverArt(
     decodeSize: Dp = 120.dp,
     contentDescription: String? = name,
     lettermarkLarge: Boolean = false,
+    subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
+    stylePackId: String? = null,
+    skipDerived: Boolean = subject == CollectionCoverSubject.GENRE,
 ) {
     val context = LocalContext.current
     val store = remember { CollectionCoverStore(context.applicationContext) }
+    val catalog = remember { DefaultCollectionCoverCatalog(context.applicationContext) }
+    val storage = remember { SecureStorage(context.applicationContext) }
+    val activePack = stylePackId
+        ?: storage.get(SecureStorage.KEY_COVER_STYLE_PACK)
+        ?: catalog.defaultPackId()
+    val bundled = remember(name, activePack, subject) {
+        when (subject) {
+            CollectionCoverSubject.GENRE -> catalog.resolveGenre(activePack, name)
+            CollectionCoverSubject.MIX -> catalog.resolveMix(activePack, name)
+            CollectionCoverSubject.PLAYLIST -> catalog.resolvePlaylist(activePack, name)
+        }
+    }
     val localPath = remember(fixedCoverKind, fixedCoverValue) {
         if (fixedCoverKind == CollectionCoverKind.LOCAL) {
             store.absolutePath(fixedCoverValue.orEmpty())
@@ -48,7 +71,6 @@ fun CollectionCoverArt(
         }
     }
     // Bust Coil memory/disk cache when same relative path is overwritten (ADR 0125).
-    // Use mtime+length — second-resolution mtime alone can collide on fast re-crops.
     val localModelUrl = remember(localPath) {
         val path = localPath ?: return@remember null
         val file = File(path)
@@ -61,6 +83,8 @@ fun CollectionCoverArt(
         derivedCoverArtIds,
         serverCoverArtId,
         localPath,
+        bundled?.assetPath,
+        skipDerived,
     ) {
         CollectionCoverResolver.resolve(
             CollectionCoverResolver.Input(
@@ -70,6 +94,9 @@ fun CollectionCoverArt(
                 derivedCoverArtIds = derivedCoverArtIds,
                 localAbsolutePath = localPath,
                 serverCoverArtId = serverCoverArtId,
+                bundledPackId = bundled?.packId,
+                bundledAssetPath = bundled?.assetPath,
+                skipDerived = skipDerived,
             ),
         )
     }
@@ -136,6 +163,15 @@ fun CollectionCoverArt(
                         fontSize = if (lettermarkLarge) textHeadingL() else textHeadingS(),
                     )
                 }
+            }
+
+            is CollectionCoverResolver.Resolved.Bundled -> {
+                CoverArtImage(
+                    url = catalog.assetUri(r.assetPath),
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    decodeSize = decodeSize,
+                )
             }
 
             is CollectionCoverResolver.Resolved.Lettermark -> {

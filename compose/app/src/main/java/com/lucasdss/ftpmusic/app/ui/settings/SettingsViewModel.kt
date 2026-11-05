@@ -52,6 +52,8 @@ data class SettingsUiState(
     val audioCacheQuotaMb: Int = 2000,
     val coverArtQuotaMb: Int = 300,
     val coverArtCacheBytes: Long = 0,
+    /** ADR 0151: active bundled collection cover style pack. */
+    val coverStylePackId: String = "anime",
     val castFromPhone: Boolean = false,
     val useHttpForCast: Boolean = true,
     val cellularMediaPolicy: CellularMediaPolicy = CellularMediaPolicy.AUTO_CACHE,
@@ -194,6 +196,7 @@ class SettingsViewModel @Inject constructor(
             ?.takeIf { it > 0 }
             ?: com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor.DEFAULT_MAX_BYTES
         val savedCoverArtQuota = storage.get(SecureStorage.KEY_COVER_ART_QUOTA_MB)?.toIntOrNull() ?: 300
+        val savedCoverStylePack = storage.get(SecureStorage.KEY_COVER_STYLE_PACK) ?: "anime"
         coverArtFallback.maxCacheBytes = savedCoverArtQuota.toLong() * 1024 * 1024
         refresh()
         val headers = loadCustomHeaders()
@@ -229,6 +232,7 @@ class SettingsViewModel @Inject constructor(
         _state.value = _state.value.copy(
             audioCacheQuotaMb = (savedAudioCacheBytes / (1024 * 1024)).toInt(),
             coverArtQuotaMb = savedCoverArtQuota,
+            coverStylePackId = savedCoverStylePack,
             castFromPhone = castPreferences.castFromPhone,
             useHttpForCast = castPreferences.useHttpForCast,
             customHeaders = headers,
@@ -716,6 +720,12 @@ class SettingsViewModel @Inject constructor(
         _state.value = _state.value.copy(coverArtQuotaMb = mb)
         coverArtFallback.evictIfNeeded()
         storage.put(SecureStorage.KEY_COVER_ART_QUOTA_MB, mb.toString())
+    }
+
+    fun setCoverStylePack(packId: String) {
+        if (packId.isBlank()) return
+        storage.put(SecureStorage.KEY_COVER_STYLE_PACK, packId)
+        _state.value = _state.value.copy(coverStylePackId = packId)
     }
 
     @OptIn(coil.annotation.ExperimentalCoilApi::class)

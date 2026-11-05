@@ -1,0 +1,49 @@
+{
+  "packs": [
+    {
+      "id": "anime",
+      "label": "Anime",
+      "default": true
+    },
+    {
+      "id": "pixel48",
+      "label": "Pixel 48",
+      "default": false
+    },
+    {
+      "id": "futuristic",
+      "label": "Futuristic",
+      "default": false
+    },
+    {
+      "id": "vintage",
+      "label": "Vintage",
+      "default": false
+    },
+    {
+      "id": "watercolor",
+      "label": "Watercolor",
+      "default": false
+    },
+    {
+      "id": "bauhaus",
+      "label": "Bauhaus",
+      "default": false
+    },
+    {
+      "id": "clay",
+      "label": "Clay",
+      "default": false
+    },
+    {
+      "id": "risograph",
+      "label": "Risograph",
+      "default": false
+    },
+    {
+      "id": "noir",
+      "label": "Noir",
+      "default": false
+    }
+  ]
+}

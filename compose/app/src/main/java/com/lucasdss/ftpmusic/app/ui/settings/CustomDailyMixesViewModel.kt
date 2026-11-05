@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
+import com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedGenreEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
@@ -83,6 +84,7 @@ class CustomDailyMixesViewModel @Inject constructor(
     private val repository: DailyMixRepository,
     private val metadataDao: CachedMetadataDao,
     private val coverStore: CollectionCoverStore,
+    private val userCoverLibrary: UserCoverLibrary,
 ) : ViewModel() {
 
     companion object {
@@ -222,40 +224,24 @@ class CustomDailyMixesViewModel @Inject constructor(
         }
     }
 
-    /** Persist square crop from [CoverCropDialog] (ADR 0125). Recycles [bitmap]. */
+    /** Persist square crop into retained library (ADR 0151). Recycles [bitmap]. */
     fun setFixedCoverFromCroppedBitmap(bitmap: Bitmap) {
-        val editor = _state.value.editor ?: run {
+        if (_state.value.editor == null) {
             bitmap.recycle()
             return
         }
-        val previousRelative = editor.fixedCoverValue
-        val idKey = editor.mixId?.toString() ?: "new_${System.currentTimeMillis()}"
         viewModelScope.launch {
-            try {
-                val relative = coverStore.importCroppedBitmap(
-                    bitmap,
-                    DailyMixRepository.COVER_PREFIX,
-                    idKey,
-                ) ?: run {
-                    _toast.value = "Could not import image"
-                    return@launch
-                }
-                // Unsaved mixes stage under mix_new_<ts> — drop prior staged file.
-                if (previousRelative != null &&
-                    previousRelative != relative &&
-                    previousRelative.startsWith("${DailyMixRepository.COVER_PREFIX}_new_")
-                ) {
-                    coverStore.deleteRelative(previousRelative)
-                }
-                updateEditor {
-                    it.copy(
-                        fixedCoverKind = CollectionCoverKind.LOCAL,
-                        fixedCoverValue = relative,
-                        clearFixedCover = false,
-                    )
-                }
-            } finally {
-                bitmap.recycle()
+            val entry = userCoverLibrary.importCroppedBitmap(bitmap)
+            if (entry == null) {
+                _toast.value = "Could not import image"
+                return@launch
+            }
+            updateEditor {
+                it.copy(
+                    fixedCoverKind = CollectionCoverKind.LOCAL,
+                    fixedCoverValue = entry.relativePath,
+                    clearFixedCover = false,
+                )
             }
         }
     }
@@ -477,8 +463,8 @@ class CustomDailyMixesViewModel @Inject constructor(
     }
 
     /**
-     * New mixes stage gallery files under `mix_new_<ts>.*`. After [DailyMixRepository.addMix]
-     * returns a numeric id, rekey so [CollectionCoverStore.deleteForPrefix] matches.
+     * Library-relative paths (`library/…`) are already final. Legacy staged
+     * `mix_new_<ts>.*` files are rekeyed for older editor sessions.
      */
     private suspend fun resolveFixedCoverValueForSave(
         mixIdWasNull: Boolean,
@@ -487,6 +473,7 @@ class CustomDailyMixesViewModel @Inject constructor(
         value: String,
     ): String? {
         if (kind != CollectionCoverKind.LOCAL) return value
+        if (value.startsWith("${UserCoverLibrary.LIBRARY_DIR}/")) return value
         if (!mixIdWasNull) return value
         val stem = value.substringBeforeLast('.')
         if (!stem.startsWith("${DailyMixRepository.COVER_PREFIX}_new_")) return value

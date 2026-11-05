@@ -2668,3 +2668,50 @@ interface SyncSkipAlbumDao {
     @Query("SELECT COUNT(*) FROM sync_skip_albums")
     suspend fun count(): Int
 }
+
+// ── Collection cover library + genre covers (ADR 0151) ─────────────────────────
+
+@Dao
+interface UserCoverImageDao {
+    @Query("SELECT * FROM user_cover_images ORDER BY last_used_at_ms DESC")
+    suspend fun getAll(): List<UserCoverImageEntity>
+
+    @Query("SELECT * FROM user_cover_images WHERE id = :id")
+    suspend fun getById(id: String): UserCoverImageEntity?
+
+    @Query("SELECT * FROM user_cover_images WHERE relative_path = :relativePath LIMIT 1")
+    suspend fun getByRelativePath(relativePath: String): UserCoverImageEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: UserCoverImageEntity)
+
+    @Query("UPDATE user_cover_images SET last_used_at_ms = :usedAt WHERE id = :id")
+    suspend fun touch(id: String, usedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM user_cover_images WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+@Dao
+interface GenreCoverDao {
+    @Query("SELECT * FROM genre_covers WHERE genre_name = :name")
+    suspend fun get(name: String): GenreCoverEntity?
+
+    @Query("SELECT * FROM genre_covers")
+    suspend fun getAll(): List<GenreCoverEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: GenreCoverEntity)
+
+    @Query(
+        "UPDATE genre_covers SET fixed_cover_kind = NULL, fixed_cover_value = NULL, " +
+            "updated_at_ms = :updatedAt WHERE genre_name = :name",
+    )
+    suspend fun clear(name: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query(
+        "UPDATE genre_covers SET fixed_cover_kind = NULL, fixed_cover_value = NULL, " +
+            "updated_at_ms = :updatedAt WHERE fixed_cover_kind = 'local' AND fixed_cover_value = :relativePath",
+    )
+    suspend fun clearPointersTo(relativePath: String, updatedAt: Long = System.currentTimeMillis())
+}

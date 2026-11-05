@@ -145,6 +145,9 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_QUEUE_JOURNAL_CAP = "queue_journal_cap"
         const val KEY_CONTINUOUS_PLAY_ENABLED = "continuous_play_enabled"
         const val KEY_COVER_ART_QUOTA_MB = "cover_art_quota_mb"
+
+        /** ADR 0151: active bundled collection cover style pack id (anime, pixel48, …). */
+        const val KEY_COVER_STYLE_PACK = "cover_style_pack"
         const val KEY_AUDIO_CACHE_MAX_BYTES = "audio_cache_max_bytes"
         const val KEY_SYNC_INTERVAL_HOURS = "sync_interval_hours"
 

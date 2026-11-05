@@ -63,7 +63,7 @@ class CustomDailyMixesViewModelTest {
     ) = CustomMix(id = id, name = name, filters = filters, autoCache = autoCache, isDefault = true)
 
     private fun vm(coverStore: CollectionCoverStore = mockk(relaxed = true)) =
-        CustomDailyMixesViewModel(repository, metadataDao, coverStore)
+        CustomDailyMixesViewModel(repository, metadataDao, coverStore, mockk(relaxed = true))
 
     @Test
     fun `load populates mixes genres and liked artists`() = runTest(testDispatcher) {

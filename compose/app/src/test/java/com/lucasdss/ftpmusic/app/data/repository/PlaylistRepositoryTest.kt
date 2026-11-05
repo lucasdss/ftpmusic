@@ -42,6 +42,7 @@ class PlaylistRepositoryTest {
             storage,
             downloadManager,
             mockk(relaxed = true),
+            mockk(relaxed = true),
         )
     }
 

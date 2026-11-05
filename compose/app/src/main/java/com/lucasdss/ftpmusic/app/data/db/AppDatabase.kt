@@ -36,9 +36,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ListenEventEntity::class,
         DesiredItemEntity::class,
         SyncSkipAlbumEntity::class,
+        UserCoverImageEntity::class,
+        GenreCoverEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 69,
+    version = 70,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -60,6 +62,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun listenEventDao(): ListenEventDao
     abstract fun desiredItemDao(): DesiredItemDao
     abstract fun syncSkipAlbumDao(): SyncSkipAlbumDao
+    abstract fun userCoverImageDao(): UserCoverImageDao
+    abstract fun genreCoverDao(): GenreCoverDao
     // search_fts via SearchFtsDao @Singleton (not Room @Dao) — ADR 0084
 
     companion object {
@@ -1304,6 +1308,41 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_69 = ALL_MIGRATIONS_68 + MIGRATION_68_69
+
+        /**
+         * ADR 0151: retained personal cover library + per-genre fixed covers.
+         */
+        val MIGRATION_69_70 = object : Migration(69, 70) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `user_cover_images` (
+                      `id` TEXT NOT NULL,
+                      `relative_path` TEXT NOT NULL,
+                      `created_at_ms` INTEGER NOT NULL,
+                      `last_used_at_ms` INTEGER NOT NULL,
+                      PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_user_cover_images_created_at_ms` " +
+                        "ON `user_cover_images` (`created_at_ms`)",
+                )
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `genre_covers` (
+                      `genre_name` TEXT NOT NULL,
+                      `fixed_cover_kind` TEXT,
+                      `fixed_cover_value` TEXT,
+                      `updated_at_ms` INTEGER NOT NULL,
+                      PRIMARY KEY(`genre_name`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+        val ALL_MIGRATIONS_70 = ALL_MIGRATIONS_69 + MIGRATION_69_70
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).
