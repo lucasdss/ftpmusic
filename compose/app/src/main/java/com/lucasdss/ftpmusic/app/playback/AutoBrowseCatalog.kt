@@ -19,7 +19,6 @@ import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.ui.player.QueueSheetGrouping
-import java.time.LocalDate
 
 /**
  * Local-first Android Auto browse tree (ADR-0091 / ADR-0131 / ADR-0138).
@@ -372,13 +371,16 @@ class AutoBrowseCatalog(
     }
 
     private suspend fun mixTrackIds(mixId: Long): List<String> {
-        val mixDao = genreMixDao ?: return emptyList()
-        val today = LocalDate.now().toString()
-        val yesterday = LocalDate.now().minusDays(1).toString()
-        val row = mixDao.getDailyMix(today, mixId) ?: mixDao.getDailyMix(yesterday, mixId) ?: return emptyList()
-        val ids = mixDao.getDailyMixTrackIds(row.id)
-        val filtered = dailyMixRepository?.filterPlayableMixTrackIds(ids) ?: ids
-        return filtered
+        // DM-16: Android Auto must follow the active pointer, not today|yesterday.
+        val repo = dailyMixRepository
+        val ids = if (repo != null) {
+            repo.activeTrackIds(mixId)
+        } else {
+            val mixDao = genreMixDao ?: return emptyList()
+            val active = mixDao.getActiveDailyMix(mixId) ?: return emptyList()
+            mixDao.getDailyMixTrackIds(active.id)
+        }
+        return repo?.filterPlayableMixTrackIds(ids) ?: ids
     }
 
     private suspend fun mixTracks(mixId: Long, offset: Int, size: Int): List<MediaItem> {

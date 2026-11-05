@@ -106,6 +106,16 @@ fun MixDetailScreen(
     LaunchedEffect(mixId) { viewModel.loadMix(mixId) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val toast by viewModel.toast.collectAsStateWithLifecycle()
+    val updateAvailable by viewModel.updateAvailable.collectAsStateWithLifecycle()
+    // System back AND the toolbar button both activate pending then pop once.
+    // BackHandler is required so predictive/system back still runs leave→activate
+    // (NavHost's default pop would skip it). leaveActivated makes the activate
+    // side idempotent if both fire in the same gesture.
+    val leaveAndBack: () -> Unit = {
+        viewModel.onLeaveActivatePending()
+        onBack()
+    }
+    androidx.activity.compose.BackHandler { leaveAndBack() }
     var showMixSheet by remember { mutableStateOf(false) }
     var showTrackSheet by remember { mutableStateOf<GenreMixTrack?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -147,7 +157,7 @@ fun MixDetailScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                DetailBackButton(onBack = onBack, inset = false)
+                DetailBackButton(onBack = leaveAndBack, inset = false)
                 FittingText(
                     text = mixName,
                     color = Color.White,
@@ -156,6 +166,33 @@ fun MixDetailScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
+            }
+
+            if (updateAvailable) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .clip(RoundedCornerShape(cornerM()))
+                        .background(Color(0xFF1A2330))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "New mix ready",
+                        color = Color.White,
+                        fontSize = textBodyM(),
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = { viewModel.ignorePendingUpdate() },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFAAAAAA)),
+                    ) { Text("Ignore") }
+                    TextButton(
+                        onClick = { viewModel.adoptPendingUpdate() },
+                        colors = ButtonDefaults.textButtonColors(contentColor = BrandTeal),
+                    ) { Text("Update") }
+                }
             }
 
             if (state.isLoading) {
@@ -610,6 +647,14 @@ class MixDetailViewModel @Inject constructor(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
+    private val _updateAvailable = MutableStateFlow(false)
+    val updateAvailable: StateFlow<Boolean> = _updateAvailable.asStateFlow()
+
+    /** DM-16: row id bound at open; UI stays on this until Update / leave. */
+    private var sessionDailyMixId: Int? = null
+    private var ignoredPendingForSession: Boolean = false
+    private var leaveActivated: Boolean = false
+
     fun clearToast() {
         _toast.value = null
     }
@@ -903,75 +948,53 @@ class MixDetailViewModel @Inject constructor(
 
     fun loadMix(mixId: Long) {
         loadedMixId = mixId
+        leaveActivated = false
+        ignoredPendingForSession = false
         if (autoGenMixId != mixId) {
             autoGenMixId = mixId
             autoGenAttempted.set(false)
         }
         viewModelScope.launch {
             try {
-                val today = java.time.LocalDate.now().toString()
-                val yesterday = java.time.LocalDate.now().minusDays(1).toString()
                 val recipe = dailyMixRepository.getMix(mixId)
                 recipe?.let { _mixName.value = it.name }
                 val fixedKind = recipe?.fixedCoverKind
                 val fixedValue = recipe?.fixedCoverValue
-                val dailyMix = genreMixDao.getDailyMix(today, mixId)
-                    ?: genreMixDao.getDailyMix(yesterday, mixId)
+                // DM-16: bind session to active pointer (not today|yesterday).
+                val dailyMix = dailyMixRepository.getActiveDailyMix(mixId)
+                sessionDailyMixId = dailyMix?.id
                 val trackIds: List<String> = if (dailyMix != null) {
                     genreMixDao.getDailyMixTrackIds(dailyMix.id)
                 } else {
                     emptyList()
                 }
+                refreshUpdateBanner(mixId)
 
                 if (trackIds.isNotEmpty()) {
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                         "ftpmusic-dailymix",
-                        "loadMix hit mixId=$mixId date=${dailyMix?.date} count=${trackIds.size}",
+                        "loadMix hit mixId=$mixId activeId=${dailyMix?.id} v=${dailyMix?.version} count=${trackIds.size}",
                     )
-                    val playableIds = dailyMixRepository.filterPlayableMixTrackIds(trackIds)
-                    val allTracks = if (playableIds.isEmpty()) {
-                        emptyList()
-                    } else {
-                        trackDao.getTracksByIds(playableIds)
-                    }
-                    val liked = allTracks.filter { it.starredAt != null }.map { it.id }.toSet()
-                    val disliked = allTracks.filter { it.isDisliked }.map { it.id }.toSet()
-                    val trackMap = allTracks.associateBy { it.id }
-                    val displayTracks = playableIds.mapNotNull { id ->
-                        trackMap[id]?.let { t ->
-                            GenreMixTrack(
-                                t.id,
-                                t.title,
-                                t.artist,
-                                t.albumId,
-                                t.durationSeconds,
-                                t.trackNumber,
-                                t.coverArtUrl,
-                            )
-                        }
-                    }
-                    _state.value = State(
-                        tracks = displayTracks,
-                        likedTrackIds = liked,
-                        dislikedTrackIds = disliked,
-                        isLoading = false,
-                        fixedCoverKind = fixedKind,
-                        fixedCoverValue = fixedValue,
-                    )
+                    applyTracks(trackIds, fixedKind, fixedValue)
                     return@launch
                 }
 
-                // Guard against the "No mix generated yet" dead-end: auto-
-                // generate once on open (generation is purely local — Room +
-                // DailyMixGenerator, no network).
-                if (autoGenAttempted.compareAndSet(false, true)) {
+                // R2 / DeepSeek B1: auto build+activate only when there is no
+                // active pointer. An empty active list (all filtered/stale) must
+                // not silently force-activate a new version on open.
+                if (dailyMix == null && autoGenAttempted.compareAndSet(false, true)) {
                     refreshMix(mixId)
                     return@launch
                 }
 
-                // No mix and nothing to generate from — show empty with a
-                // working refresh action (Refresh button in the UI).
-                _state.value = State(isLoading = false, error = "No mix generated yet — tap refresh")
+                _state.value = State(
+                    isLoading = false,
+                    error = if (dailyMix != null) {
+                        "No playable tracks — tap refresh"
+                    } else {
+                        "No mix generated yet — tap refresh"
+                    },
+                )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w("ftpmusic-dailymix", "[loadMix] $mixId failed: ${e.message}")
@@ -985,22 +1008,22 @@ class MixDetailViewModel @Inject constructor(
         }
     }
 
+    /** Force build + activate (Update / PTR / refresh). Does not touch Media queue. */
     fun refreshMix(mixId: Long) {
-        // Guard against concurrent refreshes
         if (!isRefreshing.compareAndSet(false, true)) return
         viewModelScope.launch {
             try {
                 _state.value = _state.value.copy(isLoading = true, error = null)
-                val generated = dailyMixRepository.generateOne(mixId, manual = true)
+                val generated = dailyMixRepository.generateOne(mixId, manual = true, activate = true)
                 if (generated.isEmpty()) {
-                    // Never persist an empty mix — an empty row would block
-                    // regeneration for 48h (empty-mix deadlock).
                     _state.value = _state.value.copy(
                         isLoading = false,
                         error = "No tracks for this mix yet. Try Resync Library in Settings.",
                     )
                     return@launch
                 }
+                ignoredPendingForSession = false
+                _updateAvailable.value = false
                 loadMix(mixId)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1009,6 +1032,88 @@ class MixDetailViewModel @Inject constructor(
                 isRefreshing.set(false)
             }
         }
+    }
+
+    /** Adopt pending version into the session UI (banner Update). */
+    fun adoptPendingUpdate() {
+        val mixId = loadedMixId ?: return
+        viewModelScope.launch {
+            val ok = dailyMixRepository.activatePending(mixId)
+            if (ok) {
+                ignoredPendingForSession = false
+                _updateAvailable.value = false
+                loadMix(mixId)
+            } else {
+                refreshMix(mixId)
+            }
+        }
+    }
+
+    /** Keep session list for this visit; leave will still activate pending (R7). */
+    fun ignorePendingUpdate() {
+        ignoredPendingForSession = true
+        _updateAvailable.value = false
+    }
+
+    /**
+     * Nav-pop / dispose: activate pending so re-enter shows the new list.
+     * Idempotent; skips config-change double-fire via [leaveActivated].
+     */
+    fun onLeaveActivatePending() {
+        val mixId = loadedMixId ?: return
+        if (leaveActivated) return
+        leaveActivated = true
+        // Fire-and-forget; ViewModel may be clearing.
+        viewModelScope.launch {
+            dailyMixRepository.activatePending(mixId)
+        }
+    }
+
+    private suspend fun refreshUpdateBanner(mixId: Long) {
+        if (ignoredPendingForSession) {
+            _updateAvailable.value = false
+            return
+        }
+        val pending = dailyMixRepository.getPendingDailyMix(mixId)
+        val sessionId = sessionDailyMixId
+        _updateAvailable.value = pending != null && pending.id != sessionId
+    }
+
+    private suspend fun applyTracks(
+        trackIds: List<String>,
+        fixedKind: String?,
+        fixedValue: String?,
+    ) {
+        val playableIds = dailyMixRepository.filterPlayableMixTrackIds(trackIds)
+        val allTracks = if (playableIds.isEmpty()) {
+            emptyList()
+        } else {
+            trackDao.getTracksByIds(playableIds)
+        }
+        val liked = allTracks.filter { it.starredAt != null }.map { it.id }.toSet()
+        val disliked = allTracks.filter { it.isDisliked }.map { it.id }.toSet()
+        val trackMap = allTracks.associateBy { it.id }
+        val displayTracks = playableIds.mapNotNull { id ->
+            trackMap[id]?.let { t ->
+                GenreMixTrack(
+                    t.id,
+                    t.title,
+                    t.artist,
+                    t.albumId,
+                    t.durationSeconds,
+                    t.trackNumber,
+                    t.coverArtUrl,
+                )
+            }
+        }
+        _state.value = State(
+            tracks = displayTracks,
+            likedTrackIds = liked,
+            dislikedTrackIds = disliked,
+            isLoading = false,
+            fixedCoverKind = fixedKind,
+            fixedCoverValue = fixedValue,
+        )
     }
 
     fun buildStreamUrl(trackId: String): String {

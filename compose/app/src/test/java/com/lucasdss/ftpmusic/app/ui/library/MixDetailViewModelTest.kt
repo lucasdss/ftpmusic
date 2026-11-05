@@ -3,6 +3,8 @@ package com.lucasdss.ftpmusic.app.ui.library
 import com.lucasdss.ftpmusic.app.data.db.*
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.CustomMix
+import com.lucasdss.ftpmusic.app.data.repository.MixFilters
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import io.mockk.*
@@ -30,7 +32,6 @@ class MixDetailViewModelTest {
     private lateinit var favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository
     private lateinit var coverStore: com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
     private val today = LocalDate.now().toString()
-    private val yesterday = LocalDate.now().minusDays(1).toString()
 
     @Before fun setup() {
         Dispatchers.setMain(testDispatcher)
@@ -48,6 +49,15 @@ class MixDetailViewModelTest {
             @Suppress("UNCHECKED_CAST")
             invocation.args[0] as List<String>
         }
+        coEvery { dailyMixRepository.getPendingDailyMix(any()) } returns null
+        coEvery { dailyMixRepository.getMix(any()) } returns CustomMix(
+            id = 5L,
+            name = "Rock Mix",
+            filters = MixFilters(genres = listOf("Rock")),
+            autoCache = false,
+            allowCrossMixFill = false,
+            isDefault = true,
+        )
         viewModel = MixDetailViewModel(
             genreMixDao, dailyMixRepository, trackDao, authHelper, storage,
             playbackManager = playbackManager,
@@ -67,26 +77,35 @@ class MixDetailViewModelTest {
     private fun te(id: String, title: String = "Song $id", genre: String = "Rock") =
         TrackEntity(id = id, genre = genre, title = title, coverArtUrl = "ca-$id", artist = "Artist $id")
 
-    @Test fun `loadMix resolves track IDs from tracks table`() = runTest(testDispatcher) {
-        val mix = DailyMixEntity(id = 1, date = today, mixId = 5L)
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns mix
+    private fun activeRow(id: Int = 1, version: Int = 1) = DailyMixEntity(
+        id = id,
+        date = today,
+        mixId = 5L,
+        version = version,
+        status = DailyMixStatus.READY,
+    )
+
+    @Test fun `loadMix resolves track IDs from active pointer`() = runTest(testDispatcher) {
+        val mix = activeRow(id = 1, version = 2)
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns mix
         coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("t1", "t2")
         coEvery { trackDao.getTracksByIds(listOf("t1", "t2")) } returns listOf(te("t1", "One"), te("t2", "Two"))
         viewModel.loadMix(5L)
         advanceUntilIdle()
         assertEquals(2, viewModel.state.value.tracks.size)
         assertEquals("One", viewModel.state.value.tracks[0].title)
+        coVerify(exactly = 0) { dailyMixRepository.generateOne(any(), any(), any()) }
     }
 
     @Test fun `loadMix handles DB exception`() = runTest(testDispatcher) {
-        coEvery { genreMixDao.getDailyMix(any(), any()) } throws RuntimeException("fail")
+        coEvery { dailyMixRepository.getActiveDailyMix(any()) } throws RuntimeException("fail")
         viewModel.loadMix(5L)
         advanceUntilIdle()
         assertTrue(viewModel.state.value.tracks.isEmpty())
     }
 
     @Test fun `refreshMix errors on repository failure`() = runTest(testDispatcher) {
-        coEvery { dailyMixRepository.generateOne(5L, manual = true) } throws RuntimeException("fail")
+        coEvery { dailyMixRepository.generateOne(5L, manual = true, activate = true) } throws RuntimeException("fail")
         viewModel.refreshMix(5L)
         advanceUntilIdle()
         assertEquals("Failed to refresh mix", viewModel.state.value.error)
@@ -106,45 +125,12 @@ class MixDetailViewModelTest {
         every { authHelper.buildStreamUrl(any(), any(), any(), any()) } returns "https://out"
         assertEquals("https://out", viewModel.buildStreamUrl("x"))
     }
-    // ── Daily Mix dead-end guards (yesterday fallback + auto-generate) ─────
 
-    @Test fun `loadMix falls back to yesterday mix when today has none`() = runTest(testDispatcher) {
-        val yMix = DailyMixEntity(id = 7, date = yesterday, mixId = 5L)
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns null
-        coEvery { genreMixDao.getDailyMix(yesterday, 5L) } returns yMix
-        coEvery { genreMixDao.getDailyMixTrackIds(7) } returns listOf("t1")
-        coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1", "Yesterday Track"))
-
-        viewModel.loadMix(5L)
-        advanceUntilIdle()
-
-        assertEquals("Yesterday's mix must render when today's is missing", 1, viewModel.state.value.tracks.size)
-        assertEquals("Yesterday Track", viewModel.state.value.tracks[0].title)
-    }
-
-    @Test fun `loadMix prefers today mix over yesterday mix`() = runTest(testDispatcher) {
-        val todayMix = DailyMixEntity(id = 1, date = today, mixId = 5L)
-        val yMix = DailyMixEntity(id = 2, date = yesterday, mixId = 5L)
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns todayMix
-        coEvery { genreMixDao.getDailyMix(yesterday, 5L) } returns yMix
-        coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("t1")
-        coEvery { genreMixDao.getDailyMixTrackIds(2) } returns listOf("t9")
-        coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1", "Today Track"))
-
-        viewModel.loadMix(5L)
-        advanceUntilIdle()
-
-        assertEquals("Today Track", viewModel.state.value.tracks[0].title)
-    }
-
-    @Test fun `loadMix auto-generates once when no mix exists`() = runTest(testDispatcher) {
-        // Stateful DAO mock: the auto-generation persists the mix, and the
-        // re-entrant loadMix must then find it (like the real Room DB).
-        var savedMix: DailyMixEntity? = null
-        coEvery { genreMixDao.getDailyMix(today, 5L) } answers { savedMix }
-        coEvery { genreMixDao.getDailyMix(yesterday, 5L) } returns null
-        coEvery { dailyMixRepository.generateOne(5L, manual = true) } answers {
-            savedMix = DailyMixEntity(id = 5, date = today, mixId = 5L)
+    @Test fun `loadMix auto-generates once when no active pointer`() = runTest(testDispatcher) {
+        var active: DailyMixEntity? = null
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } answers { active }
+        coEvery { dailyMixRepository.generateOne(5L, manual = true, activate = true) } answers {
+            active = activeRow(id = 5, version = 1)
             listOf("t1")
         }
         coEvery { genreMixDao.getDailyMixTrackIds(5) } returns listOf("t1")
@@ -153,16 +139,25 @@ class MixDetailViewModelTest {
         viewModel.loadMix(5L)
         advanceUntilIdle()
 
-        // The auto-generated mix is persisted, re-read and displayed — no dead-end.
         assertTrue("Mix must auto-generate on open", viewModel.state.value.tracks.isNotEmpty())
         assertEquals("Auto Generated", viewModel.state.value.tracks[0].title)
-        coVerify(exactly = 1) { dailyMixRepository.generateOne(5L, manual = true) }
+        coVerify(exactly = 1) { dailyMixRepository.generateOne(5L, manual = true, activate = true) }
+    }
+
+    @Test fun `loadMix does not auto-refresh empty active pointer`() = runTest(testDispatcher) {
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns activeRow(id = 7, version = 1)
+        coEvery { genreMixDao.getDailyMixTrackIds(7) } returns emptyList()
+
+        viewModel.loadMix(5L)
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { dailyMixRepository.generateOne(any(), any(), any()) }
+        assertEquals("No playable tracks — tap refresh", viewModel.state.value.error)
     }
 
     @Test fun `loadMix shows empty error when generation yields nothing`() = runTest(testDispatcher) {
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns null
-        coEvery { genreMixDao.getDailyMix(yesterday, 5L) } returns null
-        coEvery { dailyMixRepository.generateOne(5L, manual = true) } returns emptyList()
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns null
+        coEvery { dailyMixRepository.generateOne(5L, manual = true, activate = true) } returns emptyList()
 
         viewModel.loadMix(5L)
         advanceUntilIdle()
@@ -171,8 +166,30 @@ class MixDetailViewModelTest {
         assertEquals("No tracks for this mix yet. Try Resync Library in Settings.", viewModel.state.value.error)
     }
 
+    @Test fun `refreshMix activates new version`() = runTest(testDispatcher) {
+        var active = activeRow(id = 1, version = 1)
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } answers { active }
+        coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("old")
+        coEvery { trackDao.getTracksByIds(listOf("old")) } returns listOf(te("old", "Old"))
+        viewModel.loadMix(5L)
+        advanceUntilIdle()
+
+        coEvery { dailyMixRepository.generateOne(5L, manual = true, activate = true) } answers {
+            active = activeRow(id = 2, version = 2)
+            listOf("t1")
+        }
+        coEvery { genreMixDao.getDailyMixTrackIds(2) } returns listOf("t1")
+        coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1", "New"))
+
+        viewModel.refreshMix(5L)
+        advanceUntilIdle()
+
+        assertEquals("New", viewModel.state.value.tracks[0].title)
+        coVerify { dailyMixRepository.generateOne(5L, manual = true, activate = true) }
+    }
+
     @Test fun `refreshMix never persists an empty generated mix`() = runTest(testDispatcher) {
-        coEvery { dailyMixRepository.generateOne(5L, manual = true) } returns emptyList()
+        coEvery { dailyMixRepository.generateOne(5L, manual = true, activate = true) } returns emptyList()
 
         viewModel.refreshMix(5L)
         advanceUntilIdle()
@@ -180,12 +197,76 @@ class MixDetailViewModelTest {
         assertEquals("No tracks for this mix yet. Try Resync Library in Settings.", viewModel.state.value.error)
     }
 
+    @Test fun `banner shows when pending differs from session`() = runTest(testDispatcher) {
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns activeRow(id = 1, version = 1)
+        coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("t1")
+        coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1"))
+        coEvery { dailyMixRepository.getPendingDailyMix(5L) } returns activeRow(id = 9, version = 2)
+
+        viewModel.loadMix(5L)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.updateAvailable.value)
+    }
+
+    @Test fun `ignorePendingUpdate suppresses banner for visit`() = runTest(testDispatcher) {
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns activeRow(id = 1)
+        coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("t1")
+        coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1"))
+        coEvery { dailyMixRepository.getPendingDailyMix(5L) } returns activeRow(id = 9, version = 2)
+        viewModel.loadMix(5L)
+        advanceUntilIdle()
+        assertTrue(viewModel.updateAvailable.value)
+
+        viewModel.ignorePendingUpdate()
+        assertFalse(viewModel.updateAvailable.value)
+    }
+
+    @Test fun `adoptPendingUpdate activates then reloads`() = runTest(testDispatcher) {
+        var active = activeRow(id = 1, version = 1)
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } answers { active }
+        coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("t1")
+        coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1", "Old"))
+        coEvery { dailyMixRepository.getPendingDailyMix(5L) } returns activeRow(id = 9, version = 2)
+        viewModel.loadMix(5L)
+        advanceUntilIdle()
+
+        coEvery { dailyMixRepository.activatePending(5L) } answers {
+            active = activeRow(id = 9, version = 2)
+            true
+        }
+        coEvery { genreMixDao.getDailyMixTrackIds(9) } returns listOf("t2")
+        coEvery { trackDao.getTracksByIds(listOf("t2")) } returns listOf(te("t2", "Pending"))
+        coEvery { dailyMixRepository.getPendingDailyMix(5L) } returns null
+
+        viewModel.adoptPendingUpdate()
+        advanceUntilIdle()
+
+        coVerify { dailyMixRepository.activatePending(5L) }
+        assertEquals("Pending", viewModel.state.value.tracks[0].title)
+        assertFalse(viewModel.updateAvailable.value)
+    }
+
+    @Test fun `onLeaveActivatePending activates pending once`() = runTest(testDispatcher) {
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns activeRow(id = 1)
+        coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("t1")
+        coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1"))
+        viewModel.loadMix(5L)
+        advanceUntilIdle()
+
+        coEvery { dailyMixRepository.activatePending(5L) } returns true
+        viewModel.onLeaveActivatePending()
+        viewModel.onLeaveActivatePending()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { dailyMixRepository.activatePending(5L) }
+    }
+
     // ── Playback / queue / download actions (coverage) ────────────────────
 
     private suspend fun kotlinx.coroutines.test.TestScope.loadMixIntoTracks(ids: List<String> = listOf("t1", "t2")) {
-        val mix = DailyMixEntity(id = 1, date = today, mixId = 5L)
-        coEvery { genreMixDao.getDailyMix(any(), 5L) } returns null
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns mix
+        val mix = activeRow(id = 1)
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns mix
         coEvery { genreMixDao.getDailyMixTrackIds(1) } returns ids
         coEvery { trackDao.getTracksByIds(ids) } returns ids.map { te(it) }
         viewModel.loadMix(5L)
@@ -232,9 +313,8 @@ class MixDetailViewModelTest {
     }
 
     @Test fun `playAll no-op on empty mix`() = runTest(testDispatcher) {
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns null
-        coEvery { genreMixDao.getDailyMix(any(), 5L) } returns null
-        coEvery { dailyMixRepository.generateOne(5L, manual = true) } returns emptyList()
+        coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns null
+        coEvery { dailyMixRepository.generateOne(5L, manual = true, activate = true) } returns emptyList()
         viewModel.loadMix(5L)
         advanceUntilIdle()
         viewModel.playAll()

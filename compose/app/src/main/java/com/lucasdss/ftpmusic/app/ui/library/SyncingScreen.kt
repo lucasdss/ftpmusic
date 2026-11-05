@@ -315,14 +315,20 @@ class SyncingViewModel @Inject constructor(
             _dailyMix.value =
                 DailyMixState(buildingDailyMix = true, dailyMixTotal = mixTotal, dailyMixProgress = 0)
 
-            dailyMixRepository.generateAll(today, manual = manual) { done, _ ->
+            // DM-16: rebuild/manual activates; automatic sync post-phase only
+            // builds pending so sticky Home cards are not swapped mid-session.
+            dailyMixRepository.generateAll(
+                today,
+                manual = manual,
+                activate = manual,
+            ) { done, _ ->
                 _dailyMix.value = _dailyMix.value.copy(dailyMixProgress = done)
                 _status.value = _status.value.copy(dailyMixProgress = done)
                 delay(300) // let UI show progress per mix
             }
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-dailymix",
-                "syncScreen generateAll done date=$today total=$mixTotal manual=$manual",
+                "syncScreen generateAll done date=$today total=$mixTotal manual=$manual activate=$manual",
             )
         } catch (e: Exception) {
             if (e is CancellationException) throw e

@@ -184,6 +184,8 @@ data class MixCard(
     val fixedCoverValue: String? = null,
     val primaryArtist: String? = null,
     val primaryAlbum: String? = null,
+    /** DM-16: active daily_mix version for Compose key / crossfade. */
+    val activeVersion: Int = 1,
 )
 
 @HiltViewModel
@@ -837,22 +839,16 @@ class LibraryViewModel @Inject constructor(
         refreshConfigWarning()
         viewModelScope.launch {
             try {
-                if (metadataDao.albumCount() == 0) {
-                    _state.value = _state.value.copy(mixCards = emptyList())
-                    return@launch
-                }
+                // DM-16: never wipe sticky cards when albumCount is transiently 0.
+                // Still allow generation to wait for catalog densify.
                 val mixes = dailyMixRepository.getAll()
                 var cards = readMixCards(mixes)
-                // DM-5: a yesterday-fallback card makes cards.size ==
-                // mixes.size, which used to skip the regeneration check
-                // entirely. Always ask the repository whether the latest list
-                // is stale, then let the coordinator gate the actual run.
                 val missingCards = cards.size < mixes.size
-                val stale = !missingCards && dailyMixRepository.anyMixNeedsRegeneration()
+                val stale = dailyMixRepository.anyMixNeedsRegeneration()
                 if (missingCards || stale) {
-                    // Generate/regenerate lazily, then re-read so missing cards
-                    // or a refreshed list appear without a manual sync.
-                    if (maybeGenerateMixes()) {
+                    // Lazy gen builds pending only (activate=false); sticky
+                    // active cards stay visible while new versions cook.
+                    if (maybeGenerateMixes(hadCards = cards.isNotEmpty())) {
                         cards = readMixCards(mixes)
                     }
                 }
@@ -861,32 +857,27 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Read today's mix cards (falling back to yesterday's), track-count > 0. */
+    /** Read Home cards from each recipe's **active** daily_mix pointer (DM-16). */
     private suspend fun readMixCards(mixes: List<com.lucasdss.ftpmusic.app.data.repository.CustomMix>): List<MixCard> {
         if (mixes.isEmpty()) return emptyList()
-        val today = java.time.LocalDate.now().toString()
-        val yesterday = java.time.LocalDate.now().minusDays(1).toString()
+        val actives = genreMixDao.getActiveDailyMixesForRecipes(mixes.map { it.id })
+            .associateBy { it.mixId }
+        if (actives.isEmpty()) return emptyList()
 
-        // 1. All daily rows for today+yesterday in one query.
-        val rowsByMix = genreMixDao.getDailyMixesForDates(listOf(today, yesterday)).groupBy { it.mixId }
-        val existingByMix = mixes.mapNotNull { mix ->
-            val rows = rowsByMix[mix.id] ?: return@mapNotNull null
-            val existing = rows.firstOrNull { it.date == today } ?: rows.firstOrNull { it.date == yesterday }
-            existing?.let { mix.id to it }
-        }.toMap()
-        if (existingByMix.isEmpty()) return emptyList()
-
-        // 2. Track counts for all those daily rows in one query.
-        val counts = genreMixDao.getDailyMixTrackCounts(existingByMix.values.map { it.id })
+        val counts = genreMixDao.getDailyMixTrackCounts(actives.values.map { it.id })
             .associate { it.mixId to it.trackCount }
 
-        // 3. Covers only for the mixes that actually have tracks.
         return mixes.mapNotNull { mix ->
-            val existing = existingByMix[mix.id] ?: return@mapNotNull null
+            val existing = actives[mix.id] ?: return@mapNotNull null
+            // Sticky: keep the card whenever an active pointer exists, even if
+            // track count is transiently 0 (offline / mid-repair).
             val songCount = counts[existing.id] ?: 0
-            if (songCount == 0) return@mapNotNull null
             val coverArts = genreMixDao.getDailyMixCovers(existing.id).mapNotNull { it.coverArtUrl }
             val meta = genreMixDao.getDailyMixPrimaryCoverMeta(existing.id)
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-dailymix",
+                "sticky show mixId=${mix.id} activeV=${existing.version}",
+            )
             MixCard(
                 id = mix.id,
                 name = mix.name,
@@ -896,23 +887,17 @@ class LibraryViewModel @Inject constructor(
                 fixedCoverValue = mix.fixedCoverValue,
                 primaryArtist = meta?.artist,
                 primaryAlbum = meta?.album,
+                activeVersion = existing.version,
             )
         }
     }
 
     /**
-     * Lazy Daily Mix generation on Home open: fills missing mixes AND
-     * regenerates stale ones (existing mix absent, >48h old, or >=24h old with
-     * >=10% listened — the same policy as the sync screen). Runs on IO.
-     *
-     * Returns true when a run was attempted (callers re-read the mixes after).
-     * Suppressed while: another generation is in-flight (global gate), a
-     * metadata sync is repopulating the library, or a same-day run already
-     * produced nothing from eligible mixes (empty pools — retry tomorrow).
-     * A run where every mix was merely skipped as fresh is not an empty
-     * outcome and must not suppress later attempts the same day (DM-14).
+     * Lazy Daily Mix generation on Home open (DM-16): builds missing/stale
+     * versions as **pending** only — never activates — so sticky cards stay.
+     * Empty-day suppress only when there were no cards yet (first-time).
      */
-    private suspend fun maybeGenerateMixes(): Boolean {
+    private suspend fun maybeGenerateMixes(hadCards: Boolean): Boolean {
         val today = java.time.LocalDate.now().toString()
         if (!DailyMixGenerationCoordinator.tryBegin()) return false
         try {
@@ -920,18 +905,14 @@ class LibraryViewModel @Inject constructor(
             if (!DailyMixGenerationCoordinator.shouldAttemptToday(today)) return false
             _state.value = _state.value.copy(isGeneratingMixes = true)
             val result = withContext(ioDispatcher) {
-                dailyMixRepository.generateAllOutcome(today, manual = false)
+                dailyMixRepository.generateAllOutcome(today, manual = false, activate = false)
             }
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-dailymix",
                 "maybeGenerateMixes date=$today produced=${result.produced} " +
                     "skippedFresh=${result.skippedFresh} emptyEligible=${result.emptyEligible}",
             )
-            if (result.isEmptyOutcome) {
-                // Every eligible mix produced nothing (e.g. no genres populated
-                // yet) — suppress same-day retries so every Home open doesn't
-                // re-run generation. Never suppress on a fresh skip: the list
-                // may cross the age/listen threshold later today (DM-14).
+            if (result.isEmptyOutcome && !hadCards) {
                 DailyMixGenerationCoordinator.markEmptyAttempt(today)
             }
             return true
@@ -941,13 +922,13 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Refresh one mix (Home per-card action) — forced regeneration. */
+    /** Refresh one mix (Home per-card action) — force build + activate. */
     fun refreshMix(mixId: Long) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isGeneratingMixes = true)
             try {
                 withContext(ioDispatcher) {
-                    dailyMixRepository.generateOne(mixId, manual = true)
+                    dailyMixRepository.generateOne(mixId, manual = true, activate = true)
                 }
                 loadDailyMixes()
             } catch (e: Exception) {
@@ -958,14 +939,14 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Refresh every visible mix (Home header button) — one batched run. */
+    /** Refresh every visible mix (Home header button) — force build + activate. */
     fun refreshAllMixes() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isGeneratingMixes = true)
             try {
                 val today = java.time.LocalDate.now().toString()
                 withContext(ioDispatcher) {
-                    dailyMixRepository.generateAll(today, manual = true)
+                    dailyMixRepository.generateAll(today, manual = true, activate = true)
                 }
                 loadDailyMixes()
             } catch (e: Exception) {

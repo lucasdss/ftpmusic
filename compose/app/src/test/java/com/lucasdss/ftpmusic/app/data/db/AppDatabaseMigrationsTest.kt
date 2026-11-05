@@ -678,6 +678,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(66, AppDatabase.ALL_MIGRATIONS_66.last().endVersion)
         assertEquals(67, AppDatabase.ALL_MIGRATIONS_67.last().endVersion)
         assertEquals(68, AppDatabase.ALL_MIGRATIONS_68.last().endVersion)
+        assertEquals(69, AppDatabase.ALL_MIGRATIONS_69.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -709,9 +710,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_62, AppDatabase.ALL_MIGRATIONS_63,
             AppDatabase.ALL_MIGRATIONS_64, AppDatabase.ALL_MIGRATIONS_65,
             AppDatabase.ALL_MIGRATIONS_66, AppDatabase.ALL_MIGRATIONS_67,
-            AppDatabase.ALL_MIGRATIONS_68,
+            AppDatabase.ALL_MIGRATIONS_68, AppDatabase.ALL_MIGRATIONS_69,
         )
-        assertEquals(59, all.size)
+        assertEquals(60, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

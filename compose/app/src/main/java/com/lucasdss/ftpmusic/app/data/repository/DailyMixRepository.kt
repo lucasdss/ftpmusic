@@ -10,6 +10,8 @@ import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
 import com.lucasdss.ftpmusic.app.data.db.CustomMixEntity
 import com.lucasdss.ftpmusic.app.data.db.CustomMixStateEntity
+import com.lucasdss.ftpmusic.app.data.db.DailyMixEntity
+import com.lucasdss.ftpmusic.app.data.db.DailyMixStatus
 import com.lucasdss.ftpmusic.app.data.db.DailyMixTrackEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
@@ -258,20 +260,19 @@ class DailyMixRepository @Inject constructor(
         )
         when {
             filtersChanged || fillChanged -> {
-                val ids = generateOne(id, manual = true)
-                mixCacheCoordinator.onSourceChanged(id, ids)
+                // Explicit editor action: build + activate (DM-16).
+                generateOne(id, manual = true, activate = true)
             }
 
             autoCacheChanged -> {
                 if (autoCache) {
-                    // Today's tracklist only — never cache yesterday's stale
-                    // list; regenerate when today has none yet.
-                    val today = LocalDate.now().toString()
-                    val todayIds = genreMixDao.getDailyMix(today, id)
-                        ?.let { genreMixDao.getDailyMixTrackIds(it.id) }
-                        ?: emptyList()
-                    val ids = todayIds.ifEmpty { generateOne(id, manual = true) }
-                    mixCacheCoordinator.onSourceChanged(id, ids)
+                    val activeIds = activeTrackIds(id)
+                    val ids = activeIds.ifEmpty {
+                        generateOne(id, manual = true, activate = true)
+                    }
+                    if (ids.isNotEmpty()) {
+                        mixCacheCoordinator.onSourceChanged(id, ids)
+                    }
                 } else {
                     mixCacheCoordinator.onDisabled(id)
                 }
@@ -361,45 +362,58 @@ class DailyMixRepository @Inject constructor(
     }
 
     /**
-     * Generate/refresh one mix's tracklist for [context.date]. Never persists
-     * an empty mix.
+     * Generate/refresh one mix's tracklist for [context.date] (DM-16).
      *
-     * The returned [MixGenerationOutcome] distinguishes a fresh skip from an
-     * eligible-but-empty recipe so callers can tell "nothing to do yet" apart
-     * from "produced nothing" (DM-14).
+     * Builds a new version off to the side. Never mutates the active list in
+     * place. Never deletes the active row on empty pool.
+     *
+     * When [activate] is true (rebuild / Detail Update / filter edit), the new
+     * ready version becomes active. When false (Home/sync lazy), only
+     * [CustomMixEntity.pendingDailyMixId] is updated — sticky cards stay.
+     * First successful generation (`active IS NULL`) always activates.
      */
     suspend fun generateForMix(
         context: GenerationContext,
         mix: CustomMixEntity,
         manual: Boolean,
+        activate: Boolean = manual,
     ): MixGenerationOutcome {
+        val recipe = customMixDao.getById(mix.id) ?: mix
+        val active = recipe.activeDailyMixId?.let { genreMixDao.getDailyMixById(it) }
         val songs = context.pools[mix.id].orEmpty()
         if (songs.isEmpty()) {
-            // The recipe no longer matches anything: drop any stale tracklist
-            // so Home/detail stop serving tracks that violate the filters.
-            // Deleting (rather than persisting an empty row) keeps the next
-            // generation attempt unblocked.
-            genreMixDao.deleteDailyMix(context.date, mix.id)
-            genreMixDao.deleteDailyMix(context.yesterday, mix.id)
-            // Also drop older history: generateForMix now looks at the latest
-            // row regardless of date, so a pre-yesterday row would otherwise
-            // be reusable after the pool recovers.
-            genreMixDao.deleteDailyMixesBefore(context.yesterday, mix.id)
+            // DM-16 / R9: never delete the active list. Drop only unpublished builds.
+            genreMixDao.deleteUnpublishedBuilds(mix.id)
+            if (recipe.pendingDailyMixId != null) {
+                customMixDao.updatePendingPointer(mix.id, null)
+            }
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-dailymix",
-                "empty pool delete mixId=${mix.id} date=${context.date}",
+                "empty pool keep-active mixId=${mix.id} activeId=${recipe.activeDailyMixId}",
             )
             return MixGenerationOutcome(emptyList(), MixGenerationStatus.EMPTY_ELIGIBLE)
         }
 
-        val existingMix = genreMixDao.getLatestDailyMix(mix.id)
-            ?: genreMixDao.getDailyMix(context.date, mix.id)
-            ?: genreMixDao.getDailyMix(context.yesterday, mix.id)
-        val existingIds = if (existingMix != null) genreMixDao.getDailyMixTrackIds(existingMix.id) else emptyList()
+        val existingMix = active
+        val existingIds = if (existingMix != null) {
+            genreMixDao.getDailyMixTrackIds(existingMix.id)
+        } else {
+            emptyList()
+        }
 
-        // DM-5: count only honest listens that happened after this list was
-        // generated. Lifetime tracks.play_count is wrong — a long-owned
-        // favorite looks "listened" the moment it is added to a fresh mix.
+        // DM-16 Phase-5: short-circuit non-manual gen when a build is already in
+        // flight or a pending ready version exists — before shouldRegenerate so
+        // Home/sync cannot churn a new pending on every resume while one waits.
+        if (!manual) {
+            val building = genreMixDao.getDailyMixByStatus(mix.id, DailyMixStatus.BUILDING)
+            if (building != null) {
+                return MixGenerationOutcome(emptyList(), MixGenerationStatus.SKIPPED_FRESH)
+            }
+            if (recipe.pendingDailyMixId != null && existingMix != null) {
+                return MixGenerationOutcome(emptyList(), MixGenerationStatus.SKIPPED_FRESH)
+            }
+        }
+
         val listenedCount = if (existingMix != null) {
             listenEventDao.countDistinctTracksForMix(
                 dailyMixId = existingMix.id,
@@ -409,17 +423,7 @@ class DailyMixRepository @Inject constructor(
         } else {
             0
         }
-        // DM-13: anti-repetition must survive a missed generation day. Use the
-        // latest persisted list even when it is older than yesterday.
-        val previouslyListenedIds = if (existingMix != null) {
-            listenEventDao.getListenedTrackIdsForMix(
-                dailyMixId = existingMix.id,
-                startMs = existingMix.createdAt,
-                includeBackfill = false,
-            ).toSet()
-        } else {
-            emptySet()
-        }
+        val previouslyListenedIds = buildPreviouslyListenedIds(recipe, existingMix)
         val shouldRegen = if (existingMix != null) {
             DailyMixGenerator.shouldRegenerate(
                 createdAtMs = existingMix.createdAt,
@@ -439,66 +443,79 @@ class DailyMixRepository @Inject constructor(
         }
 
         val poolIds = songs.mapTo(mutableSetOf()) { it.id }
-        // Default shrink: no Phase-3 fill from other mixes' pools (genre purity).
         val supplemental = if (mix.allowCrossMixFill) {
             context.allSongs.filter { it.id !in poolIds }
         } else {
             emptyList()
         }
-        // DM-13: prefer yesterday's list for the weight penalty; when a
-        // generation day was missed, fall back to the latest persisted list so
-        // the penalty (and anti-repetition) is not silently dropped.
-        val yesterdayMix = when {
-            existingMix != null && existingMix.date == context.yesterday -> existingMix
-            else -> genreMixDao.getDailyMix(context.yesterday, mix.id)
-        }
-        val penaltyMix = yesterdayMix ?: existingMix
-        val yesterdayIds = if (penaltyMix != null) {
-            genreMixDao.getDailyMixTrackIds(penaltyMix.id).toSet()
-        } else {
-            emptySet()
-        }
+        val penaltyIds = buildPenaltyIds(recipe, existingMix, context.yesterday)
 
         val generated = DailyMixGenerator.generate(
             songs,
             context.weightMap,
             supplemental,
-            yesterdayIds,
+            penaltyIds,
             previouslyListenedTrackIds = previouslyListenedIds,
         )
         if (generated.isEmpty()) {
             return MixGenerationOutcome(emptyList(), MixGenerationStatus.EMPTY_ELIGIBLE)
         }
 
-        genreMixDao.replaceDailyMix(
-            context.date,
-            mix.id,
-            generated.mapIndexed { idx, s -> DailyMixTrackEntity(mixId = 0, trackId = s.id, position = idx) },
-        )
-        // DM-15: bound the history at today + yesterday. Every reader only
-        // uses today/yesterday or the latest row. Best-effort: if the process
-        // dies before this DELETE, the next successful generation prunes the
-        // leftovers; a crash can never leave orphaned tracks (FK CASCADE).
-        genreMixDao.deleteDailyMixesBefore(context.yesterday, mix.id)
-        val generatedIds = generated.map { it.id }
+        // Drop previous unpublished builds before inserting the new version.
+        genreMixDao.deleteUnpublishedBuilds(mix.id)
+        val nextVersion = (genreMixDao.getLatestDailyMix(mix.id)?.version ?: 0) + 1
+        val now = System.currentTimeMillis()
+        val buildingId = genreMixDao.upsertDailyMix(
+            DailyMixEntity(
+                date = context.date,
+                mixId = mix.id,
+                createdAt = now,
+                version = nextVersion,
+                status = DailyMixStatus.BUILDING,
+            ),
+        ).toInt()
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-dailymix",
-            "regen persist mixId=${mix.id} count=${generatedIds.size} manual=$manual date=${context.date}",
+            "build start mixId=${mix.id} v=$nextVersion manual=$manual",
         )
-        mixCacheCoordinator.onGenerated(mix, generatedIds)
+        val generatedIds = generated.map { it.id }
+        // Tracks first, then ready — readers never see a ready row with 0 tracks.
+        genreMixDao.insertDailyMixTracks(
+            generatedIds.mapIndexed { idx, trackId ->
+                DailyMixTrackEntity(mixId = buildingId.toLong(), trackId = trackId, position = idx)
+            },
+        )
+        genreMixDao.updateDailyMixStatus(buildingId, DailyMixStatus.READY)
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-dailymix",
+            "build ready mixId=${mix.id} v=$nextVersion count=${generatedIds.size}",
+        )
+
+        val shouldActivate = activate || recipe.activeDailyMixId == null
+        if (shouldActivate) {
+            activateDailyMixLocked(mix.id, buildingId, generatedIds)
+        } else {
+            customMixDao.updatePendingPointer(mix.id, buildingId)
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-dailymix",
+                "pending set mixId=${mix.id} v=$nextVersion id=$buildingId",
+            )
+        }
         return MixGenerationOutcome(generatedIds, MixGenerationStatus.PRODUCED)
     }
 
     /**
      * Generate every mix once and report what each outcome was.
-     * [onProgress] receives (done, total).
+     * [activate] true for Settings rebuild / Home refresh; false for Home/sync lazy.
      */
     suspend fun generateAllOutcome(
         date: String,
         manual: Boolean,
+        activate: Boolean = manual,
         onProgress: (suspend (done: Int, total: Int) -> Unit)? = null,
     ): GenerateAllResult = generationMutex.withLock {
         withContext(ioDispatcher) {
+            reconcileOrphansLocked()
             val context = prepare(date)
             val mixes = context.mixes
             if (mixes.isEmpty()) return@withContext GenerateAllResult(0, 0, 0)
@@ -506,7 +523,7 @@ class DailyMixRepository @Inject constructor(
             var skippedFresh = 0
             var emptyEligible = 0
             mixes.forEachIndexed { index, mix ->
-                when (generateForMix(context, mix, manual).status) {
+                when (generateForMix(context, mix, manual, activate).status) {
                     MixGenerationStatus.PRODUCED -> produced++
                     MixGenerationStatus.SKIPPED_FRESH -> skippedFresh++
                     MixGenerationStatus.EMPTY_ELIGIBLE -> emptyEligible++
@@ -521,22 +538,20 @@ class DailyMixRepository @Inject constructor(
     suspend fun generateAll(
         date: String,
         manual: Boolean,
+        activate: Boolean = manual,
         onProgress: (suspend (done: Int, total: Int) -> Unit)? = null,
-    ): Int = generateAllOutcome(date, manual, onProgress).produced
+    ): Int = generateAllOutcome(date, manual, activate, onProgress).produced
 
     /**
-     * Home freshness check (DM-5): true when at least one recipe's latest list
-     * is stale under the same predicate used by [generateForMix].
-     *
-     * Home must call this even when every card is present; a yesterday-fallback
-     * card otherwise hides the age/listen check indefinitely.
+     * Home freshness check (DM-5/DM-16): true when at least one recipe's
+     * **active** list is stale (or missing). Ignores building/ready versions.
      */
     suspend fun anyMixNeedsRegeneration(): Boolean = withContext(ioDispatcher) {
         val mixes = customMixDao.getAll()
         if (mixes.isEmpty()) return@withContext false
         val nowMs = System.currentTimeMillis()
         mixes.any { mix ->
-            val row = genreMixDao.getLatestDailyMix(mix.id) ?: return@any true
+            val row = genreMixDao.getActiveDailyMix(mix.id) ?: return@any true
             val totalTracks = genreMixDao.getDailyMixTrackCount(row.id)
             val listenedTracks = listenEventDao.countDistinctTracksForMix(
                 dailyMixId = row.id,
@@ -553,13 +568,167 @@ class DailyMixRepository @Inject constructor(
         }
     }
 
-    /** Refresh a single mix (detail screen refresh / source edit). */
-    suspend fun generateOne(mixId: Long, manual: Boolean): List<String> = generationMutex.withLock {
+    /**
+     * Refresh a single mix. [activate] defaults to [manual] so Detail Update /
+     * Settings force paths promote the new version; Home lazy callers pass false.
+     */
+    suspend fun generateOne(
+        mixId: Long,
+        manual: Boolean,
+        activate: Boolean = manual,
+    ): List<String> = generationMutex.withLock {
         withContext(ioDispatcher) {
+            reconcileOrphansLocked()
             val mix = customMixDao.getById(mixId) ?: return@withContext emptyList()
             val context = prepare(LocalDate.now().toString())
-            generateForMix(context, mix, manual).trackIds
+            generateForMix(context, mix, manual, activate).trackIds
         }
+    }
+
+    /** Active track ids for a recipe (Home / Detail / Auto / cache). */
+    suspend fun activeTrackIds(mixId: Long): List<String> = withContext(ioDispatcher) {
+        val active = genreMixDao.getActiveDailyMix(mixId) ?: return@withContext emptyList()
+        genreMixDao.getDailyMixTrackIds(active.id)
+    }
+
+    /** Active daily_mix row for a recipe, or null. */
+    suspend fun getActiveDailyMix(mixId: Long): DailyMixEntity? = withContext(ioDispatcher) {
+        genreMixDao.getActiveDailyMix(mixId)
+    }
+
+    /** Pending ready version waiting for activation, or null. */
+    suspend fun getPendingDailyMix(mixId: Long): DailyMixEntity? = withContext(ioDispatcher) {
+        genreMixDao.getPendingDailyMix(mixId)
+    }
+
+    /**
+     * Activate [dailyMixId] for [mixId]. Previous active → superseded.
+     * Calls [MixCacheCoordinator.onSourceChanged] (not onGenerated).
+     * Serialized under [generationMutex] so Detail Update / leave cannot
+     * interleave with a concurrent [generateForMix] and leave the active
+     * pointer on a `superseded` row.
+     */
+    suspend fun activateDailyMix(mixId: Long, dailyMixId: Int): Boolean = generationMutex.withLock {
+        withContext(ioDispatcher) {
+            activateDailyMixLocked(mixId, dailyMixId, trackIds = null)
+        }
+    }
+
+    /** Activate the pending ready version if any. */
+    suspend fun activatePending(mixId: Long): Boolean = generationMutex.withLock {
+        withContext(ioDispatcher) {
+            val pendingId = customMixDao.getById(mixId)?.pendingDailyMixId ?: return@withContext false
+            activateDailyMixLocked(mixId, pendingId, trackIds = null)
+        }
+    }
+
+    /** Startup / pre-gen reconciliation for orphan building/ready rows. */
+    suspend fun reconcileOrphans() = generationMutex.withLock {
+        withContext(ioDispatcher) { reconcileOrphansLocked() }
+    }
+
+    private suspend fun activateDailyMixLocked(
+        mixId: Long,
+        dailyMixId: Int,
+        trackIds: List<String>?,
+    ): Boolean {
+        val row = genreMixDao.getDailyMixById(dailyMixId) ?: return false
+        if (row.mixId != mixId) return false
+        // Never promote an in-flight build; generateForMix activates after READY.
+        if (row.status == DailyMixStatus.BUILDING) return false
+        val recipe = customMixDao.getById(mixId) ?: return false
+        val prevActive = recipe.activeDailyMixId
+        if (prevActive != null && prevActive != dailyMixId) {
+            genreMixDao.updateDailyMixStatus(prevActive, DailyMixStatus.SUPERSEDED)
+        }
+        if (row.status == DailyMixStatus.SUPERSEDED) {
+            genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
+        } else if (row.status != DailyMixStatus.READY) {
+            genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
+        }
+        customMixDao.updateActivationPointers(mixId, dailyMixId, null)
+        // Keep last superseded for anti-repeat; drop older.
+        val keep = buildList {
+            add(dailyMixId)
+            if (prevActive != null && prevActive != dailyMixId) add(prevActive)
+        }
+        genreMixDao.deleteSupersededExcept(mixId, keep)
+        val ids = trackIds ?: genreMixDao.getDailyMixTrackIds(dailyMixId)
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            "ftpmusic-dailymix",
+            "activate mixId=$mixId v=${row.version} prev=$prevActive",
+        )
+        mixCacheCoordinator.onSourceChanged(mixId, ids)
+        return true
+    }
+
+    private suspend fun reconcileOrphansLocked() {
+        val cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
+        genreMixDao.deleteStaleBuilding(cutoff)
+        for (ready in genreMixDao.getAllReadyDailyMixes()) {
+            val recipe = customMixDao.getById(ready.mixId) ?: continue
+            if (recipe.activeDailyMixId == ready.id) continue
+            if (recipe.pendingDailyMixId == ready.id) continue
+            // Orphan ready → pending (rescue). Do not auto-activate.
+            if (recipe.pendingDailyMixId == null) {
+                customMixDao.updatePendingPointer(ready.mixId, ready.id)
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                    "ftpmusic-dailymix",
+                    "rescue ready mixId=${ready.mixId} id=${ready.id} v=${ready.version}",
+                )
+            }
+        }
+        // Repair dangling pointers.
+        for (recipe in customMixDao.getAll()) {
+            val activeId = recipe.activeDailyMixId
+            if (activeId != null && genreMixDao.getDailyMixById(activeId) == null) {
+                customMixDao.updateActivePointer(recipe.id, null)
+            }
+            val pendingId = recipe.pendingDailyMixId
+            if (pendingId != null && genreMixDao.getDailyMixById(pendingId) == null) {
+                customMixDao.updatePendingPointer(recipe.id, null)
+            }
+        }
+    }
+
+    private suspend fun buildPreviouslyListenedIds(
+        recipe: CustomMixEntity,
+        active: DailyMixEntity?,
+    ): Set<String> {
+        val ids = mutableSetOf<String>()
+        if (active != null) {
+            ids += listenEventDao.getListenedTrackIdsForMix(
+                dailyMixId = active.id,
+                startMs = active.createdAt,
+                includeBackfill = false,
+            )
+        }
+        // Union last superseded for anti-repeat (DM-13 / DM-16).
+        val latest = genreMixDao.getLatestDailyMix(recipe.id)
+        if (latest != null && latest.id != active?.id && latest.status == DailyMixStatus.SUPERSEDED) {
+            ids += listenEventDao.getListenedTrackIdsForMix(
+                dailyMixId = latest.id,
+                startMs = latest.createdAt,
+                includeBackfill = false,
+            )
+        }
+        return ids
+    }
+
+    private suspend fun buildPenaltyIds(
+        recipe: CustomMixEntity,
+        active: DailyMixEntity?,
+        yesterday: String,
+    ): Set<String> {
+        val ids = mutableSetOf<String>()
+        if (active != null) {
+            ids += genreMixDao.getDailyMixTrackIds(active.id)
+        }
+        val yRow = genreMixDao.getDailyMix(yesterday, recipe.id)
+        if (yRow != null && yRow.id != active?.id) {
+            ids += genreMixDao.getDailyMixTrackIds(yRow.id)
+        }
+        return ids
     }
 
     /**
@@ -740,6 +909,8 @@ private fun CustomMixEntity.toEntity(
     createdAt = createdAt,
     fixedCoverKind = fixedCoverKind,
     fixedCoverValue = fixedCoverValue,
+    activeDailyMixId = activeDailyMixId,
+    pendingDailyMixId = pendingDailyMixId,
 )
 
 private fun TrackEntity.toSongInfo(): DailyMixGenerator.SongInfo = DailyMixGenerator.SongInfo(

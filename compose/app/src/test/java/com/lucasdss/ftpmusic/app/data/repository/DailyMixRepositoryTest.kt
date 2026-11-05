@@ -66,6 +66,8 @@ class DailyMixRepositoryTest {
         autoCache: Boolean = false,
         allowCrossMixFill: Boolean = false,
         isDefault: Boolean = true,
+        activeDailyMixId: Int? = null,
+        pendingDailyMixId: Int? = null,
     ) = CustomMixEntity(
         id = id,
         name = name,
@@ -77,6 +79,8 @@ class DailyMixRepositoryTest {
         autoCache = autoCache,
         allowCrossMixFill = allowCrossMixFill,
         isDefault = isDefault,
+        activeDailyMixId = activeDailyMixId,
+        pendingDailyMixId = pendingDailyMixId,
     )
 
     private fun track(id: String, albumId: String? = "al-$id", artistId: String? = null) =
@@ -101,6 +105,30 @@ class DailyMixRepositoryTest {
             invocation.args[0] as List<String>
         }
         coEvery { metadataDao.getDislikedArtistNames() } returns emptyList()
+        // DM-16 defaults: versioned build path + activation pointers.
+        coEvery { genreMixDao.getLatestDailyMix(any()) } returns null
+        coEvery { genreMixDao.getActiveDailyMix(any()) } returns null
+        coEvery { genreMixDao.getPendingDailyMix(any()) } returns null
+        coEvery { genreMixDao.getDailyMixByStatus(any(), any()) } returns null
+        coEvery { genreMixDao.getAllReadyDailyMixes() } returns emptyList()
+        coEvery { genreMixDao.upsertDailyMix(any()) } coAnswers {
+            val entity = invocation.args[0] as DailyMixEntity
+            100L + entity.mixId
+        }
+        coEvery { genreMixDao.getDailyMixById(any()) } coAnswers {
+            val id = invocation.args[0] as Int
+            DailyMixEntity(
+                id = id,
+                date = today,
+                mixId = (id - 100).toLong(),
+                version = 1,
+                status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+            )
+        }
+        coEvery { customMixDao.getById(any()) } coAnswers {
+            val id = invocation.args[0] as Long
+            mixEntity(id = id)
+        }
     }
 
     // ── Seeding ──────────────────────────────────────────────────────────────
@@ -250,7 +278,7 @@ class DailyMixRepositoryTest {
         repository.updateMix(5L, "New Name", MixFilters(genres = listOf("Jazz")), autoCache = false)
 
         coVerify { customMixDao.update(match { it.name == "New Name" && it.genresJson == "Jazz" }) }
-        coVerify { genreMixDao.replaceDailyMix(today, 5L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 5L }) }
         coVerify { mixCacheCoordinator.onSourceChanged(5L, listOf("t1")) }
     }
 
@@ -262,7 +290,7 @@ class DailyMixRepositoryTest {
         repository.updateMix(5L, "Renamed", MixFilters(genres = listOf("Rock")), autoCache = false)
 
         coVerify { customMixDao.update(match { it.name == "Renamed" }) }
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
         coVerify(exactly = 0) { mixCacheCoordinator.onSourceChanged(any(), any()) }
         coVerify(exactly = 0) { mixCacheCoordinator.onDisabled(any()) }
     }
@@ -275,14 +303,15 @@ class DailyMixRepositoryTest {
         repository.updateMix(5L, "Rock Mix", MixFilters(genres = listOf("Rock")), autoCache = false)
 
         coVerify { mixCacheCoordinator.onDisabled(5L) }
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
     }
 
     @Test
-    fun `updateMix auto-cache on caches today's tracklist only`() = runTest {
-        val old = mixEntity(id = 5L, genres = "Rock", autoCache = false)
+    fun `updateMix auto-cache on caches active tracklist only`() = runTest {
+        val old = mixEntity(id = 5L, genres = "Rock", autoCache = false, activeDailyMixId = 7)
         coEvery { customMixDao.getById(5L) } returns old
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns DailyMixEntity(id = 7, date = today, mixId = 5L)
+        coEvery { genreMixDao.getActiveDailyMix(5L) } returns
+            DailyMixEntity(id = 7, date = today, mixId = 5L, version = 1)
         coEvery { genreMixDao.getDailyMixTrackIds(7) } returns listOf("t1", "t2")
 
         repository.updateMix(5L, "Rock Mix", MixFilters(genres = listOf("Rock")), autoCache = true)
@@ -291,20 +320,19 @@ class DailyMixRepositoryTest {
     }
 
     @Test
-    fun `updateMix auto-cache on regenerates when only yesterday exists`() = runTest {
+    fun `updateMix auto-cache on regenerates when no active list exists`() = runTest {
         val old = mixEntity(id = 5L, genres = "Rock", autoCache = false)
         coEvery { customMixDao.getById(5L) } returns old
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(old)
+        coEvery { customMixDao.getById(5L) } returns old
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("g1")
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("g1"))
-        coEvery { genreMixDao.getDailyMix(today, 5L) } returns null
-        coEvery { genreMixDao.getDailyMix(yesterday, 5L) } returns
-            DailyMixEntity(id = 8, date = yesterday, mixId = 5L)
+        coEvery { genreMixDao.getActiveDailyMix(5L) } returns null
 
         repository.updateMix(5L, "Rock Mix", MixFilters(genres = listOf("Rock")), autoCache = true)
 
-        coVerify { genreMixDao.replaceDailyMix(today, 5L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 5L }) }
         coVerify { mixCacheCoordinator.onSourceChanged(5L, listOf("g1")) }
     }
 
@@ -343,7 +371,7 @@ class DailyMixRepositoryTest {
         val produced = repository.generateAll(today, manual = false)
 
         assertEquals(1, produced)
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, match { rows -> rows.size == 1 && rows[0].trackId == "t3" }) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
     }
 
     @Test
@@ -368,7 +396,7 @@ class DailyMixRepositoryTest {
         coEvery { trackDao.getMixTrackIdsByYearRange(1990, 1999) } returns listOf("d1")
 
         assertEquals(0, repository.generateAll(today, manual = false))
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
     }
 
     @Test
@@ -388,7 +416,7 @@ class DailyMixRepositoryTest {
         coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
 
         assertEquals(1, repository.generateAll(today, manual = false))
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
     }
 
     @Test
@@ -426,38 +454,42 @@ class DailyMixRepositoryTest {
         val produced = repository.generateAll(today, manual = false)
 
         assertEquals(1, produced)
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(today, 2L, any()) }
-        coVerify { mixCacheCoordinator.onGenerated(rock, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(match { it.mixId == 2L }) }
+        coVerify { mixCacheCoordinator.onSourceChanged(1L, any()) }
     }
 
     @Test
     fun `generateAll respects shouldRegenerate for a fresh mix`() = runTest {
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.clear()
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { customMixDao.getById(1L) } returns rock
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"))
-        coEvery { genreMixDao.getDailyMix(today, 1L) } returns
-            DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = System.currentTimeMillis())
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns
-            DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = System.currentTimeMillis())
+        val active = DailyMixEntity(
+            id = 3,
+            date = today,
+            mixId = 1L,
+            createdAt = System.currentTimeMillis(),
+            version = 1,
+        )
+        coEvery { genreMixDao.getDailyMixById(3) } returns active
+        coEvery { genreMixDao.getActiveDailyMix(1L) } returns active
         coEvery { genreMixDao.getDailyMixTrackIds(3) } returns listOf("r1")
-        coEvery { trackDao.getTrackPlayCounts(listOf("r1")) } returns emptyList()
+        coEvery { listenEventDao.countDistinctTracksForMix(3, any(), null, false) } returns 0
 
         val produced = repository.generateAll(today, manual = false)
 
         assertEquals(0, produced)
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
         val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             io.mockk.mockk(relaxed = true),
             offline = false,
             reachable = true,
         )
         assertTrue(snap.contains("skip regen mixId=1"))
-        // DM-15: the skip path holds the only freshness/penalty anchor, so it
-        // must never prune.
         coVerify(exactly = 0) { genreMixDao.deleteDailyMixesBefore(any(), any<Long>()) }
     }
 
@@ -483,15 +515,22 @@ class DailyMixRepositoryTest {
 
     @Test
     fun `generateAllOutcome reports an all-fresh run as not empty`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { customMixDao.getById(1L) } returns rock
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"))
-        coEvery { genreMixDao.getDailyMix(any(), 1L) } returns null
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns
-            DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = System.currentTimeMillis())
+        val active = DailyMixEntity(
+            id = 3,
+            date = today,
+            mixId = 1L,
+            createdAt = System.currentTimeMillis(),
+            version = 1,
+        )
+        coEvery { genreMixDao.getDailyMixById(3) } returns active
         coEvery { genreMixDao.getDailyMixTrackIds(3) } returns listOf("r1")
+        coEvery { listenEventDao.countDistinctTracksForMix(3, any(), null, false) } returns 0
 
         val result = repository.generateAllOutcome(today, manual = false)
 
@@ -519,7 +558,7 @@ class DailyMixRepositoryTest {
     }
 
     @Test
-    fun `successful regeneration prunes history older than yesterday`() = runTest {
+    fun `successful regeneration prunes superseded history`() = runTest {
         val rock = mixEntity(id = 1L, genres = "Rock")
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(rock)
@@ -529,8 +568,9 @@ class DailyMixRepositoryTest {
 
         repository.generateAll(today, manual = false)
 
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
-        coVerify(exactly = 1) { genreMixDao.deleteDailyMixesBefore(yesterday, 1L) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
+        // DM-16: GC keeps active (+ prior active) and drops older superseded.
+        coVerify { genreMixDao.deleteSupersededExcept(1L, any()) }
     }
 
     @Test
@@ -547,7 +587,7 @@ class DailyMixRepositoryTest {
         val produced = repository.generateAll(today, manual = true)
 
         assertEquals(1, produced)
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
     }
 
     @Test
@@ -622,17 +662,18 @@ class DailyMixRepositoryTest {
     }
 
     @Test
-    fun `empty pool deletes stale daily tracklists`() = runTest {
-        val mix = mixEntity(id = 1L, genres = "Rock")
+    fun `empty pool deletes unpublished builds only`() = runTest {
+        val mix = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 9)
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(mix)
+        coEvery { customMixDao.getById(1L) } returns mix
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns emptyList()
 
         assertEquals(0, repository.generateAll(today, manual = false))
-        coVerify { genreMixDao.deleteDailyMix(today, 1L) }
-        coVerify { genreMixDao.deleteDailyMix(yesterday, 1L) }
-        coVerify(exactly = 1) { genreMixDao.deleteDailyMixesBefore(yesterday, 1L) }
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        // DM-16 / R9: never delete the active row; only unpublished builds.
+        coVerify { genreMixDao.deleteUnpublishedBuilds(1L) }
+        coVerify(exactly = 0) { genreMixDao.deleteDailyMix(any(), any<Long>()) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
     }
 
     @Test
@@ -676,7 +717,7 @@ class DailyMixRepositoryTest {
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
 
         assertEquals(0, repository.generateAll(today, manual = false))
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
     }
 
     @Test
@@ -692,19 +733,20 @@ class DailyMixRepositoryTest {
         coEvery { genreMixDao.getDailyMixTrackIds(8) } returns listOf("r1")
 
         assertEquals(1, repository.generateAll(today, manual = true))
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
     }
 
     @Test
     fun `generateAll regenerates a 25h-old mix with post-creation listens`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { customMixDao.getById(1L) } returns rock
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"))
         val createdAt = System.currentTimeMillis() - 25L * 60 * 60 * 1000
-        coEvery { genreMixDao.getDailyMix(today, 1L) } returns
-            DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = createdAt)
+        val active = DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = createdAt, version = 1)
+        coEvery { genreMixDao.getDailyMixById(3) } returns active
         coEvery { genreMixDao.getDailyMixTrackIds(3) } returns listOf("r1")
         coEvery {
             listenEventDao.countDistinctTracksForMix(3, createdAt, null, false)
@@ -713,20 +755,25 @@ class DailyMixRepositoryTest {
         val produced = repository.generateAll(today, manual = false)
 
         assertEquals(1, produced)
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
     }
 
     @Test
     fun `generateAll ignores lifetime play counts for a fresh mix (DM-5)`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { customMixDao.getById(1L) } returns rock
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1")
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"))
-        coEvery { genreMixDao.getDailyMix(today, 1L) } returns
-            DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = System.currentTimeMillis())
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns
-            DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = System.currentTimeMillis())
+        val active = DailyMixEntity(
+            id = 3,
+            date = today,
+            mixId = 1L,
+            createdAt = System.currentTimeMillis(),
+            version = 1,
+        )
+        coEvery { genreMixDao.getDailyMixById(3) } returns active
         coEvery { genreMixDao.getDailyMixTrackIds(3) } returns listOf("r1")
         // Lifetime plays are huge, but no honest listen happened since creation.
         coEvery { trackDao.getTrackPlayCounts(any()) } returns
@@ -736,14 +783,15 @@ class DailyMixRepositoryTest {
         val produced = repository.generateAll(today, manual = false)
 
         assertEquals(0, produced)
-        coVerify(exactly = 0) { genreMixDao.replaceDailyMix(any(), any(), any()) }
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
     }
 
     @Test
-    fun `generateAll evaluates the latest row even when it is older than yesterday (DM-13)`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+    fun `generateAll evaluates the active row even when it is older than yesterday (DM-13)`() = runTest {
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 11)
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { customMixDao.getById(1L) } returns rock
         coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1", "r2")
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"), track("r2"))
         val threeDaysAgo = java.time.LocalDate.now().minusDays(3).toString()
@@ -752,11 +800,12 @@ class DailyMixRepositoryTest {
             date = threeDaysAgo,
             mixId = 1L,
             createdAt = System.currentTimeMillis() - 72L * 60 * 60 * 1000,
+            version = 1,
         )
-        // today/yesterday lookups miss; the latest-row query must find Day 1.
-        coEvery { genreMixDao.getDailyMix(any(), 1L) } returns null
+        coEvery { genreMixDao.getDailyMixById(11) } returns oldRow
         coEvery { genreMixDao.getLatestDailyMix(1L) } returns oldRow
         coEvery { genreMixDao.getDailyMixTrackIds(11) } returns listOf("r1")
+        coEvery { listenEventDao.countDistinctTracksForMix(11, any(), null, false) } returns 0
         coEvery { listenEventDao.getListenedTrackIdsForMix(11, any(), null, false) } returns listOf("r1")
 
         val penaltySlot = slot<Set<String>>()
@@ -786,15 +835,17 @@ class DailyMixRepositoryTest {
         }
         coVerify { genreMixDao.getLatestDailyMix(1L) }
         coVerify { genreMixDao.getDailyMixTrackIds(11) }
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
     }
 
     @Test
     fun `anyMixNeedsRegeneration is false for a fresh row`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         coEvery { customMixDao.getAll() } returns listOf(rock)
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns
+        coEvery { genreMixDao.getActiveDailyMix(1L) } returns
             DailyMixEntity(id = 3, date = today, mixId = 1L, createdAt = System.currentTimeMillis())
+        coEvery { genreMixDao.getDailyMixTrackCount(3) } returns 10
+        coEvery { listenEventDao.countDistinctTracksForMix(3, any(), null, false) } returns 0
 
         assertTrue(!repository.anyMixNeedsRegeneration())
     }
@@ -803,32 +854,33 @@ class DailyMixRepositoryTest {
     fun `anyMixNeedsRegeneration is true for a missing recipe`() = runTest {
         val rock = mixEntity(id = 1L, genres = "Rock")
         coEvery { customMixDao.getAll() } returns listOf(rock)
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns null
+        coEvery { genreMixDao.getActiveDailyMix(1L) } returns null
 
         assertTrue(repository.anyMixNeedsRegeneration())
     }
 
     @Test
     fun `anyMixNeedsRegeneration is true for a 48h-old row`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         coEvery { customMixDao.getAll() } returns listOf(rock)
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns DailyMixEntity(
+        coEvery { genreMixDao.getActiveDailyMix(1L) } returns DailyMixEntity(
             id = 3,
             date = yesterday,
             mixId = 1L,
             createdAt = System.currentTimeMillis() - 49L * 60 * 60 * 1000,
         )
         coEvery { genreMixDao.getDailyMixTrackCount(3) } returns 30
+        coEvery { listenEventDao.countDistinctTracksForMix(3, any(), null, false) } returns 0
 
         assertTrue(repository.anyMixNeedsRegeneration())
     }
 
     @Test
     fun `anyMixNeedsRegeneration ignores lifetime plays and requires post-creation listens`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         coEvery { customMixDao.getAll() } returns listOf(rock)
         val createdAt = System.currentTimeMillis() - 25L * 60 * 60 * 1000
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns
+        coEvery { genreMixDao.getActiveDailyMix(1L) } returns
             DailyMixEntity(id = 3, date = yesterday, mixId = 1L, createdAt = createdAt)
         coEvery { genreMixDao.getDailyMixTrackCount(3) } returns 30
         coEvery { listenEventDao.countDistinctTracksForMix(3, createdAt, null, false) } returns 0
@@ -838,10 +890,10 @@ class DailyMixRepositoryTest {
 
     @Test
     fun `anyMixNeedsRegeneration is true at 24h with enough post-creation listens`() = runTest {
-        val rock = mixEntity(id = 1L, genres = "Rock")
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 3)
         coEvery { customMixDao.getAll() } returns listOf(rock)
         val createdAt = System.currentTimeMillis() - 25L * 60 * 60 * 1000
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns
+        coEvery { genreMixDao.getActiveDailyMix(1L) } returns
             DailyMixEntity(id = 3, date = yesterday, mixId = 1L, createdAt = createdAt)
         coEvery { genreMixDao.getDailyMixTrackCount(3) } returns 30
         coEvery { listenEventDao.countDistinctTracksForMix(3, createdAt, null, false) } returns 3
@@ -869,7 +921,7 @@ class DailyMixRepositoryTest {
         coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
 
         assertEquals(1, repository.generateAll(today, manual = false))
-        coVerify { genreMixDao.replaceDailyMix(today, 1L, any()) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
     }
 
     @Test
@@ -886,9 +938,7 @@ class DailyMixRepositoryTest {
 
         assertEquals(1, repository.generateAll(today, manual = false))
         coVerify {
-            genreMixDao.replaceDailyMix(
-                today,
-                1L,
+            genreMixDao.insertDailyMixTracks(
                 match { rows -> rows.map { it.trackId } == listOf("keep") },
             )
         }
@@ -910,9 +960,7 @@ class DailyMixRepositoryTest {
 
         assertEquals(1, repository.generateAll(today, manual = false))
         coVerify {
-            genreMixDao.replaceDailyMix(
-                today,
-                1L,
+            genreMixDao.insertDailyMixTracks(
                 match { rows -> rows.map { it.trackId } == listOf("ok") },
             )
         }
@@ -957,10 +1005,11 @@ class DailyMixRepositoryTest {
 
         assertEquals(2, repository.generateAll(today, manual = false))
         coVerify {
-            genreMixDao.replaceDailyMix(
-                today,
-                1L,
-                match { rows -> rows.map { it.trackId }.all { it.startsWith("b") } },
+            genreMixDao.insertDailyMixTracks(
+                match { rows ->
+                    rows.first().mixId == 101L &&
+                        rows.map { it.trackId }.all { it.startsWith("b") }
+                },
             )
         }
     }
@@ -982,23 +1031,27 @@ class DailyMixRepositoryTest {
 
         assertEquals(2, repository.generateAll(today, manual = false))
         coVerify {
-            genreMixDao.replaceDailyMix(
-                today,
-                1L,
-                match { rows -> rows.any { it.trackId.startsWith("r") } },
+            genreMixDao.insertDailyMixTracks(
+                match { rows ->
+                    rows.first().mixId == 101L &&
+                        rows.any { it.trackId.startsWith("r") }
+                },
             )
         }
     }
 
     @Test
     fun `updateMix fill-flag change regenerates`() = runTest {
-        val old = mixEntity(id = 5L, genres = "Rock", allowCrossMixFill = false)
-        coEvery { customMixDao.getById(5L) } returns old
+        val updated = mixEntity(id = 5L, genres = "Rock", allowCrossMixFill = true)
         seeded()
-        coEvery { customMixDao.getAll() } returns listOf(old.copy(allowCrossMixFill = true))
-        coEvery { trackDao.getMixTrackIdsByGenre(any()) } returns listOf("t1")
+        coEvery { customMixDao.getById(5L) } returnsMany listOf(
+            mixEntity(id = 5L, genres = "Rock", allowCrossMixFill = false),
+            updated,
+            updated,
+        )
+        coEvery { customMixDao.getAll() } returns listOf(updated)
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("t1")
         coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("t1"))
-        coEvery { genreMixDao.getDailyMix(any(), any<Long>()) } returns null
 
         repository.updateMix(
             5L,
@@ -1009,8 +1062,8 @@ class DailyMixRepositoryTest {
         )
 
         coVerify { customMixDao.update(match { it.allowCrossMixFill }) }
-        coVerify { genreMixDao.replaceDailyMix(today, 5L, any()) }
-        coVerify { mixCacheCoordinator.onSourceChanged(5L, listOf("t1")) }
+        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 5L }) }
+        coVerify { mixCacheCoordinator.onSourceChanged(5L, any()) }
     }
 
     @Test
@@ -1039,5 +1092,89 @@ class DailyMixRepositoryTest {
         coVerify {
             customMixDao.update(match { it.fixedCoverKind == null && it.fixedCoverValue == null })
         }
+    }
+
+    @Test
+    fun `activateDailyMix supersedes previous and clears pending`() = runTest {
+        seeded()
+        val recipe = mixEntity(id = 5L, activeDailyMixId = 10, pendingDailyMixId = 20)
+        coEvery { customMixDao.getById(5L) } returns recipe
+        coEvery { genreMixDao.getDailyMixById(20) } returns DailyMixEntity(
+            id = 20,
+            date = today,
+            mixId = 5L,
+            version = 2,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        coEvery { genreMixDao.getDailyMixTrackIds(20) } returns listOf("t1", "t2")
+
+        assertTrue(repository.activateDailyMix(5L, 20))
+        coVerify { genreMixDao.updateDailyMixStatus(10, com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.SUPERSEDED) }
+        coVerify { customMixDao.updateActivationPointers(5L, 20, null) }
+        coVerify { genreMixDao.deleteSupersededExcept(5L, listOf(20, 10)) }
+        coVerify { mixCacheCoordinator.onSourceChanged(5L, listOf("t1", "t2")) }
+        coVerify(exactly = 0) { mixCacheCoordinator.onGenerated(any(), any()) }
+    }
+
+    @Test
+    fun `activateDailyMix rejects building rows`() = runTest {
+        seeded()
+        coEvery { customMixDao.getById(5L) } returns mixEntity(id = 5L, activeDailyMixId = 10)
+        coEvery { genreMixDao.getDailyMixById(99) } returns DailyMixEntity(
+            id = 99,
+            date = today,
+            mixId = 5L,
+            version = 3,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.BUILDING,
+        )
+        assertFalse(repository.activateDailyMix(5L, 99))
+        coVerify(exactly = 0) { customMixDao.updateActivationPointers(any(), any(), any()) }
+    }
+
+    @Test
+    fun `activatePending promotes pending pointer`() = runTest {
+        seeded()
+        coEvery { customMixDao.getById(5L) } returns mixEntity(
+            id = 5L,
+            activeDailyMixId = 10,
+            pendingDailyMixId = 20,
+        )
+        coEvery { genreMixDao.getDailyMixById(20) } returns DailyMixEntity(
+            id = 20,
+            date = today,
+            mixId = 5L,
+            version = 2,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        coEvery { genreMixDao.getDailyMixTrackIds(20) } returns listOf("t9")
+        assertTrue(repository.activatePending(5L))
+        coVerify { customMixDao.updateActivationPointers(5L, 20, null) }
+    }
+
+    @Test
+    fun `non-manual generate skips when pending already set`() = runTest {
+        seeded()
+        val recipe = mixEntity(id = 5L, activeDailyMixId = 10, pendingDailyMixId = 20)
+        coEvery { customMixDao.getAll() } returns listOf(recipe)
+        coEvery { customMixDao.getById(5L) } returns recipe
+        val staleActive = DailyMixEntity(
+            id = 10,
+            date = yesterday,
+            mixId = 5L,
+            createdAt = System.currentTimeMillis() - 50L * 60L * 60L * 1000L,
+            version = 1,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        coEvery { genreMixDao.getDailyMixById(10) } returns staleActive
+        coEvery { genreMixDao.getActiveDailyMix(5L) } returns staleActive
+        coEvery { genreMixDao.getDailyMixTrackIds(10) } returns listOf("t1", "t2")
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("t1"), track("t2"))
+        coEvery { trackDao.getMixTrackIdsByGenre(any()) } returns listOf("t1", "t2")
+        coEvery { listenEventDao.countDistinctTracksForMix(any(), any(), any()) } returns 0
+
+        val result = repository.generateAllOutcome(today, manual = false, activate = false)
+        assertEquals(0, result.produced)
+        assertEquals(1, result.skippedFresh)
+        coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
     }
 }

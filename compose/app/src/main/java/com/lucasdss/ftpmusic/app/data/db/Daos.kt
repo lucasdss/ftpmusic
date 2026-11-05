@@ -1922,14 +1922,48 @@ interface GenreMixDao {
     @Query("SELECT * FROM daily_mix WHERE date = :date AND mix_id = :mixId LIMIT 1")
     suspend fun getDailyMix(date: String, mixId: Long): DailyMixEntity?
 
+    @Query("SELECT * FROM daily_mix WHERE id = :id LIMIT 1")
+    suspend fun getDailyMixById(id: Int): DailyMixEntity?
+
     /**
-     * Most recent row for a recipe, whatever its date (DM-5). The regeneration
-     * predicate must evaluate the last generated list, not only today's or
-     * yesterday's — otherwise a missed day makes the next run look like a
-     * brand-new mix and bypasses the 24h/48h policy.
+     * Highest version row for a recipe (DM-16). Prefer [getActiveDailyMix] /
+     * recipe pointers for visibility; this is for version allocation.
      */
-    @Query("SELECT * FROM daily_mix WHERE mix_id = :mixId ORDER BY date DESC LIMIT 1")
+    @Query("SELECT * FROM daily_mix WHERE mix_id = :mixId ORDER BY version DESC LIMIT 1")
     suspend fun getLatestDailyMix(mixId: Long): DailyMixEntity?
+
+    @Query(
+        """
+        SELECT dm.* FROM daily_mix dm
+        INNER JOIN custom_mixes cm ON cm.active_daily_mix_id = dm.id
+        WHERE cm.id = :mixId
+        LIMIT 1
+        """,
+    )
+    suspend fun getActiveDailyMix(mixId: Long): DailyMixEntity?
+
+    @Query(
+        """
+        SELECT dm.* FROM daily_mix dm
+        INNER JOIN custom_mixes cm ON cm.pending_daily_mix_id = dm.id
+        WHERE cm.id = :mixId
+        LIMIT 1
+        """,
+    )
+    suspend fun getPendingDailyMix(mixId: Long): DailyMixEntity?
+
+    @Query("SELECT * FROM daily_mix WHERE mix_id = :mixId AND status = :status LIMIT 1")
+    suspend fun getDailyMixByStatus(mixId: Long, status: String): DailyMixEntity?
+
+    /** Batch read for Home cards: active rows for the given recipe ids. */
+    @Query(
+        """
+        SELECT dm.* FROM daily_mix dm
+        INNER JOIN custom_mixes cm ON cm.active_daily_mix_id = dm.id
+        WHERE cm.id IN (:mixIds)
+        """,
+    )
+    suspend fun getActiveDailyMixesForRecipes(mixIds: List<Long>): List<DailyMixEntity>
 
     /** Batch read for Home cards: today's + yesterday's rows in one query. */
     @Query("SELECT * FROM daily_mix WHERE date IN (:dates)")
@@ -1951,8 +1985,38 @@ interface GenreMixDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDailyMixTracks(tracks: List<DailyMixTrackEntity>)
 
+    @Query("UPDATE daily_mix SET status = :status WHERE id = :id")
+    suspend fun updateDailyMixStatus(id: Int, status: String)
+
+    @Query("DELETE FROM daily_mix WHERE id = :id")
+    suspend fun deleteDailyMixById(id: Int)
+
     @Query("DELETE FROM daily_mix WHERE date = :date AND mix_id = :mixId")
     suspend fun deleteDailyMix(date: String, mixId: Long)
+
+    @Query("DELETE FROM daily_mix WHERE mix_id = :mixId AND status IN ('building', 'ready')")
+    suspend fun deleteUnpublishedBuilds(mixId: Long)
+
+    @Query(
+        """
+        DELETE FROM daily_mix
+        WHERE mix_id = :mixId
+          AND id NOT IN (:keepIds)
+          AND status = 'superseded'
+        """,
+    )
+    suspend fun deleteSupersededExcept(mixId: Long, keepIds: List<Int>)
+
+    @Query(
+        """
+        DELETE FROM daily_mix
+        WHERE status = 'building' AND created_at < :cutoffMs
+        """,
+    )
+    suspend fun deleteStaleBuilding(cutoffMs: Long)
+
+    @Query("SELECT * FROM daily_mix WHERE status = 'ready'")
+    suspend fun getAllReadyDailyMixes(): List<DailyMixEntity>
 
     /**
      * Remove historical rows older than [cutoffDate] for a recipe. Used when
@@ -1962,10 +2026,18 @@ interface GenreMixDao {
     @Query("DELETE FROM daily_mix WHERE mix_id = :mixId AND date < :cutoffDate")
     suspend fun deleteDailyMixesBefore(cutoffDate: String, mixId: Long)
 
+    /** Legacy helper retained for tests; prefer beginBuild/completeReady/activate. */
     @Transaction
     suspend fun replaceDailyMix(date: String, mixId: Long, tracks: List<DailyMixTrackEntity>) {
         deleteDailyMix(date, mixId) // cascade deletes old tracks
-        val dailyMixId = upsertDailyMix(DailyMixEntity(date = date, mixId = mixId))
+        val dailyMixId = upsertDailyMix(
+            DailyMixEntity(
+                date = date,
+                mixId = mixId,
+                version = (getLatestDailyMix(mixId)?.version ?: 0) + 1,
+                status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+            ),
+        )
         insertDailyMixTracks(tracks.map { it.copy(mixId = dailyMixId) })
     }
 
@@ -2041,6 +2113,21 @@ interface CustomMixDao {
 
     @Update
     suspend fun update(mix: CustomMixEntity)
+
+    @Query(
+        """
+        UPDATE custom_mixes
+        SET active_daily_mix_id = :activeId, pending_daily_mix_id = :pendingId
+        WHERE id = :mixId
+        """,
+    )
+    suspend fun updateActivationPointers(mixId: Long, activeId: Int?, pendingId: Int?)
+
+    @Query("UPDATE custom_mixes SET pending_daily_mix_id = :pendingId WHERE id = :mixId")
+    suspend fun updatePendingPointer(mixId: Long, pendingId: Int?)
+
+    @Query("UPDATE custom_mixes SET active_daily_mix_id = :activeId WHERE id = :mixId")
+    suspend fun updateActivePointer(mixId: Long, activeId: Int?)
 
     @Query("DELETE FROM custom_mixes WHERE id = :id")
     suspend fun deleteById(id: Long)

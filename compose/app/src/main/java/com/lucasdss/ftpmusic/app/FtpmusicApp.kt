@@ -63,6 +63,8 @@ class FtpmusicApp :
 
     @Inject lateinit var syncHealthGuard: com.lucasdss.ftpmusic.app.data.sync.SyncHealthGuard
 
+    @Inject lateinit var dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
+
     override fun onCreate() {
         super.onCreate()
         // N7: a process boundary in the ring. Without it a process death reads
@@ -185,6 +187,17 @@ class FtpmusicApp :
                 Log.d("ftpmusic-cache", "[App] CacheService initialized")
             } catch (e: Exception) {
                 Log.w("ftpmusic-cache", "[App] CacheService init failed: ${e.message}")
+            }
+        }
+        // DM-16: rescue orphan ready→pending and drop stale building rows after
+        // process death, without waiting for the next Home/sync generation.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                dailyMixRepository.reconcileOrphans()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("ftpmusic-dailymix", "[App] reconcileOrphans failed: ${e.message}")
             }
         }
     }

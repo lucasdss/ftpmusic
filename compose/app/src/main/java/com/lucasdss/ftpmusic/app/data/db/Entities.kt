@@ -414,9 +414,13 @@ data class CachedGenreSongEntity(
 
 // ── v26: Daily Mix ───────────────────────────────────────────────────────
 
-/** Once-daily generated tracklist for a custom mix recipe — stable for the
- *  full day unless refreshed. Keyed by (date, mix_id); the recipe itself lives
- *  in `custom_mixes` (v47). */
+/**
+ * Versioned generated tracklist for a custom mix recipe (DM-16).
+ *
+ * Identity is `(mix_id, version)`. [date] is a generation-day label only.
+ * Visibility is owned by [CustomMixEntity.activeDailyMixId] — there is no
+ * `status=published`. Status is `building` | `ready` | `superseded`.
+ */
 @Entity(
     tableName = "daily_mix",
     foreignKeys = [
@@ -427,14 +431,27 @@ data class CachedGenreSongEntity(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["date", "mix_id"], unique = true, name = "idx_daily_mix_date_mix_id")],
+    indices = [
+        Index(value = ["mix_id", "version"], unique = true, name = "idx_daily_mix_mix_version"),
+        Index(value = ["mix_id", "status"], name = "idx_daily_mix_mix_status"),
+        Index(value = ["date", "mix_id"], unique = false, name = "idx_daily_mix_date_mix_id"),
+    ],
 )
 data class DailyMixEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val date: String,
     @ColumnInfo(name = "mix_id") val mixId: Long,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "version", defaultValue = "1") val version: Int = 1,
+    @ColumnInfo(name = "status", defaultValue = "ready") val status: String = DailyMixStatus.READY,
 )
+
+/** Status values for [DailyMixEntity.status] (DM-16). Active is a pointer, not a status. */
+object DailyMixStatus {
+    const val BUILDING = "building"
+    const val READY = "ready"
+    const val SUPERSEDED = "superseded"
+}
 
 @Entity(
     tableName = "daily_mix_tracks",
@@ -480,6 +497,14 @@ data class CustomMixEntity(
     /** Local fixed cover: "navidrome" | "local" (ADR 0115). Survives regeneration. */
     @ColumnInfo(name = "fixed_cover_kind") val fixedCoverKind: String? = null,
     @ColumnInfo(name = "fixed_cover_value") val fixedCoverValue: String? = null,
+    /**
+     * DM-16: sole Home/Detail/Auto visibility pointer into `daily_mix.id`.
+     * Null until the first successful generation activates a version.
+     * No Room FK (avoids circular custom_mixes ↔ daily_mix); repo-enforced.
+     */
+    @ColumnInfo(name = "active_daily_mix_id") val activeDailyMixId: Int? = null,
+    /** Newest completed ready version not yet activated (background regen). */
+    @ColumnInfo(name = "pending_daily_mix_id") val pendingDailyMixId: Int? = null,
 )
 
 /** Auto-cache ownership: which tracks a mix asked to keep cached. A track may

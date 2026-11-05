@@ -38,7 +38,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncSkipAlbumEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 68,
+    version = 69,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1222,6 +1222,88 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_68 = ALL_MIGRATIONS_67 + MIGRATION_67_68
+
+        /**
+         * DM-16: sticky Daily Mix versions.
+         * - `daily_mix.version` / `status` (`building`|`ready`|`superseded`)
+         * - unique `(mix_id, version)`; date index no longer unique
+         * - `custom_mixes.active_daily_mix_id` / `pending_daily_mix_id` pointers
+         */
+        val MIGRATION_68_69 = object : Migration(68, 69) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE custom_mixes ADD COLUMN active_daily_mix_id INTEGER",
+                )
+                database.execSQL(
+                    "ALTER TABLE custom_mixes ADD COLUMN pending_daily_mix_id INTEGER",
+                )
+                database.execSQL(
+                    "ALTER TABLE daily_mix ADD COLUMN version INTEGER NOT NULL DEFAULT 1",
+                )
+                database.execSQL(
+                    "ALTER TABLE daily_mix ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'",
+                )
+                // Assign increasing versions per mix by date/created_at/id.
+                database.execSQL(
+                    """
+                    UPDATE daily_mix
+                    SET version = (
+                      SELECT COUNT(*) FROM daily_mix d2
+                      WHERE d2.mix_id = daily_mix.mix_id
+                        AND (
+                          d2.date < daily_mix.date
+                          OR (d2.date = daily_mix.date AND d2.created_at < daily_mix.created_at)
+                          OR (d2.date = daily_mix.date AND d2.created_at = daily_mix.created_at AND d2.id <= daily_mix.id)
+                        )
+                    )
+                    """.trimIndent(),
+                )
+                // Point each recipe at its newest row (highest version).
+                database.execSQL(
+                    """
+                    UPDATE custom_mixes
+                    SET active_daily_mix_id = (
+                      SELECT d.id FROM daily_mix d
+                      WHERE d.mix_id = custom_mixes.id
+                      ORDER BY d.version DESC
+                      LIMIT 1
+                    )
+                    """.trimIndent(),
+                )
+                // Non-active rows become superseded.
+                database.execSQL(
+                    """
+                    UPDATE daily_mix
+                    SET status = 'superseded'
+                    WHERE id NOT IN (
+                      SELECT active_daily_mix_id FROM custom_mixes
+                      WHERE active_daily_mix_id IS NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    """
+                    UPDATE daily_mix
+                    SET status = 'ready'
+                    WHERE id IN (
+                      SELECT active_daily_mix_id FROM custom_mixes
+                      WHERE active_daily_mix_id IS NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL("DROP INDEX IF EXISTS idx_daily_mix_date_mix_id")
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_daily_mix_date_mix_id ON daily_mix(date, mix_id)",
+                )
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_mix_mix_version ON daily_mix(mix_id, version)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_daily_mix_mix_status ON daily_mix(mix_id, status)",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_69 = ALL_MIGRATIONS_68 + MIGRATION_68_69
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).
