@@ -13,23 +13,26 @@ Related: [ADR-0072](adr/0072-bluetooth-resume-any-or-selected.md),
 
 ## Verdict
 
-Spotify-class car play is **not** app-initiated A2DP `play()`. Market behavior:
-
-1. Keep a live / resumable MediaSession (last played app wins soft routing).
-2. On reconnect, seat metadata/queue paused.
-3. Head unit AVRCP PLAY, Android Auto “Start music automatically”, or System UI media Play starts audio.
-4. OS routes that through `MediaButtonReceiver` → `onPlaybackResumption` with a while-in-use (WIU) exemption.
+**Updated 2026-11-05 (ADR-0154):** Symfonium ships **Bluetooth auto play** (app
+`play()` on BT connect) plus **Ignore remote stop**. Substreamer is
+provider-first without A2DP autoplay. Spotify often appears to autoplay because
+many HUs send AVRCP PLAY to the last session (Path A), not because third-party
+apps must refuse A2DP `play()`.
 
 FTP Music dual stack:
 
-- **Path A** — Media3 resumption (Spotify-class).
-- **Path B** — Opt-in A2DP seat (Poweramp-class); API ≥37 **seat_only** (ADR-0148).
+- **Path A** — Media3 resumption (MediaButton / System UI / HU Play → WIU).
+- **Path B** — Opt-in A2DP **Bluetooth auto play** (Symfonium/Poweramp-class);
+  seat + `play()` on all API levels when enabled (ADR-0154). ADR-0148 seat-only
+  on API ≥37 is superseded for the happy path.
 
-Zero-gesture deep-sleep autoplay from A2DP alone is **not** a third-party market guarantee after Android 17 AudioHardening.
+Deep-sleep autoplay still needs FGS start permission (battery unrestricted);
+FGS deny → Resume `1002` when notifications work. AudioHardening mute after
+`play()` → seated `1001` + `play_suppressed` crumb; HU Play remains Path A.
 
 ```
-A2DP connect → (optional Path B) seat paused
-HU / AA / System UI PLAY → Path A / media button → audible play (WIU)
+A2DP connect → (Path B ON) seat + play() [autoplay]
+             → else Path A when HU/System UI sends Play
 ```
 
 ## Permissions (mapped vs declared)
@@ -53,8 +56,8 @@ HU / AA / System UI PLAY → Path A / media button → audible play (WIU)
 | F1.1 | Play is HU/OS-initiated | AVRCP + AA auto-resume; Spotify cannot always block accessory PLAY |
 | F1.2 | App job = last session + resumption | Soft routing prefers last MediaSession |
 | F1.3 | Must not auto-start on Auto browse connect | Android for Cars policy |
-| F1.4 | Poweramp-class opt-in A2DP seat | Path B; default OFF |
-| F1.5 | Deep-sleep silent autoplay ≠ market promise | BFSL without WIU → AudioHardening mute |
+| F1.4 | Symfonium/Poweramp-class opt-in A2DP autoplay | Path B; default OFF; ADR-0154 |
+| F1.5 | Deep-sleep silent autoplay not guaranteed | FGS deny / AudioHardening → seated wait / Resume 1002 |
 
 ## Gaps / follow-ups
 
@@ -63,10 +66,11 @@ HU / AA / System UI PLAY → Path A / media button → audible play (WIU)
 | G2 Default-music CTA honesty | Shipped — badge-less CTA, no fake “held” status |
 | Car-play tip in Bluetooth settings | Shipped — short tip; doze note battery-only |
 | G3 `play_suppressed` detector | Shipped — `PlaySuppressionWatch`; diagnostics only |
-| G6 stale system-media report | Shipped — refreshed for seat_only |
+| G6 stale system-media report | Shipped — refreshed; ADR-0154 autoplay |
 | Device validation matrix | Skeleton shipped; human fill (not a code merge gate) |
 | Market-report F1 (stale `btAutoplayRequested` after FGS deny) | Fixed — `clearBtAutoplayFlags()` on FGS start failure |
 | Market-report F3 (A2DP pause while already playing on API ≥37) | Fixed — `skip_playing` when already audible |
+| ADR-0154 Bluetooth auto play (supersede seat_only) | Shipped — mapper + Settings + ignore remote stop |
 
 ## Open / deferred (not this ship)
 
@@ -76,6 +80,7 @@ HU / AA / System UI PLAY → Path A / media button → audible play (WIU)
 
 ## Settings education (post-fix copy intent)
 
-- Tip: car play = HU / Android Auto Play to last media app; enable BT resume to **seat**.
+- Tip: enable **Bluetooth auto play** to start last queue on A2DP connect; wheel Play if OS blocks start.
 - Battery note: unrestricted battery helps FGS after Doze.
+- Ignore remote stop: recommended for cars that send STOP on disconnect.
 - Default apps: open system settings; no music RoleManager role.

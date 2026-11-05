@@ -235,7 +235,7 @@ class MediaServiceFgsReassertTest {
     }
 
     @Test
-    fun `applyBtPlayAfterSeat A17 offline cache-hit seats only — no WIU notif`() {
+    fun `applyBtPlayAfterSeat A17 offline cache-hit autoplays — ADR-0154`() {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
         var wiu = 0
         var cancelled = 0
@@ -251,9 +251,10 @@ class MediaServiceFgsReassertTest {
         )
         assertEquals(0, wiu)
         assertEquals(1, cancelled)
-        verify { player.pause() }
+        verify { player.play() }
+        verify(exactly = 0) { player.pause() }
         verify(exactly = 0) { player.seekTo(any(), any()) }
-        assertTrue(BtResumeEvents.recent().any { it.contains("seat_only") })
+        assertTrue(BtResumeEvents.recent().any { it.contains("autoplay") })
     }
 
     @Test
@@ -301,7 +302,7 @@ class MediaServiceFgsReassertTest {
     }
 
     @Test
-    fun `applyBtPlayAfterSeat A17 background without tap seats only — no WIU notif`() {
+    fun `applyBtPlayAfterSeat A17 background without tap autoplays — ADR-0154`() {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
         var wiu = 0
         var cancelled = 0
@@ -315,9 +316,9 @@ class MediaServiceFgsReassertTest {
         )
         assertEquals(0, wiu)
         assertEquals(1, cancelled)
-        verify { player.pause() }
-        verify(exactly = 0) { player.play() }
-        assertTrue(BtResumeEvents.recent().any { it.contains("seat_only") })
+        verify { player.play() }
+        verify(exactly = 0) { player.pause() }
+        assertTrue(BtResumeEvents.recent().any { it.contains("autoplay") })
     }
 
     @Test

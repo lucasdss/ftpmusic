@@ -24,11 +24,13 @@ object PlaybackResumptionMapper {
     fun shouldSkipQueueRestore(mediaItemCount: Int, isCasting: Boolean): Boolean = isCasting || mediaItemCount > 0
 
     /**
-     * API ≤36: background A2DP `play()` is OK.
-     * API ≥37: BFSL FGS often lacks WIU — rely on media-key / media-notif Play /
-     * System UI resumption instead (no app Resume notif on the happy path).
+     * ADR-0154: when Path B BT resume is enabled, background A2DP always attempts
+     * `play()` after seat (Symfonium-class Bluetooth auto play), including API ≥37.
+     * AudioHardening mute is handled by [PlaySuppressionWatch] + seated media notif.
+     * [sdkInt] retained for call-site compatibility / tests.
      */
-    fun shouldBackgroundAutoplay(sdkInt: Int): Boolean = sdkInt < ANDROID_17_API
+    @Suppress("UNUSED_PARAMETER")
+    fun shouldBackgroundAutoplay(sdkInt: Int): Boolean = true
 
     /**
      * After BT seat: play when background autoplay is allowed **or** the wake was

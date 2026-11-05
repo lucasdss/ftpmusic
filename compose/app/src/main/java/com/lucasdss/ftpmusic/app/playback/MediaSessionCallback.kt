@@ -1,7 +1,10 @@
 package com.lucasdss.ftpmusic.app.playback
 
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -81,6 +84,8 @@ class MediaSessionCallback(
     private val radioSource: AutoRadioStationsSource? = null,
     private val offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager? = null,
     private val playbackManager: PlaybackManager? = null,
+    /** ADR-0154: when true, remap remote Stop → Pause (Symfonium-class). */
+    private val ignoreRemoteStop: () -> Boolean = { false },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MediaLibraryService.MediaLibrarySession.Callback {
@@ -146,6 +151,60 @@ class MediaSessionCallback(
         val snap = withContext(mainDispatcher) { pm.autoQueueBrowseSnapshot() }
         catalog.primeQueueSnapshot(snap)
     }
+
+    /**
+     * ADR-0154: remap remote Stop → Pause so cars that send STOP on disconnect
+     * keep the seated queue for Bluetooth auto play on reconnect.
+     */
+    @Suppress("DEPRECATION")
+    @Deprecated("Deprecated in Media3; still required to intercept COMMAND_STOP")
+    override fun onPlayerCommandRequest(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        playerCommand: Int,
+    ): Int {
+        if (IgnoreRemoteStop.shouldRemapPlayerStop(ignoreRemoteStop(), playerCommand)) {
+            session.player.pause()
+            android.util.Log.i("ftpmusic-bt", "ignore remote STOP → pause (player command)")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "result=ignore_remote_stop via=command",
+            )
+            BtResumeEvents.record("ignore_remote_stop", "via=command")
+            return SessionResult.RESULT_INFO_SKIPPED
+        }
+        return SessionResult.RESULT_SUCCESS
+    }
+
+    override fun onMediaButtonEvent(
+        session: MediaSession,
+        controllerInfo: MediaSession.ControllerInfo,
+        intent: Intent,
+    ): Boolean {
+        val event = mediaButtonKeyEvent(intent)
+        if (event != null &&
+            event.action == KeyEvent.ACTION_DOWN &&
+            IgnoreRemoteStop.shouldRemapMediaStop(ignoreRemoteStop(), event.keyCode)
+        ) {
+            session.player.pause()
+            android.util.Log.i("ftpmusic-bt", "ignore remote STOP → pause (media button)")
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-bt",
+                "result=ignore_remote_stop via=media_button",
+            )
+            BtResumeEvents.record("ignore_remote_stop", "via=media_button")
+            return true
+        }
+        return super.onMediaButtonEvent(session, controllerInfo, intent)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun mediaButtonKeyEvent(intent: Intent): KeyEvent? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+        } else {
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+        }
 
     override fun onGetLibraryRoot(
         session: MediaLibraryService.MediaLibrarySession,

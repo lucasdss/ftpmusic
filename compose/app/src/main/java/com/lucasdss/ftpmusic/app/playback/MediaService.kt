@@ -2816,9 +2816,9 @@ class MediaService : MediaLibraryService() {
     }
 
     /**
-     * ADR-0088/0148: API ≤36 autoplay; API ≥37 seats then pauses (no app Resume notif).
+     * ADR-0154: after BT seat, autoplay on all API levels (Symfonium-class).
      * ADR-0101: when network blocked, prefer fully-cached index before play/info.
-     * ADR-0133: a Resume-notification tap ([userInitiated]) forces play() on API ≥37.
+     * ADR-0133: Resume-notification tap ([userInitiated]) records `tap_play`.
      */
     @VisibleForTesting
     internal fun applyBtPlayAfterSeat(
@@ -2874,7 +2874,7 @@ class MediaService : MediaLibraryService() {
                 )
             }
         }
-        // F3: already playing — market no-op (do not pause on seat_only path).
+        // F3: already playing — market no-op (do not pause / re-play).
         if (!userInitiated && player?.isPlaying == true) {
             cancelResumeNotif(this)
             android.util.Log.i(
@@ -2915,20 +2915,18 @@ class MediaService : MediaLibraryService() {
             BtResumeEvents.record(resultToken, "sdk=$sdkInt")
             armPlaySuppressionWatch(resultToken)
         } else {
-            // ADR-0148: API ≥37 seat-only. No app-specific Resume (ID 1002) — the paused
-            // media notification, System UI resumption, and head-unit AVRCP PLAY all
-            // provide user-initiated resume. Cancel any stale Resume 1002 (prior null-mac).
+            // ADR-0154: shouldPlayAfterBtSeat is always true; defensive seat if gate changes.
             player?.pause()
             cancelResumeNotif(this)
-            android.util.Log.i(
+            android.util.Log.w(
                 "ftpmusic",
-                "[MediaService] BT seat_only — no Resume notif sdk=$sdkInt",
+                "[MediaService] BT play gated false — seated paused sdk=$sdkInt",
             )
-            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                 "ftpmusic-bt",
-                "result=seat_only sdk=$sdkInt",
+                "result=play_gated sdk=$sdkInt",
             )
-            BtResumeEvents.record("seat_only", "sdk=$sdkInt")
+            BtResumeEvents.record("play_gated", "sdk=$sdkInt")
         }
     }
 
@@ -2955,8 +2953,8 @@ class MediaService : MediaLibraryService() {
     )
 
     /**
-     * ADR-0071/0088/0148: when BT resume is pending and a player already has media,
-     * start playback (API≤36) or seat-only (API≥37) and clear the flag.
+     * ADR-0154: when BT resume is pending and a player already has media, autoplay
+     * and clear the flag (all API levels).
      * ADR-0133: Resume notif tap sets [MediaServiceStartRequest.userInitiatedResume].
      * F3: if already playing and not a user tap, skip (market no-op — do not pause).
      */
@@ -2973,7 +2971,7 @@ class MediaService : MediaLibraryService() {
             return
         }
         val tapResume = MediaServiceStartRequest.userInitiatedResume
-        // F3: A2DP reconnect while audible must not pause on API ≥37 seat_only path.
+        // F3: A2DP reconnect while audible must not pause / re-play.
         if (!tapResume && p.isPlaying) {
             MediaServiceStartRequest.clearBtAutoplayFlags()
             android.util.Log.i("ftpmusic-bt", "BT autoplay skip — already playing")

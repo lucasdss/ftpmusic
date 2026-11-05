@@ -2,7 +2,7 @@ package com.lucasdss.ftpmusic.app.playback
 
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 
-/** Read/write BT resume prefs with migration from KEY_CAR_BT_* (ADR-0072). */
+/** Read/write BT resume prefs with migration from KEY_CAR_BT_* (ADR-0072 / ADR-0154). */
 object BtResumeStorage {
     fun isEnabled(storage: SecureStorage): Boolean {
         val modern = storage.get(SecureStorage.KEY_BT_RESUME_ENABLED)?.toBooleanStrictOrNull()
@@ -29,5 +29,13 @@ object BtResumeStorage {
 
     fun setAllowlist(storage: SecureStorage, macs: Collection<String>) {
         storage.put(SecureStorage.KEY_BT_DEVICE_MACS, BtResumePolicy.encodeMacAllowlist(macs))
+    }
+
+    /** ADR-0154: default off — car users should enable when HU sends STOP on disconnect. */
+    fun ignoreRemoteStop(storage: SecureStorage): Boolean =
+        storage.get(SecureStorage.KEY_BT_IGNORE_REMOTE_STOP)?.toBooleanStrictOrNull() == true
+
+    fun setIgnoreRemoteStop(storage: SecureStorage, enabled: Boolean) {
+        storage.put(SecureStorage.KEY_BT_IGNORE_REMOTE_STOP, enabled.toString())
     }
 }

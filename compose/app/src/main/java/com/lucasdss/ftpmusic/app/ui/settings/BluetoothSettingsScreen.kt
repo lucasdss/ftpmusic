@@ -168,6 +168,13 @@ fun BluetoothSettingsScreen(
                 )
                 if (state.btResumeEnabled) {
                     SectionDivider()
+                    SectionToggleRow(
+                        label = stringResource(R.string.bt_ignore_remote_stop_toggle),
+                        subtitle = stringResource(R.string.bt_ignore_remote_stop_subtitle),
+                        checked = state.btIgnoreRemoteStop,
+                        onToggle = { viewModel.setBtIgnoreRemoteStop(it) },
+                    )
+                    SectionDivider()
                     OverwriteBehaviorOption(
                         label = stringResource(R.string.bt_resume_mode_any),
                         subtitle = stringResource(R.string.bt_resume_mode_any_subtitle),

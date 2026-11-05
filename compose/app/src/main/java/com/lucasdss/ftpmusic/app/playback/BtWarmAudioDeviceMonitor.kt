@@ -30,6 +30,7 @@ class BtWarmAudioDeviceMonitor(
             storage = store,
             deviceMac = mac,
             casting = cast,
+            source = BtConnectionReceiver.SOURCE_WARM,
         )
     },
 ) {

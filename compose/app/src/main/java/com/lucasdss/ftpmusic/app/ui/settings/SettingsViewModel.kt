@@ -121,13 +121,15 @@ data class SettingsUiState(
     // Last.fm API key (masked in UI when non-blank after save)
     val lastFmApiKey: String = "",
     val lastFmKeySaved: Boolean = false,
-    // ADR-0072: Bluetooth A2DP resume
+    // ADR-0072 / ADR-0154: Bluetooth A2DP auto play
     val btResumeEnabled: Boolean = false,
     val btResumeMode: com.lucasdss.ftpmusic.app.playback.BtResumeMode =
         com.lucasdss.ftpmusic.app.playback.BtResumeMode.SELECTED,
     val btSelectedMacs: Set<String> = emptySet(),
     val btBondedDevices: List<com.lucasdss.ftpmusic.app.playback.BondedBtDevice> = emptyList(),
     val btHasConnectPermission: Boolean = false,
+    /** ADR-0154: remap remote Stop → Pause. */
+    val btIgnoreRemoteStop: Boolean = false,
     /** ADR-0119: PowerManager ignoring battery optimizations. */
     val btBatteryUnrestricted: Boolean = true,
     /** ADR-0119: system notifications enabled (POST_NOTIFICATIONS / app setting). */
@@ -270,6 +272,8 @@ class SettingsViewModel @Inject constructor(
             btResumeEnabled = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.isEnabled(storage),
             btResumeMode = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.mode(storage),
             btSelectedMacs = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.allowlist(storage),
+            btIgnoreRemoteStop =
+                com.lucasdss.ftpmusic.app.playback.BtResumeStorage.ignoreRemoteStop(storage),
         )
         // ADR-0140: seed About update row from tray holder so "Update" CTA lands
         // on an actionable Available state (no extra Play round-trip).
@@ -648,6 +652,8 @@ class SettingsViewModel @Inject constructor(
             btResumeEnabled = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.isEnabled(storage),
             btResumeMode = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.mode(storage),
             btSelectedMacs = com.lucasdss.ftpmusic.app.playback.BtResumeStorage.allowlist(storage),
+            btIgnoreRemoteStop =
+                com.lucasdss.ftpmusic.app.playback.BtResumeStorage.ignoreRemoteStop(storage),
         )
     }
 
@@ -659,6 +665,11 @@ class SettingsViewModel @Inject constructor(
     fun setBtResumeMode(mode: com.lucasdss.ftpmusic.app.playback.BtResumeMode) {
         com.lucasdss.ftpmusic.app.playback.BtResumeStorage.setMode(storage, mode)
         _state.value = _state.value.copy(btResumeMode = mode)
+    }
+
+    fun setBtIgnoreRemoteStop(enabled: Boolean) {
+        com.lucasdss.ftpmusic.app.playback.BtResumeStorage.setIgnoreRemoteStop(storage, enabled)
+        _state.value = _state.value.copy(btIgnoreRemoteStop = enabled)
     }
 
     fun setBtDeviceSelected(mac: String, selected: Boolean) {

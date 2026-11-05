@@ -962,6 +962,16 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setBtIgnoreRemoteStop persists`() {
+        viewModel.setBtIgnoreRemoteStop(true)
+        verify { storage.put(SecureStorage.KEY_BT_IGNORE_REMOTE_STOP, "true") }
+        assertTrue(viewModel.state.value.btIgnoreRemoteStop)
+        viewModel.setBtIgnoreRemoteStop(false)
+        verify { storage.put(SecureStorage.KEY_BT_IGNORE_REMOTE_STOP, "false") }
+        assertFalse(viewModel.state.value.btIgnoreRemoteStop)
+    }
+
+    @Test
     fun `setBtDeviceSelected updates allowlist JSON`() {
         viewModel.setBtDeviceSelected("aa:bb:cc:dd:ee:ff", true)
         verify {

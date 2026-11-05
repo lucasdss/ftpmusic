@@ -70,6 +70,7 @@ object MediaModule {
         radioSource: AutoRadioStationsSource,
         offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
         playbackManager: com.lucasdss.ftpmusic.app.playback.PlaybackManager,
+        storage: SecureStorage,
     ): MediaSessionCallback = MediaSessionCallback(
         trackDao = trackDao,
         metadataDao = metadataDao,
@@ -86,6 +87,9 @@ object MediaModule {
         radioSource = radioSource,
         offlineModeManager = offlineModeManager,
         playbackManager = playbackManager,
+        ignoreRemoteStop = {
+            com.lucasdss.ftpmusic.app.playback.BtResumeStorage.ignoreRemoteStop(storage)
+        },
     )
 
     @Provides

@@ -65,6 +65,10 @@ class BtConnectionReceiver : BroadcastReceiver() {
             )
         }
 
+        /** ADR-0154: `cold` = manifest A2DP receiver; `warm` = AudioDeviceCallback. */
+        const val SOURCE_COLD = "cold"
+        const val SOURCE_WARM = "warm"
+
         internal fun dispatchBtConnect(
             context: Context,
             storage: SecureStorage,
@@ -81,7 +85,9 @@ class BtConnectionReceiver : BroadcastReceiver() {
                 )
             },
             sdkInt: Int = Build.VERSION.SDK_INT,
+            source: String = SOURCE_COLD,
         ): Boolean {
+            val sourceTag = "source=$source"
             val enabled = BtResumeStorage.isEnabled(storage)
             val mode = BtResumeStorage.mode(storage)
             val allowlist = BtResumeStorage.allowlist(storage)
@@ -102,20 +108,23 @@ class BtConnectionReceiver : BroadcastReceiver() {
                 ) {
                     android.util.Log.d(
                         "ftpmusic-bt",
-                        "selected_null_mac debounced — skip Resume notif sdk=$sdkInt",
+                        "selected_null_mac debounced — skip Resume notif sdk=$sdkInt $sourceTag",
                     )
-                    BtResumeEvents.record("selected_null_mac_debounced", "sdk=$sdkInt")
+                    BtResumeEvents.record(
+                        "selected_null_mac_debounced",
+                        "sdk=$sdkInt $sourceTag",
+                    )
                     return false
                 }
                 android.util.Log.i(
                     "ftpmusic-bt",
-                    "selected_null_mac — Resume notif (no autoplay) enabled=$enabled sdk=$sdkInt",
+                    "selected_null_mac — Resume notif (no autoplay) enabled=$enabled sdk=$sdkInt $sourceTag",
                 )
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                     "ftpmusic-bt",
-                    "policy=selected_null_mac sdk=$sdkInt",
+                    "policy=selected_null_mac sdk=$sdkInt $sourceTag",
                 )
-                BtResumeEvents.record("selected_null_mac", "sdk=$sdkInt")
+                BtResumeEvents.record("selected_null_mac", "sdk=$sdkInt $sourceTag")
                 postSelectedNullMacNotif(context)
                 return true
             }
@@ -131,37 +140,37 @@ class BtConnectionReceiver : BroadcastReceiver() {
             if (!allow) {
                 android.util.Log.d(
                     "ftpmusic-bt",
-                    "skip connect mac=$deviceMac enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
+                    "skip connect mac=$deviceMac enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt $sourceTag",
                 )
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                     "ftpmusic-bt",
-                    "policy=skip enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
+                    "policy=skip enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt $sourceTag",
                 )
                 BtResumeEvents.record(
                     "skip",
-                    "enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt",
+                    "enabled=$enabled mode=$mode casting=$casting sdk=$sdkInt $sourceTag",
                 )
                 return false
             }
             android.util.Log.i(
                 "ftpmusic-bt",
-                "BT resume for $deviceMac mode=$mode enabled=$enabled sdk=$sdkInt",
+                "BT resume for $deviceMac mode=$mode enabled=$enabled sdk=$sdkInt $sourceTag",
             )
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-bt",
-                "policy=allow mode=$mode sdk=$sdkInt",
+                "policy=allow mode=$mode sdk=$sdkInt $sourceTag",
             )
-            BtResumeEvents.record("allow", "mode=$mode sdk=$sdkInt")
+            BtResumeEvents.record("allow", "mode=$mode sdk=$sdkInt $sourceTag")
             val result = starter(context)
             android.util.Log.i(
                 "ftpmusic-bt",
-                "BT resume result=$result mac=$deviceMac mode=$mode sdk=$sdkInt",
+                "BT resume result=$result mac=$deviceMac mode=$mode sdk=$sdkInt $sourceTag",
             )
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-bt",
-                "result=$result mode=$mode sdk=$sdkInt",
+                "result=$result mode=$mode sdk=$sdkInt $sourceTag",
             )
-            BtResumeEvents.record(result.name, "mode=$mode sdk=$sdkInt")
+            BtResumeEvents.record(result.name, "mode=$mode sdk=$sdkInt $sourceTag")
             return true
         }
 

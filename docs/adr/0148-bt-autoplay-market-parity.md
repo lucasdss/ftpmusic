@@ -1,8 +1,9 @@
 # ADR 0148 — BT Autoplay Market Parity: Seat-Only on Android 17
 
 Date: 2026-10-18
-Status: Accepted
+Status: Superseded in part by ADR-0154 (happy-path seat-only / no app `play()` on API ≥37)
 Supersedes (in part): ADR-0088 (API ≥37 high-pri Resume notif), ADR-0101 (empty/offline Resume notif), ADR-0117 (pause + Resume notif on API ≥37), ADR-0119 (Resume-prompt warning copy), ADR-0133 (happy-path WIU notif)
+Note: Empty/offline info `1003` and null-mac / FGS-deny Resume `1002` from this ADR remain in force under ADR-0154.
 Related: ADR-0072 (A2DP resume), ADR-0087 (Media3 resumption), ADR-0100 (null-mac)
 Toolchain: compileSdk/targetSdk 36; Android 17 via SDK_INT ≥ 37 guards
 

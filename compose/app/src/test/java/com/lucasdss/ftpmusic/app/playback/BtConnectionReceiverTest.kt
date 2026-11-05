@@ -72,6 +72,31 @@ class BtConnectionReceiverTest {
         val events = BtResumeEvents.recent().joinToString("\n")
         assertTrue(events.contains("allow"))
         assertTrue(events.contains("Started"))
+        assertTrue(events.contains("source=cold"))
+    }
+
+    @Test
+    fun `dispatch records source=warm when warm path`() {
+        val storage = mockk<SecureStorage>()
+        every { storage.get(SecureStorage.KEY_BT_RESUME_ENABLED) } returns "true"
+        every { storage.get(SecureStorage.KEY_BT_RESUME_MODE) } returns "any"
+        every { storage.get(SecureStorage.KEY_BT_DEVICE_MACS) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_RESUME_ENABLED) } returns null
+        every { storage.get(SecureStorage.KEY_CAR_BT_DEVICE_MACS) } returns null
+        val starter = mockk<(Context) -> BtAutoplayStarter.StartResult>()
+        every { starter.invoke(any()) } returns BtAutoplayStarter.StartResult.Started
+        assertTrue(
+            BtConnectionReceiver.dispatchBtConnect(
+                context = mockk(relaxed = true),
+                storage = storage,
+                deviceMac = "AA:BB:CC:DD:EE:01",
+                casting = false,
+                nowMs = 90_000,
+                starter = starter,
+                source = BtConnectionReceiver.SOURCE_WARM,
+            ),
+        )
+        assertTrue(BtResumeEvents.recent().any { it.contains("source=warm") })
     }
 
     @Test

@@ -46,4 +46,15 @@ class BtResumeStorageTest {
         verify { storage.put(SecureStorage.KEY_BT_RESUME_MODE, "any") }
         verify { storage.put(SecureStorage.KEY_BT_DEVICE_MACS, """["AA:BB:CC:DD:EE:FF"]""") }
     }
+
+    @Test
+    fun `ignoreRemoteStop defaults false and writes key`() {
+        val storage = mockk<SecureStorage>(relaxed = true)
+        every { storage.get(SecureStorage.KEY_BT_IGNORE_REMOTE_STOP) } returns null
+        assertFalse(BtResumeStorage.ignoreRemoteStop(storage))
+        every { storage.get(SecureStorage.KEY_BT_IGNORE_REMOTE_STOP) } returns "true"
+        assertTrue(BtResumeStorage.ignoreRemoteStop(storage))
+        BtResumeStorage.setIgnoreRemoteStop(storage, true)
+        verify { storage.put(SecureStorage.KEY_BT_IGNORE_REMOTE_STOP, "true") }
+    }
 }

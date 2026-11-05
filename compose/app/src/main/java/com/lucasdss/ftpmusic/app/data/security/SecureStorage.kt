@@ -212,6 +212,8 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_BT_RESUME_ENABLED = "bt_resume_enabled"
         const val KEY_BT_RESUME_MODE = "bt_resume_mode" // any | selected
         const val KEY_BT_DEVICE_MACS = "bt_device_macs"
+        /** ADR-0154: treat remote Stop as Pause (keep queue for car reconnect). */
+        const val KEY_BT_IGNORE_REMOTE_STOP = "bt_ignore_remote_stop"
 
         /** Opt-in: include lyrics_cache text in FTS rebuild (ADR 0080 / phase-2). */
         const val KEY_SEARCH_LYRICS = "search_lyrics_enabled"

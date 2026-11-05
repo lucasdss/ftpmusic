@@ -43,16 +43,16 @@ class PlaybackResumptionMapperTest {
     }
 
     @Test
-    fun `shouldBackgroundAutoplay false on API 37 plus`() {
+    fun `shouldBackgroundAutoplay true on all API levels — ADR-0154`() {
         assertTrue(PlaybackResumptionMapper.shouldBackgroundAutoplay(36))
-        assertFalse(PlaybackResumptionMapper.shouldBackgroundAutoplay(37))
-        assertFalse(PlaybackResumptionMapper.shouldBackgroundAutoplay(38))
+        assertTrue(PlaybackResumptionMapper.shouldBackgroundAutoplay(37))
+        assertTrue(PlaybackResumptionMapper.shouldBackgroundAutoplay(38))
     }
 
     @Test
-    fun `shouldPlayAfterBtSeat true when userInitiated even on API 37`() {
+    fun `shouldPlayAfterBtSeat true on API 37 without userInitiated — ADR-0154`() {
         assertTrue(PlaybackResumptionMapper.shouldPlayAfterBtSeat(36, userInitiated = false))
-        assertFalse(PlaybackResumptionMapper.shouldPlayAfterBtSeat(37, userInitiated = false))
+        assertTrue(PlaybackResumptionMapper.shouldPlayAfterBtSeat(37, userInitiated = false))
         assertTrue(PlaybackResumptionMapper.shouldPlayAfterBtSeat(37, userInitiated = true))
         assertTrue(PlaybackResumptionMapper.shouldPlayAfterBtSeat(38, userInitiated = true))
     }
