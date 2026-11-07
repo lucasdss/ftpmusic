@@ -10,7 +10,7 @@ Mix/playlist fixed covers deleted the previous local JPEG on switch/clear. Genre
 
 ## Decision
 
-1. **Style packs.** Offline Nano Banana (or placeholder) assets under `assets/collection_defaults/{packId}/` with shared `catalog.json` + `packs.json`. Nine packs: anime, pixel48, futuristic, vintage, watercolor, bauhaus, clay, risograph, noir. Settings `KEY_COVER_STYLE_PACK` selects the active pack.
+1. **Style packs.** Bundled WebP assets under `assets/collection_defaults/{packId}/` with shared `catalog.json` + `packs.json`. **Five packs ship in the APK:** anime (default), futuristic, vintage, watercolor, noir. Four more (`pixel48`, `bauhaus`, `clay`, `risograph`) live under `scripts/collection_defaults/archived_packs/` for later. Settings `KEY_COVER_STYLE_PACK` selects the active pack (unknown/archived ids fall back to anime). Generation: LiteLLM ChatGPT or local mflux via `scripts/generate-collection-default-covers.py` + `scripts/collection_defaults/prompts.json`.
 2. **Resolver.** Fixed → derived → **bundled pack asset** → lettermark. Genres use `skipDerived` (fixed → bundled → lettermark).
 3. **Personal library.** Room `user_cover_images` + files under `collection_covers/library/{id}.jpg`. Switch/clear only updates entity pointers. Explicit delete removes a library entry.
 4. **Genre covers.** Room `genre_covers` keyed by genre name.
@@ -18,6 +18,6 @@ Mix/playlist fixed covers deleted the previous local JPEG on switch/clear. Genre
 
 ## Consequences
 
-- ~700 WebP assets increase APK size; placeholders ship first, Nano Banana regenerations replace in place.
+- Five shipped packs (~385 WebPs / ~16 MB assets) keep APK growth bounded; archived packs stay in-repo outside Android assets.
 - Coil loads `file:///android_asset/collection_defaults/...`.
 - Legacy `mix_{id}.jpg` / `pl_{id}.jpg` still resolve; new imports go to the library.

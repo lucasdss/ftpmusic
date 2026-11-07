@@ -196,7 +196,9 @@ class SettingsViewModel @Inject constructor(
             ?.takeIf { it > 0 }
             ?: com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor.DEFAULT_MAX_BYTES
         val savedCoverArtQuota = storage.get(SecureStorage.KEY_COVER_ART_QUOTA_MB)?.toIntOrNull() ?: 300
-        val savedCoverStylePack = storage.get(SecureStorage.KEY_COVER_STYLE_PACK) ?: "anime"
+        val savedCoverStylePack = normalizeCoverStylePack(
+            storage.get(SecureStorage.KEY_COVER_STYLE_PACK) ?: "anime",
+        )
         coverArtFallback.maxCacheBytes = savedCoverArtQuota.toLong() * 1024 * 1024
         refresh()
         val headers = loadCustomHeaders()
@@ -724,8 +726,19 @@ class SettingsViewModel @Inject constructor(
 
     fun setCoverStylePack(packId: String) {
         if (packId.isBlank()) return
-        storage.put(SecureStorage.KEY_COVER_STYLE_PACK, packId)
-        _state.value = _state.value.copy(coverStylePackId = packId)
+        val normalized = normalizeCoverStylePack(packId)
+        storage.put(SecureStorage.KEY_COVER_STYLE_PACK, normalized)
+        _state.value = _state.value.copy(coverStylePackId = normalized)
+    }
+
+    /** Ship only five packs; archived ids fall back to anime. */
+    private fun normalizeCoverStylePack(packId: String): String {
+        val id = packId.trim()
+        val resolved = if (id in SHIPPED_COVER_STYLE_PACKS) id else DEFAULT_COVER_STYLE_PACK
+        if (storage.get(SecureStorage.KEY_COVER_STYLE_PACK) != resolved) {
+            storage.put(SecureStorage.KEY_COVER_STYLE_PACK, resolved)
+        }
+        return resolved
     }
 
     @OptIn(coil.annotation.ExperimentalCoilApi::class)
@@ -1042,4 +1055,15 @@ class SettingsViewModel @Inject constructor(
 
     fun appVersionLabel(): String =
         "${com.lucasdss.ftpmusic.app.BuildConfig.VERSION_NAME} (${com.lucasdss.ftpmusic.app.BuildConfig.VERSION_CODE})"
+
+    companion object {
+        const val DEFAULT_COVER_STYLE_PACK = "anime"
+        val SHIPPED_COVER_STYLE_PACKS = setOf(
+            "anime",
+            "futuristic",
+            "vintage",
+            "watercolor",
+            "noir",
+        )
+    }
 }

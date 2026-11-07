@@ -1,65 +1,86 @@
-# Collection default covers — Nano Banana prompt pack
+# Collection default covers — local mflux prompt pack
 
 Offline generation only. Assets land in
 `compose/app/src/main/assets/collection_defaults/{packId}/…`.
-Current tree ships **style-tinted placeholders**; replace with Gemini Nano Banana
-(`gemini-nano-banana-2.1`) outputs using the prompts below. SynthID watermarks expected.
 
-## Packs (9)
+Generator: **mflux** on Apple Silicon using ungated
+`mflux-community/flux-1-schnell-mflux-q4` (`--base-model schnell`).
+Rich prompts live in [`scripts/collection_defaults/prompts.json`](../scripts/collection_defaults/prompts.json).
+Batch driver: [`scripts/generate-collection-default-covers.py`](../scripts/generate-collection-default-covers.py).
+
+## Packs shipped in the APK (5)
 
 | id | Label |
 |---|---|
-| anime | Anime |
-| pixel48 | Pixel 48 (48×48 → NN upscale) |
+| anime | Anime (default) |
 | futuristic | Futuristic |
 | vintage | Vintage |
 | watercolor | Watercolor |
-| bauhaus | Bauhaus |
-| clay | Clay |
-| risograph | Risograph |
 | noir | Noir |
 
-## Shared base
+Archived for later (not in APK): `pixel48`, `bauhaus`, `clay`, `risograph` under
+[`scripts/collection_defaults/archived_packs/`](../scripts/collection_defaults/archived_packs/).
 
-```text
-Square 1:1 music app collection cover. Not a photo of a real album.
-No readable text, no logos, no watermarks, no celebrity likenesses, no brand marks.
-Centered focal subject with quiet margins for rounded crop.
-Keep the SAME subject motif family as other packs for this slug (recognizable across styles).
-```
+## Prompt assembly
 
-Append the pack style modifier from ADR 0151 / plan section 2b, then the subject focus.
+Every image gets a multi-section prompt. **Subject motif is front-loaded**
+(Flux.1 schnell dilutes long trailing context):
 
-## Genres (Navidrome live 2026-11-05)
+1. Hard no-text / no-calligraphy constraint
+2. Subject card first (motif, props, atmosphere, palette, cross-pack lock)
+3. Pack style card (technique, form, palette, lighting, texture, mood, do)
+4. App composition (centered ~70%, thumbnail-clear, rounded-crop margins)
+5. Product context + shared base constraints
+6. Kind framing (Daily Mix rings / playlist title-mood)
+7. Negatives (`Avoid: …` plus pack `avoid_extra` + scripts)
 
-Rock, Pop, MPB, Metal, Rap, Hip Hop, Classical, R&B, Latin, Folk, Axé, Dance,
-Electronic, New Age, Soul, Reggae, Bossa Nova, Alternative, Samba, Country, Music,
-Soundtrack, instrumental, Punk, Forró, Hard Rock, Jazz, Contemporary R&B, Indie,
-Heavy, Hip-Hop, Thrash Metal.
+Slug maps: `assets/collection_defaults/catalog.json`.
 
-Slug map: see `assets/collection_defaults/catalog.json`.
+## Output
 
-## Daily Mixes
-
-`{TopGenre} Mix` for top 20 genres → `mixes/{slug}_mix.webp` with Daily Mix framing:
-
-```text
-Framed as a Daily Mix card: subtle concentric orbit rings behind the motif,
-gentle dawn-to-night gradient bar at the bottom edge (no text), slightly brighter
-and more dynamic than the matching genre cover.
-```
-
-## Playlists (curated)
-
-See `catalog.json` `playlists` keys. Album-* and test/empty lists use
-`playlists/default.webp` only.
+- Size: **384×384** WebP q80 (app tiles; not print resolution)
+- `pixel48`: generate → quantize to 16 colors at 48 → nearest-neighbor to 384
+- Filenames unchanged: `genres/{slug}.webp`, `mixes/{slug}_mix.webp`, `playlists/{slug}.webp`
 
 ## Regeneration
 
 ```sh
-# Replace placeholders after Nano Banana export (keep filenames):
-# collection_defaults/{pack}/{genres|mixes|playlists}/{slug}.webp
+# One-time tool install (Apple Silicon)
+uv tool install -p 3.12 --upgrade mflux
+
+# Preview full assembled prompts
+uv run --with Pillow python scripts/generate-collection-default-covers.py \
+  --dry-run --pack anime --kind genres --limit 1
+
+# Prefer the mflux uv-tool interpreter so the model stays loaded in-process:
+MFLUX_PY="$HOME/.local/share/uv/tools/mflux/bin/python"
+
+# Smoke
+"$MFLUX_PY" scripts/generate-collection-default-covers.py \
+  --pack anime --kind genres --limit 3 --force
+
+# Full pack tree (resume-safe via scripts/collection_defaults/.progress)
+"$MFLUX_PY" scripts/generate-collection-default-covers.py
 ```
 
-Placeholder generator (dev): `scripts/generate-collection-default-placeholders.py`
-(optional; tree already generated).
+Flags: `--backend mflux|litellm`, `--pack`, `--kind`, `--limit`, `--force`, `--dry-run`,
+`--width/--height`, `--steps`, `--quality low|medium|high`, `--model` (mflux),
+`--litellm-model`, `--litellm-base-url`.
+Resume uses `scripts/collection_defaults/.progress` (gitignored).
+
+### LiteLLM / ChatGPT (Motile)
+
+Requires tunnel + virtual key with `gpt-image-2.5-flare` allowed:
+
+```sh
+export LITELLM_API_KEY="$(cat ../mediaserver/mediaserver-automation/scripts/litellm_virtual_key.local)"
+export LITELLM_BASE_URL="http://127.0.0.1:4000/v1"
+
+# One pack only (review before continuing):
+uv run --with Pillow python scripts/generate-collection-default-covers.py \
+  --backend litellm --pack anime --force --quality low
+```
+
+Script prints absolute paths of every written WebP at the end.
+
+Placeholder fallback (dev only): `scripts/generate-collection-default-placeholders.py`.

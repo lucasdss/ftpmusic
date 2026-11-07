@@ -152,7 +152,7 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_SESSION_AUTOPLAY_ENABLED = "session_autoplay_enabled"
         const val KEY_COVER_ART_QUOTA_MB = "cover_art_quota_mb"
 
-        /** ADR 0151: active bundled collection cover style pack id (anime, pixel48, …). */
+        /** ADR 0151: active bundled collection cover style pack id (anime, futuristic, …). */
         const val KEY_COVER_STYLE_PACK = "cover_style_pack"
         const val KEY_AUDIO_CACHE_MAX_BYTES = "audio_cache_max_bytes"
         const val KEY_SYNC_INTERVAL_HOURS = "sync_interval_hours"

@@ -66,3 +66,9 @@ AppIcons.zip
 
 # Coil disk-cache artifacts created by unit runs ("File(child^2 of #…)") 
 compose/app/File(child^2 of */
+
+# Local mflux cover generation resume log / batch log
+scripts/collection_defaults/.progress
+scripts/collection_defaults/generate.log
+scripts/collection_defaults/generate-litellm-anime.log
+scripts/collection_defaults/generate-litellm-rest.log

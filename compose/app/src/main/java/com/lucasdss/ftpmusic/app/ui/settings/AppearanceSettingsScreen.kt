@@ -190,13 +190,9 @@ fun AppearanceSettingsScreen(
                 )
                 val packs = listOf(
                     "anime" to "Anime",
-                    "pixel48" to "Pixel 48",
                     "futuristic" to "Futuristic",
                     "vintage" to "Vintage",
                     "watercolor" to "Watercolor",
-                    "bauhaus" to "Bauhaus",
-                    "clay" to "Clay",
-                    "risograph" to "Risograph",
                     "noir" to "Noir",
                 )
                 packs.forEachIndexed { index, (id, label) ->

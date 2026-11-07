@@ -1,0 +1,697 @@
+{
+  "role_context": "You are illustrating a square collection cover for FTP Music, an offline-first Android music app. The image will appear as a small rounded tile on Home, Search, and detail screens on a phone, so the focal motif must read clearly at thumbnail size. This is original decorative art, not a photograph of a real album sleeve and not UI chrome.",
+  "base_constraints": "Square 1:1. Centered focal subject with quiet margins for a rounded crop. No readable text, letters, numbers, logos, watermarks, QR codes, brand marks, album titles, or typography of any kind. No celebrity likenesses, no real band or idol faces, no copyrighted mascots. No flags used as cliché national stickers; cultural mood via color, light, and abstract forms only. Keep the SAME subject motif family as other style packs for this slug so a user switching packs still recognizes the collection.",
+  "composition": "Composition: single dominant centered motif occupying roughly the middle 70% of the frame; simplified background; high silhouette contrast; avoid busy full-bleed patterns that muddy at 96–128 dp tile size; leave soft margin for rounded corners; no cluttered corners; no tiny details that vanish when shrunk.",
+  "negatives": "photoreal album photos, stock photo people, faces, hands with rings as focus, readable text, logos, watermarks, brand marks, UI buttons, status bars, frames-within-frames, collages of many tiny objects, low-contrast muddy brown soup, celebrity or idol likeness, copyrighted characters",
+  "daily_mix_framing": "Framed as Daily Mix card art: subtle concentric orbit rings behind the motif, a gentle dawn-to-night gradient bar along the bottom edge with no text or labels, slightly brighter and more dynamic than the matching genre cover, same motif family.",
+  "packs": {
+    "anime": {
+      "technique": "Japanese modern cel-shaded illustration, anime key-visual polish",
+      "line_and_form": "clean linework, bold silhouettes, soft screen-tone gradients",
+      "palette": "expressive saturated color with clear accent hierarchy",
+      "lighting": "dramatic rim light and soft fill, cinematic anime lighting",
+      "texture": "smooth cel fills with light grain, no photographic noise",
+      "mood": "energetic, stylish, music-forward",
+      "do": "music-themed props and environments without idol-like characters; keep shapes thumbnail-clear",
+      "avoid_extra": "realistic skin pores, idol face close-ups, cluttered manga panels"
+    },
+    "pixel48": {
+      "technique": "strict 1990s handheld pixel art illustration",
+      "line_and_form": "chunky blocky pixels, hard edges, readable silhouette at tiny size",
+      "palette": "limited approximately 16-color palette, high contrast",
+      "lighting": "flat or simple 2-step light, no soft blur",
+      "texture": "hard pixel grid, no anti-alias blur, no photographic grain",
+      "mood": "retro game cartridge charm",
+      "do": "design as if native 48 by 48 then scaled up; maximize silhouette clarity",
+      "avoid_extra": "smooth gradients, photorealism, fine hair detail, anti-aliased edges"
+    },
+    "futuristic": {
+      "technique": "sleek sci-fi concept illustration",
+      "line_and_form": "chrome curves, holographic panels, geometric UI-adjacent shapes without real UI",
+      "palette": "cool cyan, magenta, electric violet on deep navy",
+      "lighting": "glossy reflections, neon edge light, holographic glow",
+      "texture": "brushed metal, glass, soft bloom",
+      "mood": "future-city music night",
+      "do": "abstract music tech motifs; keep one strong center focal",
+      "avoid_extra": "readable HUD text, real logos, cluttered dashboards"
+    },
+    "vintage": {
+      "technique": "1970s vinyl sleeve print illustration",
+      "line_and_form": "bold poster shapes, slight print misalignment charm",
+      "palette": "warm ochre, faded red, cream paper, muted teal",
+      "lighting": "flat print lighting with soft vignette",
+      "texture": "halftone dots, foxing, paper wear, analog ink",
+      "mood": "nostalgic, analog, archival",
+      "do": "sleeve-art energy without fake album titles",
+      "avoid_extra": "modern neon cyberpunk, glossy CGI, crisp digital UI"
+    },
+    "watercolor": {
+      "technique": "wet watercolor and ink wash painting",
+      "line_and_form": "organic soft edges, pigment blooms, loose ink accents",
+      "palette": "translucent layered hues on dark-tinted paper",
+      "lighting": "diffused natural wash light",
+      "texture": "paper tooth, watery blooms, soft granulation",
+      "mood": "lyrical, intimate, atmospheric",
+      "do": "keep a clear dark silhouette so it survives thumbnail shrink",
+      "avoid_extra": "hard vector edges, photoreal CGI, dense tiny speckles"
+    },
+    "bauhaus": {
+      "technique": "flat geometric Bauhaus and Swiss poster design",
+      "line_and_form": "circles, triangles, bars, constructivist balance",
+      "palette": "primary red yellow blue plus black and white",
+      "lighting": "flat graphic, no soft photographic light",
+      "texture": "matte print, clean fills",
+      "mood": "modernist, bold, architectural",
+      "do": "maximize small-tile readability with large shapes",
+      "avoid_extra": "painterly blur, photoreal textures, ornate detail"
+    },
+    "clay": {
+      "technique": "soft claymation and polymer-clay 3D still",
+      "line_and_form": "rounded tactile volumes, toy-like proportions",
+      "palette": "warm studio clay colors with gentle accents",
+      "lighting": "softbox studio light, gentle shadows",
+      "texture": "fingerprints, clay seams, matte polymer surface",
+      "mood": "playful, tactile, friendly",
+      "do": "one clear clay sculpture motif centered",
+      "avoid_extra": "sharp metal CGI, realistic human faces, busy diorama clutter"
+    },
+    "risograph": {
+      "technique": "risograph print-shop illustration",
+      "line_and_form": "layered spot-color shapes, slight misregistration",
+      "palette": "limited fluorescent inks over cream or dark stock",
+      "lighting": "flat print lighting with grainy overlays",
+      "texture": "riso grain, ink scum, zine paper",
+      "mood": "indie, handmade, poster-zine",
+      "do": "2–3 ink layers max; strong graphic center",
+      "avoid_extra": "full photographic color, glossy 3D render, tiny unreadable detail"
+    },
+    "noir": {
+      "technique": "high-contrast black-and-white film noir still illustration",
+      "line_and_form": "hard silhouettes, venetian-blind shafts, dramatic diagonals",
+      "palette": "pure black, white, and gray only",
+      "lighting": "harsh key light, deep shadow, smoke haze",
+      "texture": "film grain, soft smoke, wet street sheen if needed",
+      "mood": "mysterious, nocturnal, cinematic",
+      "do": "strong mono contrast for tiny tiles; no color",
+      "avoid_extra": "color tinting, pastel washes, busy daytime scenes"
+    }
+  },
+  "genres": {
+    "rock": {
+      "display_name": "Rock",
+      "motif": "electric guitars as geometric neon silhouettes",
+      "props": "stadium haze, abstract amp monoliths, crimson and amber sparks",
+      "atmosphere": "arena night energy, loud but graphic",
+      "palette_keys": ["crimson", "amber", "charcoal"],
+      "energy": "high",
+      "must_keep_across_packs": "guitar silhouette plus spark motif",
+      "notes": "no band faces; no logos"
+    },
+    "pop": {
+      "display_name": "Pop",
+      "motif": "glossy candy-chrome abstract shapes and pastel neon orbs",
+      "props": "bubble highlights, playful high-energy gloss forms",
+      "atmosphere": "stadium-pop sparkle without celebrities",
+      "palette_keys": ["pastel pink", "sky blue", "chrome"],
+      "energy": "bright",
+      "must_keep_across_packs": "candy orbs and chrome gloss motif",
+      "notes": "no faces"
+    },
+    "mpb": {
+      "display_name": "MPB",
+      "motif": "warm Brazilian dusk with acoustic silhouette and tropical foliage abstractions",
+      "props": "gold and teal light, soft coastal modernism shapes",
+      "atmosphere": "intimate Brazilian evening, lyrical",
+      "palette_keys": ["gold", "teal", "dusk violet"],
+      "energy": "warm",
+      "must_keep_across_packs": "acoustic dusk plus tropical foliage abstraction",
+      "notes": "no flags; no real people"
+    },
+    "metal": {
+      "display_name": "Metal",
+      "motif": "jagged chrome shards and heavy geometric armor forms",
+      "props": "volcanic reds, forge sparks, crushing iron angles",
+      "atmosphere": "forge-dark intensity",
+      "palette_keys": ["chrome", "volcanic red", "black"],
+      "energy": "aggressive",
+      "must_keep_across_packs": "jagged chrome shard motif",
+      "notes": "no band logos or corpse-paint faces"
+    },
+    "rap": {
+      "display_name": "Rap",
+      "motif": "urban night concrete blocks as bold gold light geometry",
+      "props": "vinyl scratched light streaks, city grit without graffiti words",
+      "atmosphere": "street-night confidence",
+      "palette_keys": ["gold", "concrete gray", "black"],
+      "energy": "assertive",
+      "must_keep_across_packs": "gold block geometry plus vinyl light scratches",
+      "notes": "no readable graffiti text; no faces"
+    },
+    "hip-hop": {
+      "display_name": "Hip Hop",
+      "motif": "boom-box era glow with city skyline bokeh",
+      "props": "purple and orange atmospheric haze, speaker silhouette",
+      "atmosphere": "classic hip-hop night skyline",
+      "palette_keys": ["purple", "orange", "night blue"],
+      "energy": "groovy",
+      "must_keep_across_packs": "boom-box silhouette plus skyline glow",
+      "notes": "no brand logos on speakers"
+    },
+    "classical": {
+      "display_name": "Classical",
+      "motif": "marble columns dissolving into sheet-music ribbons",
+      "props": "ivory and midnight-blue abstract architecture",
+      "atmosphere": "timeless concert-hall calm",
+      "palette_keys": ["ivory", "midnight blue", "soft gold"],
+      "energy": "elegant",
+      "must_keep_across_packs": "column-to-ribbon motif",
+      "notes": "ribbons suggest score without readable notes"
+    },
+    "rnb": {
+      "display_name": "R&B",
+      "motif": "velvet crimson lounge curves and silky abstract forms",
+      "props": "intimate warm glow, soft reflective surfaces",
+      "atmosphere": "late-night lounge intimacy",
+      "palette_keys": ["velvet crimson", "warm gold", "deep plum"],
+      "energy": "smooth",
+      "must_keep_across_packs": "velvet curve plus warm lounge glow",
+      "notes": "no faces"
+    },
+    "latin": {
+      "display_name": "Latin",
+      "motif": "sun-washed terracotta dancing ribbon forms",
+      "props": "festive rhythm shapes, warm plaza light",
+      "atmosphere": "celebration without national clichés",
+      "palette_keys": ["terracotta", "sun gold", "night magenta"],
+      "energy": "festive",
+      "must_keep_across_packs": "dancing ribbon motif",
+      "notes": "no flags"
+    },
+    "folk": {
+      "display_name": "Folk",
+      "motif": "woodgrain and mountain mist with soft acoustic amber",
+      "props": "handmade textile pattern hints, quiet landscape",
+      "atmosphere": "handmade, pastoral, intimate",
+      "palette_keys": ["amber", "wood brown", "mist gray"],
+      "energy": "gentle",
+      "must_keep_across_packs": "woodgrain plus mist mountain motif",
+      "notes": "no kitschy costume hats"
+    },
+    "axe": {
+      "display_name": "Axé",
+      "motif": "carnival energy as confetti light streaks and tropical heat shapes",
+      "props": "joyful motion arcs, warm night celebration glow",
+      "atmosphere": "Bahia carnival heat abstracted",
+      "palette_keys": ["tropical orange", "hot pink", "sun yellow"],
+      "energy": "joyful",
+      "must_keep_across_packs": "confetti light-streak motif",
+      "notes": "no flags; no faces"
+    },
+    "dance": {
+      "display_name": "Dance",
+      "motif": "club strobe geometry and laser grids",
+      "props": "kinetic cyan and magenta beams, dancefloor planes",
+      "atmosphere": "nightlife pulse",
+      "palette_keys": ["cyan", "magenta", "black"],
+      "energy": "kinetic",
+      "must_keep_across_packs": "laser grid plus strobe planes",
+      "notes": "no crowd faces"
+    },
+    "electronic": {
+      "display_name": "Electronic",
+      "motif": "modular synth landscapes and circuit aurora",
+      "props": "cool blue violet pathways, abstract patch-cable light",
+      "atmosphere": "synthetic night sky",
+      "palette_keys": ["electric blue", "violet", "teal"],
+      "energy": "synthetic",
+      "must_keep_across_packs": "circuit aurora motif",
+      "notes": "no brand panel labels"
+    },
+    "new-age": {
+      "display_name": "New Age",
+      "motif": "ethereal mist and floating stones",
+      "props": "serene aqua and lilac calm forms",
+      "atmosphere": "meditative weightlessness",
+      "palette_keys": ["aqua", "lilac", "soft white"],
+      "energy": "calm",
+      "must_keep_across_packs": "floating stones in mist",
+      "notes": "no religious iconography"
+    },
+    "soul": {
+      "display_name": "Soul",
+      "motif": "warm vinyl glow with brass-light flares",
+      "props": "deep brown and gold soul mood shapes",
+      "atmosphere": "warm classic soul evening",
+      "palette_keys": ["vinyl brown", "brass gold", "warm amber"],
+      "energy": "warm",
+      "must_keep_across_packs": "vinyl disc glow plus brass flare",
+      "notes": "no faces"
+    },
+    "reggae": {
+      "display_name": "Reggae",
+      "motif": "island dusk greens and golds with gentle wave geometry",
+      "props": "soft horizon bands, relaxed rhythm curves",
+      "atmosphere": "laid-back coastal dusk",
+      "palette_keys": ["island green", "gold", "dusk blue"],
+      "energy": "relaxed",
+      "must_keep_across_packs": "wave geometry plus dusk green-gold",
+      "notes": "no flag mashups"
+    },
+    "bossa-nova": {
+      "display_name": "Bossa Nova",
+      "motif": "Copacabana dusk abstraction with soft sand and sea gradients",
+      "props": "intimate cool jazz light, shoreline curves",
+      "atmosphere": "quiet Brazilian seaside evening",
+      "palette_keys": ["sand", "sea teal", "dusk rose"],
+      "energy": "intimate",
+      "must_keep_across_packs": "sand-sea dusk gradient motif",
+      "notes": "no tourist clichés with text"
+    },
+    "alternative": {
+      "display_name": "Alternative",
+      "motif": "off-kilter collage shapes and indie murky greens",
+      "props": "art-school poster geometry, torn-layer hints without text",
+      "atmosphere": "art-school indie mood",
+      "palette_keys": ["murky green", "oxblood", "cream"],
+      "energy": "offbeat",
+      "must_keep_across_packs": "off-kilter collage silhouette",
+      "notes": "no readable poster text"
+    },
+    "samba": {
+      "display_name": "Samba",
+      "motif": "golden parade shimmer and drum-skin circles",
+      "props": "warm night celebration, rhythmic circle stacks",
+      "atmosphere": "Rio parade night abstracted",
+      "palette_keys": ["gold", "warm night", "drum tan"],
+      "energy": "festive",
+      "must_keep_across_packs": "drum-skin circles plus golden shimmer",
+      "notes": "no flags; no faces"
+    },
+    "country": {
+      "display_name": "Country",
+      "motif": "dusty highway dusk with wood and sky bands",
+      "props": "warm amber Americana landscape abstraction",
+      "atmosphere": "open-road evening",
+      "palette_keys": ["dust amber", "sky blue", "wood"],
+      "energy": "open",
+      "must_keep_across_packs": "highway dusk bands",
+      "notes": "no kitsch cowboy hats as main focus"
+    },
+    "music": {
+      "display_name": "Music",
+      "motif": "neutral abstract sound-wave sculpture",
+      "props": "teal brand-adjacent universal audio forms",
+      "atmosphere": "universal music identity",
+      "palette_keys": ["teal", "charcoal", "soft white"],
+      "energy": "neutral",
+      "must_keep_across_packs": "sound-wave sculpture",
+      "notes": "generic fallback genre"
+    },
+    "soundtrack": {
+      "display_name": "Soundtrack",
+      "motif": "cinematic widescreen light shafts and film-reel curves into abstract score",
+      "props": "heroic glow planes, reel arcs without readable titles",
+      "atmosphere": "film-score grandeur",
+      "palette_keys": ["widescreen gold", "deep navy", "silver"],
+      "energy": "epic",
+      "must_keep_across_packs": "light shafts plus reel curve",
+      "notes": "no movie logos"
+    },
+    "instrumental": {
+      "display_name": "instrumental",
+      "motif": "floating instruments as pure abstract shapes",
+      "props": "quiet studio blue space, soft reflections",
+      "atmosphere": "studio calm focus",
+      "palette_keys": ["studio blue", "silver", "soft gray"],
+      "energy": "focused",
+      "must_keep_across_packs": "floating instrument shapes",
+      "notes": "no readable sheet music"
+    },
+    "punk": {
+      "display_name": "Punk",
+      "motif": "torn paper and safety-pin geometry",
+      "props": "raw neon pink and black DIY energy shapes",
+      "atmosphere": "DIY rebellion graphic",
+      "palette_keys": ["neon pink", "black", "acid yellow"],
+      "energy": "raw",
+      "must_keep_across_packs": "torn paper plus safety-pin geometry",
+      "notes": "no band logos or slogans"
+    },
+    "forro": {
+      "display_name": "Forró",
+      "motif": "Northeastern Brazil night fair lights with accordion curves as light trails",
+      "props": "warm festival bulbs, dance-floor dust glow",
+      "atmosphere": "festa junina night abstracted",
+      "palette_keys": ["fair-light gold", "warm red", "night blue"],
+      "energy": "festive",
+      "must_keep_across_packs": "accordion light-trail curves",
+      "notes": "no flags"
+    },
+    "hard-rock": {
+      "display_name": "Hard Rock",
+      "motif": "stacked amps as monoliths under orange stage wash",
+      "props": "leather-texture abstract planes, stage haze",
+      "atmosphere": "classic hard-rock stage",
+      "palette_keys": ["orange", "leather brown", "black"],
+      "energy": "powerful",
+      "must_keep_across_packs": "amp monolith stack",
+      "notes": "no band faces"
+    },
+    "jazz": {
+      "display_name": "Jazz",
+      "motif": "smoky club cobalt with trumpet silhouette as light",
+      "props": "improvisational swirls, intimate club haze",
+      "atmosphere": "late-night jazz club",
+      "palette_keys": ["cobalt", "smoke gray", "brass"],
+      "energy": "cool",
+      "must_keep_across_packs": "trumpet light silhouette plus smoke",
+      "notes": "no faces"
+    },
+    "indie": {
+      "display_name": "Indie",
+      "motif": "soft lo-fi bedroom window light with muted pastels",
+      "props": "intimate tape-hiss vibe as soft grain shapes",
+      "atmosphere": "bedroom recording intimacy",
+      "palette_keys": ["muted pastel", "warm window amber", "dusty blue"],
+      "energy": "intimate",
+      "must_keep_across_packs": "window-light bedroom motif",
+      "notes": "no readable cassette labels"
+    },
+    "thrash-metal": {
+      "display_name": "Thrash Metal",
+      "motif": "faster metal shards with speed lines and toxic green accents",
+      "props": "aggressive angular motion, chrome edges",
+      "atmosphere": "high-speed metallic assault",
+      "palette_keys": ["toxic green", "chrome", "black"],
+      "energy": "frantic",
+      "must_keep_across_packs": "speed-line shards plus toxic green",
+      "notes": "no logos"
+    }
+  },
+  "mixes": {
+    "rock": { "inherits_genre": "rock" },
+    "pop": { "inherits_genre": "pop" },
+    "mpb": { "inherits_genre": "mpb" },
+    "metal": { "inherits_genre": "metal" },
+    "rap": { "inherits_genre": "rap" },
+    "hip-hop": { "inherits_genre": "hip-hop" },
+    "classical": { "inherits_genre": "classical" },
+    "rnb": { "inherits_genre": "rnb" },
+    "latin": { "inherits_genre": "latin" },
+    "folk": { "inherits_genre": "folk" },
+    "axe": { "inherits_genre": "axe" },
+    "dance": { "inherits_genre": "dance" },
+    "electronic": { "inherits_genre": "electronic" },
+    "new-age": { "inherits_genre": "new-age" },
+    "soul": { "inherits_genre": "soul" },
+    "reggae": { "inherits_genre": "reggae" },
+    "bossa-nova": { "inherits_genre": "bossa-nova" },
+    "alternative": { "inherits_genre": "alternative" },
+    "samba": { "inherits_genre": "samba" },
+    "country": { "inherits_genre": "country" }
+  },
+  "playlists": {
+    "all-time-samba-classics": {
+      "display_name": "All Time Samba Classics",
+      "motif": "golden archival carnival glow with classic drum circles",
+      "props": "parade shimmer, warm archival night",
+      "atmosphere": "classic samba heritage celebration",
+      "palette_keys": ["gold", "warm night", "drum tan"],
+      "energy": "festive",
+      "must_keep_across_packs": "drum circles in golden archival glow",
+      "notes": "no faces; no flags"
+    },
+    "bossa-nova-and-mpb-classics": {
+      "display_name": "Bossa Nova and MPB Classics",
+      "motif": "soft sand-sea dusk with modernist Brazilian shapes",
+      "props": "acoustic gold and teal abstractions",
+      "atmosphere": "classic Brazilian modernism evening",
+      "palette_keys": ["sand", "teal", "dusk gold"],
+      "energy": "lyrical",
+      "must_keep_across_packs": "sand-sea dusk plus modernist shapes",
+      "notes": "no flags"
+    },
+    "brazilian-roots-reggae": {
+      "display_name": "Brazilian Roots Reggae",
+      "motif": "roots-reggae greens and golds with island dusk geometry",
+      "props": "gentle wave bands, tropical dusk",
+      "atmosphere": "Brazilian reggae coastal calm",
+      "palette_keys": ["roots green", "gold", "dusk"],
+      "energy": "relaxed",
+      "must_keep_across_packs": "green-gold dusk waves",
+      "notes": "no flags"
+    },
+    "classic-rock-summer": {
+      "display_name": "Classic Rock Summer",
+      "motif": "sun-bleached asphalt heat with roaring amp haze",
+      "props": "summer highway shimmer, orange stage wash",
+      "atmosphere": "hot classic-rock summer",
+      "palette_keys": ["sun bleach", "asphalt", "orange"],
+      "energy": "hot",
+      "must_keep_across_packs": "asphalt heat plus amp haze",
+      "notes": "no band faces"
+    },
+    "classical-solo-piano": {
+      "display_name": "Classical Solo Piano",
+      "motif": "single ivory-key ribbon in quiet marble blue space",
+      "props": "minimal concert silence, soft spotlight",
+      "atmosphere": "solo piano intimacy",
+      "palette_keys": ["ivory", "marble blue", "soft gold"],
+      "energy": "quiet",
+      "must_keep_across_packs": "ivory-key ribbon",
+      "notes": "no readable notation"
+    },
+    "classical-workout": {
+      "display_name": "Classical Workout",
+      "motif": "energetic baroque ribbons with kinetic ivory motion",
+      "props": "dynamic score-like curves without text",
+      "atmosphere": "athletic classical drive",
+      "palette_keys": ["ivory", "athletic red", "navy"],
+      "energy": "driving",
+      "must_keep_across_packs": "kinetic baroque ribbons",
+      "notes": "no gym logos"
+    },
+    "epic-film-scores": {
+      "display_name": "Epic Film Scores",
+      "motif": "heroic light shafts with silhouette orchestra abstraction",
+      "props": "widescreen glow, reel curves",
+      "atmosphere": "cinematic epic",
+      "palette_keys": ["hero gold", "deep navy", "silver"],
+      "energy": "epic",
+      "must_keep_across_packs": "heroic light shafts plus orchestra silhouette",
+      "notes": "no movie logos"
+    },
+    "especial-brasileiras": {
+      "display_name": "Especial brasileiras",
+      "motif": "warm Brazilian mosaic of light and foliage",
+      "props": "tropical leaf abstractions, golden dusk",
+      "atmosphere": "Brazilian specials warmth",
+      "palette_keys": ["foliage green", "gold", "warm dusk"],
+      "energy": "warm",
+      "must_keep_across_packs": "light-and-foliage mosaic",
+      "notes": "no flags"
+    },
+    "essential-classical": {
+      "display_name": "Essential Classical",
+      "motif": "marble columns with score ribbons in timeless ivory and navy",
+      "props": "concert hall calm architecture",
+      "atmosphere": "essential classical canon mood",
+      "palette_keys": ["ivory", "navy", "soft gold"],
+      "energy": "stately",
+      "must_keep_across_packs": "columns plus score ribbons",
+      "notes": "no readable notes"
+    },
+    "essential-mpb": {
+      "display_name": "Essential MPB The Sound of Brazil",
+      "motif": "coastal dusk modernism with acoustic gold and teal",
+      "props": "Brazilian soundscape abstraction",
+      "atmosphere": "essential MPB coastal evening",
+      "palette_keys": ["coastal teal", "acoustic gold", "dusk"],
+      "energy": "lyrical",
+      "must_keep_across_packs": "coastal dusk modernism",
+      "notes": "no flags"
+    },
+    "infallible-brazilian-pop": {
+      "display_name": "Infallible Brazilian Pop Hits",
+      "motif": "glossy tropical pop chrome with festive night orbs",
+      "props": "candy highlights, warm night sparkle",
+      "atmosphere": "Brazilian pop hit energy",
+      "palette_keys": ["tropical chrome", "festive pink", "night teal"],
+      "energy": "upbeat",
+      "must_keep_across_packs": "tropical pop chrome orbs",
+      "notes": "no faces"
+    },
+    "pops-biggest-hits": {
+      "display_name": "Pops Biggest Hits",
+      "motif": "stadium-pop gloss with candy neon orbs",
+      "props": "bright high-energy chrome shapes",
+      "atmosphere": "global pop anthem sparkle",
+      "palette_keys": ["candy neon", "chrome", "white flash"],
+      "energy": "bright",
+      "must_keep_across_packs": "candy neon orbs",
+      "notes": "no celebrity likeness"
+    },
+    "roots-of-samba": {
+      "display_name": "Roots of Samba",
+      "motif": "earthy drum-skin circles with parade shimmer",
+      "props": "rooted rhythmic geometry, warm night",
+      "atmosphere": "samba origins earthiness",
+      "palette_keys": ["earth drum", "gold shimmer", "night"],
+      "energy": "rooted",
+      "must_keep_across_packs": "earthy drum circles",
+      "notes": "no flags"
+    },
+    "trending-20-portugal": {
+      "display_name": "Trending 20 Portugal",
+      "motif": "Atlantic coastal neon with contemporary Lusophone night forms",
+      "props": "sea-wall light bands, modern night glow",
+      "atmosphere": "Portuguese coastal night trend",
+      "palette_keys": ["atlantic teal", "neon amber", "night"],
+      "energy": "contemporary",
+      "must_keep_across_packs": "Atlantic coastal neon bands",
+      "notes": "no flags; no city-name text"
+    },
+    "unplugged-best-of": {
+      "display_name": "Unplugged Best Of",
+      "motif": "bare wood stage light with intimate acoustic amber",
+      "props": "stool-and-spotlight abstraction without logos",
+      "atmosphere": "unplugged intimacy",
+      "palette_keys": ["wood", "amber spotlight", "soft black"],
+      "energy": "intimate",
+      "must_keep_across_packs": "bare wood stage spotlight",
+      "notes": "no brand marks"
+    },
+    "unstoppable-rock-anthems": {
+      "display_name": "Unstoppable Rock Anthems",
+      "motif": "stacked-amp monoliths under orange stage wash",
+      "props": "arena haze, spark accents",
+      "atmosphere": "anthemic rock power",
+      "palette_keys": ["orange", "black", "spark amber"],
+      "energy": "anthemic",
+      "must_keep_across_packs": "amp monolith stack",
+      "notes": "no band faces"
+    },
+    "exitos-latinos": {
+      "display_name": "Éxitos Latinos",
+      "motif": "night plaza color bands with dancing ribbon forms",
+      "props": "festive Latin night geometry",
+      "atmosphere": "Latin hits nightlife",
+      "palette_keys": ["plaza magenta", "sun gold", "night teal"],
+      "energy": "festive",
+      "must_keep_across_packs": "plaza color bands plus dancing ribbons",
+      "notes": "no flags; no faces"
+    },
+    "blackpink": {
+      "display_name": "BLACKPINK",
+      "motif": "abstract neon idol-stage colorway with black and hot-pink light architecture",
+      "props": "stage beams, glossy geometric forms, no people",
+      "atmosphere": "K-pop stage spectacle abstracted",
+      "palette_keys": ["hot pink", "black", "stage white"],
+      "energy": "glam",
+      "must_keep_across_packs": "black-pink neon stage geometry",
+      "notes": "NO faces, NO logos, NO group name text"
+    },
+    "new-jeans": {
+      "display_name": "NEW JEANS PLAYLIST",
+      "motif": "soft Y2K pastel stage geometry with clean neon accents",
+      "props": "playful glossy orbs, airy stage light, no people",
+      "atmosphere": "youthful K-pop abstract",
+      "palette_keys": ["soft blue", "cream", "pastel pink"],
+      "energy": "fresh",
+      "must_keep_across_packs": "Y2K pastel stage orbs",
+      "notes": "NO faces, NO logos, NO text"
+    },
+    "twice": {
+      "display_name": "TWICE Playlist",
+      "motif": "bright candy-stage color bursts with cheerful neon arcs",
+      "props": "multicolor stage beams, abstract sparkle forms",
+      "atmosphere": "upbeat K-pop stage",
+      "palette_keys": ["candy apricot", "sky", "lilac"],
+      "energy": "cheerful",
+      "must_keep_across_packs": "candy-stage neon arcs",
+      "notes": "NO faces, NO logos, NO text"
+    },
+    "ive": {
+      "display_name": "IVE Top Songs",
+      "motif": "elegant jewel-tone stage geometry with cool spotlight shafts",
+      "props": "crystalline abstract forms, glam light",
+      "atmosphere": "polished K-pop elegance abstracted",
+      "palette_keys": ["jewel teal", "silver", "soft magenta"],
+      "energy": "polished",
+      "must_keep_across_packs": "jewel-tone stage shafts",
+      "notes": "NO faces, NO logos, NO text"
+    },
+    "aespa": {
+      "display_name": "aespa",
+      "motif": "futuristic digital-world stage with cyan meta-geometry",
+      "props": "holographic planes, abstract avatar-free tech forms",
+      "atmosphere": "hyperpop sci-fi K-stage",
+      "palette_keys": ["cyan", "black", "electric violet"],
+      "energy": "futuristic",
+      "must_keep_across_packs": "cyan meta-geometry planes",
+      "notes": "NO faces, NO logos, NO text"
+    },
+    "babymonster": {
+      "display_name": "Babymonster",
+      "motif": "bold street-stage neon with fierce graphic blocks",
+      "props": "high-contrast light slabs, no characters",
+      "atmosphere": "fierce young K-pop stage abstract",
+      "palette_keys": ["neon lime", "black", "hot red"],
+      "energy": "fierce",
+      "must_keep_across_packs": "fierce neon graphic blocks",
+      "notes": "NO faces, NO logos, NO text, NO monster mascots that look branded"
+    },
+    "le-sserafim": {
+      "display_name": "LE SSERAFIM",
+      "motif": "sharp fearless stage geometry with crimson and steel accents",
+      "props": "angular light blades, powerful silhouette shapes without people",
+      "atmosphere": "fearless K-pop performance abstract",
+      "palette_keys": ["crimson", "steel", "black"],
+      "energy": "fierce",
+      "must_keep_across_packs": "crimson steel light blades",
+      "notes": "NO faces, NO logos, NO text"
+    },
+    "rock-trip": {
+      "display_name": "Rock Trip",
+      "motif": "highway dusk with guitar silhouette sparks",
+      "props": "road trip horizon, amp-glow hints",
+      "atmosphere": "road-trip rock journey",
+      "palette_keys": ["highway dusk", "guitar spark", "asphalt"],
+      "energy": "traveling",
+      "must_keep_across_packs": "highway dusk plus guitar sparks",
+      "notes": "no band faces"
+    }
+  },
+  "defaults": {
+    "genres": {
+      "display_name": "Default Genre",
+      "motif": "abstract teal and charcoal sound-wave sculpture",
+      "props": "universal audio forms, quiet brand-adjacent geometry",
+      "atmosphere": "neutral FTP Music identity",
+      "palette_keys": ["teal", "charcoal", "soft white"],
+      "energy": "neutral",
+      "must_keep_across_packs": "teal sound-wave sculpture",
+      "notes": "fallback when genre slug missing"
+    },
+    "mixes": {
+      "display_name": "Default Daily Mix",
+      "motif": "abstract teal sound sculpture with soft orbit rings",
+      "props": "dawn-to-night gradient hint, universal mix energy",
+      "atmosphere": "neutral refreshed mix card",
+      "palette_keys": ["teal", "dawn gold", "charcoal"],
+      "energy": "neutral-bright",
+      "must_keep_across_packs": "teal sculpture plus orbit rings",
+      "notes": "fallback mix art"
+    },
+    "playlists": {
+      "display_name": "Default Playlist",
+      "motif": "abstract charcoal and teal playlist sound sculpture",
+      "props": "quiet collection geometry, soft glow",
+      "atmosphere": "neutral playlist fallback",
+      "palette_keys": ["charcoal", "teal", "soft white"],
+      "energy": "neutral",
+      "must_keep_across_packs": "charcoal-teal sound sculpture",
+      "notes": "fallback playlist art"
+    }
+  }
+}
