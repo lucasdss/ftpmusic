@@ -654,6 +654,17 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 70 to 71 creates art_palette_cache`() {
+        run(AppDatabase.MIGRATION_70_71)
+        verify {
+            db.execSQL(match { it.contains("art_palette_cache") && it.contains("CREATE TABLE") })
+        }
+        verify {
+            db.execSQL(match { it.contains("index_art_palette_cache_updated_at") })
+        }
+    }
+
+    @Test
     fun `FTS5 callback creates table on create and open`() {
         AppDatabase.FTS5_CALLBACK.onCreate(db)
         AppDatabase.FTS5_CALLBACK.onOpen(db)
@@ -680,6 +691,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(68, AppDatabase.ALL_MIGRATIONS_68.last().endVersion)
         assertEquals(69, AppDatabase.ALL_MIGRATIONS_69.last().endVersion)
         assertEquals(70, AppDatabase.ALL_MIGRATIONS_70.last().endVersion)
+        assertEquals(71, AppDatabase.ALL_MIGRATIONS_71.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -712,9 +724,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_64, AppDatabase.ALL_MIGRATIONS_65,
             AppDatabase.ALL_MIGRATIONS_66, AppDatabase.ALL_MIGRATIONS_67,
             AppDatabase.ALL_MIGRATIONS_68, AppDatabase.ALL_MIGRATIONS_69,
-            AppDatabase.ALL_MIGRATIONS_70,
+            AppDatabase.ALL_MIGRATIONS_70, AppDatabase.ALL_MIGRATIONS_71,
         )
-        assertEquals(61, all.size)
+        assertEquals(62, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

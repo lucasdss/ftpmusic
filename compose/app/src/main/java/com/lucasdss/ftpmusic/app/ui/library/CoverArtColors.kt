@@ -1,67 +1,66 @@
 package com.lucasdss.ftpmusic.app.ui.library
 
-import android.graphics.BitmapFactory
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.palette.graphics.Palette
-import java.net.URL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import androidx.compose.ui.platform.LocalContext
+import com.lucasdss.ftpmusic.app.data.cover.ArtSeedExtractor
+import com.lucasdss.ftpmusic.app.ui.art.CoverScheme
 
-/** Process-lifetime palette cache, LRU-capped + synchronized (P9): without a
- *  cap it grew one entry per unique cover URL forever; access-order
- *  LinkedHashMap + removeEldestEntry trims it. */
-private val paletteCache: MutableMap<String, CoverArtColors> =
-    java.util.Collections.synchronizedMap(
-        object : LinkedHashMap<String, CoverArtColors>(64, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CoverArtColors>?): Boolean =
-                size > MAX_PALETTE_CACHE_ENTRIES
-        },
-    )
-private const val MAX_PALETTE_CACHE_ENTRIES = 64
-
-data class CoverArtColors(val vibrant: Color = Color.Unspecified, val darkMuted: Color = Color.Unspecified) {
-    val hasColors: Boolean get() = vibrant != Color.Unspecified
+/**
+ * Player mini / now-playing palette derived from cover art via Coil + Palette.
+ * Detail screens use [com.lucasdss.ftpmusic.app.ui.art.rememberCoverScheme] instead.
+ */
+data class CoverArtColors(
+    val vibrant: Color = Color.Unspecified,
+    val darkMuted: Color = Color.Unspecified,
+) {
+    /** True only when a usable (non-transparent) vibrant seed was extracted. */
+    val hasColors: Boolean
+        get() = vibrant != Color.Unspecified && vibrant.alpha > 0.01f
 }
 
 @Composable
 fun rememberCoverArtColors(coverArtUrl: String?): CoverArtColors {
     var colors by remember(coverArtUrl) { mutableStateOf(CoverArtColors()) }
+    val context = LocalContext.current
 
     LaunchedEffect(coverArtUrl) {
-        if (coverArtUrl == null) {
+        if (coverArtUrl.isNullOrBlank()) {
             colors = CoverArtColors()
             return@LaunchedEffect
         }
-        // Check cache first
-        paletteCache[coverArtUrl]?.let {
-            colors = it
-            return@LaunchedEffect
-        }
-        val result = withContext(Dispatchers.IO) {
-            try {
-                val connection = URL(coverArtUrl).openConnection().apply {
-                    connectTimeout = 5_000
-                    readTimeout = 5_000
-                }
-                connection.getInputStream().use { stream ->
-                    val bitmap = BitmapFactory.decodeStream(stream)
-                    if (bitmap != null) {
-                        val p = Palette.from(bitmap).generate()
-                        CoverArtColors(
-                            vibrant = Color(p.getVibrantColor(android.graphics.Color.TRANSPARENT)),
-                            darkMuted = Color(p.getDarkMutedColor(android.graphics.Color.TRANSPARENT)),
-                        )
-                    } else {
-                        CoverArtColors()
-                    }
-                }
-            } catch (_: Exception) {
-                CoverArtColors()
+        val artKey = "player|$coverArtUrl"
+        val sourceVersion = coverArtUrl
+        ArtSeedExtractor.peekMemory(artKey, sourceVersion)?.let { hit ->
+            if (!hit.softFailure) {
+                colors = hit.toCoverArtColors()
+                return@LaunchedEffect
             }
         }
-        paletteCache[coverArtUrl] = result
-        colors = result
+        val result = ArtSeedExtractor.extractFromModel(
+            context = context,
+            imageModel = coverArtUrl,
+            artKey = artKey,
+            sourceVersion = sourceVersion,
+        )
+        colors = result.toCoverArtColors()
     }
     return colors
+}
+
+private fun ArtSeedExtractor.SeedResult.toCoverArtColors(): CoverArtColors {
+    val seed = color ?: return CoverArtColors()
+    if (!CoverScheme.isUsableSeed(seed)) return CoverArtColors()
+    val scheme = CoverScheme.fromSeed(seed)
+    // Player keeps a brighter mid stop than detail backdrops (Y≤0.15) so the
+    // mini/now-playing gradient stays colorful while darkMuted stays readable.
+    return CoverArtColors(
+        vibrant = CoverScheme.darkenToMaxLuminance(seed, 0.15f),
+        darkMuted = scheme.bgTop,
+    )
 }

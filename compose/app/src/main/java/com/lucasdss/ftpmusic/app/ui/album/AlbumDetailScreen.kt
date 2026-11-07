@@ -55,6 +55,8 @@ import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
+import com.lucasdss.ftpmusic.app.ui.art.ArtBackdrop
+import com.lucasdss.ftpmusic.app.ui.art.rememberCoverSchemeFromUrl
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
@@ -120,7 +122,12 @@ fun AlbumDetailScreen(
         return
     }
 
-    Box(Modifier.fillMaxSize().background(Background)) {
+    val coverScheme = rememberCoverSchemeFromUrl(
+        scope = "album|$albumId",
+        artId = state.album?.coverArt,
+        imageUrl = artUrl,
+    )
+    ArtBackdrop(scheme = coverScheme) {
         LazyColumn(state = listState) {
             // ═══ Hero section — full-width art with gradient overlay ═══
             item {
@@ -142,11 +149,14 @@ fun AlbumDetailScreen(
                             )
                         }
                     }
-                    // Gradient overlay
+                    // Gradient overlay — scrim keeps title readable on light covers
                     Box(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
-                                listOf(Background.copy(alpha = 0.3f), Background.copy(alpha = 0.98f)),
+                                listOf(
+                                    coverScheme.bgTop.copy(alpha = 0.3f),
+                                    Background.copy(alpha = 0.98f),
+                                ),
                             ),
                         ),
                     )
@@ -235,11 +245,17 @@ fun AlbumDetailScreen(
                             Modifier.padding(top = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            state.album?.year?.let { Text("$it", color = Color(0xFF888888), fontSize = textLabelM()) }
-                            if (state.album?.year != null && state.tracks.isNotEmpty()) {
-                                Text(" · ", color = Color(0xFF444444), fontSize = textLabelM())
+                            state.album?.year?.let {
+                                Text("$it", color = coverScheme.onBgSecondary, fontSize = textLabelM())
                             }
-                            Text("${state.tracks.size} tracks", color = Color(0xFF888888), fontSize = textLabelM())
+                            if (state.album?.year != null && state.tracks.isNotEmpty()) {
+                                Text(" · ", color = coverScheme.onBgSecondary.copy(alpha = 0.5f), fontSize = textLabelM())
+                            }
+                            Text(
+                                "${state.tracks.size} tracks",
+                                color = coverScheme.onBgSecondary,
+                                fontSize = textLabelM(),
+                            )
                         }
                         // ── Overwrite Protection ──
                         val showOverwrite by

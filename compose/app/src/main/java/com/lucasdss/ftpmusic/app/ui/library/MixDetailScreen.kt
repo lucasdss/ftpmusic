@@ -65,6 +65,8 @@ import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.art.ArtBackdrop
+import com.lucasdss.ftpmusic.app.ui.art.rememberCoverScheme
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
@@ -74,7 +76,10 @@ import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
 import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
+import com.lucasdss.ftpmusic.app.ui.components.rememberResolvedCollectionCover
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
+import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
+import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -155,7 +160,111 @@ fun MixDetailScreen(
         onlyIfNotVisible = true,
     )
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF0D0D14))) {
+    val covers = remember(state.tracks) { state.tracks.mapNotNull { it.coverArt }.distinct().take(4) }
+    val coverStore = remember(context) { CollectionCoverStore(context.applicationContext) }
+    val localFixedPath = remember(state.fixedCoverKind, state.fixedCoverValue) {
+        if (state.fixedCoverKind == CollectionCoverKind.LOCAL) {
+            coverStore.absolutePath(state.fixedCoverValue.orEmpty())
+        } else {
+            null
+        }
+    }
+    val hasUsableFixed = CollectionCoverResolver.isUsableFixed(
+        state.fixedCoverKind,
+        state.fixedCoverValue,
+        localFixedPath,
+    )
+    val resolvedCover = rememberResolvedCollectionCover(
+        name = mixName,
+        fixedCoverKind = state.fixedCoverKind,
+        fixedCoverValue = state.fixedCoverValue,
+        derivedCoverArtIds = covers,
+        primaryArtist = state.tracks.firstOrNull()?.artist,
+        primaryAlbum = null,
+        decodeSizePx = 200,
+        subject = CollectionCoverSubject.MIX,
+        scope = "mix|$mixId",
+    )
+    val fallbackService = remember { CoverArtFallbackService.getInstance(context) }
+    val montageActive = !hasUsableFixed && covers.isNotEmpty() &&
+        resolvedCover.resolved is CollectionCoverResolver.Resolved.Derived
+    // Match GenreMixCoverImage display rules: 1 tile / 2 tiles / 4 tiles.
+    val displayedTileCount = when {
+        !montageActive -> 0
+        covers.size >= 4 -> 4
+        covers.size >= 2 -> 2
+        else -> 1
+    }
+    val displayedCoverIds = remember(covers, displayedTileCount) {
+        covers.take(displayedTileCount)
+    }
+    val tile0 = if (displayedTileCount >= 1) {
+        rememberPreferredCoverArt(
+            coverArtId = displayedCoverIds.getOrNull(0),
+            artist = null,
+            album = null,
+            size = 112,
+            fallbackService = fallbackService,
+        )
+    } else {
+        null
+    }
+    val tile1 = if (displayedTileCount >= 2) {
+        rememberPreferredCoverArt(
+            coverArtId = displayedCoverIds.getOrNull(1),
+            artist = null,
+            album = null,
+            size = 112,
+            fallbackService = fallbackService,
+        )
+    } else {
+        null
+    }
+    val tile2 = if (displayedTileCount >= 3) {
+        rememberPreferredCoverArt(
+            coverArtId = displayedCoverIds.getOrNull(2),
+            artist = null,
+            album = null,
+            size = 112,
+            fallbackService = fallbackService,
+        )
+    } else {
+        null
+    }
+    val tile3 = if (displayedTileCount >= 4) {
+        rememberPreferredCoverArt(
+            coverArtId = displayedCoverIds.getOrNull(3),
+            artist = null,
+            album = null,
+            size = 112,
+            fallbackService = fallbackService,
+        )
+    } else {
+        null
+    }
+    // Only extract once every displayed tile URL is ready — never cache a partial montage.
+    val tileModels = remember(tile0, tile1, tile2, tile3, displayedTileCount) {
+        val ready = listOfNotNull(tile0, tile1, tile2, tile3)
+        if (displayedTileCount > 0 && ready.size == displayedTileCount) ready else emptyList()
+    }
+    val montageCover = remember(resolvedCover, displayedCoverIds, displayedTileCount) {
+        if (displayedTileCount <= 1) {
+            resolvedCover
+        } else {
+            resolvedCover.copy(
+                artKey = "mix|$mixId|montage|${displayedCoverIds.joinToString(",")}",
+                sourceVersion = displayedCoverIds.joinToString("|"),
+                montageCoverArtIds = displayedCoverIds,
+            )
+        }
+    }
+    val serverScope = com.lucasdss.ftpmusic.app.di.ServerConfigState.value.url.ifBlank { "default" }
+    val coverScheme = rememberCoverScheme(
+        cover = montageCover,
+        serverScope = serverScope,
+        tileImageModels = if (displayedTileCount > 1) tileModels else emptyList(),
+    )
+    ArtBackdrop(scheme = coverScheme) {
         Column(Modifier.fillMaxSize()) {
             // Top bar
             Row(
@@ -165,7 +274,7 @@ fun MixDetailScreen(
                 DetailBackButton(onBack = leaveAndBack, inset = false)
                 FittingText(
                     text = mixName,
-                    color = Color.White,
+                    color = coverScheme.onBg,
                     fontSize = textHeadingL(),
                     minFontSize = textMicro(),
                     fontWeight = FontWeight.Bold,
@@ -267,23 +376,6 @@ fun MixDetailScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             // Fixed cover (usable), else montage (1–4 tiles), else lettermark.
-                            val covers = state.tracks.mapNotNull { it.coverArt }.distinct().take(4)
-                            val context = LocalContext.current
-                            val coverStore = remember(context) {
-                                CollectionCoverStore(context.applicationContext)
-                            }
-                            val localFixedPath = remember(state.fixedCoverKind, state.fixedCoverValue) {
-                                if (state.fixedCoverKind == CollectionCoverKind.LOCAL) {
-                                    coverStore.absolutePath(state.fixedCoverValue.orEmpty())
-                                } else {
-                                    null
-                                }
-                            }
-                            val hasUsableFixed = CollectionCoverResolver.isUsableFixed(
-                                state.fixedCoverKind,
-                                state.fixedCoverValue,
-                                localFixedPath,
-                            )
                             Box(
                                 Modifier
                                     .size(200.dp)
@@ -364,7 +456,7 @@ fun MixDetailScreen(
                             // Track count (parity with Album)
                             Text(
                                 "${state.tracks.size} tracks",
-                                color = Color(0xFF888888),
+                                color = coverScheme.onBgSecondary,
                                 fontSize = textLabelM(),
                             )
                             Spacer(Modifier.height(16.dp))

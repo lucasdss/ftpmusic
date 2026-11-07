@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.di
 import android.content.Context
 import androidx.room.Room
 import com.lucasdss.ftpmusic.app.data.db.AppDatabase
+import com.lucasdss.ftpmusic.app.data.db.ArtPaletteCacheDao
 import com.lucasdss.ftpmusic.app.data.db.CacheQueueDao
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
@@ -58,7 +59,7 @@ object DatabaseModule {
         // SupportSQLite path required: existing migrations only override
         // migrate(SupportSQLiteDatabase). BundledSQLiteDriver deferred until
         // all migrations dual-override migrate(SQLiteConnection) — ADR 0084.
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_70)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_71)
         .addCallback(AppDatabase.FTS5_CALLBACK)
         // NO fallbackToDestructiveMigration: all migrations registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
@@ -101,6 +102,8 @@ object DatabaseModule {
     @Provides fun provideUserCoverImageDao(db: AppDatabase): UserCoverImageDao = db.userCoverImageDao()
 
     @Provides fun provideGenreCoverDao(db: AppDatabase): GenreCoverDao = db.genreCoverDao()
+
+    @Provides fun provideArtPaletteCacheDao(db: AppDatabase): ArtPaletteCacheDao = db.artPaletteCacheDao()
 
     @Provides
     @Singleton

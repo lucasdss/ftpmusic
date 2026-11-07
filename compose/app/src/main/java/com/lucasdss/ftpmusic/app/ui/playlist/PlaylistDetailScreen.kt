@@ -51,6 +51,8 @@ import com.lucasdss.ftpmusic.app.ui.*
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
+import com.lucasdss.ftpmusic.app.ui.art.ArtBackdrop
+import com.lucasdss.ftpmusic.app.ui.art.rememberCoverScheme
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
@@ -61,6 +63,7 @@ import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
 import com.lucasdss.ftpmusic.app.ui.components.rememberCollectionCoverEditController
+import com.lucasdss.ftpmusic.app.ui.components.rememberResolvedCollectionCover
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -126,10 +129,25 @@ fun PlaylistDetailScreen(
         onlyIfNotVisible = true,
     )
 
-    val bgBrush = Brush.verticalGradient(
-        listOf(Color(0xFF0D0D0D), Color(0xFF1A1A2E)),
+    val derivedCoverIds = remember(state.tracks) {
+        state.tracks.mapNotNull { it.coverArt }.distinct().take(4)
+    }
+    val resolvedCover = rememberResolvedCollectionCover(
+        name = state.playlist?.name ?: "Playlist",
+        fixedCoverKind = state.playlist?.fixedCoverKind,
+        fixedCoverValue = state.playlist?.fixedCoverValue,
+        derivedCoverArtIds = derivedCoverIds,
+        serverCoverArtId = state.playlist?.coverArt,
+        primaryArtist = state.tracks.firstOrNull()?.artist,
+        primaryAlbum = state.tracks.firstOrNull()?.album,
+        decodeSizePx = 160,
+        subject = CollectionCoverSubject.PLAYLIST,
+        scope = "playlist|$playlistId",
     )
+    val serverScope = com.lucasdss.ftpmusic.app.di.ServerConfigState.value.url.ifBlank { "default" }
+    val coverScheme = rememberCoverScheme(cover = resolvedCover, serverScope = serverScope)
 
+    ArtBackdrop(scheme = coverScheme) {
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
@@ -147,13 +165,13 @@ fun PlaylistDetailScreen(
                             overflow = TextOverflow.Ellipsis,
                             fontSize = textHeadingM(),
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            color = coverScheme.onBg,
                         )
                         if (state.playlist != null) {
                             Text(
                                 "${state.playlist?.trackCount ?: state.tracks.size} tracks",
                                 fontSize = textLabelM(),
-                                color = Color(0xFF888888),
+                                color = coverScheme.onBgSecondary,
                             )
                         }
                         // Playlist action menu
@@ -203,9 +221,6 @@ fun PlaylistDetailScreen(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            Box(Modifier.fillMaxSize().background(bgBrush))
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.15f)))
-
             if (state.isLoading && state.playlist == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = BrandTeal)
@@ -459,30 +474,29 @@ fun PlaylistDetailScreen(
                         val ds = downloadStatus(isDownloaded, isQueued, isCached)
                         val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
 
-                        Box(Modifier.background(Color.Black.copy(alpha = 0.15f))) {
-                            SongListRow(
-                                title = track.title,
-                                subtitle = track.artist,
-                                isActive = isActive,
-                                downloadStatus = ds,
-                                durationLabel = track.duration?.let { formatSongDuration(it) },
-                                isLiked = track.id in state.likedTrackIds,
-                                isDisliked = track.id in state.dislikedTrackIds,
-                                onLike = { viewModel.toggleTrackLike(track.id) },
-                                onDislike = { viewModel.toggleTrackDislike(track.id) },
-                                onMore = { menuTrackIndex = index },
-                                onClick = { viewModel.playTrack(index) },
-                                onLongClick = { menuTrackIndex = index },
-                                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
-                                leadingContent = when {
-                                    isActive -> {
-                                        {
-                                            Box(
-                                                Modifier.widthIn(min = 16.dp, max = 28.dp),
-                                                contentAlignment = Alignment.Center,
-                                            ) { AnimatedEqBars() }
-                                        }
+                        SongListRow(
+                            title = track.title,
+                            subtitle = track.artist,
+                            isActive = isActive,
+                            downloadStatus = ds,
+                            durationLabel = track.duration?.let { formatSongDuration(it) },
+                            isLiked = track.id in state.likedTrackIds,
+                            isDisliked = track.id in state.dislikedTrackIds,
+                            onLike = { viewModel.toggleTrackLike(track.id) },
+                            onDislike = { viewModel.toggleTrackDislike(track.id) },
+                            onMore = { menuTrackIndex = index },
+                            onClick = { viewModel.playTrack(index) },
+                            onLongClick = { menuTrackIndex = index },
+                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
+                            leadingContent = when {
+                                isActive -> {
+                                    {
+                                        Box(
+                                            Modifier.widthIn(min = 16.dp, max = 28.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) { AnimatedEqBars() }
                                     }
+                                }
 
                                     LocalListChromePrefs.current.showListSequence -> {
                                         {
@@ -499,10 +513,9 @@ fun PlaylistDetailScreen(
                                         }
                                     }
 
-                                    else -> null
-                                },
-                            )
-                        }
+                                else -> null
+                            },
+                        )
 
                         // Long-press menu
                         Box {
@@ -600,6 +613,7 @@ fun PlaylistDetailScreen(
             }
         }
     }
+    } // ArtBackdrop
 
     // ── Overwrite Protection (Ask mode) ──
     val showOverwrite by viewModel.showOverwriteModal.collectAsStateWithLifecycle()

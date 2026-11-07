@@ -2715,6 +2715,26 @@ interface UserCoverImageDao {
 }
 
 @Dao
+interface ArtPaletteCacheDao {
+    @Query(
+        "SELECT * FROM art_palette_cache WHERE server_scope = :serverScope AND art_key = :artKey LIMIT 1",
+    )
+    suspend fun get(serverScope: String, artKey: String): ArtPaletteCacheEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: ArtPaletteCacheEntity)
+
+    @Query("DELETE FROM art_palette_cache WHERE server_scope = :serverScope AND art_key = :artKey")
+    suspend fun delete(serverScope: String, artKey: String)
+
+    @Query("DELETE FROM art_palette_cache WHERE server_scope = :serverScope")
+    suspend fun deleteScope(serverScope: String)
+
+    @Query("DELETE FROM art_palette_cache")
+    suspend fun deleteAll()
+}
+
+@Dao
 interface GenreCoverDao {
     @Query("SELECT * FROM genre_covers WHERE genre_name = :name")
     suspend fun get(name: String): GenreCoverEntity?

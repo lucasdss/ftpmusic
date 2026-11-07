@@ -701,3 +701,22 @@ data class GenreCoverEntity(
     @ColumnInfo(name = "fixed_cover_value") val fixedCoverValue: String? = null,
     @ColumnInfo(name = "updated_at_ms") val updatedAtMs: Long = System.currentTimeMillis(),
 )
+
+/**
+ * Persisted cover-art seed for detail backdrops (survives process death).
+ * Keyed by server scope + art identity + source/algorithm versions.
+ */
+@Entity(
+    tableName = "art_palette_cache",
+    primaryKeys = ["server_scope", "art_key"],
+    indices = [Index(value = ["updated_at"])],
+)
+data class ArtPaletteCacheEntity(
+    @ColumnInfo(name = "server_scope") val serverScope: String,
+    @ColumnInfo(name = "art_key") val artKey: String,
+    @ColumnInfo(name = "source_version") val sourceVersion: String,
+    @ColumnInfo(name = "algorithm_version") val algorithmVersion: Int,
+    /** ARGB seed or null when art yielded a neutral (no usable chroma). */
+    @ColumnInfo(name = "argb") val argb: Int? = null,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis(),
+)

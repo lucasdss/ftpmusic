@@ -38,9 +38,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncSkipAlbumEntity::class,
         UserCoverImageEntity::class,
         GenreCoverEntity::class,
+        ArtPaletteCacheEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 70,
+    version = 71,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -64,6 +65,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncSkipAlbumDao(): SyncSkipAlbumDao
     abstract fun userCoverImageDao(): UserCoverImageDao
     abstract fun genreCoverDao(): GenreCoverDao
+    abstract fun artPaletteCacheDao(): ArtPaletteCacheDao
     // search_fts via SearchFtsDao @Singleton (not Room @Dao) — ADR 0084
 
     companion object {
@@ -1343,6 +1345,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_70 = ALL_MIGRATIONS_69 + MIGRATION_69_70
+
+        /** Cover-reactive backdrop seed cache (process-death persistence). */
+        val MIGRATION_70_71 = object : Migration(70, 71) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `art_palette_cache` (
+                      `server_scope` TEXT NOT NULL,
+                      `art_key` TEXT NOT NULL,
+                      `source_version` TEXT NOT NULL,
+                      `algorithm_version` INTEGER NOT NULL,
+                      `argb` INTEGER,
+                      `updated_at` INTEGER NOT NULL,
+                      PRIMARY KEY(`server_scope`, `art_key`)
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_art_palette_cache_updated_at` " +
+                        "ON `art_palette_cache` (`updated_at`)",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_71 = ALL_MIGRATIONS_70 + MIGRATION_70_71
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).

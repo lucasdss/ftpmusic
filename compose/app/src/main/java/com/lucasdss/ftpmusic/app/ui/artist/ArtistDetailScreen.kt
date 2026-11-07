@@ -85,6 +85,8 @@ import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
+import com.lucasdss.ftpmusic.app.ui.art.ArtBackdrop
+import com.lucasdss.ftpmusic.app.ui.art.rememberCoverSchemeFromUrl
 import com.lucasdss.ftpmusic.app.ui.library.rememberCoverArtUrl
 import kotlinx.coroutines.launch
 
@@ -120,7 +122,12 @@ fun ArtistDetailScreen(
     var playlistTrackIds by remember { mutableStateOf(emptyList<String>()) }
     val scope = rememberCoroutineScope()
 
-    Box(Modifier.fillMaxSize().background(Background)) {
+    val coverScheme = rememberCoverSchemeFromUrl(
+        scope = "artist|$artistId",
+        artId = artistId,
+        imageUrl = artistArtUrl,
+    )
+    ArtBackdrop(scheme = coverScheme) {
         Column(Modifier.fillMaxSize()) {
             // ═══ Hero section — artist art with gradient overlay (Album pattern) ═══
             // Half the Album hero height (260/2 = 130dp) — compact header so more
@@ -143,11 +150,14 @@ fun ArtistDetailScreen(
                         )
                     }
                 }
-                // Gradient overlay
+                // Gradient overlay — scrim keeps title readable on light covers
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
-                            listOf(Background.copy(alpha = 0.3f), Background.copy(alpha = 0.98f)),
+                            listOf(
+                                coverScheme.bgTop.copy(alpha = 0.3f),
+                                Background.copy(alpha = 0.98f),
+                            ),
                         ),
                     ),
                 )
@@ -196,12 +206,20 @@ fun ArtistDetailScreen(
                         Modifier.padding(top = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("${state.albums.size} albums", color = Color(0xFF888888), fontSize = textLabelM())
+                        Text(
+                            "${state.albums.size} albums",
+                            color = coverScheme.onBgSecondary,
+                            fontSize = textLabelM(),
+                        )
                         if (state.albums.isNotEmpty() && state.tracks.isNotEmpty()) {
-                            Text(" · ", color = Color(0xFF444444), fontSize = textLabelM())
+                            Text(" · ", color = coverScheme.onBgSecondary.copy(alpha = 0.5f), fontSize = textLabelM())
                         }
                         if (state.tracks.isNotEmpty()) {
-                            Text("${state.tracks.size} tracks", color = Color(0xFF888888), fontSize = textLabelM())
+                            Text(
+                                "${state.tracks.size} tracks",
+                                color = coverScheme.onBgSecondary,
+                                fontSize = textLabelM(),
+                            )
                         }
                     }
                 }
@@ -343,7 +361,7 @@ fun ArtistDetailScreen(
                 // Tab row — Albums first (market discography-led); Songs = full catalog
                 TabRow(
                     selectedTabIndex = selectedTab,
-                    containerColor = Background,
+                    containerColor = Color.Transparent,
                     contentColor = BrandTeal,
                 ) {
                     Tab(
