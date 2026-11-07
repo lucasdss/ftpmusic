@@ -19,17 +19,20 @@ toggle, not a hidden append.
 1. **Correctness:** `ContinuousPlayLoader` resolves candidates; set
    `hasLoadedContinuation` only after ≥1 append; batch append on Main; offline
    filter requires a non-blank `cachedFilePath` (ADR-0095 — `isDownloaded`
-   alone does not imply a local file). Prefetch starts at a 3-track low-water
-   mark instead of waiting for the last item (CP-5); `STATE_ENDED` remains the
-   last-chance retry, and a retry that arrives while a load is in flight is
-   queued and replayed once (CP-14). Appending the tail is the resume
-   mechanism; no blind `play()`/`prepare()` is issued at ENDED because that
-   seeks within the current item rather than starting the appended one.
+   alone does not imply a local file). **First** Autoplay burst waits for the
+   last user-selected (non-autoplay) track (ADR-0156 market timing). The
+   3-track low-water mark (CP-5) applies to **Autoplay radio re-arm** only.
+   `STATE_ENDED` remains the last-chance retry, and a retry that arrives while
+   a load is in flight is queued and replayed once (CP-14). Appending the tail
+   is the resume mechanism; no blind `play()`/`prepare()` is issued at ENDED
+   because that seeks within the current item rather than starting the appended
+   one.
 2. **Marking:** CP appends stamp MediaItem extras `is_autoplay=true` via
    `appendToContext(..., asAutoplay=true)`. Not a third dual-queue origin —
    still CONTEXT (ADR-0039).
-3. **UI:** Queue / Continue Playing / Autoplay sections. In-queue Continuous
-   Play toggle (+ Clear Autoplay) shares Settings flag.
+3. **UI:** Queue / Continue Playing / Autoplay sections. In-queue Autoplay
+   toggle is a **session** kill switch (ADR-0156); Settings master stays ON by
+   default and is not rewritten by the Queue switch.
 4. **Journal:** Genre mixes pass `sourceId` (mix id) so they seed CP.
 5. **Out of scope:** similar-songs API, Familiar/Discover chips, Cast CP.
 

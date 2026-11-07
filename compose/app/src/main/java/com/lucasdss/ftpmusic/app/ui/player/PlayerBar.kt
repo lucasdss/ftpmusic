@@ -2037,10 +2037,16 @@ private fun BoxScope.PlayerQueuePanel(
                                     )
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
-                                        if (autoplayTracks.isNotEmpty()) {
-                                            stringResource(R.string.player_autoplay_section, autoplayTracks.size)
-                                        } else {
-                                            stringResource(R.string.player_autoplay_empty)
+                                        when {
+                                            autoplayTracks.isNotEmpty() ->
+                                                stringResource(
+                                                    R.string.player_autoplay_section,
+                                                    autoplayTracks.size,
+                                                )
+                                            !continuousPlayOn ->
+                                                stringResource(R.string.player_autoplay_session_off)
+                                            else ->
+                                                stringResource(R.string.player_autoplay_empty)
                                         },
                                         color = autoplayAccent,
                                         fontSize = textLabelS(),
@@ -2379,7 +2385,10 @@ data class PlayerBarState(
     val lyricsLoading: Boolean = false,
     val contextSource: String? = null,
     val priorityQueueSize: Int = 0,
-    /** Apple-style Autoplay / Continuous Play (ADR-0053 / ADR-0074). */
+    /**
+     * Session Autoplay for this queue (Queue kill switch). Settings master lives
+     * in Playback settings; this flag is per album/playlist context.
+     */
     val continuousPlayEnabled: Boolean = true,
     /** Recently played for history band (ADR-0075); empty = hide section. */
     val queueHistory: List<com.lucasdss.ftpmusic.app.playback.QueueHistoryTrack> = emptyList(),

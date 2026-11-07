@@ -8,13 +8,17 @@ package com.lucasdss.ftpmusic.app.playback
  * ADR-0093: Cast is allowed — [PlaybackManager.appendToContext] already mutates
  * Dual + Cast via `emitCastAddsOrCommit` (ADR-0111: single AddAll / one ack).
  * ADR-0095: While casting, timeline SoT is Dual (CastPlayer may be empty/windowed).
+ *
+ * Market timing (Spotify / YTM): the **first** Autoplay burst fires only when
+ * the playhead is on the last user-selected (non-autoplay) row — never mid
+ * album/playlist. After an Autoplay tail exists, radio may re-arm near the end
+ * of that tail ([LOW_WATER_MARK]).
  */
 object ContinuousPlayGate {
 
     /**
-     * Start prefetching when this many tracks (or fewer) remain after the
-     * current one. A 2–3 track lead covers a slow similar-songs round trip
-     * without waiting for `STATE_ENDED` and the audible gap (CP-5).
+     * Prefetch lead for **Autoplay radio re-arm** only (after a tail exists).
+     * First burst for finite user rows uses last-user-track only (remaining 0).
      */
     const val LOW_WATER_MARK = 3
 
@@ -34,14 +38,15 @@ object ContinuousPlayGate {
     }
 
     /**
-     * Whether to load a journal-based continuation burst onto **context**.
+     * Whether to load a Continuous Play continuation burst onto **context**.
      *
-     * Fires when at most [lowWaterMark] tracks remain after the current one
-     * (including the last item and a one-item queue), the flag is not yet
-     * spent for this stint, and Continuous Play is enabled. Prefetching a few
-     * tracks early gives the similar-songs/journal fetch time to finish before
-     * playback ends (CP-5); `STATE_ENDED` remains the last-chance retry.
-     * Works local and Cast (Dual SoT).
+     * Requires master [continuousPlayEnabled] and [sessionAutoplayEnabled]
+     * (Queue kill switch). Uses [isAutoplayFlags] aligned with the timeline:
+     * - On a user row: fire only when no non-autoplay rows remain after the
+     *   playhead and no Autoplay tail is already queued (first burst).
+     * - On an Autoplay row: fire when total remaining ≤ [lowWaterMark] (re-arm).
+     * When [isAutoplayFlags] is null/mismatched, every row is treated as user
+     * (first burst = last item only).
      */
     fun shouldLoadContinuation(
         isCasting: Boolean,
@@ -49,19 +54,34 @@ object ContinuousPlayGate {
         mediaItemCount: Int,
         hasLoadedContinuation: Boolean,
         continuousPlayEnabled: Boolean,
+        sessionAutoplayEnabled: Boolean = continuousPlayEnabled,
+        isAutoplayFlags: List<Boolean>? = null,
         lowWaterMark: Int = LOW_WATER_MARK,
     ): Boolean {
         // isCasting retained for call-site / resolveTimeline pairing
         @Suppress("UNUSED_PARAMETER")
         val casting = isCasting
-        if (!continuousPlayEnabled) return false
+        if (!continuousPlayEnabled || !sessionAutoplayEnabled) return false
         if (hasLoadedContinuation) return false
         if (mediaItemCount <= 0) return false
         // CP-14/CP-5 guard: a missing or windowed index (CastPlayer/Dual -1)
         // must fail closed instead of looking like "past the last item".
         if (currentIndex < 0 || currentIndex >= mediaItemCount) return false
-        val remaining = mediaItemCount - 1 - currentIndex
-        return remaining <= lowWaterMark.coerceAtLeast(0)
+
+        val flags = isAutoplayFlags?.takeIf { it.size == mediaItemCount }
+        fun isAutoplayAt(index: Int): Boolean = flags?.getOrElse(index) { false } == true
+
+        val totalRemaining = mediaItemCount - 1 - currentIndex
+        val userRemaining = ((currentIndex + 1) until mediaItemCount).count { !isAutoplayAt(it) }
+        val autoplayAfter = ((currentIndex + 1) until mediaItemCount).any { isAutoplayAt(it) }
+        val currentIsAutoplay = isAutoplayAt(currentIndex)
+
+        return if (currentIsAutoplay) {
+            totalRemaining <= lowWaterMark.coerceAtLeast(0)
+        } else {
+            // First burst: last user-selected track only — never mid-album.
+            userRemaining == 0 && !autoplayAfter
+        }
     }
 
     /**

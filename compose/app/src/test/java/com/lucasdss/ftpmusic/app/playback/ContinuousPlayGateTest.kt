@@ -9,7 +9,7 @@ import org.junit.Test
 class ContinuousPlayGateTest {
 
     @Test
-    fun `loads on last index when enabled and not yet loaded`() {
+    fun `loads on last user index when enabled and not yet loaded`() {
         assertTrue(
             ContinuousPlayGate.shouldLoadContinuation(
                 isCasting = false,
@@ -48,24 +48,24 @@ class ContinuousPlayGateTest {
     }
 
     @Test
-    fun `loads when casting if enabled on last item`() {
-        // ADR-0093: Cast CP append via Dual + emitCastAddsOrCommit
-        assertTrue(
+    fun `skips when session Autoplay disabled`() {
+        assertFalse(
             ContinuousPlayGate.shouldLoadContinuation(
-                isCasting = true,
+                isCasting = false,
                 currentIndex = 0,
                 mediaItemCount = 1,
                 hasLoadedContinuation = false,
                 continuousPlayEnabled = true,
+                sessionAutoplayEnabled = false,
             ),
         )
     }
 
     @Test
-    fun `loads on a one-item queue`() {
+    fun `loads when casting if enabled on last item`() {
         assertTrue(
             ContinuousPlayGate.shouldLoadContinuation(
-                isCasting = false,
+                isCasting = true,
                 currentIndex = 0,
                 mediaItemCount = 1,
                 hasLoadedContinuation = false,
@@ -88,9 +88,18 @@ class ContinuousPlayGateTest {
     }
 
     @Test
-    fun `loads with three tracks remaining before the last item`() {
-        // CP-5: prefetch at the low-water mark, not only on the last item.
-        assertTrue(
+    fun `skips mid-album even with three tracks remaining — market last-user only`() {
+        // Nov 7 shape: idx=5 of 9 must NOT fire first burst.
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 5,
+                mediaItemCount = 9,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+        assertFalse(
             ContinuousPlayGate.shouldLoadContinuation(
                 isCasting = false,
                 currentIndex = 6,
@@ -102,7 +111,46 @@ class ContinuousPlayGateTest {
     }
 
     @Test
-    fun `skips with four tracks remaining`() {
+    fun `short album does not fire on first tracks`() {
+        // ≤4 tracks: only the last user track may arm.
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 0,
+                mediaItemCount = 3,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+        assertTrue(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 2,
+                mediaItemCount = 3,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `first burst skipped when autoplay tail already queued`() {
+        val flags = listOf(false, false, false, true, true)
+        assertFalse(
+            ContinuousPlayGate.shouldLoadContinuation(
+                isCasting = false,
+                currentIndex = 2,
+                mediaItemCount = 5,
+                hasLoadedContinuation = false,
+                continuousPlayEnabled = true,
+                isAutoplayFlags = flags,
+            ),
+        )
+    }
+
+    @Test
+    fun `re-arms near end of autoplay tail`() {
+        val flags = List(10) { it >= 5 } // 0..4 user, 5..9 autoplay
         assertFalse(
             ContinuousPlayGate.shouldLoadContinuation(
                 isCasting = false,
@@ -110,30 +158,17 @@ class ContinuousPlayGateTest {
                 mediaItemCount = 10,
                 hasLoadedContinuation = false,
                 continuousPlayEnabled = true,
+                isAutoplayFlags = flags,
             ),
         )
-    }
-
-    @Test
-    fun `low water zero reproduces last-item-only behavior`() {
-        assertFalse(
+        assertTrue(
             ContinuousPlayGate.shouldLoadContinuation(
                 isCasting = false,
                 currentIndex = 6,
                 mediaItemCount = 10,
                 hasLoadedContinuation = false,
                 continuousPlayEnabled = true,
-                lowWaterMark = 0,
-            ),
-        )
-        assertTrue(
-            ContinuousPlayGate.shouldLoadContinuation(
-                isCasting = false,
-                currentIndex = 9,
-                mediaItemCount = 10,
-                hasLoadedContinuation = false,
-                continuousPlayEnabled = true,
-                lowWaterMark = 0,
+                isAutoplayFlags = flags,
             ),
         )
     }
@@ -174,24 +209,11 @@ class ContinuousPlayGateTest {
     }
 
     @Test
-    fun `skips disabled even inside the low water mark`() {
-        assertFalse(
-            ContinuousPlayGate.shouldLoadContinuation(
-                isCasting = false,
-                currentIndex = 9,
-                mediaItemCount = 10,
-                hasLoadedContinuation = false,
-                continuousPlayEnabled = false,
-            ),
-        )
-    }
-
-    @Test
     fun `resolveTimeline uses Dual while casting`() {
         val (idx, count) = ContinuousPlayGate.resolveTimeline(
             isCasting = true,
             playerIndex = 0,
-            playerCount = 0, // CastPlayer empty/windowed
+            playerCount = 0,
             dualIndex = 4,
             dualCount = 5,
         )
@@ -210,7 +232,6 @@ class ContinuousPlayGateTest {
 
     @Test
     fun `ENDED pre-gate casting with Dual last item loads even if CastPlayer empty`() {
-        // Mirrors MediaService STATE_ENDED Dual pre-check
         val (idx, count) = ContinuousPlayGate.resolveTimeline(
             isCasting = true,
             playerIndex = 0,
@@ -270,19 +291,6 @@ class ContinuousPlayGateTest {
                 currentIndex = 0,
                 mediaItemCount = 1,
                 hasLoadedContinuation = true,
-                continuousPlayEnabled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `skips when outside the low water mark`() {
-        assertFalse(
-            ContinuousPlayGate.shouldLoadContinuation(
-                isCasting = false,
-                currentIndex = 0,
-                mediaItemCount = 10,
-                hasLoadedContinuation = false,
                 continuousPlayEnabled = true,
             ),
         )

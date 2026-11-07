@@ -551,8 +551,44 @@ class PlaybackManagerTest {
         )
         mgr.setContinuousPlayEnabled(false)
         assertFalse(mgr.continuousPlayEnabled)
+        assertFalse(mgr.sessionAutoplayEnabled)
         mgr.setContinuousPlayEnabled(true)
         assertTrue(mgr.continuousPlayEnabled)
+    }
+
+    @Test
+    fun `session Autoplay kill switch does not flip master`() {
+        val mgr = PlaybackManager(
+            queueManager,
+            mockPersistenceManager,
+            mockOfflineModeManager,
+            mockDownloadManager,
+            castPreferences,
+            mockAppContext,
+            mockQueueJournalDao,
+        )
+        assertTrue(mgr.sessionAutoplayEnabled)
+        mgr.setSessionAutoplayEnabled(false)
+        assertFalse(mgr.sessionAutoplayEnabled)
+        assertTrue(mgr.continuousPlayEnabled)
+        mgr.resetSessionAutoplayFromMaster()
+        assertTrue(mgr.sessionAutoplayEnabled)
+    }
+
+    @Test
+    fun `session cannot enable when master is off`() {
+        val mgr = PlaybackManager(
+            queueManager,
+            mockPersistenceManager,
+            mockOfflineModeManager,
+            mockDownloadManager,
+            castPreferences,
+            mockAppContext,
+            mockQueueJournalDao,
+        )
+        mgr.setContinuousPlayEnabled(false)
+        mgr.setSessionAutoplayEnabled(true)
+        assertFalse(mgr.sessionAutoplayEnabled)
     }
 
     // ── buildQueueStateFromDual (sole persist SoT — ADR 0067) ───────────

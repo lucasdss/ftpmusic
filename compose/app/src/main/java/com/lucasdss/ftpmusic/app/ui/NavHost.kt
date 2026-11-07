@@ -1141,7 +1141,8 @@ fun FtpmusicNavHost() {
                         val onClearAutoplayQueue =
                             remember(playbackViewModel) { { playbackViewModel.clearAutoplayQueue() } }
                         val onContinuousPlayChange = remember(playbackViewModel) {
-                            { enabled: Boolean -> playbackViewModel.setContinuousPlayEnabled(enabled) }
+                            // Queue switch = session kill switch (does not rewrite Settings).
+                            { enabled: Boolean -> playbackViewModel.setSessionAutoplayEnabled(enabled) }
                         }
                         val onRemoveFromQueue =
                             remember(playbackViewModel) { { index: Int -> playbackViewModel.removeFromQueue(index) } }
@@ -1174,8 +1175,8 @@ fun FtpmusicNavHost() {
                             { playbackViewModel.refreshQueueHistory() }
                         }
                         val queueHistory by playbackViewModel.queueHistory.collectAsStateWithLifecycle()
-                        val continuousPlayEnabled by
-                            playbackViewModel.continuousPlayEnabled.collectAsStateWithLifecycle()
+                        val sessionAutoplayEnabled by
+                            playbackViewModel.sessionAutoplayEnabled.collectAsStateWithLifecycle()
                         val queueRevision by
                             com.lucasdss.ftpmusic.app.playback.QueueRevisionTracker.revision
                                 .collectAsStateWithLifecycle()
@@ -1224,7 +1225,7 @@ fun FtpmusicNavHost() {
                                 lyricsLoading = lyricsLoading,
                                 contextSource = playbackState.contextSource,
                                 priorityQueueSize = playbackState.priorityQueueSize,
-                                continuousPlayEnabled = continuousPlayEnabled,
+                                continuousPlayEnabled = sessionAutoplayEnabled,
                                 queueHistory = queueHistory,
                                 waveformBars = waveformBars,
                             ),

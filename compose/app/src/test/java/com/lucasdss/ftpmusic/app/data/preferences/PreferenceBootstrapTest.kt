@@ -25,6 +25,7 @@ class PreferenceBootstrapTest {
         CustomHeadersInterceptor.updateHeaders(emptyList())
         every { playbackManager.setJournalCap(any()) } just runs
         every { playbackManager.setContinuousPlayEnabled(any()) } just runs
+        every { playbackManager.hydrateSessionAutoplay(any()) } just runs
     }
 
     @After
@@ -51,9 +52,11 @@ class PreferenceBootstrapTest {
     fun `hydrateJournalAndContinuousPlay restores playback manager`() {
         every { storage.get(SecureStorage.KEY_QUEUE_JOURNAL_CAP) } returns "250"
         every { storage.get(SecureStorage.KEY_CONTINUOUS_PLAY_ENABLED) } returns "false"
+        every { storage.get(SecureStorage.KEY_SESSION_AUTOPLAY_ENABLED) } returns "false"
         bootstrap().hydrateJournalAndContinuousPlay()
         verify { playbackManager.setJournalCap(250) }
         verify { playbackManager.setContinuousPlayEnabled(false) }
+        verify { playbackManager.hydrateSessionAutoplay(false) }
     }
 
     @Test
@@ -71,6 +74,7 @@ class PreferenceBootstrapTest {
         bootstrap().hydrate()
         verify { playbackManager.setJournalCap(100) }
         verify { playbackManager.setContinuousPlayEnabled(true) }
+        verify { playbackManager.hydrateSessionAutoplay(true) }
         verify {
             coverArtFallback.maxCacheBytes =
                 CoverArtFallbackService.DEFAULT_QUOTA_MB.toLong() * 1024 * 1024

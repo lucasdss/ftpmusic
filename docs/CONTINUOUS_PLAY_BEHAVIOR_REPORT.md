@@ -22,34 +22,40 @@ receiver cannot replay evicted rows on a jump-back.
 
 | Control | Storage | Runtime |
 |---|---|---|
-| Continuous Play toggle | `KEY_CONTINUOUS_PLAY_ENABLED` | `PlaybackManager.continuousPlayEnabled` |
+| Continuous Play (master) | `KEY_CONTINUOUS_PLAY_ENABLED` (default **ON**) | `PlaybackManager.continuousPlayEnabled` |
+| Session Autoplay (this queue) | `KEY_SESSION_AUTOPLAY_ENABLED` | `PlaybackManager.sessionAutoplayEnabled` |
 | Journal history size | `KEY_QUEUE_JOURNAL_CAP` | `PlaybackManager.setJournalCap` |
-| Queue · Autoplay switch | same key | `PlaybackViewModel.setContinuousPlayEnabled` |
+| Queue · Autoplay switch | session key only | `PlaybackViewModel.setSessionAutoplayEnabled` |
 | Clear Autoplay | — | `clearAutoplayQueue()` removes `is_autoplay` rows only |
 
 Hydrated at boot via `PreferenceBootstrap.hydrateJournalAndContinuousPlay()`.
-The switch stays interactive while casting (ADR-0093). `setJournalCap` clamps
-to 10..500 (default 100); the Settings slider exposes 100..500 in steps of 50.
+New album/playlist/shuffle/mix calls `resetSessionAutoplayFromMaster()`.
+Turning session OFF clears Autoplay and bumps `continuousPlayEpoch` so in-flight
+CP appends are dropped (ADR-0156). The switch stays interactive while casting
+(ADR-0093). `setJournalCap` clamps to 10..500 (default 100); the Settings slider
+exposes 100..500 in steps of 50.
 
 ## Trigger
 
 `ContinuousPlayGate.shouldLoadContinuation` fires when all of the following
 hold:
 
-- Continuous Play is enabled.
+- Master Continuous Play **and** session Autoplay are enabled.
 - The once-per-stint latch (`hasLoadedContinuation`) is unspent.
 - The timeline index is valid (`0 <= index < count`; a Cast/Dual `-1` or a
   windowed index fails closed).
-- At most **3** tracks remain after the current one
-  (`remaining = count - 1 - index <= LOW_WATER_MARK`).
+- **First burst (user row):** playhead is on the last non-autoplay row and no
+  Autoplay tail is already queued (`userRemaining == 0 && !autoplayAfter`).
+- **Re-arm (Autoplay row):** at most **3** tracks remain after the current one
+  (`LOW_WATER_MARK`) so radio can continue after the first similar burst.
 
-The load is prefetched at that low-water mark so the similar-songs/journal
-round trip can finish before the queue ends (CP-5). `STATE_ENDED` remains the
-last-chance trigger. If a `STATE_ENDED` retry arrives while a load is still in
-flight, `ContinuousPlayRetry` remembers it and replays it once after the load
-finishes, provided nothing was appended and the coroutine was not cancelled
-(CP-14). A deferred retry is suppressed when the user has skipped to another
-track (`lastTrackId != mediaId`).
+Mid-album/playlist prefetch is intentionally **not** used for the first burst
+(market Spotify/YTM timing; ADR-0156). `STATE_ENDED` remains the last-chance
+trigger. If a `STATE_ENDED` retry arrives while a load is still in flight,
+`ContinuousPlayRetry` remembers it and replays it once after the load finishes,
+provided nothing was appended and the coroutine was not cancelled (CP-14). A
+deferred retry is suppressed when the user has skipped to another track
+(`lastTrackId != mediaId`).
 
 ## Candidate order (one burst per load)
 

@@ -110,7 +110,7 @@
     <!-- Playback page (smoke + continuous) -->
     <string name="settings_playback_queue_journal">Queue Journal</string>
     <string name="settings_playback_continuous">Continuous Play</string>
-    <string name="settings_playback_continuous_sub">Auto-append journal picks to context when queue runs out (also in Queue · Autoplay)</string>
+    <string name="settings_playback_continuous_sub">Play similar songs when an album or playlist ends (default on). Turn off in Queue · Autoplay for the current album or playlist only.</string>
     <string name="settings_playback_overwrite">Queue Overwrite</string>
 
     <!-- Network page -->

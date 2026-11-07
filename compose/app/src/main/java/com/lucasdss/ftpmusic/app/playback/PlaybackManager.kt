@@ -187,10 +187,28 @@ class PlaybackManager @Inject constructor(
 
     private val _continuousPlayEnabled = MutableStateFlow(true)
 
-    /** Reactive Continuous Play flag for UI (queue sheet / settings). */
+    /** Reactive Continuous Play flag for UI (settings master). */
     val continuousPlayEnabledFlow: StateFlow<Boolean> = _continuousPlayEnabled.asStateFlow()
     val continuousPlayEnabled: Boolean
         get() = _continuousPlayEnabled.value
+
+    /**
+     * Per-context Autoplay (Queue / Now Playing kill switch). Re-inits from
+     * master on each new album/playlist/shuffle/mix start. Does not rewrite
+     * [continuousPlayEnabled].
+     */
+    private val _sessionAutoplayEnabled = MutableStateFlow(true)
+    val sessionAutoplayEnabledFlow: StateFlow<Boolean> = _sessionAutoplayEnabled.asStateFlow()
+    val sessionAutoplayEnabled: Boolean
+        get() = _sessionAutoplayEnabled.value
+
+    /**
+     * Bumped when session/master Autoplay is disabled so in-flight CP loads
+     * drop their append on Main.
+     */
+    @Volatile
+    var continuousPlayEpoch: Int = 0
+        private set
 
     private val gson = Gson()
 
@@ -414,6 +432,7 @@ class PlaybackManager @Inject constructor(
     ) {
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, urls, "pushContext")
         if (alignedTracks.isEmpty()) return
+        resetSessionAutoplayFromMaster()
         val existingMerged = dualQueue.getMerged()
         val existingIds = existingMerged.mapNotNull { it.mediaId.takeIf { id -> id.isNotEmpty() } }.toSet()
         var items = buildMediaItems(alignedTracks, alignedUrls)
@@ -476,6 +495,48 @@ class PlaybackManager @Inject constructor(
 
     fun setContinuousPlayEnabled(enabled: Boolean) {
         _continuousPlayEnabled.value = enabled
+        if (!enabled) {
+            setSessionAutoplayEnabled(false)
+        }
+    }
+
+    /**
+     * Queue kill switch for the current context. Master OFF blocks enabling.
+     * Turning OFF clears the Autoplay tail and invalidates in-flight CP loads.
+     */
+    fun setSessionAutoplayEnabled(enabled: Boolean) {
+        val next = if (enabled) _continuousPlayEnabled.value else false
+        if (_sessionAutoplayEnabled.value == next) {
+            persistSessionAutoplay(next)
+            return
+        }
+        _sessionAutoplayEnabled.value = next
+        continuousPlayEpoch++
+        persistSessionAutoplay(next)
+        if (!next) clearAutoplayQueue()
+    }
+
+    /** New album/playlist/shuffle/mix — session follows Settings master (market ON default). */
+    fun resetSessionAutoplayFromMaster() {
+        val master = _continuousPlayEnabled.value
+        if (_sessionAutoplayEnabled.value != master) {
+            continuousPlayEpoch++
+        }
+        _sessionAutoplayEnabled.value = master
+        persistSessionAutoplay(master)
+    }
+
+    /** Restore session flag after process death (before/with queue restore). */
+    fun hydrateSessionAutoplay(enabled: Boolean) {
+        val next = if (enabled) _continuousPlayEnabled.value else false
+        _sessionAutoplayEnabled.value = next
+    }
+
+    private fun persistSessionAutoplay(enabled: Boolean) {
+        storage?.put(
+            com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_SESSION_AUTOPLAY_ENABLED,
+            enabled.toString(),
+        )
     }
 
     // Maps trackId → original server URL for queue URL swapping when Cast connects/disconnects
@@ -535,6 +596,7 @@ class PlaybackManager @Inject constructor(
         ensurePlayer()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "playAlbum")
         if (alignedTracks.isEmpty()) return
+        resetSessionAutoplayFromMaster()
         val items = buildMediaItems(alignedTracks, alignedUrls)
         val si = startIndex.coerceIn(0, alignedTracks.lastIndex)
 
@@ -651,6 +713,10 @@ class PlaybackManager @Inject constructor(
         } else {
             enqueuePlayQueue(alignedTracks, alignedUrls, restoredIndex, src = "restoreQueue")
         }
+        // Session kill switch persisted across death: drop Autoplay if session OFF.
+        if (!sessionAutoplayEnabled && isAutoplayFlags().any { it }) {
+            clearAutoplayQueue()
+        }
         return true
     }
 
@@ -665,6 +731,7 @@ class PlaybackManager @Inject constructor(
         ensurePlayer()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "shuffleAlbum")
         if (alignedTracks.isEmpty()) return
+        resetSessionAutoplayFromMaster()
         val items = buildMediaItems(alignedTracks, alignedUrls)
         val shuffled = items.shuffled()
 
@@ -697,6 +764,7 @@ class PlaybackManager @Inject constructor(
         journalSource: JournalSource? = null,
     ) {
         ensurePlayer()
+        resetSessionAutoplayFromMaster()
         val mimeType = MimeTypeResolver.resolve(track.contentType, track.suffix)
         val item = queueManager.buildMediaItem(
             id = track.id, title = track.title, url = resolveStreamUrl(track.id, streamUrl),

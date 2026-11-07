@@ -37,6 +37,10 @@ class PreferenceBootstrap @Inject constructor(
         val continuous = storage.get(SecureStorage.KEY_CONTINUOUS_PLAY_ENABLED)
             ?.toBooleanStrictOrNull() ?: true
         playbackManager.setContinuousPlayEnabled(continuous)
+        // Session kill switch survives process death; default follows master (ON).
+        val session = storage.get(SecureStorage.KEY_SESSION_AUTOPLAY_ENABLED)
+            ?.toBooleanStrictOrNull() ?: continuous
+        playbackManager.hydrateSessionAutoplay(session)
     }
 
     fun hydrateCoverArtQuota() {

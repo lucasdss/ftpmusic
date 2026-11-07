@@ -253,10 +253,21 @@ class PlaybackViewModel @Inject constructor(
         storage.put(SecureStorage.KEY_CONTINUOUS_PLAY_ENABLED, enabled.toString())
     }
 
+    /**
+     * Queue / Now Playing Autoplay kill switch for the **current** context only.
+     * Does not rewrite Settings master Continuous Play.
+     */
+    fun setSessionAutoplayEnabled(enabled: Boolean) {
+        playbackManager.setSessionAutoplayEnabled(enabled)
+    }
+
     fun isContinuousPlayEnabled(): Boolean = playbackManager.continuousPlayEnabled
 
-    /** Reactive Continuous Play for queue sheet (settings + in-sheet toggle). */
+    /** Settings master Continuous Play. */
     val continuousPlayEnabled: StateFlow<Boolean> = playbackManager.continuousPlayEnabledFlow
+
+    /** Session Autoplay for Queue sheet switch (per album/playlist). */
+    val sessionAutoplayEnabled: StateFlow<Boolean> = playbackManager.sessionAutoplayEnabledFlow
 
     fun playStream(url: String, title: String) = playbackManager.playStream(url, title)
     fun persistQueue() {

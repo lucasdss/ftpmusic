@@ -1018,6 +1018,8 @@ class MediaService : MediaLibraryService() {
                         mediaItemCount = gateCount,
                         hasLoadedContinuation = false,
                         continuousPlayEnabled = playbackManager.continuousPlayEnabled,
+                        sessionAutoplayEnabled = playbackManager.sessionAutoplayEnabled,
+                        isAutoplayFlags = playbackManager.isAutoplayFlags(),
                     )
                 ) {
                     maybeLoadContinuousPlay(
@@ -3169,10 +3171,17 @@ class MediaService : MediaLibraryService() {
         return if (out.isEmpty()) null else out to usedTiers.toList()
     }
 
+    /** Drop CP append if session was killed or master flipped during the fetch. */
+    private fun canCommitContinuousPlay(loadEpoch: Int): Boolean =
+        loadEpoch == playbackManager.continuousPlayEpoch &&
+            playbackManager.continuousPlayEnabled &&
+            playbackManager.sessionAutoplayEnabled
+
     /**
-     * Journal → context Autoplay append. Prefetches at the gate's low-water
-     * mark (CP-5) and sets [hasLoadedContinuation] only after ≥1 track appended
-     * so empty/offline misses can retry (ADR-0053). A `STATE_ENDED` retry that
+     * Journal → context Autoplay append. First burst only on the last
+     * user-selected track; Autoplay tail may re-arm near its end (market
+     * timing). Sets [hasLoadedContinuation] only after ≥1 track appended so
+     * empty/offline misses can retry (ADR-0053). A `STATE_ENDED` retry that
      * arrives while a load is in flight is kept by [continuousPlayRetry] and
      * replayed once instead of being dropped (CP-14).
      */
@@ -3201,11 +3210,14 @@ class MediaService : MediaLibraryService() {
                 mediaItemCount = gateCount,
                 hasLoadedContinuation = hasLoadedContinuation,
                 continuousPlayEnabled = playbackManager.continuousPlayEnabled,
+                sessionAutoplayEnabled = playbackManager.sessionAutoplayEnabled,
+                isAutoplayFlags = playbackManager.isAutoplayFlags(),
             )
         ) {
             return
         }
         if (!continuousPlayRetry.tryBegin(forceRetry)) return
+        val loadEpoch = playbackManager.continuousPlayEpoch
         val currentTrackIds = if (casting) {
             playbackManager.currentQueueMediaIds()
         } else {
@@ -3261,6 +3273,7 @@ class MediaService : MediaLibraryService() {
                         if (similar.isNotEmpty()) {
                             val urls = similar.map { auth.buildStreamUrl(base, it.id, user, pass) }
                             withContext(Dispatchers.Main) {
+                                if (!canCommitContinuousPlay(loadEpoch)) return@withContext
                                 playbackManager.appendToContext(similar, urls, asAutoplay = true)
                                 appended = true
                                 hasLoadedContinuation = true
@@ -3270,7 +3283,9 @@ class MediaService : MediaLibraryService() {
                                 )
                                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                                     "ftpmusic-playback",
-                                    "continuous-play source=similar appended=${similar.size}",
+                                    "continuous-play source=similar appended=${similar.size} " +
+                                        "session=${playbackManager.sessionAutoplayEnabled} " +
+                                        "master=${playbackManager.continuousPlayEnabled}",
                                 )
                             }
                             return@launch
@@ -3324,6 +3339,7 @@ class MediaService : MediaLibraryService() {
                 )
                 if (candidates.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
+                        if (!canCommitContinuousPlay(loadEpoch)) return@withContext
                         playbackManager.appendToContext(
                             candidates.map { it.track },
                             candidates.map { it.streamUrl },
@@ -3339,7 +3355,8 @@ class MediaService : MediaLibraryService() {
                             "ftpmusic-playback",
                             "continuous-play source=journal cap=$journalCap " +
                                 "considered=${parsed.candidates.size} picked=${selected.size} " +
-                                "appended=${candidates.size} localOnly=$localOnly",
+                                "appended=${candidates.size} localOnly=$localOnly " +
+                                "session=${playbackManager.sessionAutoplayEnabled}",
                         )
                     }
                     return@launch
@@ -3371,6 +3388,7 @@ class MediaService : MediaLibraryService() {
                 if (fallback != null) {
                     val (fallbackCandidates, tiers) = fallback
                     withContext(Dispatchers.Main) {
+                        if (!canCommitContinuousPlay(loadEpoch)) return@withContext
                         playbackManager.appendToContext(
                             fallbackCandidates.map { it.track },
                             fallbackCandidates.map { it.streamUrl },
@@ -3381,7 +3399,8 @@ class MediaService : MediaLibraryService() {
                         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                             "ftpmusic-playback",
                             "continuous-play source=fallback tiers=${tiers.joinToString("+")} " +
-                                "appended=${fallbackCandidates.size} localOnly=$localOnly",
+                                "appended=${fallbackCandidates.size} localOnly=$localOnly " +
+                                "session=${playbackManager.sessionAutoplayEnabled}",
                         )
                     }
                     return@launch

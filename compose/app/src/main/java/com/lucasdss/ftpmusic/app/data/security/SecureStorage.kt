@@ -144,6 +144,12 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_USERNAME = "server_username"
         const val KEY_QUEUE_JOURNAL_CAP = "queue_journal_cap"
         const val KEY_CONTINUOUS_PLAY_ENABLED = "continuous_play_enabled"
+
+        /**
+         * Session Autoplay for the current queue (Queue kill switch).
+         * Re-inits from [KEY_CONTINUOUS_PLAY_ENABLED] on each new context start.
+         */
+        const val KEY_SESSION_AUTOPLAY_ENABLED = "session_autoplay_enabled"
         const val KEY_COVER_ART_QUOTA_MB = "cover_art_quota_mb"
 
         /** ADR 0151: active bundled collection cover style pack id (anime, pixel48, …). */
