@@ -75,6 +75,7 @@ import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverEditHost
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.textBodyM
@@ -874,8 +875,12 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
     CollectionCoverEditHost(
         title = editor.name.ifBlank { "Mix" },
         hasFixedCover = editor.fixedCoverKind != null && !editor.clearFixedCover,
+        subject = CollectionCoverSubject.MIX,
+        collectionName = editor.name.ifBlank { "Mix" },
         onLibraryCover = viewModel::setFixedCoverFromLibrary,
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
+        onSavedCover = viewModel::setFixedCoverFromSaved,
+        onBundledCover = viewModel::setFixedCoverFromBundled,
         onClear = viewModel::clearFixedCoverInEditor,
         onLoadFailed = viewModel::notifyCoverCropLoadFailed,
         onExportFailed = viewModel::notifyCoverCropExportFailed,

@@ -91,6 +91,8 @@ class LibraryCoverArtTest {
                 ),
                 mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository>(relaxed = true),
+                mockk(relaxed = true), // userCoverLibrary
+                mockk(relaxed = true), // genreCoverRepository
             )
         vm.loadAlbums()
         val state = vm.state.first { it.albums.isNotEmpty() }
@@ -136,6 +138,8 @@ class LibraryCoverArtTest {
                 ),
                 mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true),
                 mockk<com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository>(relaxed = true),
+                mockk(relaxed = true), // userCoverLibrary
+                mockk(relaxed = true), // genreCoverRepository
             )
         vm.loadAlbums()
         val state = vm.state.first { !it.isLoading }

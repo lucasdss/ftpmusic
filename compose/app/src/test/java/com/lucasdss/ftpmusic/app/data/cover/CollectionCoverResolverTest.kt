@@ -152,4 +152,32 @@ class CollectionCoverResolverTest {
             ),
         )
     }
+
+    @Test
+    fun `fixed bundled wins over derived`() {
+        val path = "collection_defaults/anime/genres/rock.webp"
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "Rock Mix",
+                fixedKind = CollectionCoverKind.BUNDLED,
+                fixedValue = path,
+                derivedCoverArtIds = listOf("al-1"),
+            ),
+        )
+        assertEquals(CollectionCoverResolver.Resolved.Bundled("anime", path), r)
+    }
+
+    @Test
+    fun `isUsableFixed bundled needs value`() {
+        assertTrue(
+            CollectionCoverResolver.isUsableFixed(
+                CollectionCoverKind.BUNDLED,
+                "collection_defaults/anime/genres/default.webp",
+                null,
+            ),
+        )
+        assertFalse(
+            CollectionCoverResolver.isUsableFixed(CollectionCoverKind.BUNDLED, "", null),
+        )
+    }
 }

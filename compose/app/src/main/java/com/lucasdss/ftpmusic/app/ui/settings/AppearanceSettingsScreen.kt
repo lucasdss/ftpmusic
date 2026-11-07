@@ -183,18 +183,20 @@ fun AppearanceSettingsScreen(
                     modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                 )
                 Text(
-                    "Default art pack for genres, Daily Mixes, and playlists without a custom cover",
+                    "Used for genres, and for mixes/playlists that have no custom cover and no track art. Change pack anytime — your uploads stay.",
                     color = Color(0xFF888888),
                     fontSize = textLabelS(),
                     modifier = Modifier.padding(horizontal = spacingL()).padding(bottom = spacingS()),
                 )
-                val packs = listOf(
-                    "anime" to "Anime",
-                    "futuristic" to "Futuristic",
-                    "vintage" to "Vintage",
-                    "watercolor" to "Watercolor",
-                    "noir" to "Noir",
-                )
+                val packs = state.coverStylePacks.ifEmpty {
+                    listOf(
+                        "anime" to "Anime",
+                        "futuristic" to "Futuristic",
+                        "vintage" to "Vintage",
+                        "watercolor" to "Watercolor",
+                        "noir" to "Noir",
+                    )
+                }
                 packs.forEachIndexed { index, (id, label) ->
                     SectionToggleRow(
                         label = label,

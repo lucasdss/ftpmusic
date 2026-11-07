@@ -118,6 +118,8 @@ class SettingsViewModelTest {
         mockk<com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder>(relaxed = true).also {
             every { it.available } returns kotlinx.coroutines.flow.MutableStateFlow(null)
         },
+        mockk(relaxed = true), // coverStylePackPreference
+        mockk(relaxed = true), // coverCatalog
     )
 
     @Test

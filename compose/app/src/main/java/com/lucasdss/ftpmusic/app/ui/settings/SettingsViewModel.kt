@@ -20,6 +20,8 @@ import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.SyncScheduleWorker
 import com.lucasdss.ftpmusic.app.data.network.CustomHeadersInterceptor
+import com.lucasdss.ftpmusic.app.data.cover.CoverStylePackPreference
+import com.lucasdss.ftpmusic.app.data.cover.DefaultCollectionCoverCatalog
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
@@ -54,6 +56,7 @@ data class SettingsUiState(
     val coverArtCacheBytes: Long = 0,
     /** ADR 0151: active bundled collection cover style pack. */
     val coverStylePackId: String = "anime",
+    val coverStylePacks: List<Pair<String, String>> = emptyList(),
     val castFromPhone: Boolean = false,
     val useHttpForCast: Boolean = true,
     val cellularMediaPolicy: CellularMediaPolicy = CellularMediaPolicy.AUTO_CACHE,
@@ -181,6 +184,8 @@ class SettingsViewModel @Inject constructor(
     private val searchIndexRebuilder: com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder,
     private val appUpdateChecker: AppUpdateChecker,
     private val appUpdateAvailabilityHolder: AppUpdateAvailabilityHolder,
+    private val coverStylePackPreference: CoverStylePackPreference,
+    private val coverCatalog: DefaultCollectionCoverCatalog,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -196,9 +201,8 @@ class SettingsViewModel @Inject constructor(
             ?.takeIf { it > 0 }
             ?: com.lucasdss.ftpmusic.app.data.cache.AdjustableCacheEvictor.DEFAULT_MAX_BYTES
         val savedCoverArtQuota = storage.get(SecureStorage.KEY_COVER_ART_QUOTA_MB)?.toIntOrNull() ?: 300
-        val savedCoverStylePack = normalizeCoverStylePack(
-            storage.get(SecureStorage.KEY_COVER_STYLE_PACK) ?: "anime",
-        )
+        val savedCoverStylePack = coverStylePackPreference.current()
+        val coverPackRows = coverCatalog.packs().map { it.id to it.label }
         coverArtFallback.maxCacheBytes = savedCoverArtQuota.toLong() * 1024 * 1024
         refresh()
         val headers = loadCustomHeaders()
@@ -235,6 +239,7 @@ class SettingsViewModel @Inject constructor(
             audioCacheQuotaMb = (savedAudioCacheBytes / (1024 * 1024)).toInt(),
             coverArtQuotaMb = savedCoverArtQuota,
             coverStylePackId = savedCoverStylePack,
+            coverStylePacks = coverPackRows,
             castFromPhone = castPreferences.castFromPhone,
             useHttpForCast = castPreferences.useHttpForCast,
             customHeaders = headers,
@@ -726,19 +731,8 @@ class SettingsViewModel @Inject constructor(
 
     fun setCoverStylePack(packId: String) {
         if (packId.isBlank()) return
-        val normalized = normalizeCoverStylePack(packId)
-        storage.put(SecureStorage.KEY_COVER_STYLE_PACK, normalized)
-        _state.value = _state.value.copy(coverStylePackId = normalized)
-    }
-
-    /** Ship only five packs; archived ids fall back to anime. */
-    private fun normalizeCoverStylePack(packId: String): String {
-        val id = packId.trim()
-        val resolved = if (id in SHIPPED_COVER_STYLE_PACKS) id else DEFAULT_COVER_STYLE_PACK
-        if (storage.get(SecureStorage.KEY_COVER_STYLE_PACK) != resolved) {
-            storage.put(SecureStorage.KEY_COVER_STYLE_PACK, resolved)
-        }
-        return resolved
+        coverStylePackPreference.set(packId)
+        _state.value = _state.value.copy(coverStylePackId = coverStylePackPreference.current())
     }
 
     @OptIn(coil.annotation.ExperimentalCoilApi::class)
@@ -1058,12 +1052,5 @@ class SettingsViewModel @Inject constructor(
 
     companion object {
         const val DEFAULT_COVER_STYLE_PACK = "anime"
-        val SHIPPED_COVER_STYLE_PACKS = setOf(
-            "anime",
-            "futuristic",
-            "vintage",
-            "watercolor",
-            "noir",
-        )
     }
 }

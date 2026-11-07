@@ -71,6 +71,8 @@ class LibraryConfigWarningTest {
         mockk<OfflineModeManager>(relaxed = true), mockk<FavoriteRepository>(relaxed = true),
         mockk<RadioFavoriteDao>(relaxed = true),
         mockk<com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository>(relaxed = true),
+        mockk(relaxed = true), // userCoverLibrary
+        mockk(relaxed = true), // genreCoverRepository
         ioDispatcher = testDispatcher,
     )
 

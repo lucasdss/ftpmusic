@@ -124,6 +124,8 @@ class AppUpdateSettingsViewModelTest {
         mockk(relaxed = true),
         appUpdateChecker,
         appUpdateAvailabilityHolder,
+        mockk(relaxed = true), // coverStylePackPreference
+        mockk(relaxed = true), // coverCatalog
     )
 
     @Test

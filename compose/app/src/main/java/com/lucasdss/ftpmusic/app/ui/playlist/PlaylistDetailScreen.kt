@@ -52,6 +52,7 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
@@ -96,8 +97,12 @@ fun PlaylistDetailScreen(
     val coverEdit = rememberCollectionCoverEditController(
         title = state.playlist?.name ?: "Playlist",
         hasFixedCover = state.playlist?.fixedCoverKind != null,
+        subject = CollectionCoverSubject.PLAYLIST,
+        collectionName = state.playlist?.name ?: "Playlist",
         onLibraryCover = viewModel::setFixedCoverFromLibrary,
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
+        onSavedCover = viewModel::setFixedCoverFromSaved,
+        onBundledCover = viewModel::setFixedCoverFromBundled,
         onClear = viewModel::clearFixedCover,
         onLoadFailed = viewModel::notifyCoverCropLoadFailed,
         onExportFailed = viewModel::notifyCoverCropExportFailed,

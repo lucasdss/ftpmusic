@@ -57,6 +57,7 @@ import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.AlbumDownloadBadge
 import com.lucasdss.ftpmusic.app.ui.components.ArtistAvatar
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.FavoriteThumbButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
@@ -139,6 +140,8 @@ fun LibraryContent(
         val coverEdit = rememberCollectionCoverEditController(
             title = pl.name,
             hasFixedCover = pl.fixedCoverKind != null,
+            subject = CollectionCoverSubject.PLAYLIST,
+            collectionName = pl.name,
             onLibraryCover = { id ->
                 viewModel.setPlaylistFixedCoverFromLibrary(pl.id, id)
                 coverEditPlaylistId = null
@@ -147,6 +150,15 @@ fun LibraryContent(
                 viewModel.setPlaylistFixedCoverFromCropped(pl.id, bmp)
                 coverEditPlaylistId = null
             },
+            onSavedCover = { path ->
+                viewModel.setPlaylistFixedCoverFromSaved(pl.id, path)
+                coverEditPlaylistId = null
+            },
+            onBundledCover = { path ->
+                viewModel.setPlaylistFixedCoverFromBundled(pl.id, path)
+                coverEditPlaylistId = null
+            },
+            onSavedRemoved = { coverEditPlaylistId = null },
             onClear = {
                 viewModel.clearPlaylistFixedCover(pl.id)
                 coverEditPlaylistId = null

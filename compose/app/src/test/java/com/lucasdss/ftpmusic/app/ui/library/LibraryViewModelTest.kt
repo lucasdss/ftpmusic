@@ -128,6 +128,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { !it.isLoading && it.artists.isNotEmpty() }
@@ -180,6 +182,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { !it.isLoading && it.artists.isNotEmpty() }
@@ -214,6 +218,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { !it.isLoading && it.artists.isNotEmpty() }
@@ -251,6 +257,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { !it.isLoading && it.hasLoadedOnce }
@@ -286,6 +294,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { !it.isLoading && it.albums.isNotEmpty() }
@@ -356,6 +366,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { !it.isLoading && it.albums.isNotEmpty() }
@@ -403,6 +415,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { it.randomAlbums.isNotEmpty() }
@@ -450,6 +464,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { it.randomAlbums.isNotEmpty() }
@@ -493,6 +509,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { it.randomAlbums.isNotEmpty() }
@@ -536,6 +554,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { it.randomAlbums.isNotEmpty() }
@@ -594,6 +614,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { it.randomAlbums.isNotEmpty() && it.randomAlbums[0].rating == 4 }
@@ -652,6 +674,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { it.randomAlbums.isNotEmpty() && it.randomAlbums[0].rating == 5 }
@@ -702,6 +726,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { it.randomAlbums.any { a -> a.id == "old-1" } }
@@ -761,6 +787,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.state.first { it.randomAlbums.any { a -> a.id == "keep-1" && a.rating == 4 } }
@@ -809,6 +837,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         // Start init fetch (hits gate) without advancing virtual time into withTimeout.
@@ -867,6 +897,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { it.recentlyPlayed.isNotEmpty() }
@@ -918,6 +950,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
 
@@ -972,6 +1006,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { !it.isLoading }
@@ -1023,6 +1059,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         var state = viewModel.state.first { !it.isLoading }
@@ -1079,6 +1117,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         val state = viewModel.state.first { it.recentlyPlayed.isNotEmpty() }
@@ -1129,6 +1169,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadGenres()
@@ -1197,6 +1239,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadRadioStations()
@@ -1255,6 +1299,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadRadioStations()
@@ -1309,6 +1355,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadRadioStations()
@@ -1377,6 +1425,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadRadioStations()
@@ -1419,6 +1469,8 @@ class LibraryViewModelTest {
             downloadManager, storage, playbackManager,
             mockk(relaxed = true), favorites, mockk(relaxed = true),
             dailyMixRepository = dailyMixRepository,
+            userCoverLibrary = mockk(relaxed = true),
+            genreCoverRepository = mockk(relaxed = true),
             ioDispatcher = testDispatcher,
         )
 
@@ -1456,6 +1508,8 @@ class LibraryViewModelTest {
             downloadManager, storage, playbackManager,
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             dailyMixRepository = dailyMixRepository,
+            userCoverLibrary = mockk(relaxed = true),
+            genreCoverRepository = mockk(relaxed = true),
             ioDispatcher = testDispatcher,
         )
 
@@ -1487,6 +1541,8 @@ class LibraryViewModelTest {
             downloadManager, storage, playbackManager,
             mockk(relaxed = true), favorites, mockk(relaxed = true),
             dailyMixRepository = dailyMixRepository,
+            userCoverLibrary = mockk(relaxed = true),
+            genreCoverRepository = mockk(relaxed = true),
             ioDispatcher = testDispatcher,
         )
 
@@ -1524,6 +1580,8 @@ class LibraryViewModelTest {
             downloadManager, storage, playbackManager,
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             dailyMixRepository = dailyMixRepository,
+            userCoverLibrary = mockk(relaxed = true),
+            genreCoverRepository = mockk(relaxed = true),
             ioDispatcher = testDispatcher,
         )
 
@@ -1591,6 +1649,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.searchAlbums("Abbey")
@@ -1627,6 +1687,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadAlphaAlbums()
@@ -1683,6 +1745,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.searchArtists("Ade")
@@ -1727,6 +1791,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.importPlaylist("pl-import")
@@ -1777,6 +1843,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadPlaylists()
@@ -1822,6 +1890,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.createPlaylist("My New Playlist")
@@ -1865,6 +1935,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadPlaylists()
@@ -1906,6 +1978,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadPlaylists()
@@ -1948,6 +2022,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadServerPlaylists()
@@ -1997,6 +2073,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadPlaylists()
@@ -2065,6 +2143,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadAlphaAlbums()
@@ -2108,6 +2188,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadAlphaAlbums()
@@ -2154,6 +2236,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         // Seed a stale dump then clear via empty alpha page.
@@ -2191,6 +2275,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadAlphaAlbums()
@@ -2235,6 +2321,8 @@ class LibraryViewModelTest {
                 mockk(relaxed = true),
                 mockk(relaxed = true),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
         viewModel.loadAlphaAlbums()
@@ -2272,6 +2360,8 @@ class LibraryViewModelTest {
         mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true),
         mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true),
         repo,
+        mockk(relaxed = true), // userCoverLibrary
+        mockk(relaxed = true), // genreCoverRepository
         ioDispatcher = testDispatcher,
     )
 
@@ -2559,6 +2649,8 @@ class LibraryViewModelTest {
             ),
             mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true),
             dailyMixRepository,
+            mockk(relaxed = true), // userCoverLibrary
+            mockk(relaxed = true), // genreCoverRepository
         )
         return vm to offlineManager
     }
@@ -2792,6 +2884,8 @@ class LibraryViewModelTest {
             ),
             mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true),
             dailyMixRepository,
+            mockk(relaxed = true), // userCoverLibrary
+            mockk(relaxed = true), // genreCoverRepository
         )
         viewModel.resyncAll()
         advanceUntilIdle()
@@ -2842,6 +2936,8 @@ class LibraryViewModelTest {
             ),
             mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true),
             dailyMixRepository,
+            mockk(relaxed = true), // userCoverLibrary
+            mockk(relaxed = true), // genreCoverRepository
         )
         viewModel.resyncAll()
         advanceUntilIdle()
@@ -2865,6 +2961,8 @@ class LibraryViewModelTest {
         mockk(relaxed = true), downloadManager, storage, playbackManager,
         mockk<OfflineModeManager>(relaxed = true), favoriteRepository, radioFavoriteDao,
         dailyMixRepository = dailyMixRepository,
+        userCoverLibrary = mockk(relaxed = true),
+        genreCoverRepository = mockk(relaxed = true),
         ioDispatcher = testDispatcher,
     )
 
@@ -3407,6 +3505,8 @@ class LibraryViewModelTest {
         mockk<com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository>(relaxed = true),
         mockk<com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao>(relaxed = true),
         dailyMixRepository = dailyMixRepository,
+        userCoverLibrary = mockk(relaxed = true),
+        genreCoverRepository = mockk(relaxed = true),
         ioDispatcher = testDispatcher,
     )
 
@@ -3623,6 +3723,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
 
@@ -3669,6 +3771,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
 
@@ -3715,6 +3819,8 @@ class LibraryViewModelTest {
                     relaxed = true,
                 ),
                 dailyMixRepository = dailyMixRepository,
+                userCoverLibrary = mockk(relaxed = true),
+                genreCoverRepository = mockk(relaxed = true),
                 ioDispatcher = testDispatcher,
             )
 

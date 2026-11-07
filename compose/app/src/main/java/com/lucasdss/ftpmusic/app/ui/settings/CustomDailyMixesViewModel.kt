@@ -258,6 +258,31 @@ class CustomDailyMixesViewModel @Inject constructor(
         it.copy(fixedCoverKind = null, fixedCoverValue = null, clearFixedCover = true)
     }
 
+    fun setFixedCoverFromSaved(relativePath: String) {
+        if (relativePath.isBlank()) return
+        viewModelScope.launch {
+            userCoverLibrary.touchByRelativePath(relativePath)
+            updateEditor {
+                it.copy(
+                    fixedCoverKind = CollectionCoverKind.LOCAL,
+                    fixedCoverValue = relativePath,
+                    clearFixedCover = false,
+                )
+            }
+        }
+    }
+
+    fun setFixedCoverFromBundled(assetPath: String) {
+        if (assetPath.isBlank()) return
+        updateEditor {
+            it.copy(
+                fixedCoverKind = CollectionCoverKind.BUNDLED,
+                fixedCoverValue = assetPath,
+                clearFixedCover = false,
+            )
+        }
+    }
+
     fun requestDelete() = updateEditor { it.copy(pendingDelete = true) }
 
     fun cancelDelete() = updateEditor { it.copy(pendingDelete = false) }

@@ -101,10 +101,17 @@ fun HomeScreen(
         val coverEdit = rememberCollectionCoverEditController(
             title = target.title,
             hasFixedCover = target.hasFixedCover,
+            subject = when (target) {
+                is HomeCoverEditTarget.Mix -> CollectionCoverSubject.MIX
+                is HomeCoverEditTarget.Playlist -> CollectionCoverSubject.PLAYLIST
+                is HomeCoverEditTarget.Genre -> CollectionCoverSubject.GENRE
+            },
+            collectionName = target.title,
             onLibraryCover = { id ->
                 when (target) {
                     is HomeCoverEditTarget.Mix -> viewModel.setMixFixedCoverFromLibrary(target.id, id)
                     is HomeCoverEditTarget.Playlist -> viewModel.setPlaylistFixedCoverFromLibrary(target.id, id)
+                    is HomeCoverEditTarget.Genre -> viewModel.setGenreFixedCoverFromLibrary(target.name, id)
                 }
                 coverEditTarget = null
             },
@@ -112,13 +119,35 @@ fun HomeScreen(
                 when (target) {
                     is HomeCoverEditTarget.Mix -> viewModel.setMixFixedCoverFromCropped(target.id, bmp)
                     is HomeCoverEditTarget.Playlist -> viewModel.setPlaylistFixedCoverFromCropped(target.id, bmp)
+                    is HomeCoverEditTarget.Genre -> viewModel.setGenreFixedCoverFromCropped(target.name, bmp)
                 }
+                coverEditTarget = null
+            },
+            onSavedCover = { path ->
+                when (target) {
+                    is HomeCoverEditTarget.Mix -> viewModel.setMixFixedCoverFromSaved(target.id, path)
+                    is HomeCoverEditTarget.Playlist -> viewModel.setPlaylistFixedCoverFromSaved(target.id, path)
+                    is HomeCoverEditTarget.Genre -> viewModel.setGenreFixedCoverFromSaved(target.name, path)
+                }
+                coverEditTarget = null
+            },
+            onBundledCover = { path ->
+                when (target) {
+                    is HomeCoverEditTarget.Mix -> viewModel.setMixFixedCoverFromBundled(target.id, path)
+                    is HomeCoverEditTarget.Playlist -> viewModel.setPlaylistFixedCoverFromBundled(target.id, path)
+                    is HomeCoverEditTarget.Genre -> viewModel.setGenreFixedCoverFromBundled(target.name, path)
+                }
+                coverEditTarget = null
+            },
+            onSavedRemoved = {
+                viewModel.refreshGenreCovers()
                 coverEditTarget = null
             },
             onClear = {
                 when (target) {
                     is HomeCoverEditTarget.Mix -> viewModel.clearMixFixedCover(target.id)
                     is HomeCoverEditTarget.Playlist -> viewModel.clearPlaylistFixedCover(target.id)
+                    is HomeCoverEditTarget.Genre -> viewModel.clearGenreFixedCover(target.name)
                 }
                 coverEditTarget = null
             },
@@ -534,12 +563,22 @@ fun HomeScreen(
                                 )
                                 for ((i, genre) in state.genres.withIndex()) {
                                     val color = genreColors[i % genreColors.size]
+                                    val genreCover = state.genreCovers[genre]
                                     Row(
                                         Modifier
                                             .border(1.dp, color.copy(alpha = 0.33f), RoundedCornerShape(50))
                                             .clip(RoundedCornerShape(50))
                                             .background(color.copy(alpha = 0.13f))
-                                            .clickable { onGenreClick(genre) }
+                                            .combinedClickable(
+                                                onClick = { onGenreClick(genre) },
+                                                onLongClick = {
+                                                    coverEditTarget = HomeCoverEditTarget.Genre(
+                                                        name = genre,
+                                                        title = genre,
+                                                        hasFixedCover = genreCover?.fixedCoverKind != null,
+                                                    )
+                                                },
+                                            )
                                             .padding(
                                                 start = spacingXS(),
                                                 end = spacingS(),
@@ -548,12 +587,12 @@ fun HomeScreen(
                                             ),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt(
+                                        CollectionCoverArt(
                                             name = genre,
-                                            fixedCoverKind = null,
-                                            fixedCoverValue = null,
+                                            fixedCoverKind = genreCover?.fixedCoverKind,
+                                            fixedCoverValue = genreCover?.fixedCoverValue,
                                             derivedCoverArtIds = emptyList(),
-                                            subject = com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject.GENRE,
+                                            subject = CollectionCoverSubject.GENRE,
                                             skipDerived = true,
                                             decodeSize = 28.dp,
                                             modifier = Modifier
@@ -842,6 +881,9 @@ private sealed class HomeCoverEditTarget {
 
     data class Playlist(val id: String, override val title: String, override val hasFixedCover: Boolean) :
         HomeCoverEditTarget()
+
+    data class Genre(val name: String, override val title: String, override val hasFixedCover: Boolean) :
+        HomeCoverEditTarget()
 }
 
 private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
@@ -849,6 +891,7 @@ private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
         when (target) {
             is HomeCoverEditTarget.Mix -> listOf("mix", target.id, target.title, target.hasFixedCover)
             is HomeCoverEditTarget.Playlist -> listOf("pl", target.id, target.title, target.hasFixedCover)
+            is HomeCoverEditTarget.Genre -> listOf("genre", target.name, target.title, target.hasFixedCover)
             null -> emptyList()
         }
     },
@@ -863,6 +906,12 @@ private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
 
             "pl" -> HomeCoverEditTarget.Playlist(
                 id = list[1] as String,
+                title = list[2] as String,
+                hasFixedCover = list[3] as Boolean,
+            )
+
+            "genre" -> HomeCoverEditTarget.Genre(
+                name = list[1] as String,
                 title = list[2] as String,
                 hasFixedCover = list[3] as Boolean,
             )

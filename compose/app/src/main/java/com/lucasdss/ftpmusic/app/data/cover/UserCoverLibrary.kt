@@ -2,6 +2,9 @@ package com.lucasdss.ftpmusic.app.data.cover
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.lucasdss.ftpmusic.app.data.db.CustomMixDao
+import com.lucasdss.ftpmusic.app.data.db.GenreCoverDao
+import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.UserCoverImageDao
 import com.lucasdss.ftpmusic.app.data.db.UserCoverImageEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -16,13 +19,16 @@ import kotlinx.coroutines.withContext
  * Retained personal cover library (ADR 0151).
  * Files live under `collection_covers/library/{id}.jpg`. Switching/clearing a
  * collection cover only updates entity pointers — never deletes library rows
- * unless [delete] is called explicitly.
+ * unless [delete] / [deleteAndClearPointers] is called explicitly.
  */
 @Singleton
 class UserCoverLibrary @Inject constructor(
     @ApplicationContext private val context: Context,
     private val coverStore: CollectionCoverStore,
     private val dao: UserCoverImageDao,
+    private val customMixDao: CustomMixDao,
+    private val playlistDao: PlaylistDao,
+    private val genreCoverDao: GenreCoverDao,
 ) {
     companion object {
         const val LIBRARY_PREFIX = "library"
@@ -114,11 +120,40 @@ class UserCoverLibrary @Inject constructor(
         dao.touch(row.id)
     }
 
-    /** Explicit remove from Saved — deletes file + row. */
+    /** How many collections currently pin this library relative path. */
+    suspend fun pointerCount(relativePath: String): Int = withContext(Dispatchers.IO) {
+        customMixDao.countPointersTo(relativePath) +
+            playlistDao.countPointersTo(relativePath) +
+            genreCoverDao.countPointersTo(relativePath)
+    }
+
+    /**
+     * Explicit remove from Saved — deletes file + row.
+     * Callers must null any fixed-cover pointers that reference this path first,
+     * or use [deleteAndClearPointers].
+     */
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
         val row = dao.getById(id) ?: return@withContext
-        coverStore.deleteRelative(row.relativePath)
+        coverStore.deleteRelative(row.relativePath, allowLibraryDelete = true)
         dao.deleteById(id)
+    }
+
+    /**
+     * Null LOCAL pointers across mixes/playlists/genres, then delete the Saved entry.
+     * @return number of collections that were unpinned.
+     */
+    suspend fun deleteAndClearPointers(id: String): Int = withContext(Dispatchers.IO) {
+        val row = dao.getById(id) ?: return@withContext 0
+        val path = row.relativePath
+        val count = customMixDao.countPointersTo(path) +
+            playlistDao.countPointersTo(path) +
+            genreCoverDao.countPointersTo(path)
+        customMixDao.clearPointersTo(path)
+        playlistDao.clearPointersTo(path)
+        genreCoverDao.clearPointersTo(path)
+        coverStore.deleteRelative(path, allowLibraryDelete = true)
+        dao.deleteById(id)
+        count
     }
 
     private fun relocateIntoLibraryDir(rootRelative: String, id: String): String? {

@@ -36,13 +36,15 @@ object CollectionCoverResolver {
 
     /**
      * True when a fixed cover should win over montage/lettermark in list/detail UI.
-     * LOCAL requires a resolvable file; missing file → treat as no fixed cover.
+     * LOCAL requires a resolvable file; BUNDLED needs a non-blank asset path;
+     * missing file → treat as no fixed cover.
      */
     fun isUsableFixed(kind: String?, value: String?, localAbsolutePath: String?): Boolean {
         if (value.isNullOrBlank()) return false
         return when (kind) {
             CollectionCoverKind.NAVIDROME -> true
             CollectionCoverKind.LOCAL -> !localAbsolutePath.isNullOrBlank()
+            CollectionCoverKind.BUNDLED -> true
             else -> false
         }
     }
@@ -59,6 +61,13 @@ object CollectionCoverResolver {
 
             kind == CollectionCoverKind.LOCAL && value != null -> {
                 // File missing/corrupt — fall through.
+            }
+
+            kind == CollectionCoverKind.BUNDLED && value != null -> {
+                val packId = value.substringAfter("collection_defaults/", missingDelimiterValue = "")
+                    .substringBefore('/')
+                    .ifBlank { "anime" }
+                return Resolved.Bundled(packId, value)
             }
         }
         if (!input.skipDerived) {

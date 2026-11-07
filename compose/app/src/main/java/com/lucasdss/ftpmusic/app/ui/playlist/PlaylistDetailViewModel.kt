@@ -834,36 +834,63 @@ class PlaylistDetailViewModel @Inject constructor(
         }
     }
 
-    /** Persist square crop from [CoverCropDialog] (ADR 0125). Recycles [bitmap]. */
+    /** Persist square crop from [CoverCropDialog] into Saved library (ADR 0151). Recycles [bitmap]. */
     fun setFixedCoverFromCroppedBitmap(bitmap: Bitmap) {
         val playlist = _state.value.playlist ?: run {
             bitmap.recycle()
             return
         }
         viewModelScope.launch {
-            try {
-                val relative = coverStore.importCroppedBitmap(
-                    bitmap,
-                    PlaylistRepository.COVER_PREFIX,
-                    playlist.id,
-                ) ?: run {
-                    _toast.value = "Could not import image"
-                    return@launch
-                }
-                playlistRepository.setFixedCover(
-                    playlist.id,
-                    CollectionCoverKind.LOCAL,
-                    relative,
-                )
-                _state.value = _state.value.copy(
-                    playlist = playlist.copy(
-                        fixedCoverKind = CollectionCoverKind.LOCAL,
-                        fixedCoverValue = relative,
-                    ),
-                )
-            } finally {
-                bitmap.recycle()
+            val relative = playlistRepository.setFixedCoverFromCroppedBitmap(playlist.id, bitmap)
+            if (relative == null) {
+                _toast.value = "Could not import image"
+                return@launch
             }
+            val current = _state.value.playlist ?: return@launch
+            _state.value = _state.value.copy(
+                playlist = current.copy(
+                    fixedCoverKind = CollectionCoverKind.LOCAL,
+                    fixedCoverValue = relative,
+                ),
+            )
+        }
+    }
+
+    fun setFixedCoverFromSaved(relativePath: String) {
+        val playlist = _state.value.playlist ?: return
+        if (relativePath.isBlank()) return
+        viewModelScope.launch {
+            playlistRepository.setFixedCover(
+                playlist.id,
+                CollectionCoverKind.LOCAL,
+                relativePath,
+            )
+            val current = _state.value.playlist ?: return@launch
+            _state.value = _state.value.copy(
+                playlist = current.copy(
+                    fixedCoverKind = CollectionCoverKind.LOCAL,
+                    fixedCoverValue = relativePath,
+                ),
+            )
+        }
+    }
+
+    fun setFixedCoverFromBundled(assetPath: String) {
+        val playlist = _state.value.playlist ?: return
+        if (assetPath.isBlank()) return
+        viewModelScope.launch {
+            playlistRepository.setFixedCover(
+                playlist.id,
+                CollectionCoverKind.BUNDLED,
+                assetPath,
+            )
+            val current = _state.value.playlist ?: return@launch
+            _state.value = _state.value.copy(
+                playlist = current.copy(
+                    fixedCoverKind = CollectionCoverKind.BUNDLED,
+                    fixedCoverValue = assetPath,
+                ),
+            )
         }
     }
 

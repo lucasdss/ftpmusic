@@ -1032,6 +1032,17 @@ interface PlaylistDao {
             "updated_at = :updatedAt WHERE id = :id",
     )
     suspend fun updateFixedCover(id: String, kind: String?, value: String?, updatedAt: Long)
+
+    @Query(
+        "UPDATE playlists SET fixed_cover_kind = NULL, fixed_cover_value = NULL, " +
+            "updated_at = :updatedAt WHERE fixed_cover_kind = 'local' AND fixed_cover_value = :relativePath",
+    )
+    suspend fun clearPointersTo(relativePath: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query(
+        "SELECT COUNT(*) FROM playlists WHERE fixed_cover_kind = 'local' AND fixed_cover_value = :relativePath",
+    )
+    suspend fun countPointersTo(relativePath: String): Int
 }
 
 // ── Pending Playlist Changes DAO ────────────────────────────────────────────────
@@ -2132,6 +2143,17 @@ interface CustomMixDao {
     @Query("DELETE FROM custom_mixes WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query(
+        "UPDATE custom_mixes SET fixed_cover_kind = NULL, fixed_cover_value = NULL " +
+            "WHERE fixed_cover_kind = 'local' AND fixed_cover_value = :relativePath",
+    )
+    suspend fun clearPointersTo(relativePath: String)
+
+    @Query(
+        "SELECT COUNT(*) FROM custom_mixes WHERE fixed_cover_kind = 'local' AND fixed_cover_value = :relativePath",
+    )
+    suspend fun countPointersTo(relativePath: String): Int
+
     /** Atomic first-run seed: re-checks the marker and fills only the free
      *  slots under [maxMixes], then marks seeded — one transaction, so
      *  concurrent callers cannot double-seed or overshoot the cap. */
@@ -2714,4 +2736,9 @@ interface GenreCoverDao {
             "updated_at_ms = :updatedAt WHERE fixed_cover_kind = 'local' AND fixed_cover_value = :relativePath",
     )
     suspend fun clearPointersTo(relativePath: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query(
+        "SELECT COUNT(*) FROM genre_covers WHERE fixed_cover_kind = 'local' AND fixed_cover_value = :relativePath",
+    )
+    suspend fun countPointersTo(relativePath: String): Int
 }

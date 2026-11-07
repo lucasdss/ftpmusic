@@ -282,11 +282,11 @@ class DailyMixRepository @Inject constructor(
         }
     }
 
+    /**
+     * Delete a mix recipe. Legacy entity-scoped `mix_{id}.*` files are cleaned;
+     * retained [UserCoverLibrary] files under `library/` are never deleted (ADR 0151).
+     */
     suspend fun deleteMix(id: Long) = withContext(ioDispatcher) {
-        val old = customMixDao.getById(id)
-        if (old?.fixedCoverKind == CollectionCoverKind.LOCAL) {
-            coverStore.deleteRelative(old.fixedCoverValue)
-        }
         coverStore.deleteForPrefix(COVER_PREFIX, id.toString())
         mixCacheCoordinator.onDeleted(id)
         customMixDao.deleteById(id)

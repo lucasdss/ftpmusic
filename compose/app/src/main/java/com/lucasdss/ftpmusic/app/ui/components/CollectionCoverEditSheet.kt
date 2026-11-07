@@ -5,10 +5,15 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,21 +21,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,10 +49,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.lucasdss.ftpmusic.app.data.cover.CoverStylePackPreference
+import com.lucasdss.ftpmusic.app.data.cover.DefaultCollectionCoverCatalog
+import com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.spacing3XL
@@ -51,21 +68,57 @@ import com.lucasdss.ftpmusic.app.ui.spacingS
 import com.lucasdss.ftpmusic.app.ui.spacingXL
 import com.lucasdss.ftpmusic.app.ui.textBodyM
 import com.lucasdss.ftpmusic.app.ui.textHeadingM
+import com.lucasdss.ftpmusic.app.ui.textLabelS
 import com.lucasdss.ftpmusic.app.ui.textMicro
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.launch
 
 /**
- * Shared Library / Device / Clear sheet for collection cover edit (ADR 0150).
+ * Shared cover edit sheet: Defaults / Saved / albums / Device / Clear (ADR 0150 / 0151).
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CollectionCoverEditSheet(
     title: String,
     hasFixedCover: Boolean,
+    subject: CollectionCoverSubject,
+    collectionName: String,
     onPickLibrary: () -> Unit,
     onPickDevice: () -> Unit,
+    onPickSaved: (relativePath: String) -> Unit,
+    onPickBundled: (assetPath: String) -> Unit,
     onClear: () -> Unit,
+    onSavedRemoved: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val deps = remember(context) {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            CollectionCoverEditEntryPoint::class.java,
+        )
+    }
+    val catalog = remember(context) { DefaultCollectionCoverCatalog(context.applicationContext) }
+    var savedEntries by remember { mutableStateOf<List<UserCoverLibrary.Entry>>(emptyList()) }
+    var pendingDelete by remember { mutableStateOf<UserCoverLibrary.Entry?>(null) }
+    var deleteUsageCount by remember { mutableStateOf(0) }
+    val activePack = remember { deps.coverStylePackPreference().current() }
+    val defaultAsset = remember(activePack, subject, collectionName) {
+        when (subject) {
+            CollectionCoverSubject.GENRE -> catalog.resolveGenre(activePack, collectionName)
+            CollectionCoverSubject.MIX -> catalog.resolveMix(activePack, collectionName)
+            CollectionCoverSubject.PLAYLIST -> catalog.resolvePlaylist(activePack, collectionName)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        savedEntries = deps.userCoverLibrary().list()
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Surface,
@@ -101,8 +154,91 @@ fun CollectionCoverEditSheet(
                 color = Color.White.copy(alpha = 0.06f),
                 modifier = Modifier.padding(horizontal = spacingL()),
             )
+
+            defaultAsset?.let { asset ->
+                Text(
+                    "Defaults",
+                    color = Color(0xFF888888),
+                    fontSize = textLabelS(),
+                    modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingS()),
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = spacingXL()),
+                    horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = spacingM())
+                        .semantics { testTag = "collection_cover_edit_defaults" },
+                ) {
+                    item {
+                        AsyncImage(
+                            model = catalog.assetUri(asset.assetPath),
+                            contentDescription = "Default pack cover",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, BrandTeal.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .clickable { onPickBundled(asset.assetPath) },
+                        )
+                    }
+                }
+                HorizontalDivider(
+                    color = Color.White.copy(alpha = 0.06f),
+                    modifier = Modifier.padding(horizontal = spacingL()),
+                )
+            }
+
+            if (savedEntries.isNotEmpty()) {
+                Text(
+                    "Saved",
+                    color = Color(0xFF888888),
+                    fontSize = textLabelS(),
+                    modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingS()),
+                )
+                Text(
+                    "Tap to use · long-press to remove",
+                    color = Color(0xFF666666),
+                    fontSize = textMicro(),
+                    modifier = Modifier.padding(horizontal = spacingXL()).padding(bottom = spacingS()),
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = spacingXL()),
+                    horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = spacingM())
+                        .semantics { testTag = "collection_cover_edit_saved" },
+                ) {
+                    items(savedEntries, key = { it.id }) { entry ->
+                        AsyncImage(
+                            model = entry.absolutePath,
+                            contentDescription = "Saved cover",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .combinedClickable(
+                                    onClick = { onPickSaved(entry.relativePath) },
+                                    onLongClick = {
+                                        scope.launch {
+                                            deleteUsageCount =
+                                                deps.userCoverLibrary().pointerCount(entry.relativePath)
+                                            pendingDelete = entry
+                                        }
+                                    },
+                                ),
+                        )
+                    }
+                }
+                HorizontalDivider(
+                    color = Color.White.copy(alpha = 0.06f),
+                    modifier = Modifier.padding(horizontal = spacingL()),
+                )
+            }
+
             CoverEditAction(
-                label = "From Library",
+                label = "From albums",
                 icon = Icons.Default.PhotoLibrary,
                 color = BrandTeal,
                 testTag = "collection_cover_edit_library",
@@ -125,6 +261,39 @@ fun CollectionCoverEditSheet(
                 )
             }
         }
+    }
+
+    pendingDelete?.let { entry ->
+        val usage = deleteUsageCount
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Remove saved image?") },
+            text = {
+                Text(
+                    if (usage > 0) {
+                        "Used by $usage collection${if (usage == 1) "" else "s"}. " +
+                            "Those covers will clear; the image will be deleted permanently."
+                    } else {
+                        "This image will be deleted permanently. Collections keep other covers."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            deps.userCoverLibrary().deleteAndClearPointers(entry.id)
+                            savedEntries = deps.userCoverLibrary().list()
+                            pendingDelete = null
+                            onSavedRemoved()
+                        }
+                    },
+                ) { Text("Remove", color = Color(0xFFE84040)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -153,7 +322,7 @@ private fun CoverEditAction(label: String, icon: ImageVector, color: Color, test
 
 /**
  * Auto-open sheet only when crop/picker not mid-flight.
- * Rotation restores [pendingCropUri]/ [LaunchedEffect] must not re-open sheet on top.
+ * Rotation restores [pendingCropUri]; [LaunchedEffect] must not re-open sheet on top.
  */
 fun canAutoOpenCoverEditSheet(hasPendingCrop: Boolean, showAlbumPicker: Boolean): Boolean =
     !hasPendingCrop && !showAlbumPicker
@@ -180,6 +349,11 @@ fun rememberCollectionCoverEditController(
     onLoadFailed: () -> Unit,
     onExportFailed: () -> Unit,
     onIdleDismiss: () -> Unit = {},
+    subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
+    collectionName: String = title,
+    onSavedCover: (relativePath: String) -> Unit = {},
+    onBundledCover: (assetPath: String) -> Unit = {},
+    onSavedRemoved: () -> Unit = {},
 ): CollectionCoverEditController {
     val coverStore = rememberCollectionCoverStore()
     var showSheet by rememberSaveable { mutableStateOf(false) }
@@ -200,6 +374,8 @@ fun rememberCollectionCoverEditController(
         CollectionCoverEditSheet(
             title = title,
             hasFixedCover = hasFixedCover,
+            subject = subject,
+            collectionName = collectionName,
             onPickLibrary = {
                 showSheet = false
                 showAlbumPicker = true
@@ -210,12 +386,20 @@ fun rememberCollectionCoverEditController(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                 )
             },
+            onPickSaved = { path ->
+                showSheet = false
+                onSavedCover(path)
+            },
+            onPickBundled = { path ->
+                showSheet = false
+                onBundledCover(path)
+            },
             onClear = {
                 showSheet = false
                 onClear()
             },
+            onSavedRemoved = onSavedRemoved,
             onDismiss = {
-                // Swipe/back only — not an action selection.
                 showSheet = false
                 onIdleDismiss()
             },
@@ -290,6 +474,11 @@ fun CollectionCoverEditHost(
     onClear: () -> Unit,
     onLoadFailed: () -> Unit,
     onExportFailed: () -> Unit,
+    subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
+    collectionName: String = title,
+    onSavedCover: (relativePath: String) -> Unit = {},
+    onBundledCover: (assetPath: String) -> Unit = {},
+    onSavedRemoved: () -> Unit = {},
     content: @Composable CollectionCoverEditController.() -> Unit,
 ) {
     val controller = rememberCollectionCoverEditController(
@@ -301,6 +490,18 @@ fun CollectionCoverEditHost(
         onLoadFailed = onLoadFailed,
         onExportFailed = onExportFailed,
         onIdleDismiss = {},
+        subject = subject,
+        collectionName = collectionName,
+        onSavedCover = onSavedCover,
+        onBundledCover = onBundledCover,
+        onSavedRemoved = onSavedRemoved,
     )
     controller.content()
+}
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface CollectionCoverEditEntryPoint {
+    fun userCoverLibrary(): UserCoverLibrary
+    fun coverStylePackPreference(): CoverStylePackPreference
 }

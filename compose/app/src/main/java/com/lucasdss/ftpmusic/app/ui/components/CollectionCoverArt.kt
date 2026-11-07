@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,11 +17,12 @@ import com.lucasdss.ftpmusic.app.data.cache.CoverArtFallbackService
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverResolver
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverStore
+import com.lucasdss.ftpmusic.app.data.cover.CoverStylePackPreference
 import com.lucasdss.ftpmusic.app.data.cover.DefaultCollectionCoverCatalog
-import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.ui.library.rememberPreferredCoverArt
 import com.lucasdss.ftpmusic.app.ui.textHeadingL
 import com.lucasdss.ftpmusic.app.ui.textHeadingS
+import dagger.hilt.android.EntryPointAccessors
 import java.io.File
 
 enum class CollectionCoverSubject {
@@ -52,10 +55,24 @@ fun CollectionCoverArt(
     val context = LocalContext.current
     val store = remember { CollectionCoverStore(context.applicationContext) }
     val catalog = remember { DefaultCollectionCoverCatalog(context.applicationContext) }
-    val storage = remember { SecureStorage(context.applicationContext) }
-    val activePack = stylePackId
-        ?: storage.get(SecureStorage.KEY_COVER_STYLE_PACK)
-        ?: catalog.defaultPackId()
+    val packPreference = remember(context) {
+        runCatching {
+            EntryPointAccessors.fromApplication(
+                context.applicationContext,
+                CoverStylePackEntryPoint::class.java,
+            ).coverStylePackPreference()
+        }.getOrNull()
+    }
+    val preferredPack = if (packPreference != null) {
+        packPreference.packId.collectAsState(initial = packPreference.current()).value
+    } else {
+        catalog.defaultPackId()
+    }
+    val knownPackIds = remember(catalog) { catalog.packs().map { it.id }.toSet() }
+    val activePack = remember(stylePackId, preferredPack, knownPackIds) {
+        val candidate = stylePackId?.takeIf { it.isNotBlank() } ?: preferredPack
+        if (candidate in knownPackIds) candidate else catalog.defaultPackId()
+    }
     val bundled = remember(name, activePack, subject) {
         when (subject) {
             CollectionCoverSubject.GENRE -> catalog.resolveGenre(activePack, name)
@@ -85,6 +102,7 @@ fun CollectionCoverArt(
         localPath,
         bundled?.assetPath,
         skipDerived,
+        activePack,
     ) {
         CollectionCoverResolver.resolve(
             CollectionCoverResolver.Input(
@@ -191,4 +209,10 @@ fun collectionLocalAbsolutePath(context: android.content.Context, relative: Stri
     val root = File(context.applicationContext.filesDir, CollectionCoverStore.DIR)
     val file = File(root, relative)
     return if (file.isFile && file.length() > 0L) file.absolutePath else null
+}
+
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+interface CoverStylePackEntryPoint {
+    fun coverStylePackPreference(): CoverStylePackPreference
 }

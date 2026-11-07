@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.lucasdss.ftpmusic.app.data.cache.LocalOnlyPolicy
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverKind
+import com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary
 import com.lucasdss.ftpmusic.app.data.db.AlbumEntity
+import com.lucasdss.ftpmusic.app.data.db.GenreCoverEntity
 import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity
 import com.lucasdss.ftpmusic.app.data.db.CachedArtistEntity
@@ -35,6 +37,7 @@ import com.lucasdss.ftpmusic.app.data.model.Artist
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.GenreCoverRepository
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.search.SearchQueryNormalizer
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
@@ -85,6 +88,8 @@ data class LibraryState(
     val recentlyPlayed: List<TrackEntity> = emptyList(),
     val genres: List<String> = emptyList(),
     val mixCards: List<MixCard> = emptyList(),
+    /** Genre name → fixed cover (ADR 0151). */
+    val genreCovers: Map<String, GenreCoverEntity> = emptyMap(),
     val playlists: List<PlaylistView> = emptyList(),
     val alphaLetters: List<String> = emptyList(),
     val radioStations: List<RadioStation> = emptyList(),
@@ -207,6 +212,8 @@ class LibraryViewModel @Inject constructor(
     private val favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository,
     private val radioFavoriteDao: com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao,
     private val dailyMixRepository: com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository,
+    private val userCoverLibrary: UserCoverLibrary,
+    private val genreCoverRepository: GenreCoverRepository,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
 
@@ -812,11 +819,13 @@ class LibraryViewModel @Inject constructor(
             val recentGenres = genreDao.getRecentlyPlayedGenres()
             if (recentGenres.isNotEmpty()) {
                 _state.value = _state.value.copy(genres = recentGenres.take(8))
+                refreshGenreCoversInternal()
                 return
             }
             val allGenres = genreDao.getAllByPopularity()
             if (allGenres.isNotEmpty()) {
                 _state.value = _state.value.copy(genres = allGenres.map { it.name }.take(8))
+                refreshGenreCoversInternal()
                 // Background refresh only when online
                 if (!isLocalOnly()) maybeSyncGenres()
                 return
@@ -829,6 +838,7 @@ class LibraryViewModel @Inject constructor(
             syncGenres()
             val synced = genreDao.getAllByPopularity()
             _state.value = _state.value.copy(genres = synced.map { it.name }.take(4))
+            refreshGenreCoversInternal()
         } catch (e: Exception) {
             android.util.Log.w("ftpmusic-library", "loadGenres: ${e.message}")
         }
@@ -2361,12 +2371,109 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    fun setPlaylistFixedCoverFromSaved(playlistId: String, relativePath: String) {
+        if (playlistId.isBlank() || relativePath.isBlank()) return
+        viewModelScope.launch {
+            playlistRepo.setFixedCover(playlistId, CollectionCoverKind.LOCAL, relativePath)
+            userCoverLibrary.touchByRelativePath(relativePath)
+            loadPlaylists()
+        }
+    }
+
+    fun setPlaylistFixedCoverFromBundled(playlistId: String, assetPath: String) {
+        if (playlistId.isBlank() || assetPath.isBlank()) return
+        viewModelScope.launch {
+            playlistRepo.setFixedCover(playlistId, CollectionCoverKind.BUNDLED, assetPath)
+            loadPlaylists()
+        }
+    }
+
+    fun setMixFixedCoverFromSaved(mixId: Long, relativePath: String) {
+        if (mixId <= 0L || relativePath.isBlank()) return
+        viewModelScope.launch {
+            dailyMixRepository.setFixedCover(mixId, CollectionCoverKind.LOCAL, relativePath)
+            userCoverLibrary.touchByRelativePath(relativePath)
+            refreshMixCardsAfterCoverChange()
+        }
+    }
+
+    fun setMixFixedCoverFromBundled(mixId: Long, assetPath: String) {
+        if (mixId <= 0L || assetPath.isBlank()) return
+        viewModelScope.launch {
+            dailyMixRepository.setFixedCover(mixId, CollectionCoverKind.BUNDLED, assetPath)
+            refreshMixCardsAfterCoverChange()
+        }
+    }
+
+    fun setGenreFixedCoverFromLibrary(genreName: String, coverArtId: String) {
+        if (genreName.isBlank() || coverArtId.isBlank()) return
+        viewModelScope.launch {
+            genreCoverRepository.setFixedCover(genreName, CollectionCoverKind.NAVIDROME, coverArtId)
+            refreshGenreCovers()
+        }
+    }
+
+    fun setGenreFixedCoverFromCropped(genreName: String, bitmap: android.graphics.Bitmap) {
+        if (genreName.isBlank()) {
+            bitmap.recycle()
+            return
+        }
+        val owned = bitmap
+        val job = viewModelScope.launch {
+            val relative = genreCoverRepository.setFixedCoverFromCroppedBitmap(genreName, owned)
+            if (relative == null) {
+                _coverToast.value = "Could not import image"
+            } else {
+                refreshGenreCovers()
+            }
+        }
+        job.invokeOnCompletion { cause ->
+            if (cause != null && !owned.isRecycled) owned.recycle()
+        }
+    }
+
+    fun setGenreFixedCoverFromSaved(genreName: String, relativePath: String) {
+        if (genreName.isBlank() || relativePath.isBlank()) return
+        viewModelScope.launch {
+            genreCoverRepository.setFixedCover(genreName, CollectionCoverKind.LOCAL, relativePath)
+            userCoverLibrary.touchByRelativePath(relativePath)
+            refreshGenreCovers()
+        }
+    }
+
+    fun setGenreFixedCoverFromBundled(genreName: String, assetPath: String) {
+        if (genreName.isBlank() || assetPath.isBlank()) return
+        viewModelScope.launch {
+            genreCoverRepository.setFixedCover(genreName, CollectionCoverKind.BUNDLED, assetPath)
+            refreshGenreCovers()
+        }
+    }
+
+    fun clearGenreFixedCover(genreName: String) {
+        if (genreName.isBlank()) return
+        viewModelScope.launch {
+            genreCoverRepository.clearFixedCover(genreName)
+            refreshGenreCovers()
+        }
+    }
+
     fun notifyCoverCropLoadFailed() {
         _coverToast.value = "Could not load image for crop"
     }
 
     fun notifyCoverCropExportFailed() {
         _coverToast.value = "Could not save cropped cover"
+    }
+
+    fun refreshGenreCovers() {
+        viewModelScope.launch { refreshGenreCoversInternal() }
+    }
+
+    private suspend fun refreshGenreCoversInternal() {
+        val rows = withContext(ioDispatcher) { genreCoverRepository.getAll() }
+        _state.value = _state.value.copy(
+            genreCovers = rows.associateBy { it.genreName },
+        )
     }
 
     private suspend fun refreshMixCardsAfterCoverChange() {

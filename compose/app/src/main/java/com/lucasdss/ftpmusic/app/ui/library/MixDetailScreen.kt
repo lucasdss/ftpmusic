@@ -66,6 +66,7 @@ import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverArt
+import com.lucasdss.ftpmusic.app.ui.components.CollectionCoverSubject
 import com.lucasdss.ftpmusic.app.ui.components.DetailBackButton
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
@@ -128,8 +129,12 @@ fun MixDetailScreen(
     val coverEdit = rememberCollectionCoverEditController(
         title = mixName,
         hasFixedCover = state.fixedCoverKind != null,
+        subject = CollectionCoverSubject.MIX,
+        collectionName = mixName,
         onLibraryCover = viewModel::setFixedCoverFromLibrary,
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
+        onSavedCover = viewModel::setFixedCoverFromSaved,
+        onBundledCover = viewModel::setFixedCoverFromBundled,
         onClear = viewModel::clearFixedCover,
         onLoadFailed = viewModel::notifyCoverCropLoadFailed,
         onExportFailed = viewModel::notifyCoverCropExportFailed,
@@ -628,7 +633,6 @@ class MixDetailViewModel @Inject constructor(
     private val downloadManager: com.lucasdss.ftpmusic.app.data.cache.DownloadManager,
     private val favoriteRepository: com.lucasdss.ftpmusic.app.data.repository.FavoriteRepository,
     private val api: com.lucasdss.ftpmusic.app.data.network.SubsonicApi,
-    private val coverStore: CollectionCoverStore,
 ) : androidx.lifecycle.ViewModel() {
 
     data class State(
@@ -676,23 +680,39 @@ class MixDetailViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            try {
-                val relative = coverStore.importCroppedBitmap(
-                    bitmap,
-                    DailyMixRepository.COVER_PREFIX,
-                    id.toString(),
-                ) ?: run {
-                    _toast.value = "Could not import image"
-                    return@launch
-                }
-                dailyMixRepository.setFixedCover(id, CollectionCoverKind.LOCAL, relative)
-                _state.value = _state.value.copy(
-                    fixedCoverKind = CollectionCoverKind.LOCAL,
-                    fixedCoverValue = relative,
-                )
-            } finally {
-                bitmap.recycle()
+            val relative = dailyMixRepository.setFixedCoverFromCroppedBitmap(id, bitmap)
+            if (relative == null) {
+                _toast.value = "Could not import image"
+                return@launch
             }
+            _state.value = _state.value.copy(
+                fixedCoverKind = CollectionCoverKind.LOCAL,
+                fixedCoverValue = relative,
+            )
+        }
+    }
+
+    fun setFixedCoverFromSaved(relativePath: String) {
+        val id = loadedMixId ?: return
+        if (relativePath.isBlank()) return
+        viewModelScope.launch {
+            dailyMixRepository.setFixedCover(id, CollectionCoverKind.LOCAL, relativePath)
+            _state.value = _state.value.copy(
+                fixedCoverKind = CollectionCoverKind.LOCAL,
+                fixedCoverValue = relativePath,
+            )
+        }
+    }
+
+    fun setFixedCoverFromBundled(assetPath: String) {
+        val id = loadedMixId ?: return
+        if (assetPath.isBlank()) return
+        viewModelScope.launch {
+            dailyMixRepository.setFixedCover(id, CollectionCoverKind.BUNDLED, assetPath)
+            _state.value = _state.value.copy(
+                fixedCoverKind = CollectionCoverKind.BUNDLED,
+                fixedCoverValue = assetPath,
+            )
         }
     }
 

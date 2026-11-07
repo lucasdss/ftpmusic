@@ -160,9 +160,26 @@ class CollectionCoverStore @Inject constructor(@ApplicationContext private val c
         }
     }
 
-    suspend fun deleteRelative(relative: String?) = withContext(Dispatchers.IO) {
-        val file = resolveLocalFile(relative) ?: return@withContext
+    /**
+     * Delete a relative cover file.
+     * Paths under [UserCoverLibrary.LIBRARY_DIR] are refused unless
+     * [allowLibraryDelete] is true (only [UserCoverLibrary.delete] may set that).
+     */
+    suspend fun deleteRelative(
+        relative: String?,
+        allowLibraryDelete: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
+        val rel = relative?.takeIf { it.isNotBlank() && !it.contains("..") } ?: return@withContext
+        if (!allowLibraryDelete && isLibraryRelative(rel)) return@withContext
+        val file = resolveLocalFile(rel) ?: return@withContext
         file.delete()
+    }
+
+    fun isLibraryRelative(relative: String?): Boolean {
+        val rel = relative?.trim().orEmpty()
+        if (rel.isEmpty()) return false
+        return rel == UserCoverLibrary.LIBRARY_DIR ||
+            rel.startsWith("${UserCoverLibrary.LIBRARY_DIR}/")
     }
 
     /** Remove every local file for a mix or playlist id prefix. */
