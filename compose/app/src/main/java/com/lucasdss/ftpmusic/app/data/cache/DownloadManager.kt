@@ -104,6 +104,50 @@ class DownloadManager @Inject constructor(
         }
     }
 
+    /**
+     * Play-queue sticky CT only ([STATUS_FAILED_CT]). Unlike [isTerminalFailed], does
+     * **not** treat legacy sticky `failed` as removable from the live timeline.
+     */
+    suspend fun isStickyCt(trackId: String): Boolean {
+        val row = cacheQueueDao.getByTrackId(trackId) ?: return false
+        return row.status == STATUS_FAILED_CT
+    }
+
+    /**
+     * Idempotent play-path / worker mark for non-audio / confirmed CT poison.
+     * Upserts a cache-queue row when playback hits sticky unplayable with no prior enqueue.
+     */
+    suspend fun markFailedCt(trackId: String, reason: String = "playback_sticky") {
+        if (trackId.isBlank()) return
+        StickyUnplayableRegistry.mark(trackId)
+        val existing = cacheQueueDao.getByTrackId(trackId)
+        if (existing != null) {
+            if (existing.status != STATUS_FAILED_CT) {
+                cacheQueueDao.updateStatus(existing.id, STATUS_FAILED_CT)
+            }
+        } else {
+            cacheQueueDao.insertIgnore(
+                CacheQueueItemEntity(
+                    trackId = trackId,
+                    remoteUrl = "",
+                    priority = 2,
+                    status = STATUS_FAILED_CT,
+                    isDownload = false,
+                ),
+            )
+            // Race: another writer inserted first — force CT if needed.
+            cacheQueueDao.getByTrackId(trackId)?.let { row ->
+                if (row.status != STATUS_FAILED_CT) {
+                    cacheQueueDao.updateStatus(row.id, STATUS_FAILED_CT)
+                }
+            }
+        }
+        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+            "ftpmusic-download",
+            "markFailedCt trackId=$trackId reason=$reason",
+        )
+    }
+
     /** Enqueue with dedup. Priority: 0=play-queue (urgent), 1=download, 2=cache-warming.
      *
      *  Atomicity: the insert uses INSERT OR IGNORE on the unique track_id index,
@@ -462,6 +506,7 @@ class DownloadManager @Inject constructor(
 
     private suspend fun failTerminal(item: CacheQueueItemEntity) {
         cacheQueueDao.updateStatus(item.id, STATUS_FAILED_CT)
+        StickyUnplayableRegistry.mark(item.trackId)
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
             "ftpmusic-download",
             "worker terminal trackId=${item.trackId} priority=${item.priority} reason=non_audio_content_type",

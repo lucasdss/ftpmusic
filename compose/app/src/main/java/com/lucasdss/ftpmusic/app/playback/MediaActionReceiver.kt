@@ -58,7 +58,8 @@ class MediaActionReceiver : BroadcastReceiver() {
             }
 
             Player.COMMAND_SEEK_TO_PREVIOUS.toLong() -> {
-                player.seekToPreviousMediaItem()
+                // Same sticky walk as PlaybackControl.SKIP_PREV (notification Previous).
+                seekToPreviousPlayable(player)
             }
 
             else -> {

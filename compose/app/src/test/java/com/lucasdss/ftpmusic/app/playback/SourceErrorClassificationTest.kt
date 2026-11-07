@@ -430,4 +430,100 @@ class SourceErrorClassificationTest {
             chooseErrorSkipAction(ErrorSkipAction.RADIO_IGNORE, circuitTripped = true, advancing = false),
         )
     }
+
+    // --- sticky unplayable / Previous walk --------------------------------
+
+    @Test
+    fun `invalid content type is sticky without Room row`() {
+        assertTrue(
+            isStickyUnplayable(
+                PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+                CacheSpanState.NONE,
+                hasFailedCt = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `parse unsupported with no span is sticky`() {
+        assertTrue(
+            isStickyUnplayable(
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                CacheSpanState.NONE,
+                hasFailedCt = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `parse unsupported with playable span is not sticky`() {
+        assertFalse(
+            isStickyUnplayable(
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                CacheSpanState.PLAYABLE,
+                hasFailedCt = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `bare 404 is not sticky without failed_ct`() {
+        assertFalse(
+            isStickyUnplayable(
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                CacheSpanState.NONE,
+                hasFailedCt = false,
+            ),
+        )
+        assertTrue(
+            isStickyUnplayable(
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                CacheSpanState.NONE,
+                hasFailedCt = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `previous walk skips sticky neighbor`() {
+        val ids = listOf("good", "bad", "cur")
+        val sticky = setOf("bad")
+        assertEquals(
+            0,
+            findPreviousPlayableIndex(
+                fromIndex = 2,
+                mediaItemCount = 3,
+                mediaIdAt = { ids[it] },
+                isStickyId = { sticky.contains(it) },
+            ),
+        )
+    }
+
+    @Test
+    fun `previous walk returns null when only stickies behind`() {
+        val ids = listOf("bad0", "bad1", "cur")
+        val sticky = setOf("bad0", "bad1")
+        assertNull(
+            findPreviousPlayableIndex(
+                fromIndex = 2,
+                mediaItemCount = 3,
+                mediaIdAt = { ids[it] },
+                isStickyId = { sticky.contains(it) },
+            ),
+        )
+    }
+
+    @Test
+    fun `next playable skips sticky current`() {
+        val ids = listOf("bad", "good")
+        assertEquals(
+            1,
+            findNextPlayableIndex(
+                fromIndex = 0,
+                mediaItemCount = 2,
+                mediaIdAt = { ids[it] },
+                isStickyId = { it == "bad" },
+            ),
+        )
+    }
 }

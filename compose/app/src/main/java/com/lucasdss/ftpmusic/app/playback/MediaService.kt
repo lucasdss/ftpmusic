@@ -41,6 +41,7 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.MediaQueue
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.lucasdss.ftpmusic.app.data.cache.CacheSpanState
+import com.lucasdss.ftpmusic.app.data.cache.StickyUnplayableRegistry
 import com.lucasdss.ftpmusic.app.data.db.CachedMetadataDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalEntity
@@ -1645,6 +1646,12 @@ class MediaService : MediaLibraryService() {
             } else {
                 null
             }
+            val hasFailedCt = if (!failedId.isNullOrEmpty()) {
+                StickyUnplayableRegistry.contains(failedId) ||
+                    runCatching { downloadManager.isStickyCt(failedId) }.getOrDefault(false)
+            } else {
+                false
+            }
             withContext(Dispatchers.Main) {
                 if (skipGen != autoSkipGeneration) {
                     android.util.Log.w(
@@ -1677,6 +1684,9 @@ class MediaService : MediaLibraryService() {
                         itemCount = itemCount,
                         httpCode = httpCode,
                         nowMs = nowMs,
+                        errorCode = error.errorCode,
+                        span = span,
+                        hasFailedCt = hasFailedCt,
                     )
                     return@withContext
                 }
@@ -1750,6 +1760,10 @@ class MediaService : MediaLibraryService() {
      * N11-2 short-circuit: the first same-album REMOTE_MISSING takes one item;
      * the second (30 s / ≤2 positions) jumps the whole consecutive album run in
      * a single seek. N11-3 verification then runs in the background.
+     *
+     * Sticky CT / parse-unsupported with no playable span: [REMOVE_TERMINAL]
+     * excises the Dual+Exo item (no seekToNext — Media3 advances on remove-current).
+     * Cast stays seek-only in v1.
      */
     private fun applyRemoteMissingSkip(
         ep: Player,
@@ -1759,7 +1773,23 @@ class MediaService : MediaLibraryService() {
         itemCount: Int,
         httpCode: Int?,
         nowMs: Long,
+        errorCode: Int,
+        span: CacheSpanState,
+        hasFailedCt: Boolean,
     ) {
+        val sticky = isStickyUnplayable(errorCode, span, hasFailedCt)
+        if (sticky && !PlayerHolder.isCasting) {
+            applyRemoveTerminal(
+                ep = ep,
+                failedId = failedId,
+                fromIdx = fromIdx,
+                itemCount = itemCount,
+                httpCode = httpCode,
+                nowMs = nowMs,
+                errorCode = errorCode,
+            )
+            return
+        }
         val albumRunTripped = missingAlbumRun.onRemoteMissing(albumId, fromIdx, nowMs)
         if (albumRunTripped && albumId != null) {
             // Re-read the count on the current (main) thread: itemCount was sampled
@@ -1820,6 +1850,77 @@ class MediaService : MediaLibraryService() {
         }
         ep.seekToNextMediaItem()
         resumeAfterSkip(ep)
+    }
+
+    /**
+     * Excise a sticky-unplayable current (or Dual-matched) item. Media3 advances
+     * on remove-current — do **not** also [Player.seekToNextMediaItem].
+     */
+    private fun applyRemoveTerminal(
+        ep: Player,
+        failedId: String?,
+        fromIdx: Int,
+        itemCount: Int,
+        httpCode: Int?,
+        nowMs: Long,
+        errorCode: Int,
+    ) {
+        autoSkipBurst.record(
+            index = fromIdx,
+            nowMs = nowMs,
+            skipped = 1,
+            evictedDelta = 0,
+            disruptiveEntry = true,
+        )
+        if (!failedId.isNullOrEmpty()) {
+            StickyUnplayableRegistry.mark(failedId)
+            scope.launch {
+                runCatching { downloadManager.markFailedCt(failedId, reason = "playback_error_$errorCode") }
+            }
+        }
+        val dualIds = playbackManager.currentQueueMediaIdList()
+        val removeIdx = when {
+            !failedId.isNullOrEmpty() -> dualIds.indexOf(failedId).takeIf { it >= 0 }
+                ?: fromIdx.takeIf { it in dualIds.indices }
+            fromIdx in dualIds.indices -> fromIdx
+            else -> null
+        }
+        DiagnosticLog.w(
+            "ftpmusic-playback",
+            "autoSkip action=REMOVE_TERMINAL trackId=${failedId ?: "-"} " +
+                "idx=${removeIdx ?: fromIdx} count=$itemCount errorCount=$playerErrorCount " +
+                "http=${httpCode ?: "-"} errorCode=$errorCode wroteFailedCt=${!failedId.isNullOrEmpty()} " +
+                "advancedBy=remove casting=false",
+        )
+        if (removeIdx == null) {
+            if (autoSkipBurst.atThreshold()) {
+                pauseAfterBurst(ep, fromIdx, SourceErrorKind.REMOTE_MISSING, failedId)
+                return
+            }
+            ep.seekToNextMediaItem()
+            resumeAfterSkip(ep)
+            return
+        }
+        val removingCurrent = ep.currentMediaItemIndex == removeIdx ||
+            (!failedId.isNullOrEmpty() && ep.currentMediaItem?.mediaId == failedId)
+        playbackManager.removeFromQueue(removeIdx)
+        if (ep.mediaItemCount == 0) {
+            playerErrorCount = 0
+            PlayerHolder.playbackErrorAutoSkipInFlight = false
+            resetPlaybackErrorTrackers(src = "remove-terminal-empty", resetCircuit = false)
+            ep.stop()
+            return
+        }
+        if (autoSkipBurst.atThreshold()) {
+            pauseAfterBurst(ep, ep.currentMediaItemIndex.coerceAtLeast(0), SourceErrorKind.REMOTE_MISSING, failedId)
+            return
+        }
+        if (removingCurrent) {
+            resumeAfterSkip(ep)
+        } else {
+            ep.seekToNextMediaItem()
+            resumeAfterSkip(ep)
+        }
     }
 
     /** N1-C: pause (not stop) so index/position survive; the next play resumes past it. */
@@ -5141,20 +5242,32 @@ class MediaService : MediaLibraryService() {
                     autoSkipBurst.clear()
                     burstPaused = false
                     PlayerHolder.playbackErrorAutoSkipInFlight = false
+                    // After REMOVE_TERMINAL the current item is already the survivor —
+                    // only seek forward when still parked on a sticky id.
+                    val count = player.mediaItemCount
+                    val mediaIdAt = { i: Int ->
+                        runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()
+                    }
+                    val isSticky = { id: String -> StickyUnplayableRegistry.contains(id) }
+                    val resumeIdx = findNextPlayableIndex(fromIdx, count, mediaIdAt, isSticky)
                     com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
                         "ftpmusic-playback",
                         "autoSkip action=BURST_RESUME fromIdx=$fromIdx " +
-                            "next=${player.hasNextMediaItem()}",
+                            "resumeIdx=${resumeIdx ?: "end"}",
                     )
-                    if (player.hasNextMediaItem()) {
-                        player.seekToNextMediaItem()
-                        resumeAfterSkip(player)
-                    } else {
-                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                            "ftpmusic-playback",
-                            "autoSkip action=BURST_RESUME_END fromIdx=$fromIdx",
-                        )
-                        player.stop()
+                    when {
+                        resumeIdx == null -> {
+                            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                                "ftpmusic-playback",
+                                "autoSkip action=BURST_RESUME_END fromIdx=$fromIdx",
+                            )
+                            player.stop()
+                        }
+                        resumeIdx != fromIdx -> {
+                            player.seekTo(resumeIdx, 0L)
+                            resumeAfterSkip(player)
+                        }
+                        else -> resumeAfterSkip(player)
                     }
                     return
                 }
@@ -5207,10 +5320,24 @@ class MediaService : MediaLibraryService() {
                         castCtx?.sessionManager?.currentCastSession?.remoteMediaClient
                             ?.queuePrev(null)
                     } catch (_: Exception) {
-                        player.seekToPreviousMediaItem()
+                        seekToPreviousPlayable(player)
                     }
                 } else {
-                    player.seekToPreviousMediaItem()
+                    // Warm registry from Room for items behind current, then walk sync.
+                    val from = player.currentMediaItemIndex
+                    val priorIds = (0 until from).mapNotNull { i ->
+                        runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()
+                    }
+                    if (priorIds.isNotEmpty()) {
+                        scope.launch {
+                            for (id in priorIds) {
+                                if (runCatching { downloadManager.isStickyCt(id) }.getOrDefault(false)) {
+                                    StickyUnplayableRegistry.mark(id)
+                                }
+                            }
+                        }
+                    }
+                    seekToPreviousPlayable(player)
                 }
             }
 

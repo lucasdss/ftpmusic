@@ -2,6 +2,7 @@ package com.lucasdss.ftpmusic.app.playback
 
 import android.content.Intent
 import androidx.media3.common.Player
+import com.lucasdss.ftpmusic.app.data.cache.StickyUnplayableRegistry
 import io.mockk.*
 import org.junit.After
 import org.junit.Assert.*
@@ -55,10 +56,35 @@ class MediaActionReceiverTest {
 
     @Test
     fun `SEEK_TO_PREVIOUS dispatches correctly`() {
+        every { player.currentMediaItemIndex } returns 1
+        every { player.mediaItemCount } returns 2
+        every { player.getMediaItemAt(0) } returns mediaItem("good")
+        every { player.getMediaItemAt(1) } returns mediaItem("cur")
+
         receiver.dispatchCommand(player, Player.COMMAND_SEEK_TO_PREVIOUS.toLong())
 
         verify(exactly = 1) { player.seekToPreviousMediaItem() }
     }
+
+    @Test
+    fun `SEEK_TO_PREVIOUS walks past sticky registry neighbor`() {
+        StickyUnplayableRegistry.clearForTests()
+        StickyUnplayableRegistry.mark("bad")
+        every { player.currentMediaItemIndex } returns 2
+        every { player.mediaItemCount } returns 3
+        every { player.getMediaItemAt(0) } returns mediaItem("good")
+        every { player.getMediaItemAt(1) } returns mediaItem("bad")
+        every { player.getMediaItemAt(2) } returns mediaItem("cur")
+
+        receiver.dispatchCommand(player, Player.COMMAND_SEEK_TO_PREVIOUS.toLong())
+
+        verify(exactly = 1) { player.seekTo(0, 0L) }
+        verify(exactly = 0) { player.seekToPreviousMediaItem() }
+        StickyUnplayableRegistry.clearForTests()
+    }
+
+    private fun mediaItem(id: String): androidx.media3.common.MediaItem =
+        androidx.media3.common.MediaItem.Builder().setMediaId(id).build()
 
     @Test
     fun `unknown command is ignored`() {

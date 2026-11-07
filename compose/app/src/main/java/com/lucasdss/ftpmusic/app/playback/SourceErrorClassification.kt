@@ -1,7 +1,9 @@
 package com.lucasdss.ftpmusic.app.playback
 
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import com.lucasdss.ftpmusic.app.data.cache.CacheSpanState
+import com.lucasdss.ftpmusic.app.data.cache.StickyUnplayableRegistry
 
 /**
  * N11-2 (2026-11-01): a `Source error` is not self-describing.
@@ -257,3 +259,89 @@ internal fun chooseErrorSkipAction(
     circuitTripped -> ErrorSkipAction.CIRCUIT_STOP
     else -> baseAction
 }
+
+/**
+ * Sticky unplayable for queue excision / Previous walk.
+ *
+ * Narrower than prefetch [com.lucasdss.ftpmusic.app.data.cache.DownloadManager.isTerminalFailed]:
+ * bare first-hit 404 stays seek-only; `3003`/`4003` with a PLAYABLE span stays UNKNOWN.
+ */
+internal fun isStickyUnplayable(
+    errorCode: Int,
+    span: CacheSpanState,
+    hasFailedCt: Boolean,
+): Boolean {
+    if (hasFailedCt) return true
+    if (errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE) return true
+    if (errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+        errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+    ) {
+        return span == CacheSpanState.NONE
+    }
+    return false
+}
+
+/**
+ * Walk back from [fromIndex] to the nearest non-sticky neighbor.
+ * Returns null when every prior item is sticky (or [fromIndex] is 0).
+ */
+internal fun findPreviousPlayableIndex(
+    fromIndex: Int,
+    mediaItemCount: Int,
+    mediaIdAt: (Int) -> String?,
+    isStickyId: (String) -> Boolean,
+): Int? {
+    if (fromIndex <= 0 || mediaItemCount <= 0) return null
+    var i = (fromIndex - 1).coerceAtMost(mediaItemCount - 1)
+    while (i >= 0) {
+        val id = mediaIdAt(i)
+        if (id == null || !isStickyId(id)) return i
+        i--
+    }
+    return null
+}
+
+/**
+ * Walk forward from [fromIndex] (inclusive) to the nearest non-sticky neighbor.
+ * Returns null when none remain.
+ */
+internal fun findNextPlayableIndex(
+    fromIndex: Int,
+    mediaItemCount: Int,
+    mediaIdAt: (Int) -> String?,
+    isStickyId: (String) -> Boolean,
+): Int? {
+    if (mediaItemCount <= 0) return null
+    var i = fromIndex.coerceIn(0, mediaItemCount - 1)
+    while (i < mediaItemCount) {
+        val id = mediaIdAt(i)
+        if (id == null || !isStickyId(id)) return i
+        i++
+    }
+    return null
+}
+
+/**
+ * Sync Previous for notification / control paths: seek to the nearest prior
+ * non-sticky MediaItem. Falls back to [Player.seekToPreviousMediaItem] when
+ * the immediate previous is already playable or no walk is needed.
+ */
+internal fun seekToPreviousPlayable(
+    player: Player,
+    isStickyId: (String) -> Boolean = { StickyUnplayableRegistry.contains(it) },
+) {
+    val from = player.currentMediaItemIndex
+    val count = player.mediaItemCount
+    val target = findPreviousPlayableIndex(
+        fromIndex = from,
+        mediaItemCount = count,
+        mediaIdAt = { i -> runCatching { player.getMediaItemAt(i).mediaId }.getOrNull() },
+        isStickyId = isStickyId,
+    )
+    when {
+        target == null -> Unit // stay; nowhere playable behind
+        target == from - 1 -> player.seekToPreviousMediaItem()
+        else -> player.seekTo(target, 0L)
+    }
+}
+
