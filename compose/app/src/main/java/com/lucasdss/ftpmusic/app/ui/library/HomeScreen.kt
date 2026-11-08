@@ -108,6 +108,7 @@ fun HomeScreen(
                 is HomeCoverEditTarget.Genre -> CollectionCoverSubject.GENRE
             },
             collectionName = target.title,
+            dominantGenre = (target as? HomeCoverEditTarget.Mix)?.dominantGenre,
             onLibraryCover = { id ->
                 when (target) {
                     is HomeCoverEditTarget.Mix -> viewModel.setMixFixedCoverFromLibrary(target.id, id)
@@ -306,6 +307,7 @@ fun HomeScreen(
                                                 id = mix.id,
                                                 title = mix.name,
                                                 hasFixedCover = mix.fixedCoverKind != null,
+                                                dominantGenre = mix.recipeGenres.firstOrNull { it.isNotBlank() },
                                             )
                                         },
                                         modifier = Modifier.semantics { testTag = "daily_mix_card_${mix.id}" },
@@ -893,8 +895,12 @@ private sealed class HomeCoverEditTarget {
     abstract val title: String
     abstract val hasFixedCover: Boolean
 
-    data class Mix(val id: Long, override val title: String, override val hasFixedCover: Boolean) :
-        HomeCoverEditTarget()
+    data class Mix(
+        val id: Long,
+        override val title: String,
+        override val hasFixedCover: Boolean,
+        val dominantGenre: String? = null,
+    ) : HomeCoverEditTarget()
 
     data class Playlist(val id: String, override val title: String, override val hasFixedCover: Boolean) :
         HomeCoverEditTarget()
@@ -906,7 +912,13 @@ private sealed class HomeCoverEditTarget {
 private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
     save = { target ->
         when (target) {
-            is HomeCoverEditTarget.Mix -> listOf("mix", target.id, target.title, target.hasFixedCover)
+            is HomeCoverEditTarget.Mix -> listOf(
+                "mix",
+                target.id,
+                target.title,
+                target.hasFixedCover,
+                target.dominantGenre.orEmpty(),
+            )
             is HomeCoverEditTarget.Playlist -> listOf("pl", target.id, target.title, target.hasFixedCover)
             is HomeCoverEditTarget.Genre -> listOf("genre", target.name, target.title, target.hasFixedCover)
             null -> emptyList()
@@ -919,6 +931,7 @@ private val HomeCoverEditTargetSaver = listSaver<HomeCoverEditTarget?, Any>(
                 id = (list[1] as Number).toLong(),
                 title = list[2] as String,
                 hasFixedCover = list[3] as Boolean,
+                dominantGenre = (list.getOrNull(4) as? String)?.takeIf { it.isNotBlank() },
             )
 
             "pl" -> HomeCoverEditTarget.Playlist(

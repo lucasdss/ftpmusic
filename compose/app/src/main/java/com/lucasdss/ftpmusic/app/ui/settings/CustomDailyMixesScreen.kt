@@ -877,7 +877,7 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
         hasFixedCover = editor.fixedCoverKind != null && !editor.clearFixedCover,
         subject = CollectionCoverSubject.MIX,
         collectionName = editor.name.ifBlank { "Mix" },
-        dominantGenre = editor.genres.firstOrNull(),
+        dominantGenre = editor.genres.firstOrNull { it.isNotBlank() },
         onLibraryCover = viewModel::setFixedCoverFromLibrary,
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
         onSavedCover = viewModel::setFixedCoverFromSaved,
@@ -903,7 +903,7 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
                 derivedCoverArtIds = emptyList(),
                 decodeSize = 72.dp,
                 subject = CollectionCoverSubject.MIX,
-                dominantGenre = editor.genres.firstOrNull(),
+                dominantGenre = editor.genres.firstOrNull { it.isNotBlank() },
                 contentDescription = "Mix cover. Long-press to edit.",
                 modifier = Modifier
                     .size(72.dp)
