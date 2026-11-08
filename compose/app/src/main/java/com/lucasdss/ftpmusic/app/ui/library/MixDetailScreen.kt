@@ -1170,15 +1170,14 @@ class MixDetailViewModel @Inject constructor(
     /**
      * Nav-pop / dispose: activate pending so re-enter shows the new list.
      * Idempotent; skips config-change double-fire via [leaveActivated].
+     * Uses process-scoped [DailyMixRepository.activatePendingDetached] so the
+     * Room transaction is not cancelled when this ViewModel is cleared on pop.
      */
     fun onLeaveActivatePending() {
         val mixId = loadedMixId ?: return
         if (leaveActivated) return
         leaveActivated = true
-        // Fire-and-forget; ViewModel may be clearing.
-        viewModelScope.launch {
-            dailyMixRepository.activatePending(mixId)
-        }
+        dailyMixRepository.activatePendingDetached(mixId)
     }
 
     private suspend fun refreshUpdateBanner(mixId: Long) {

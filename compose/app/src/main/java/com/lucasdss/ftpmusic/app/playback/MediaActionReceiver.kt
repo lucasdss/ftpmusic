@@ -58,8 +58,9 @@ class MediaActionReceiver : BroadcastReceiver() {
             }
 
             Player.COMMAND_SEEK_TO_PREVIOUS.toLong() -> {
-                // Same sticky walk as PlaybackControl.SKIP_PREV (notification Previous).
-                seekToPreviousPlayable(player)
+                // Same await-warm-then-seek contract as PlaybackControl.SKIP_PREV
+                // when MediaService has registered StickyPreviousBridge.
+                StickyPreviousBridge.requestPrevious(player)
             }
 
             else -> {

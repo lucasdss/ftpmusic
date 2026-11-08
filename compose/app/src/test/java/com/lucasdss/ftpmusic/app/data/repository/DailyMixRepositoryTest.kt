@@ -24,6 +24,7 @@ import io.mockk.slot
 import io.mockk.unmockkObject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,6 +44,7 @@ class DailyMixRepositoryTest {
     private val coverStore: CollectionCoverStore = mockk(relaxed = true)
     private val userCoverLibrary: com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary =
         mockk(relaxed = true)
+    private val testDispatcher = UnconfinedTestDispatcher()
     private val repository = DailyMixRepository(
         customMixDao,
         genreMixDao,
@@ -52,7 +54,11 @@ class DailyMixRepositoryTest {
         mixCacheCoordinator,
         coverStore,
         userCoverLibrary,
-        UnconfinedTestDispatcher(),
+        testDispatcher,
+        // Passthrough: production wires Room withTransaction via DatabaseModule.
+        object : DbTransactionRunner {
+            override suspend fun <T> run(block: suspend () -> T): T = block()
+        },
     )
 
     private val today = java.time.LocalDate.now().toString()
@@ -1152,6 +1158,62 @@ class DailyMixRepositoryTest {
         coEvery { genreMixDao.getDailyMixTrackIds(20) } returns listOf("t9")
         assertTrue(repository.activatePending(5L))
         coVerify { customMixDao.updateActivationPointers(5L, 20, null) }
+    }
+
+    @Test
+    fun `activatePendingDetached still activates after caller returns`() = runTest(testDispatcher) {
+        seeded()
+        coEvery { customMixDao.getById(5L) } returns mixEntity(
+            id = 5L,
+            activeDailyMixId = 10,
+            pendingDailyMixId = 20,
+        )
+        coEvery { genreMixDao.getDailyMixById(20) } returns DailyMixEntity(
+            id = 20,
+            date = today,
+            mixId = 5L,
+            version = 2,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        coEvery { genreMixDao.getDailyMixTrackIds(20) } returns listOf("t9")
+        repository.activatePendingDetached(5L)
+        advanceUntilIdle()
+        coVerify { customMixDao.updateActivationPointers(5L, 20, null) }
+    }
+
+    @Test
+    fun `activateDailyMix rolls back when transaction block throws`() = runTest {
+        seeded()
+        val recipe = mixEntity(id = 5L, activeDailyMixId = 10, pendingDailyMixId = 20)
+        coEvery { customMixDao.getById(5L) } returns recipe
+        coEvery { genreMixDao.getDailyMixById(20) } returns DailyMixEntity(
+            id = 20,
+            date = today,
+            mixId = 5L,
+            version = 2,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        val failing = DailyMixRepository(
+            customMixDao,
+            genreMixDao,
+            trackDao,
+            metadataDao,
+            listenEventDao,
+            mixCacheCoordinator,
+            coverStore,
+            userCoverLibrary,
+            UnconfinedTestDispatcher(),
+            object : DbTransactionRunner {
+                override suspend fun <T> run(block: suspend () -> T): T = error("boom")
+            },
+        )
+        try {
+            failing.activateDailyMix(5L, 20)
+            org.junit.Assert.fail("expected throw")
+        } catch (e: IllegalStateException) {
+            assertEquals("boom", e.message)
+        }
+        coVerify(exactly = 0) { mixCacheCoordinator.onSourceChanged(any(), any()) }
     }
 
     @Test

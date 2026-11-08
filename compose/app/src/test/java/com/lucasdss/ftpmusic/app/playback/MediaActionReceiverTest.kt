@@ -5,6 +5,8 @@ import androidx.media3.common.Player
 import com.lucasdss.ftpmusic.app.data.cache.StickyUnplayableRegistry
 import io.mockk.*
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -56,6 +58,7 @@ class MediaActionReceiverTest {
 
     @Test
     fun `SEEK_TO_PREVIOUS dispatches correctly`() {
+        StickyPreviousBridge.handler = null
         every { player.currentMediaItemIndex } returns 1
         every { player.mediaItemCount } returns 2
         every { player.getMediaItemAt(0) } returns mediaItem("good")
@@ -68,6 +71,7 @@ class MediaActionReceiverTest {
 
     @Test
     fun `SEEK_TO_PREVIOUS walks past sticky registry neighbor`() {
+        StickyPreviousBridge.handler = null
         StickyUnplayableRegistry.clearForTests()
         StickyUnplayableRegistry.mark("bad")
         every { player.currentMediaItemIndex } returns 2
@@ -81,6 +85,15 @@ class MediaActionReceiverTest {
         verify(exactly = 1) { player.seekTo(0, 0L) }
         verify(exactly = 0) { player.seekToPreviousMediaItem() }
         StickyUnplayableRegistry.clearForTests()
+    }
+
+    @Test
+    fun `SEEK_TO_PREVIOUS uses StickyPreviousBridge when registered`() {
+        var seen: Player? = null
+        StickyPreviousBridge.handler = { seen = it }
+        receiver.dispatchCommand(player, Player.COMMAND_SEEK_TO_PREVIOUS.toLong())
+        assertSame(player, seen)
+        StickyPreviousBridge.handler = null
     }
 
     private fun mediaItem(id: String): androidx.media3.common.MediaItem =

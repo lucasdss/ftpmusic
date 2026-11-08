@@ -2,6 +2,7 @@ package com.lucasdss.ftpmusic.app.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.withTransaction
 import com.lucasdss.ftpmusic.app.data.db.AppDatabase
 import com.lucasdss.ftpmusic.app.data.db.ArtPaletteCacheDao
 import com.lucasdss.ftpmusic.app.data.db.CacheQueueDao
@@ -26,6 +27,7 @@ import com.lucasdss.ftpmusic.app.data.db.TrackWaveformDao
 import com.lucasdss.ftpmusic.app.data.db.UserCoverImageDao
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
+import com.lucasdss.ftpmusic.app.data.repository.DbTransactionRunner
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder
 import dagger.Module
@@ -47,6 +49,13 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
+
+    @Provides
+    @Singleton
+    fun provideDbTransactionRunner(db: AppDatabase): DbTransactionRunner =
+        object : DbTransactionRunner {
+            override suspend fun <T> run(block: suspend () -> T): T = db.withTransaction(block)
+        }
 
     @Suppress("SpreadOperator")
     @Provides

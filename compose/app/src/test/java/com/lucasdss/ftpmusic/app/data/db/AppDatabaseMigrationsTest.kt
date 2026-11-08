@@ -654,6 +654,34 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 68 to 69 adds sticky daily mix columns and indexes`() {
+        run(AppDatabase.MIGRATION_68_69)
+        verify { db.execSQL(match { it.contains("custom_mixes") && it.contains("active_daily_mix_id") }) }
+        verify { db.execSQL(match { it.contains("custom_mixes") && it.contains("pending_daily_mix_id") }) }
+        verify { db.execSQL(match { it.contains("daily_mix") && it.contains("version") }) }
+        verify { db.execSQL(match { it.contains("daily_mix") && it.contains("status") }) }
+        verify { db.execSQL(match { it.contains("UPDATE daily_mix") && it.contains("SET version") }) }
+        verify { db.execSQL(match { it.contains("UPDATE custom_mixes") && it.contains("active_daily_mix_id") }) }
+        verify { db.execSQL("DROP INDEX IF EXISTS idx_daily_mix_date_mix_id") }
+        verify { db.execSQL(match { it.contains("idx_daily_mix_mix_version") }) }
+        verify { db.execSQL(match { it.contains("idx_daily_mix_mix_status") }) }
+    }
+
+    @Test
+    fun `migration 69 to 70 creates user cover and genre cover tables`() {
+        run(AppDatabase.MIGRATION_69_70)
+        verify {
+            db.execSQL(match { it.contains("user_cover_images") && it.contains("CREATE TABLE") })
+        }
+        verify {
+            db.execSQL(match { it.contains("index_user_cover_images_created_at_ms") })
+        }
+        verify {
+            db.execSQL(match { it.contains("genre_covers") && it.contains("CREATE TABLE") })
+        }
+    }
+
+    @Test
     fun `migration 70 to 71 creates art_palette_cache`() {
         run(AppDatabase.MIGRATION_70_71)
         verify {

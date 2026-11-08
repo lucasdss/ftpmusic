@@ -1,7 +1,9 @@
 package com.lucasdss.ftpmusic.app.playback
 
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import com.lucasdss.ftpmusic.app.data.cache.CacheSpanState
+import com.lucasdss.ftpmusic.app.data.cache.StickyUnplayableRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -525,5 +527,43 @@ class SourceErrorClassificationTest {
                 isStickyId = { it == "bad" },
             ),
         )
+    }
+
+    @Test
+    fun `priorMediaIds snapshots only behind current`() {
+        assertEquals(
+            listOf("a", "b"),
+            priorMediaIds(2) { listOf("a", "b", "c")[it] },
+        )
+        assertEquals(emptyList<String>(), priorMediaIds(0) { "x" })
+    }
+
+    @Test
+    fun `warmStickyCtRegistry marks failed_ct from empty process registry`() = kotlinx.coroutines.test.runTest {
+        StickyUnplayableRegistry.clearForTests()
+        val stickyInRoom = setOf("bad")
+        warmStickyCtRegistry(listOf("good", "bad", "cur")) { stickyInRoom.contains(it) }
+        assertTrue(StickyUnplayableRegistry.contains("bad"))
+        assertFalse(StickyUnplayableRegistry.contains("good"))
+        StickyUnplayableRegistry.clearForTests()
+    }
+
+    @Test
+    fun `StickyPreviousBridge falls back to sync seek when no handler`() {
+        StickyUnplayableRegistry.clearForTests()
+        StickyPreviousBridge.handler = null
+        StickyUnplayableRegistry.mark("bad")
+        val player = io.mockk.mockk<Player>(relaxed = true)
+        io.mockk.every { player.currentMediaItemIndex } returns 2
+        io.mockk.every { player.mediaItemCount } returns 3
+        io.mockk.every { player.getMediaItemAt(0) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("good").build()
+        io.mockk.every { player.getMediaItemAt(1) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("bad").build()
+        io.mockk.every { player.getMediaItemAt(2) } returns
+            androidx.media3.common.MediaItem.Builder().setMediaId("cur").build()
+        StickyPreviousBridge.requestPrevious(player)
+        io.mockk.verify { player.seekTo(0, 0L) }
+        StickyUnplayableRegistry.clearForTests()
     }
 }

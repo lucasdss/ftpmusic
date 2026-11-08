@@ -345,3 +345,51 @@ internal fun seekToPreviousPlayable(
     }
 }
 
+/** Default Room warm budget before Previous falls back to registry-only walk. */
+internal const val STICKY_PREV_WARM_TIMEOUT_MS = 500L
+
+/**
+ * Snapshot mediaIds strictly behind [currentIndex] for sticky-CT Room warm.
+ */
+internal fun priorMediaIds(
+    currentIndex: Int,
+    mediaIdAt: (Int) -> String?,
+): List<String> {
+    if (currentIndex <= 0) return emptyList()
+    return (0 until currentIndex).mapNotNull { mediaIdAt(it) }
+}
+
+/**
+ * Mark process-local sticky ids from a suspend Room probe. Failures / timeout
+ * are caller-owned; this never throws out of [isStickyCt] exceptions.
+ */
+internal suspend fun warmStickyCtRegistry(
+    priorIds: List<String>,
+    isStickyCt: suspend (String) -> Boolean,
+) {
+    for (id in priorIds) {
+        if (id.isBlank()) continue
+        if (runCatching { isStickyCt(id) }.getOrDefault(false)) {
+            StickyUnplayableRegistry.mark(id)
+        }
+    }
+}
+
+/**
+ * Process-local bridge: [MediaService] registers an await-warm-then-seek handler
+ * so notification Previous shares the same contract as in-app SKIP_PREV.
+ */
+object StickyPreviousBridge {
+    @Volatile
+    var handler: ((Player) -> Unit)? = null
+
+    fun requestPrevious(player: Player) {
+        val h = handler
+        if (h != null) {
+            h(player)
+        } else {
+            seekToPreviousPlayable(player)
+        }
+    }
+}
+

@@ -2309,6 +2309,7 @@ class MediaService : MediaLibraryService() {
             )
             provider.onCustomAction = { action -> handleReactionCustomAction(action) }
             ReactionCommandBridge.handler = { action -> handleReactionCustomAction(action) }
+            StickyPreviousBridge.handler = { p -> requestStickyPrevious(p) }
             notificationProvider = provider
             setMediaNotificationProvider(provider)
             wireReactionSurfaceUpdates()
@@ -2618,6 +2619,7 @@ class MediaService : MediaLibraryService() {
         CastButtonState.onConnectRequested = null
         CastButtonState.onConnectCancelled = null
         ReactionCommandBridge.handler = null
+        StickyPreviousBridge.handler = null
         notificationProvider?.onCustomAction = null
         try {
             btWarmAudioDeviceMonitor?.stop()
@@ -5176,6 +5178,26 @@ class MediaService : MediaLibraryService() {
     }
 
     /**
+     * Previous past sticky CT corpses after process death: warm the process
+     * registry from Room (bounded), then walk on the main thread. Shared by
+     * in-app SKIP_PREV and notification [StickyPreviousBridge].
+     */
+    private fun requestStickyPrevious(player: Player) {
+        val from = player.currentMediaItemIndex
+        val priorIds = priorMediaIds(from) { i ->
+            runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()
+        }
+        scope.launch {
+            withTimeoutOrNull(STICKY_PREV_WARM_TIMEOUT_MS) {
+                warmStickyCtRegistry(priorIds) { id -> downloadManager.isStickyCt(id) }
+            }
+            withContext(Dispatchers.Main.immediate) {
+                seekToPreviousPlayable(player)
+            }
+        }
+    }
+
+    /**
      * Arm the sleep timer at [endMs] (epoch ms). Service-owned enforcement:
      * cancels any prior job, then pauses playback and clears the persisted
      * end timestamp when the deadline hits. An already-expired deadline is
@@ -5323,21 +5345,7 @@ class MediaService : MediaLibraryService() {
                         seekToPreviousPlayable(player)
                     }
                 } else {
-                    // Warm registry from Room for items behind current, then walk sync.
-                    val from = player.currentMediaItemIndex
-                    val priorIds = (0 until from).mapNotNull { i ->
-                        runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()
-                    }
-                    if (priorIds.isNotEmpty()) {
-                        scope.launch {
-                            for (id in priorIds) {
-                                if (runCatching { downloadManager.isStickyCt(id) }.getOrDefault(false)) {
-                                    StickyUnplayableRegistry.mark(id)
-                                }
-                            }
-                        }
-                    }
-                    seekToPreviousPlayable(player)
+                    requestStickyPrevious(player)
                 }
             }
 

@@ -23,6 +23,9 @@ import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -63,6 +66,10 @@ data class CustomMix(
  * hand-off. All generation paths (Home lazy load, sync screen, detail
  * refresh) go through here so the rules live in one place.
  */
+interface DbTransactionRunner {
+    suspend fun <T> run(block: suspend () -> T): T
+}
+
 @Singleton
 class DailyMixRepository @Inject constructor(
     private val customMixDao: CustomMixDao,
@@ -74,7 +81,11 @@ class DailyMixRepository @Inject constructor(
     private val coverStore: CollectionCoverStore,
     private val userCoverLibrary: UserCoverLibrary,
     private val ioDispatcher: CoroutineDispatcher,
+    private val dbTransaction: DbTransactionRunner,
 ) {
+    /** Survives ViewModel clear so leave→activate is not cancelled by nav-pop. */
+    private val processScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
     companion object {
         const val MAX_MIXES = 20
         const val NAME_MAX = 32
@@ -614,6 +625,21 @@ class DailyMixRepository @Inject constructor(
         }
     }
 
+    /**
+     * Fire-and-forget activate for MixDetail leave/nav-pop. Uses [processScope]
+     * so ViewModel clear cannot cancel the Room transaction.
+     */
+    fun activatePendingDetached(mixId: Long) {
+        processScope.launch {
+            runCatching { activatePending(mixId) }.onFailure { t ->
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-dailymix",
+                    "activatePendingDetached failed mixId=$mixId: ${t.message}",
+                )
+            }
+        }
+    }
+
     /** Startup / pre-gen reconciliation for orphan building/ready rows. */
     suspend fun reconcileOrphans() = generationMutex.withLock {
         withContext(ioDispatcher) { reconcileOrphansLocked() }
@@ -630,22 +656,26 @@ class DailyMixRepository @Inject constructor(
         if (row.status == DailyMixStatus.BUILDING) return false
         val recipe = customMixDao.getById(mixId) ?: return false
         val prevActive = recipe.activeDailyMixId
-        if (prevActive != null && prevActive != dailyMixId) {
-            genreMixDao.updateDailyMixStatus(prevActive, DailyMixStatus.SUPERSEDED)
+        // Status + pointers + cleanup must commit atomically; failure rolls back
+        // so the previous active pointer remains valid.
+        val ids = dbTransaction.run {
+            if (prevActive != null && prevActive != dailyMixId) {
+                genreMixDao.updateDailyMixStatus(prevActive, DailyMixStatus.SUPERSEDED)
+            }
+            if (row.status == DailyMixStatus.SUPERSEDED) {
+                genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
+            } else if (row.status != DailyMixStatus.READY) {
+                genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
+            }
+            customMixDao.updateActivationPointers(mixId, dailyMixId, null)
+            // Keep last superseded for anti-repeat; drop older.
+            val keep = buildList {
+                add(dailyMixId)
+                if (prevActive != null && prevActive != dailyMixId) add(prevActive)
+            }
+            genreMixDao.deleteSupersededExcept(mixId, keep)
+            trackIds ?: genreMixDao.getDailyMixTrackIds(dailyMixId)
         }
-        if (row.status == DailyMixStatus.SUPERSEDED) {
-            genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
-        } else if (row.status != DailyMixStatus.READY) {
-            genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
-        }
-        customMixDao.updateActivationPointers(mixId, dailyMixId, null)
-        // Keep last superseded for anti-repeat; drop older.
-        val keep = buildList {
-            add(dailyMixId)
-            if (prevActive != null && prevActive != dailyMixId) add(prevActive)
-        }
-        genreMixDao.deleteSupersededExcept(mixId, keep)
-        val ids = trackIds ?: genreMixDao.getDailyMixTrackIds(dailyMixId)
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-dailymix",
             "activate mixId=$mixId v=${row.version} prev=$prevActive",

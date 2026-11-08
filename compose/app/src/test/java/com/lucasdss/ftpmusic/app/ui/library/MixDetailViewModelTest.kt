@@ -245,19 +245,19 @@ class MixDetailViewModelTest {
         assertFalse(viewModel.updateAvailable.value)
     }
 
-    @Test fun `onLeaveActivatePending activates pending once`() = runTest(testDispatcher) {
+    @Test fun `onLeaveActivatePending activates pending once via detached scope`() = runTest(testDispatcher) {
         coEvery { dailyMixRepository.getActiveDailyMix(5L) } returns activeRow(id = 1)
         coEvery { genreMixDao.getDailyMixTrackIds(1) } returns listOf("t1")
         coEvery { trackDao.getTracksByIds(listOf("t1")) } returns listOf(te("t1"))
         viewModel.loadMix(5L)
         advanceUntilIdle()
 
-        coEvery { dailyMixRepository.activatePending(5L) } returns true
+        every { dailyMixRepository.activatePendingDetached(5L) } just Runs
         viewModel.onLeaveActivatePending()
         viewModel.onLeaveActivatePending()
-        advanceUntilIdle()
 
-        coVerify(exactly = 1) { dailyMixRepository.activatePending(5L) }
+        verify(exactly = 1) { dailyMixRepository.activatePendingDetached(5L) }
+        coVerify(exactly = 0) { dailyMixRepository.activatePending(any()) }
     }
 
     // ── Playback / queue / download actions (coverage) ────────────────────
