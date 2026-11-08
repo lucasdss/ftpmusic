@@ -140,6 +140,7 @@ fun MixDetailScreen(
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
         onSavedCover = viewModel::setFixedCoverFromSaved,
         onBundledCover = viewModel::setFixedCoverFromBundled,
+        onDerivedCover = viewModel::setFixedCoverFromDerived,
         onClear = viewModel::clearFixedCover,
         onLoadFailed = viewModel::notifyCoverCropLoadFailed,
         onExportFailed = viewModel::notifyCoverCropExportFailed,
@@ -804,6 +805,17 @@ class MixDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(
                 fixedCoverKind = CollectionCoverKind.BUNDLED,
                 fixedCoverValue = assetPath,
+            )
+        }
+    }
+
+    fun setFixedCoverFromDerived() {
+        val id = loadedMixId ?: return
+        viewModelScope.launch {
+            dailyMixRepository.setFixedCover(id, CollectionCoverKind.DERIVED, "montage")
+            _state.value = _state.value.copy(
+                fixedCoverKind = CollectionCoverKind.DERIVED,
+                fixedCoverValue = "montage",
             )
         }
     }

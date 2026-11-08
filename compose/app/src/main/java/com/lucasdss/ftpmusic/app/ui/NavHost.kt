@@ -96,9 +96,13 @@ import kotlinx.coroutines.withContext
  * Extracted for testability — unit tests verify each decision branch.
  */
 object SplashRouter {
-    fun resolveRoute(hasCredentials: Boolean, albumCount: Int): String = when {
+    fun resolveRoute(
+        hasCredentials: Boolean,
+        albumCount: Int,
+        drainIncomplete: Boolean = false,
+    ): String = when {
         !hasCredentials -> "connect"
-        albumCount == 0 -> syncingRoute("home")
+        albumCount == 0 || drainIncomplete -> syncingRoute("home")
         else -> "home"
     }
 }
@@ -245,7 +249,7 @@ fun FtpmusicNavHost() {
     val tabs = BottomNavItems
     // ADR-0062: selection ownership independent of flat detail routes (mix/, album/, …).
     var activeBottomTab by rememberSaveable { mutableStateOf("home") }
-    val showBottomBar = currentRoute != "connect" // hide on login screen
+    val showBottomBar = SyncNavChrome.showBottomBar(currentRoute)
     val isFullPlayer = currentRoute == "nowplaying"
     val isLoginScreen = currentRoute == "connect"
     val showHeader = showAppHeaderForRoute(currentRoute)
@@ -561,7 +565,27 @@ fun FtpmusicNavHost() {
                                 MetadataEntryPoint::class.java,
                             ).cachedMetadataDao()
                             val albumCount = withContext(Dispatchers.IO) { metadataDao.albumCount() }
-                            val targetRoute = SplashRouter.resolveRoute(hasCredentials, albumCount)
+                            val drainIncomplete = withContext(Dispatchers.IO) {
+                                val prefs = context.applicationContext.getSharedPreferences(
+                                    com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker.PREFS_NAME,
+                                    android.content.Context.MODE_PRIVATE,
+                                )
+                                com.lucasdss.ftpmusic.app.data.db.LibraryDrainState.isDrainIncomplete(
+                                    prefs.getLong(
+                                        com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker.PREF_LAST_DRAIN_COMPLETE_MS,
+                                        0L,
+                                    ),
+                                    prefs.getString(
+                                        com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker.PREF_LAST_SYNC_OUTCOME,
+                                        "",
+                                    ),
+                                )
+                            }
+                            val targetRoute = SplashRouter.resolveRoute(
+                                hasCredentials,
+                                albumCount,
+                                drainIncomplete = drainIncomplete,
+                            )
                             nav.navigate(targetRoute) { popUpTo("splash") { inclusive = true } }
                         }
                         Box(

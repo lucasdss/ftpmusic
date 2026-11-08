@@ -32,6 +32,7 @@ import com.lucasdss.ftpmusic.app.data.db.LibrarySyncMode
 import com.lucasdss.ftpmusic.app.data.db.LyricsCacheDao
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
+import com.lucasdss.ftpmusic.app.data.db.SyncExitGate
 import com.lucasdss.ftpmusic.app.data.db.SyncStatus
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
@@ -94,6 +95,14 @@ class SyncingViewModel @Inject constructor(
     private val _isError = MutableStateFlow(false)
     val isError: StateFlow<Boolean> = _isError.asStateFlow()
 
+    /** Soft-stop / incomplete drain — stay on screen; Continue skips mixes. */
+    private val _isPartial = MutableStateFlow(false)
+    val isPartial: StateFlow<Boolean> = _isPartial.asStateFlow()
+
+    /** Cellular dialog dismissed without starting sync — paused, not success. */
+    private val _isCancelled = MutableStateFlow(false)
+    val isCancelled: StateFlow<Boolean> = _isCancelled.asStateFlow()
+
     /** null = no dialog; FIRST_LOGIN / BLOCKED_LOCAL_ONLY for cellular gates. */
     private val _cellularWarn = MutableStateFlow<CellularSyncWarn?>(null)
     val cellularWarn: StateFlow<CellularSyncWarn?> = _cellularWarn.asStateFlow()
@@ -102,6 +111,7 @@ class SyncingViewModel @Inject constructor(
     private var syncJob: kotlinx.coroutines.Job? = null
     private var pendingUserTriggered: Boolean = false
     private var pendingRebuildOnly: Boolean = false
+    private var observedRunId: Long = 0L
 
     fun startSync(userTriggered: Boolean = false, rebuildOnly: Boolean = false) {
         pendingUserTriggered = userTriggered
@@ -134,13 +144,30 @@ class SyncingViewModel @Inject constructor(
 
     fun cancelCellularSync() {
         _cellularWarn.value = null
+        _isCancelled.value = true
+        _isError.value = false
+        _isPartial.value = false
+        _isDone.value = false
+    }
+
+    /** Soft-stop / cancelled Continue — leave without claiming success or rebuilding mixes. */
+    fun continueIncomplete() {
+        _isPartial.value = false
+        _isCancelled.value = false
         _isDone.value = true
+        _isError.value = false
+        // Mark as cancelled-path for UI toast suppression via isPartial flag replay:
+        // callers use continueIncompleteOnly onComplete without success toast.
+        _status.update { it.copy(phase = "incomplete_continue", isRunning = false) }
     }
 
     private fun beginSync(userTriggered: Boolean, rebuildOnly: Boolean, allowCellularOverride: Boolean) {
         syncJob?.cancel()
         _isDone.value = false
         _isError.value = false
+        _isPartial.value = false
+        _isCancelled.value = false
+        observedRunId = 0L
         syncJob = viewModelScope.launch {
             val existing = metadataDao.albumCount()
             // rebuildOnly: just regenerate Daily Mixes, no server sync
@@ -157,6 +184,8 @@ class SyncingViewModel @Inject constructor(
                     genres = genreMixDao.getTopGenres().size,
                     phase = "complete",
                     isRunning = false,
+                    runId = 1L,
+                    drainComplete = true,
                 )
                 startElapsedTimer()
                 generateDailyMixesSync(manual = true)
@@ -164,112 +193,52 @@ class SyncingViewModel @Inject constructor(
                 elapsedJob?.cancel()
                 return@launch
             }
-            // User-triggered full sync: re-sync from server, force track re-fetch
-            if (userTriggered) {
-                val mixTotal = dailyMixRepository.getAll().size
-                _status.value = SyncStatus(
-                    albumsTotal = 0,
-                    artistsTotal = 0,
-                    genresTotal = 0,
-                    albumTracksProgressTotal = 0,
-                    dailyMixTotal = mixTotal,
-                    phase = "albums",
-                    isRunning = true,
-                )
-                startElapsedTimer()
-                // Retry loop: if CAS fails (another sync running), wait and retry
-                // until our force-resync starts. The user explicitly requested this.
-                // Max 3 retries — if something keeps the CAS slot indefinitely, give up.
-                var retries = 0
-                var forceJob: kotlinx.coroutines.Job? = null
-                while (forceJob == null && retries < 3) {
-                    forceJob = metadataSyncWorker.syncNowAsync(
-                        forceTrackResync = true,
-                        allowCellularOverride = allowCellularOverride,
-                    )
-                    if (forceJob == null) {
-                        metadataSyncWorker.status.first { !it.isRunning }
-                        retries++
-                    }
-                }
-                if (forceJob == null) {
-                    // ADR-0106: never leave Syncing hung (CAS fail / cellular skip /
-                    // process-death lost override). Surface error so UI can exit.
-                    elapsedJob?.cancel()
-                    _isError.value = true
-                    _isDone.value = true
-                    return@launch
-                }
-                metadataSyncWorker.status.collect { s ->
-                    // Merge worker fields into our status — preserve elapsedMs
-                    // (owned by the timer) and dailyMixTotal (set by us). Using
-                    // update{} reads the current state, so the timer's live
-                    // elapsedMs is carried forward instead of overwritten by
-                    // the worker's stale phase-boundary elapsed value.
-                    _status.update {
-                        it.copy(
-                            albums = s.albums, albumsTotal = s.albumsTotal,
-                            artists = s.artists, artistsTotal = s.artistsTotal,
-                            genres = s.genres, genresTotal = s.genresTotal,
-                            albumTracksProgress = s.albumTracksProgress,
-                            albumTracksProgressTotal = s.albumTracksProgressTotal,
-                            trackCount = s.trackCount,
-                            phase = s.phase, isRunning = s.isRunning,
-                            dailyMixTotal = mixTotal,
-                        )
-                    }
-                    if (!s.isRunning && (s.phase == "complete" || s.phase == "error")) {
-                        if (s.phase == "complete") {
-                            appContext.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE).edit()
-                                .putInt("sync_albums", s.albums)
-                                .putInt("sync_artists", s.artists)
-                                .putInt("sync_tracks", s.trackCount)
-                                .putInt("sync_genres", s.genres)
-                                .apply()
-                            startDailyMixPhase()
-                            generateDailyMixesSync()
-                        } else {
-                            _isError.value = true
-                        }
-                        _isDone.value = true
-                        elapsedJob?.cancel()
-                        return@collect
-                    }
-                }
-                return@launch
-            }
-            // First login or no metadata: full sync. Try CAS first — if another
-            // sync is already running, observe its status instead of starting a new one.
+            val mixTotal = dailyMixRepository.getAll().size
             _status.value = SyncStatus(
                 albumsTotal = 0,
                 artistsTotal = 0,
                 genresTotal = 0,
                 albumTracksProgressTotal = 0,
-                dailyMixTotal = dailyMixRepository.getAll().size,
+                dailyMixTotal = mixTotal,
                 phase = "albums",
                 isRunning = true,
             )
             startElapsedTimer()
-            metadataSyncWorker.syncNowAsync(
-                mode = LibrarySyncMode.FULL,
-                allowCellularOverride = allowCellularOverride,
-            )
-            metadataSyncWorker.status.collect { s ->
-                // Merge worker fields into our status — preserve dailyMixTotal
-                // (set by us) and dailyMixProgress (set during generation).
-                _status.update {
-                    it.copy(
-                        albums = s.albums, albumsTotal = s.albumsTotal,
-                        artists = s.artists, artistsTotal = s.artistsTotal,
-                        genres = s.genres, genresTotal = s.genresTotal,
-                        albumTracksProgress = s.albumTracksProgress,
-                        albumTracksProgressTotal = s.albumTracksProgressTotal,
-                        trackCount = s.trackCount,
-                        phase = s.phase, isRunning = s.isRunning,
+            // Retry loop (ADR-0106) for both first-login and user-triggered —
+            // null syncNowAsync must not latch a stale prior phase=complete.
+            var retries = 0
+            var job: kotlinx.coroutines.Job? = null
+            while (job == null && retries < 3) {
+                job = if (userTriggered) {
+                    metadataSyncWorker.syncNowAsync(
+                        forceTrackResync = true,
+                        allowCellularOverride = allowCellularOverride,
+                    )
+                } else {
+                    metadataSyncWorker.syncNowAsync(
+                        mode = LibrarySyncMode.FULL,
+                        allowCellularOverride = allowCellularOverride,
                     )
                 }
-                if (!s.isRunning && (s.phase == "complete" || s.phase == "error")) {
-                    if (s.phase == "complete") {
+                if (job == null) {
+                    metadataSyncWorker.status.first { !it.isRunning }
+                    retries++
+                }
+            }
+            if (job == null) {
+                elapsedJob?.cancel()
+                _isError.value = true
+                _isDone.value = true
+                return@launch
+            }
+            // Latch this run once the worker marks isRunning with a new runId.
+            val started = metadataSyncWorker.status.first { it.isRunning && it.runId > 0L }
+            observedRunId = started.runId
+            mergeWorkerStatus(started, mixTotal)
+            metadataSyncWorker.status.collect { s ->
+                mergeWorkerStatus(s, mixTotal)
+                when {
+                    SyncExitGate.shouldAutoComplete(s, observedRunId) -> {
                         appContext.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE).edit()
                             .putInt("sync_albums", s.albums)
                             .putInt("sync_artists", s.artists)
@@ -278,14 +247,40 @@ class SyncingViewModel @Inject constructor(
                             .apply()
                         startDailyMixPhase()
                         generateDailyMixesSync()
-                    } else {
-                        _isError.value = true
+                        _isDone.value = true
+                        elapsedJob?.cancel()
+                        return@collect
                     }
-                    _isDone.value = true
-                    elapsedJob?.cancel()
-                    return@collect
+                    SyncExitGate.isSoftStopped(s, observedRunId) -> {
+                        _isPartial.value = true
+                        elapsedJob?.cancel()
+                        return@collect
+                    }
+                    SyncExitGate.isErrorForRun(s, observedRunId) -> {
+                        _isError.value = true
+                        _isDone.value = true
+                        elapsedJob?.cancel()
+                        return@collect
+                    }
                 }
             }
+        }
+    }
+
+    private fun mergeWorkerStatus(s: SyncStatus, mixTotal: Int) {
+        _status.update {
+            it.copy(
+                albums = s.albums, albumsTotal = s.albumsTotal,
+                artists = s.artists, artistsTotal = s.artistsTotal,
+                genres = s.genres, genresTotal = s.genresTotal,
+                albumTracksProgress = s.albumTracksProgress,
+                albumTracksProgressTotal = s.albumTracksProgressTotal,
+                trackCount = s.trackCount,
+                phase = s.phase, isRunning = s.isRunning,
+                dailyMixTotal = mixTotal,
+                runId = s.runId,
+                drainComplete = s.drainComplete,
+            )
         }
     }
 
@@ -361,8 +356,15 @@ fun SyncingScreen(
     val status by viewModel.status.collectAsStateWithLifecycle()
     val isDone by viewModel.isDone.collectAsStateWithLifecycle()
     val isError by viewModel.isError.collectAsStateWithLifecycle()
+    val isPartial by viewModel.isPartial.collectAsStateWithLifecycle()
+    val isCancelled by viewModel.isCancelled.collectAsStateWithLifecycle()
     val cellularWarn by viewModel.cellularWarn.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // First-login: block system back (bottom bar also hidden on syncing*).
+    if (!userTriggered && !rebuildOnly) {
+        androidx.activity.compose.BackHandler(enabled = true) { /* no-op */ }
+    }
 
     if (cellularWarn != null) {
         AlertDialog(
@@ -410,20 +412,29 @@ fun SyncingScreen(
         )
     }
 
-    LaunchedEffect(isDone) {
+    LaunchedEffect(isDone, status.phase) {
         if (isDone) {
+            val incompleteContinue = status.phase == "incomplete_continue"
             if (userTriggered) {
                 Toast.makeText(
                     context,
-                    if (isError) "Sync failed — check connection" else "Sync complete",
+                    if (isError) {
+                        "Sync failed — check connection"
+                    } else if (incompleteContinue) {
+                        "Sync incomplete"
+                    } else {
+                        "Sync complete"
+                    },
                     Toast.LENGTH_SHORT,
                 ).show()
                 return@LaunchedEffect
             }
-            // First-login: never claim success on error; keep user on this screen
-            // with Retry/Continue (see below) instead of auto-navigating home.
             if (isError) {
                 Toast.makeText(context, "Sync failed — check connection", Toast.LENGTH_SHORT).show()
+                return@LaunchedEffect
+            }
+            if (incompleteContinue) {
+                onComplete()
                 return@LaunchedEffect
             }
             Toast.makeText(context, "Sync complete — navigating…", Toast.LENGTH_SHORT).show()
@@ -470,7 +481,7 @@ fun SyncingScreen(
             Spacer(Modifier.height(24.dp))
 
             // ── Elapsed timer or status ──────────────────
-            if (!isDone) {
+            if (!isDone && !isPartial && !isCancelled) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "Elapsed ${formatSyncDuration(status.elapsedMs)}",
@@ -486,10 +497,40 @@ fun SyncingScreen(
                         )
                     }
                 }
-            } else {
-                if (userTriggered || isError) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (isError) {
+            } else if (isPartial || isCancelled || isError || (isDone && userTriggered)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    when {
+                        isCancelled -> {
+                            Text(
+                                "Sync paused",
+                                color = Color(0xFFFFA726),
+                                fontSize = textHeadingM(),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Library sync was not started.\nResume when ready.",
+                                color = Color(0xFF888888),
+                                fontSize = textBodyM(),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        }
+                        isPartial -> {
+                            Text(
+                                "Sync incomplete",
+                                color = Color(0xFFFFA726),
+                                fontSize = textHeadingM(),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Some album tracks could not be fetched.\nRetry to finish, or continue with a partial library.",
+                                color = Color(0xFF888888),
+                                fontSize = textBodyM(),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        }
+                        isError -> {
                             Text(
                                 "Sync failed",
                                 color = Color(0xFFE84040),
@@ -503,35 +544,48 @@ fun SyncingScreen(
                                 fontSize = textBodyM(),
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             )
-                            Spacer(Modifier.height(16.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                OutlinedButton(
-                                    onClick = { viewModel.startSync(userTriggered, rebuildOnly) },
-                                    shape = RoundedCornerShape(12.dp),
-                                ) {
-                                    Text("Retry", fontSize = textHeadingS(), fontWeight = FontWeight.Bold)
-                                }
-                                Button(
-                                    onClick = onComplete,
-                                    colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
-                                    shape = RoundedCornerShape(12.dp),
-                                ) {
-                                    Text(
-                                        if (userTriggered) "OK" else "Continue",
-                                        color = Color.White,
-                                        fontSize = textHeadingS(),
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                }
-                            }
-                        } else {
+                        }
+                        else -> {
                             Text(
                                 "Ready! 🎵",
                                 color = BrandTeal,
                                 fontSize = textHeadingM(),
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            Spacer(Modifier.height(16.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (isError || isPartial || isCancelled) {
+                            OutlinedButton(
+                                onClick = { viewModel.startSync(userTriggered, rebuildOnly) },
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text(
+                                    if (isCancelled) "Resume" else "Retry",
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    if (isPartial || isCancelled) {
+                                        viewModel.continueIncomplete()
+                                    } else {
+                                        onComplete()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text(
+                                    if (userTriggered && isError) "OK" else "Continue",
+                                    color = Color.White,
+                                    fontSize = textHeadingS(),
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        } else {
                             Button(
                                 onClick = onComplete,
                                 colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),

@@ -56,6 +56,7 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.lucasdss.ftpmusic.app.data.cover.CollectionCoverPackOrder
 import com.lucasdss.ftpmusic.app.data.cover.CoverStylePackPreference
 import com.lucasdss.ftpmusic.app.data.cover.DefaultCollectionCoverCatalog
 import com.lucasdss.ftpmusic.app.data.cover.UserCoverLibrary
@@ -90,6 +91,7 @@ fun CollectionCoverEditSheet(
     onPickDevice: () -> Unit,
     onPickSaved: (relativePath: String) -> Unit,
     onPickBundled: (assetPath: String) -> Unit,
+    onPickDerived: () -> Unit = {},
     onClear: () -> Unit,
     onSavedRemoved: () -> Unit,
     onDismiss: () -> Unit,
@@ -107,12 +109,18 @@ fun CollectionCoverEditSheet(
     var pendingDelete by remember { mutableStateOf<UserCoverLibrary.Entry?>(null) }
     var deleteUsageCount by remember { mutableStateOf(0) }
     val activePack = remember { deps.coverStylePackPreference().current() }
-    val defaultAsset = remember(activePack, subject, collectionName) {
-        when (subject) {
-            CollectionCoverSubject.GENRE -> catalog.resolveGenre(activePack, collectionName)
-            CollectionCoverSubject.MIX -> catalog.resolveMix(activePack, collectionName)
-            CollectionCoverSubject.PLAYLIST -> catalog.resolvePlaylist(activePack, collectionName)
-        }
+    val packThumbs = remember(activePack, subject, collectionName) {
+        CollectionCoverPackOrder.orderedThumbs(
+            packs = catalog.packs(),
+            activePackId = activePack,
+            resolveAsset = { packId ->
+                when (subject) {
+                    CollectionCoverSubject.GENRE -> catalog.resolveGenre(packId, collectionName)?.assetPath
+                    CollectionCoverSubject.MIX -> catalog.resolveMix(packId, collectionName)?.assetPath
+                    CollectionCoverSubject.PLAYLIST -> catalog.resolvePlaylist(packId, collectionName)?.assetPath
+                }
+            },
+        )
     }
 
     LaunchedEffect(Unit) {
@@ -155,9 +163,9 @@ fun CollectionCoverEditSheet(
                 modifier = Modifier.padding(horizontal = spacingL()),
             )
 
-            defaultAsset?.let { asset ->
+            if (packThumbs.isNotEmpty()) {
                 Text(
-                    "Defaults",
+                    "Style packs",
                     color = Color(0xFF888888),
                     fontSize = textLabelS(),
                     modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingS()),
@@ -170,17 +178,42 @@ fun CollectionCoverEditSheet(
                         .padding(bottom = spacingM())
                         .semantics { testTag = "collection_cover_edit_defaults" },
                 ) {
-                    item {
-                        AsyncImage(
-                            model = catalog.assetUri(asset.assetPath),
-                            contentDescription = "Default pack cover",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, BrandTeal.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                .clickable { onPickBundled(asset.assetPath) },
-                        )
+                    items(packThumbs, key = { it.packId }) { thumb ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            AsyncImage(
+                                model = catalog.assetUri(thumb.assetPath),
+                                contentDescription = thumb.label,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(
+                                        1.dp,
+                                        if (thumb.packId == activePack) {
+                                            BrandTeal
+                                        } else {
+                                            BrandTeal.copy(alpha = 0.4f)
+                                        },
+                                        RoundedCornerShape(8.dp),
+                                    )
+                                    .clickable { onPickBundled(thumb.assetPath) },
+                            )
+                            Text(
+                                thumb.label,
+                                color = Color(0xFFAAAAAA),
+                                fontSize = textMicro(),
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
+                }
+                // Opt-in track collage for mixes/playlists (DERIVED fixed kind).
+                if (subject == CollectionCoverSubject.MIX || subject == CollectionCoverSubject.PLAYLIST) {
+                    TextButton(
+                        onClick = onPickDerived,
+                        modifier = Modifier.padding(horizontal = spacingXL()),
+                    ) {
+                        Text("Track collage", color = BrandTeal)
                     }
                 }
                 HorizontalDivider(
@@ -353,6 +386,7 @@ fun rememberCollectionCoverEditController(
     collectionName: String = title,
     onSavedCover: (relativePath: String) -> Unit = {},
     onBundledCover: (assetPath: String) -> Unit = {},
+    onDerivedCover: () -> Unit = {},
     onSavedRemoved: () -> Unit = {},
 ): CollectionCoverEditController {
     val coverStore = rememberCollectionCoverStore()
@@ -393,6 +427,10 @@ fun rememberCollectionCoverEditController(
             onPickBundled = { path ->
                 showSheet = false
                 onBundledCover(path)
+            },
+            onPickDerived = {
+                showSheet = false
+                onDerivedCover()
             },
             onClear = {
                 showSheet = false
@@ -478,6 +516,7 @@ fun CollectionCoverEditHost(
     collectionName: String = title,
     onSavedCover: (relativePath: String) -> Unit = {},
     onBundledCover: (assetPath: String) -> Unit = {},
+    onDerivedCover: () -> Unit = {},
     onSavedRemoved: () -> Unit = {},
     content: @Composable CollectionCoverEditController.() -> Unit,
 ) {
@@ -494,6 +533,7 @@ fun CollectionCoverEditHost(
         collectionName = collectionName,
         onSavedCover = onSavedCover,
         onBundledCover = onBundledCover,
+        onDerivedCover = onDerivedCover,
         onSavedRemoved = onSavedRemoved,
     )
     controller.content()

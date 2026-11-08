@@ -324,6 +324,97 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     )
 }
 
+// Regression slice for sync exit / drain / cover pack-order helpers (fail-build).
+tasks.register<JacocoReport>("jacocoRegressionReport") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    val fileFilter = listOf(
+        "**/R.class",
+        "**/R$*.class",
+        "**/BuildConfig.*",
+        "**/Manifest*.*",
+        "**/*Test*.*",
+    )
+    val runtimeJar =
+        "$buildDir/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar"
+    val baseTree = if (file(runtimeJar).exists()) {
+        zipTree(runtimeJar)
+    } else {
+        fileTree("$buildDir/tmp/kotlin-classes/debug")
+    }
+    val regressionTree = baseTree.matching {
+        exclude(fileFilter)
+        include(
+            "**/com/lucasdss/ftpmusic/app/data/db/SyncExitGate*",
+            "**/com/lucasdss/ftpmusic/app/data/db/LibraryDrainState*",
+            "**/com/lucasdss/ftpmusic/app/ui/SyncNavChrome*",
+            "**/com/lucasdss/ftpmusic/app/ui/settings/AboutWatermark*",
+            "**/com/lucasdss/ftpmusic/app/data/cover/CollectionCoverPackOrder*",
+            "**/com/lucasdss/ftpmusic/app/ui/playlist/PlaylistDetailChrome*",
+        )
+    }
+    sourceDirectories.setFrom(files("$projectDir/src/main/java"))
+    classDirectories.setFrom(files(regressionTree))
+    executionData.setFrom(
+        fileTree("$buildDir") {
+            include(
+                "jacoco/testDebugUnitTest.exec",
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
+            )
+        },
+    )
+}
+
+tasks.register<JacocoCoverageVerification>("jacocoRegressionGate") {
+    dependsOn("jacocoRegressionReport")
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+    }
+    val fileFilter = listOf(
+        "**/R.class",
+        "**/R$*.class",
+        "**/BuildConfig.*",
+        "**/Manifest*.*",
+        "**/*Test*.*",
+    )
+    val runtimeJar =
+        "$buildDir/intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar"
+    val baseTree = if (file(runtimeJar).exists()) {
+        zipTree(runtimeJar)
+    } else {
+        fileTree("$buildDir/tmp/kotlin-classes/debug")
+    }
+    val regressionTree = baseTree.matching {
+        exclude(fileFilter)
+        include(
+            "**/com/lucasdss/ftpmusic/app/data/db/SyncExitGate*",
+            "**/com/lucasdss/ftpmusic/app/data/db/LibraryDrainState*",
+            "**/com/lucasdss/ftpmusic/app/ui/SyncNavChrome*",
+            "**/com/lucasdss/ftpmusic/app/ui/settings/AboutWatermark*",
+            "**/com/lucasdss/ftpmusic/app/data/cover/CollectionCoverPackOrder*",
+            "**/com/lucasdss/ftpmusic/app/ui/playlist/PlaylistDetailChrome*",
+        )
+    }
+    classDirectories.setFrom(files(regressionTree))
+    executionData.setFrom(
+        fileTree("$buildDir") {
+            include(
+                "jacoco/testDebugUnitTest.exec",
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
+            )
+        },
+    )
+}
+
 // ADR-0149: Settings IA package report (ui/settings + SettingsComponents).
 // Aspirational ≥80% line coverage for that slice — informational only (not a CI gate).
 // Compose UI often under-reports under Jacoco; do not fail the build on this task.

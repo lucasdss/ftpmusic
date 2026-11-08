@@ -881,6 +881,7 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
         onSavedCover = viewModel::setFixedCoverFromSaved,
         onBundledCover = viewModel::setFixedCoverFromBundled,
+        onDerivedCover = viewModel::setFixedCoverFromDerived,
         onClear = viewModel::clearFixedCoverInEditor,
         onLoadFailed = viewModel::notifyCoverCropLoadFailed,
         onExportFailed = viewModel::notifyCoverCropExportFailed,

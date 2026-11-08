@@ -49,12 +49,23 @@ class PlaylistRepositoryTest {
     @Test
     fun `createPlaylist saves locally and enqueues sync`() = runTest {
         val name = "My Playlist"
+        coEvery { syncWorker.flushNowAndAwait() } returns false
         val id = repo.createPlaylist(name)
 
         assertTrue(id.startsWith("new-"))
         coVerify { playlistDao.upsertAll(match { it.size == 1 && it[0].name == name && it[0].id == id }) }
         coVerify { pendingChangeDao.insert(match { it.changeType == "create" && it.payload == "name=$name" }) }
-        coVerify { syncWorker.flushNow() }
+        coVerify { syncWorker.flushNowAndAwait() }
+    }
+
+    @Test
+    fun `createPlaylist returns remapped server id when flush succeeds`() = runTest {
+        coEvery { syncWorker.flushNowAndAwait() } returns true
+        every { syncWorker.consumeIdRemap(any()) } returns "server-pl-9"
+        val id = repo.createPlaylist("Synced Mix")
+        assertEquals("server-pl-9", id)
+        coVerify { syncWorker.flushNowAndAwait() }
+        coVerify { syncWorker.consumeIdRemap(match { it.startsWith("new-") }) }
     }
 
     @Test

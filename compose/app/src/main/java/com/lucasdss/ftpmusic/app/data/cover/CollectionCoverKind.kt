@@ -6,7 +6,9 @@ object CollectionCoverKind {
     const val LOCAL = "local"
     /** Bundled pack asset path under `assets/` (ADR 0151 Defaults pin). */
     const val BUNDLED = "bundled"
+    /** User opted into track collage for this mix/playlist (ADR 0151 MIX AUTO=pack). */
+    const val DERIVED = "derived"
 
     fun isValid(kind: String?): Boolean =
-        kind == NAVIDROME || kind == LOCAL || kind == BUNDLED
+        kind == NAVIDROME || kind == LOCAL || kind == BUNDLED || kind == DERIVED
 }

@@ -303,10 +303,26 @@ class SettingsViewModel @Inject constructor(
             maybeEnableSearchLyricsDefault()
         }
         viewModelScope.launch {
+            var wasRunning = false
             metadataSyncWorker.status.collect { s ->
+                val finishedDrain = wasRunning && !s.isRunning && s.drainComplete
+                wasRunning = s.isRunning
                 _state.value = _state.value.copy(isResyncing = s.isRunning)
+                if (finishedDrain) {
+                    refreshIfStale(force = true)
+                }
             }
         }
+    }
+
+    private var lastRefreshMs: Long = 0L
+
+    /** Coalesce multi-collector RESUMED refreshes (Activity-scoped VM). */
+    fun refreshIfStale(ttlMs: Long = 2_000L, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastRefreshMs < ttlMs) return
+        lastRefreshMs = now
+        refresh()
     }
 
     /** Phase-6: unset preference + cached lyrics → default-on + rebuild. */
@@ -974,9 +990,44 @@ class SettingsViewModel @Inject constructor(
         val prefs = context.getSharedPreferences(MetadataSyncWorker.PREFS_NAME, Context.MODE_PRIVATE)
         val s = _state.value
         val homeIds = HomeRecentCache.readIds(prefs)
-        // D5 / F4: ghost rows with no ledger entry, printed as a labelled counter.
+        // Live DAO counts — never trust possibly-stale SettingsUiState for libraryCounts.
         // CancellationException must not be swallowed — Room's suspend bridge
         // throws it when viewModelScope is cancelled mid-snapshot.
+        val liveAlbums = try {
+            metadataDao.albumCount()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            -1
+        }
+        val liveArtists = try {
+            metadataDao.artistCount()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            -1
+        }
+        val liveTracks = try {
+            metadataDao.cachedTrackCount()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            -1
+        }
+        val liveCorpus = try {
+            trackDao.trackCountAll()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            -1
+        }
+        val liveSongSum = try {
+            metadataDao.sumAlbumSongCounts()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            -1
+        }
         val albumTracksAlbumsZero = try {
             metadataDao.countUncachedAlbums()
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -990,19 +1041,19 @@ class SettingsViewModel @Inject constructor(
             reachable = com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value,
             lastFullSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_FULL_SYNC_MS, 0),
             lastDeltaSyncMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_DELTA_SYNC_MS, 0),
-            albums = s.albumCount,
-            artists = s.artistCount,
-            tracks = s.cachedTrackCount,
+            albums = liveAlbums,
+            artists = liveArtists,
+            tracks = liveTracks,
             syncIntervalHours = s.syncIntervalHours,
             homeRecentFetchedMs = prefs.getLong(MetadataSyncWorker.PREF_HOME_RECENT_FETCHED_MS, 0),
             homeRecentTtlMin = s.homeRecentTtlMinutes,
             homeRecentIdsCount = homeIds.size,
             lastWmAttemptMs = prefs.getLong(MetadataSyncWorker.PREF_LAST_WM_ATTEMPT_MS, 0),
             lastWmSkipReason = prefs.getString(MetadataSyncWorker.PREF_LAST_WM_SKIP_REASON, "") ?: "",
-            mode = s.lastSyncMode,
-            skipReason = s.lastSyncSkipReason,
-            corpus = s.searchCorpusTrackCount,
-            songSum = s.albumSongCountSum,
+            mode = prefs.getString(MetadataSyncWorker.PREF_LAST_SYNC_MODE, "") ?: "",
+            skipReason = prefs.getString(MetadataSyncWorker.PREF_LAST_SYNC_SKIP_REASON, "") ?: "",
+            corpus = liveCorpus,
+            songSum = liveSongSum,
             albumTracksAlbumsZero = albumTracksAlbumsZero,
             homeRecentResult = HomeRecentCache.readResult(prefs),
             wmSummary = workManagerSummary(),

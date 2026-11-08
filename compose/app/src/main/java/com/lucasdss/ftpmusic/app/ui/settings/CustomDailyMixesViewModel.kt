@@ -283,6 +283,16 @@ class CustomDailyMixesViewModel @Inject constructor(
         }
     }
 
+    fun setFixedCoverFromDerived() {
+        updateEditor {
+            it.copy(
+                fixedCoverKind = CollectionCoverKind.DERIVED,
+                fixedCoverValue = "montage",
+                clearFixedCover = false,
+            )
+        }
+    }
+
     fun requestDelete() = updateEditor { it.copy(pendingDelete = true) }
 
     fun cancelDelete() = updateEditor { it.copy(pendingDelete = false) }

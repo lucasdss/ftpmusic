@@ -106,6 +106,7 @@ fun PlaylistDetailScreen(
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
         onSavedCover = viewModel::setFixedCoverFromSaved,
         onBundledCover = viewModel::setFixedCoverFromBundled,
+        onDerivedCover = viewModel::setFixedCoverFromDerived,
         onClear = viewModel::clearFixedCover,
         onLoadFailed = viewModel::notifyCoverCropLoadFailed,
         onExportFailed = viewModel::notifyCoverCropExportFailed,
@@ -293,15 +294,17 @@ fun PlaylistDetailScreen(
                         Spacer(Modifier.height(spacingS()))
                     }
 
-                    // Action buttons
-                    if (state.tracks.isNotEmpty()) {
+                    // Action buttons — overflow always available (empty playlists can sync/rename).
+                    if (PlaylistDetailChrome.showOverflowMenu(state.tracks.size) ||
+                        PlaylistDetailChrome.showPlayShuffle(state.tracks.size)
+                    ) {
                         item {
                             Row(
                                 Modifier.padding(horizontal = spacingL()).padding(top = spacingS()),
                                 horizontalArrangement = Arrangement.spacedBy(spacingS()),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                // Play button — gradient
+                                // Play button — gradient (disabled when empty)
                                 Box(
                                     Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
                                         .background(
@@ -314,7 +317,9 @@ fun PlaylistDetailScreen(
                                                 ),
                                             ),
                                         )
-                                        .clickable { viewModel.playAll() },
+                                        .clickable(
+                                            enabled = PlaylistDetailChrome.showPlayShuffle(state.tracks.size),
+                                        ) { viewModel.playAll() },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -342,7 +347,9 @@ fun PlaylistDetailScreen(
                                             Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
                                             RoundedCornerShape(cornerM()),
                                         )
-                                        .clickable { viewModel.shuffle() },
+                                        .clickable(
+                                            enabled = PlaylistDetailChrome.showPlayShuffle(state.tracks.size),
+                                        ) { viewModel.shuffle() },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {

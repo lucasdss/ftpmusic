@@ -112,6 +112,39 @@ class CollectionCoverResolverTest {
     }
 
     @Test
+    fun `B2-1 MIX skipDerived prefers pack over derived covers`() {
+        val path = "collection_defaults/anime/mixes/default.webp"
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "Daily Mix 1",
+                fixedKind = null,
+                fixedValue = null,
+                derivedCoverArtIds = listOf("album-a", "album-b"),
+                bundledPackId = "anime",
+                bundledAssetPath = path,
+                skipDerived = true,
+            ),
+        )
+        assertEquals(CollectionCoverResolver.Resolved.Bundled("anime", path), r)
+    }
+
+    @Test
+    fun `B2-2 DERIVED kind forces collage even when skipDerived`() {
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "Daily Mix 1",
+                fixedKind = CollectionCoverKind.DERIVED,
+                fixedValue = "montage",
+                derivedCoverArtIds = listOf("album-a"),
+                bundledPackId = "anime",
+                bundledAssetPath = "collection_defaults/anime/mixes/default.webp",
+                skipDerived = true,
+            ),
+        )
+        assertTrue(r is CollectionCoverResolver.Resolved.Derived)
+    }
+
+    @Test
     fun `initials from two words`() {
         assertEquals("RM", CollectionCoverResolver.initials("Rock Mix"))
     }

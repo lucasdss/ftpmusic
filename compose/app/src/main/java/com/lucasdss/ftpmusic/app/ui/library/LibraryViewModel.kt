@@ -1167,8 +1167,9 @@ class LibraryViewModel @Inject constructor(
             _state.value =
                 _state.value.copy(isCreatingPlaylist = true, createPlaylistError = null, playlistCreated = false)
             try {
-                val tempId = playlistRepo.createPlaylist(name)
-                val playListView = PlaylistView(id = tempId, name = name, trackCount = 0)
+                // Repo awaits flush and returns remapped server id when available.
+                val resolvedId = playlistRepo.createPlaylist(name)
+                val playListView = PlaylistView(id = resolvedId, name = name, trackCount = 0)
                 val current = _state.value.playlists.toMutableList()
                 current.add(0, playListView)
                 _state.value = _state.value.copy(
@@ -1177,6 +1178,7 @@ class LibraryViewModel @Inject constructor(
                     playlistCreated = true,
                     createdPlaylist = playListView,
                 )
+                loadPlaylists()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isCreatingPlaylist = false,

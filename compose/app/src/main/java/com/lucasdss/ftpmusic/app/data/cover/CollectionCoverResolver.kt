@@ -45,6 +45,8 @@ object CollectionCoverResolver {
             CollectionCoverKind.NAVIDROME -> true
             CollectionCoverKind.LOCAL -> !localAbsolutePath.isNullOrBlank()
             CollectionCoverKind.BUNDLED -> true
+            // DERIVED is an opt-in collage flag, not a usable fixed asset.
+            CollectionCoverKind.DERIVED -> false
             else -> false
         }
     }
@@ -69,8 +71,13 @@ object CollectionCoverResolver {
                     .ifBlank { "anime" }
                 return Resolved.Bundled(packId, value)
             }
+
+            kind == CollectionCoverKind.DERIVED -> {
+                // Fall through to derived/montage (ignore skipDerived).
+            }
         }
-        if (!input.skipDerived) {
+        val forceDerived = kind == CollectionCoverKind.DERIVED
+        if (forceDerived || !input.skipDerived) {
             val derived = buildList {
                 input.derivedCoverArtIds.forEach { id ->
                     if (id.isNotBlank() && id !in this) add(id)

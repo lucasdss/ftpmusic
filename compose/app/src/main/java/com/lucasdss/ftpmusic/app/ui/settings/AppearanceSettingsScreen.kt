@@ -183,7 +183,7 @@ fun AppearanceSettingsScreen(
                     modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                 )
                 Text(
-                    "Used for genres, and for mixes/playlists that have no custom cover and no track art. Change pack anytime — your uploads stay.",
+                    "Used for genres and for mixes/playlists without a custom cover. Mixes default to the active style pack; choose Track collage or an album cover anytime. Change pack anytime — your uploads stay.",
                     color = Color(0xFF888888),
                     fontSize = textLabelS(),
                     modifier = Modifier.padding(horizontal = spacingL()).padding(bottom = spacingS()),

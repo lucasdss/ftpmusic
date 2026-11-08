@@ -67,12 +67,19 @@ class PlaylistRepository @Inject constructor(
                 payload = "name=$name",
             ),
         )
-        syncWorker.flushNow()
+        val synced = syncWorker.flushNowAndAwait()
+        val serverId = if (synced) {
+            syncWorker.consumeIdRemap(tempId)
+                ?: playlistDao.getAll().firstOrNull { it.name == name && !it.id.startsWith("new-") }?.id
+        } else {
+            null
+        }
+        val resolvedId = serverId ?: tempId
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playlist",
-            "create playlistId=$tempId",
+            "create playlistId=$tempId resolvedId=$resolvedId synced=$synced",
         )
-        return tempId
+        return resolvedId
     }
 
     /**

@@ -197,6 +197,9 @@ class MetadataSyncWorkerBranchTest {
     fun `start skips sync when metadata already cached`() {
         val w = makeLifecycleWorker()
         coEvery { metadataDao.albumCount() } returns 42
+        // Complete drain: start must not FULL-resync solely because albums exist.
+        every { prefs.getLong("last_drain_complete_ms", any()) } returns 1_700_000_000_000L
+        every { prefs.getString("last_sync_outcome", any()) } returns MetadataSyncWorker.SYNC_OUTCOME_COMPLETE
         w.start(0)
         lifecycleScheduler.runCurrent()
         coVerify(exactly = 0) { api.getAlbumList2(any(), any(), any(), any()) }

@@ -13,6 +13,7 @@ import com.lucasdss.ftpmusic.app.di.DynamicBaseUrl
 import com.lucasdss.ftpmusic.app.di.SubsonicCredentials
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,10 @@ data class SyncStatus(
     val phase: String = "",
     val isRunning: Boolean = false,
     val elapsedMs: Long = 0L,
+    /** Monotonic per sync job; SyncingScreen exit must match this run. */
+    val runId: Long = 0L,
+    /** True only when track drain finished (not soft-stopped). Set atomically with phase=complete. */
+    val drainComplete: Boolean = false,
 ) {
     /** Per-row progress row for the six-row SyncingScreen layout. */
     data class Row(
@@ -246,6 +251,7 @@ class MetadataSyncWorker(
     private val syncJobs = mutableSetOf<Job>()
     private val isSyncing = AtomicBoolean(false)
     private val trackLimiter = AdaptiveSyncLimiter()
+    private val nextRunId = AtomicLong(1L)
 
     @Volatile private var lastSyncFinishMs: Long = 0L
 
@@ -286,14 +292,27 @@ class MetadataSyncWorker(
         syncJob = scope.launch {
             delay(initialDelayMs)
             if (SubsonicCredentials.username.isNotEmpty()) {
-                // Skip startup sync if metadata already exists — periodic WorkManager
-                // handles DELTA/FULL at the configured interval (ADR-0045).
-                // First-run (no metadata) still triggers immediate sync.
-                if (metadataDao.albumCount() == 0) {
+                // Skip startup sync when library exists AND track drain completed.
+                // Incomplete drain (never drained / soft-stopped) must FULL again.
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val drainIncomplete = LibraryDrainState.isDrainIncomplete(
+                    prefs.getLong(PREF_LAST_DRAIN_COMPLETE_MS, 0L),
+                    prefs.getString(PREF_LAST_SYNC_OUTCOME, ""),
+                )
+                if (metadataDao.albumCount() == 0 || drainIncomplete) {
                     syncNow(mode = LibrarySyncMode.FULL)
                 }
             }
         }
+    }
+
+    /** Prefs-backed incomplete-drain check (SplashRouter + start). */
+    fun isDrainIncomplete(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return LibraryDrainState.isDrainIncomplete(
+            prefs.getLong(PREF_LAST_DRAIN_COMPLETE_MS, 0L),
+            prefs.getString(PREF_LAST_SYNC_OUTCOME, ""),
+        )
     }
 
     /** True when cached library metadata already exists. */
@@ -396,7 +415,9 @@ class MetadataSyncWorker(
             trackLimiter.reset()
             // ADR-0139: long uncapped syncs need a dataSync FGS while the process is alive.
             com.lucasdss.ftpmusic.app.data.sync.LibrarySyncService.start(context)
-            // Emit initial status with all rows visible, totals set to what we know
+            // Emit initial status with all rows visible, totals set to what we know.
+            // runId bumps here atomically with isRunning so SyncingScreen can latch this run.
+            val runId = nextRunId.getAndIncrement()
             _status.value = SyncStatus(
                 albumsTotal = 1,
                 artistsTotal = 1,
@@ -405,6 +426,8 @@ class MetadataSyncWorker(
                 phase = "albums",
                 isRunning = true,
                 elapsedMs = 0L,
+                runId = runId,
+                drainComplete = false,
             )
             fun abortIfCellularPolicyViolated(): Boolean {
                 if (!com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.shouldSkipMetadataSync(cellularOverride)) {
@@ -419,6 +442,7 @@ class MetadataSyncWorker(
                     phase = "error",
                     isRunning = false,
                     elapsedMs = System.currentTimeMillis() - startMs,
+                    drainComplete = false,
                 )
                 return true
             }
@@ -570,6 +594,7 @@ class MetadataSyncWorker(
                 // Soft-stop keeps phase != error (ADR-0139) but must not advance
                 // last_full/delta cadence or weekly heal is skipped.
                 if (current.phase != "error") {
+                    // drainComplete set atomically with phase=complete (exit gate SoT).
                     _status.value = current.copy(
                         albums = albumCount, albumsTotal = albumCount,
                         artists = artistCount, artistsTotal = artistCount,
@@ -577,6 +602,8 @@ class MetadataSyncWorker(
                         genres = genreCount, genresTotal = genreCount,
                         phase = "complete", isRunning = false,
                         elapsedMs = System.currentTimeMillis() - startMs,
+                        drainComplete = tracksDrainComplete,
+                        runId = current.runId,
                     )
                     val durationMs = System.currentTimeMillis() - startMs
                     val now = System.currentTimeMillis()
@@ -632,6 +659,7 @@ class MetadataSyncWorker(
                     isRunning = false,
                     phase = "error",
                     elapsedMs = System.currentTimeMillis() - startMs,
+                    drainComplete = false,
                 )
             } finally {
                 lastSyncFinishMs = System.currentTimeMillis()

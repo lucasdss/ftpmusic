@@ -290,16 +290,9 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
-    fun `daily mix expand uses today then yesterday`() = runBlocking {
-        val today = java.time.LocalDate.now().toString()
-        val yesterday = java.time.LocalDate.now().minusDays(1).toString()
-        coEvery { genreMixDao.getDailyMix(today, 7L) } returns null
-        coEvery { genreMixDao.getDailyMix(yesterday, 7L) } returns DailyMixEntity(
-            id = 42,
-            date = yesterday,
-            mixId = 7L,
-        )
-        coEvery { genreMixDao.getDailyMixTrackIds(42) } returns listOf("t1", "t2")
+    fun `daily mix expand uses active pointer then playable filter`() = runBlocking {
+        // DM-16: AutoBrowse follows DailyMixRepository.activeTrackIds, not today|yesterday.
+        coEvery { dailyMixRepository.activeTrackIds(7L) } returns listOf("t1", "t2")
         coEvery { dailyMixRepository.filterPlayableMixTrackIds(listOf("t1", "t2")) } returns listOf("t1", "t2")
         coEvery { trackDao.getTracksByIds(listOf("t1", "t2")) } returns listOf(
             TrackEntity(id = "t1", title = "One"),

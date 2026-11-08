@@ -21,4 +21,20 @@ class SplashRouterTest {
         assertEquals("home", SplashRouter.resolveRoute(hasCredentials = true, albumCount = 1))
         assertEquals("home", SplashRouter.resolveRoute(hasCredentials = true, albumCount = 42))
     }
+
+    @Test
+    fun `B0-7 drain incomplete routes to syncing even with albums`() {
+        assertEquals(
+            syncingRoute("home"),
+            SplashRouter.resolveRoute(hasCredentials = true, albumCount = 10, drainIncomplete = true),
+        )
+    }
+
+    @Test
+    fun `drain complete with albums routes home`() {
+        assertEquals(
+            "home",
+            SplashRouter.resolveRoute(hasCredentials = true, albumCount = 10, drainIncomplete = false),
+        )
+    }
 }

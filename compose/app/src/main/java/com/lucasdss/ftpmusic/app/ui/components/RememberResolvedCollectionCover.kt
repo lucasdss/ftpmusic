@@ -30,9 +30,12 @@ fun rememberResolvedCollectionCover(
     decodeSizePx: Int = 200,
     subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
     stylePackId: String? = null,
-    skipDerived: Boolean = subject == CollectionCoverSubject.GENRE,
+    skipDerived: Boolean = subject == CollectionCoverSubject.GENRE ||
+        subject == CollectionCoverSubject.MIX,
     scope: String = subject.name.lowercase(),
 ): ResolvedCover {
+    val effectiveSkipDerived =
+        if (fixedCoverKind == CollectionCoverKind.DERIVED) false else skipDerived
     val context = LocalContext.current
     val store = remember { CollectionCoverStore(context.applicationContext) }
     val catalog = remember { DefaultCollectionCoverCatalog(context.applicationContext) }
@@ -81,7 +84,7 @@ fun rememberResolvedCollectionCover(
         serverCoverArtId,
         localPath,
         bundled?.assetPath,
-        skipDerived,
+        effectiveSkipDerived,
         activePack,
     ) {
         CollectionCoverResolver.resolve(
@@ -94,7 +97,7 @@ fun rememberResolvedCollectionCover(
                 serverCoverArtId = serverCoverArtId,
                 bundledPackId = bundled?.packId,
                 bundledAssetPath = bundled?.assetPath,
-                skipDerived = skipDerived,
+                skipDerived = effectiveSkipDerived,
             ),
         )
     }

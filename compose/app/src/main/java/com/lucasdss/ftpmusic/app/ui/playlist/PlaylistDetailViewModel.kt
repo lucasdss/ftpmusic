@@ -894,6 +894,24 @@ class PlaylistDetailViewModel @Inject constructor(
         }
     }
 
+    fun setFixedCoverFromDerived() {
+        val playlist = _state.value.playlist ?: return
+        viewModelScope.launch {
+            playlistRepository.setFixedCover(
+                playlist.id,
+                CollectionCoverKind.DERIVED,
+                "montage",
+            )
+            val current = _state.value.playlist ?: return@launch
+            _state.value = _state.value.copy(
+                playlist = current.copy(
+                    fixedCoverKind = CollectionCoverKind.DERIVED,
+                    fixedCoverValue = "montage",
+                ),
+            )
+        }
+    }
+
     fun notifyCoverCropLoadFailed() {
         _toast.value = "Could not load image for crop"
     }

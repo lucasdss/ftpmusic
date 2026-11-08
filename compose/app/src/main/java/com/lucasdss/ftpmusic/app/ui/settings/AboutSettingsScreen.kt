@@ -38,7 +38,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.ui.BrandBg
 import com.lucasdss.ftpmusic.app.ui.BrandPurple
@@ -77,6 +80,12 @@ fun AboutSettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.refreshIfStale()
+        }
+    }
 
     val updateLauncher = rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult(),
@@ -231,12 +240,18 @@ fun AboutSettingsScreen(
                     MetricRow(
                         "Albums",
                         "${state.albumCount} albums",
-                        if (state.lastMetadataSyncMs > 0) {
-                            "${timeAgo(
+                        run {
+                            val stamp = AboutWatermark.displayMs(
                                 state.lastMetadataSyncMs,
-                            )} (took ${formatDurationMs(state.metadataSyncDurationMs)})"
-                        } else {
-                            "Never synced"
+                                state.lastFullSyncMs,
+                            )
+                            if (AboutWatermark.neverSynced(state.lastMetadataSyncMs, state.lastFullSyncMs)) {
+                                "Never synced"
+                            } else if (state.lastMetadataSyncMs > 0) {
+                                "${timeAgo(stamp)} (took ${formatDurationMs(state.metadataSyncDurationMs)})"
+                            } else {
+                                timeAgo(stamp)
+                            }
                         },
                     )
                     SectionDivider()
@@ -261,7 +276,17 @@ fun AboutSettingsScreen(
                     MetricRow(
                         "Artists",
                         "${state.artistCount} artists",
-                        if (state.lastMetadataSyncMs > 0) timeAgo(state.lastMetadataSyncMs) else "Never synced",
+                        run {
+                            val stamp = AboutWatermark.displayMs(
+                                state.lastMetadataSyncMs,
+                                state.lastFullSyncMs,
+                            )
+                            if (AboutWatermark.neverSynced(state.lastMetadataSyncMs, state.lastFullSyncMs)) {
+                                "Never synced"
+                            } else {
+                                timeAgo(stamp)
+                            }
+                        },
                     )
                     SectionDivider()
                     MetricRow(
