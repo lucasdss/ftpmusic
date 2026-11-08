@@ -57,11 +57,12 @@ class SyncingViewModelExitGateTest {
         every { networkPolicyHolder.shouldWarnFirstLoginOnCellular() } returns false
         coEvery { metadataDao.albumCount() } returns 0
         coEvery { dailyMixRepository.getAll() } returns emptyList()
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
         every {
             metadataSyncWorker.syncNowAsync(
                 mode = LibrarySyncMode.FULL,
                 allowCellularOverride = any(),
+                bypassCooldown = any(),
             )
         } returns mockk(relaxed = true)
     }
@@ -139,7 +140,7 @@ class SyncingViewModelExitGateTest {
     fun `B0-3 first-login null syncNowAsync sets error not success`() = runTest(testDispatcher) {
         val flow = MutableStateFlow(SyncStatus(phase = "idle", isRunning = false, runId = 0L))
         every { metadataSyncWorker.status } returns flow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns null
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns null
 
         val vm = createVm()
         vm.startSync()
@@ -172,6 +173,31 @@ class SyncingViewModelExitGateTest {
         assertFalse(vm.isError.value)
         assertTrue(vm.status.value.phase == "incomplete_continue")
         coVerify(exactly = 0) { dailyMixRepository.generateAll(any(), any(), any()) }
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `B0-7 null syncNowAsync adopts already-running instead of Sync failed`() = runTest(testDispatcher) {
+        val flow = runningFlow(9L)
+        every { metadataSyncWorker.status } returns flow
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns null
+        every {
+            metadataSyncWorker.syncNowAsync(
+                mode = LibrarySyncMode.FULL,
+                allowCellularOverride = any(),
+                bypassCooldown = any(),
+            )
+        } returns null
+
+        val vm = createVm()
+        vm.startSync()
+        runCurrent()
+        advanceTimeBy(50)
+        runCurrent()
+
+        assertFalse(vm.isError.value)
+        assertFalse(vm.isDone.value)
+        assertTrue(vm.status.value.isRunning)
         vm.viewModelScope.cancel()
     }
 

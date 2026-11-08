@@ -11,8 +11,11 @@ object FineScrubMath {
     /** Pixels of downward pull at which sensitivity reaches ~half. */
     const val HALF_SPEED_PULL_PX = 80f
 
-    /** Below this vertical pull, treat as pure horizontal scrub. */
-    const val AXIS_LOCK_THRESHOLD_PX = 24f
+    /**
+     * Vertical pull past fine-scrub range before yielding to parent dismiss.
+     * Must stay **above** [HALF_SPEED_PULL_PX] so iOS-style fine scrub remains reachable.
+     */
+    const val AXIS_LOCK_THRESHOLD_PX = 140f
 
     /**
      * Sensitivity in [0.05, 1]: 1 at the bar, lower as [verticalPullPx] grows.
@@ -42,7 +45,7 @@ object FineScrubMath {
 
     /**
      * True when vertical motion should yield to the queue sheet / parent
-     * (axis lock: stay horizontal-primary until threshold).
+     * (axis lock: stay in fine-scrub until past [AXIS_LOCK_THRESHOLD_PX]).
      */
     fun shouldYieldVertical(verticalPullPx: Float, horizontalAccumPx: Float): Boolean {
         if (abs(horizontalAccumPx) > abs(verticalPullPx)) return false

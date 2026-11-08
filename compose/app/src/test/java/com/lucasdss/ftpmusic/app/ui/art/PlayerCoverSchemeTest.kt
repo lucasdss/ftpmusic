@@ -23,10 +23,18 @@ class PlayerCoverSchemeTest {
     }
 
     @Test
-    fun `low contrast accent falls back to BrandTeal`() {
+    fun `null seed falls back to BrandTeal`() {
+        assertEquals(BrandTeal, PlayerCoverScheme.accentOrFallback(null, Color.Black))
+    }
+
+    @Test
+    fun `darkened vibrant seed is lifted for chrome contrast`() {
         val bgTop = Color.Black
-        val nearBlack = Color(0xFF101010)
-        assertEquals(BrandTeal, PlayerCoverScheme.accentOrFallback(nearBlack, bgTop))
+        // Production mini vibrant is darkened to Y≤0.15 — must lift, not always BrandTeal.
+        val darkened = CoverScheme.darkenToMaxLuminance(Color(0xFF40C8B4), 0.15f)
+        assertTrue(CoverScheme.contrastRatio(darkened, bgTop) < 4.5f)
+        val accent = PlayerCoverScheme.accentOrFallback(darkened, bgTop)
+        assertTrue(CoverScheme.contrastRatio(accent, bgTop) >= 4.5f)
     }
 
     @Test

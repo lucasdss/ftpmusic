@@ -390,7 +390,9 @@ fun MixDetailScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 when {
-                                    hasUsableFixed || covers.isEmpty() -> {
+                                    // Pack/lettermark path must match ArtBackdrop (skipDerived MIX).
+                                    // Without montageActive, covers.size collage diverged from backdrop.
+                                    hasUsableFixed || covers.isEmpty() || !montageActive -> {
                                         CollectionCoverArt(
                                             name = mixName,
                                             fixedCoverKind = state.fixedCoverKind,

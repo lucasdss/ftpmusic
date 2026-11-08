@@ -56,8 +56,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -491,8 +493,11 @@ private fun PlayerMiniBar(
                 }
                 Spacer(Modifier.width(spacingS()))
                 // Controls — Play/Pause (+ buffering) + Skip Next
+                val miniHaptics = LocalHapticFeedback.current
+                val miniReduceMotion = LocalReduceMotion.current
                 Box(
                     Modifier.size(adp(48f)).background(Color.White.copy(alpha = 0.08f), CircleShape).clickable {
+                        firePlayPauseHaptic(miniHaptics, playerHapticsEnabled, miniReduceMotion)
                         onPlayPause()
                     },
                     contentAlignment = Alignment.Center,
@@ -740,6 +745,8 @@ private fun ColumnScope.PlayerMainBody(
     onShowLyrics: () -> Unit,
     onDismissPlaybackError: () -> Unit = {},
 ) {
+    val transportHaptics = LocalHapticFeedback.current
+    val transportReduceMotion = LocalReduceMotion.current
     with(state) {
         Column(Modifier.weight(1f).padding(bottom = spacing3XL())) {
             // Playback errors: AppHeader IssueStatusIcon + sheet (ADR-0120).
@@ -1002,7 +1009,14 @@ private fun ColumnScope.PlayerMainBody(
                                 end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
                             ),
                         )
-                        .clickable { onPlayPause() }
+                        .clickable {
+                            firePlayPauseHaptic(
+                                transportHaptics,
+                                playerHapticsEnabled,
+                                transportReduceMotion,
+                            )
+                            onPlayPause()
+                        }
                         .testTag("transport_play"),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -2445,6 +2459,23 @@ internal fun lastLyricIndexBefore(lines: List<LyricLine>, positionMs: Long): Int
         }
     }
     return result
+}
+
+private fun firePlayPauseHaptic(
+    haptics: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    appearanceEnabled: Boolean,
+    reduceMotion: Boolean,
+) {
+    if (!PlayerHapticsPolicy.shouldFire(
+            appearanceEnabled,
+            reduceMotion,
+            hasVibrator = true,
+            PlayerHapticsPolicy.playPauseKind(),
+        )
+    ) {
+        return
+    }
+    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
 }
 
 /** Colors extracted from album cover art for gradient backgrounds. */

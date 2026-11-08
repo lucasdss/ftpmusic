@@ -165,53 +165,59 @@ fun WaveformScrubber(
                                 previewFraction = frac
                                 var verticalPull = 0f
                                 var horizontalAccum = 0f
+                                var yielded = false
                                 val pointerId = down.id
-                                drag(pointerId) { change ->
-                                    val dx = change.positionChange().x
-                                    val dy = change.positionChange().y
-                                    change.consume()
-                                    horizontalAccum += dx
-                                    if (dy > 0f) verticalPull += dy
-                                    if (FineScrubMath.shouldYieldVertical(verticalPull, horizontalAccum)) {
-                                        // Axis-lock: stop claiming after vertical threshold so
-                                        // parent queue sheet can take over on a later gesture.
-                                        return@drag
-                                    }
-                                    frac = FineScrubMath.applyHorizontalDelta(
-                                        currentFraction = frac,
-                                        deltaXPx = dx,
-                                        trackWidthPx = trackWidthPx,
-                                        verticalPullPx = verticalPull,
-                                    )
-                                    val minuteKind = PlayerHapticsPolicy.minuteCrossingKind(
-                                        prevFrac,
-                                        frac,
-                                        duration,
-                                    )
-                                    if (PlayerHapticsPolicy.shouldFire(
-                                            hapticsEnabled,
-                                            reduceMotion,
-                                            hasVibrator,
-                                            minuteKind,
+                                try {
+                                    drag(pointerId) { change ->
+                                        val dx = change.positionChange().x
+                                        val dy = change.positionChange().y
+                                        horizontalAccum += dx
+                                        if (dy > 0f) verticalPull += dy
+                                        if (FineScrubMath.shouldYieldVertical(verticalPull, horizontalAccum)) {
+                                            // Stop claiming; do not seek — parent may dismiss next gesture.
+                                            yielded = true
+                                            return@drag
+                                        }
+                                        change.consume()
+                                        frac = FineScrubMath.applyHorizontalDelta(
+                                            currentFraction = frac,
+                                            deltaXPx = dx,
+                                            trackWidthPx = trackWidthPx,
+                                            verticalPullPx = verticalPull,
                                         )
-                                    ) {
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        val minuteKind = PlayerHapticsPolicy.minuteCrossingKind(
+                                            prevFrac,
+                                            frac,
+                                            duration,
+                                        )
+                                        if (PlayerHapticsPolicy.shouldFire(
+                                                hapticsEnabled,
+                                                reduceMotion,
+                                                hasVibrator,
+                                                minuteKind,
+                                            )
+                                        ) {
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                        prevFrac = frac
+                                        previewFraction = frac
                                     }
-                                    prevFrac = frac
-                                    previewFraction = frac
+                                    if (!yielded) {
+                                        val boundary = PlayerHapticsPolicy.boundaryKind(frac)
+                                        if (PlayerHapticsPolicy.shouldFire(
+                                                hapticsEnabled,
+                                                reduceMotion,
+                                                hasVibrator,
+                                                boundary,
+                                            )
+                                        ) {
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
+                                        onSeek(frac.coerceIn(0f, 1f))
+                                    }
+                                } finally {
+                                    scrubbing = false
                                 }
-                                val boundary = PlayerHapticsPolicy.boundaryKind(frac)
-                                if (PlayerHapticsPolicy.shouldFire(
-                                        hapticsEnabled,
-                                        reduceMotion,
-                                        hasVibrator,
-                                        boundary,
-                                    )
-                                ) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                }
-                                onSeek(frac.coerceIn(0f, 1f))
-                                scrubbing = false
                             }
                         },
                 ) {

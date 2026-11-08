@@ -68,12 +68,8 @@ class PlaylistRepository @Inject constructor(
             ),
         )
         val synced = syncWorker.flushNowAndAwait()
-        val serverId = if (synced) {
-            syncWorker.consumeIdRemap(tempId)
-                ?: playlistDao.getAll().firstOrNull { it.name == name && !it.id.startsWith("new-") }?.id
-        } else {
-            null
-        }
+        // Remap only — never match by name (duplicate titles → wrong playlist id).
+        val serverId = if (synced) syncWorker.consumeIdRemap(tempId) else null
         val resolvedId = serverId ?: tempId
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playlist",

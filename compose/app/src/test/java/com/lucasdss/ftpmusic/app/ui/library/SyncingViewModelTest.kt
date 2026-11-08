@@ -102,7 +102,7 @@ class SyncingViewModelTest {
         )
         every { metadataSyncWorker.status } returns flow
         every {
-            metadataSyncWorker.syncNowAsync(any(), any(), any())
+            metadataSyncWorker.syncNowAsync(any(), any(), any(), any())
         } answers {
             flow.value = SyncStatus(
                 albums = albums,
@@ -175,7 +175,7 @@ class SyncingViewModelTest {
         coEvery { trackDao.getRatedTracksByIds(any()) } returns emptyList()
         val flow = MutableStateFlow(SyncStatus(phase = "albums", isRunning = true, runId = 1L))
         every { metadataSyncWorker.status } returns flow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync()
@@ -184,7 +184,7 @@ class SyncingViewModelTest {
         pump()
 
         verify(atLeast = 1) {
-            metadataSyncWorker.syncNowAsync(any(), any(), any())
+            metadataSyncWorker.syncNowAsync(any(), any(), any(), any())
         }
         cleanup(viewModel)
     }
@@ -204,7 +204,7 @@ class SyncingViewModelTest {
         // Completed status → collect persists metrics + generates mixes
         val __flow = MutableStateFlow(SyncStatus(phase = "albums", isRunning = true, runId = 1L))
         every { metadataSyncWorker.status } returns __flow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync()
@@ -234,7 +234,7 @@ class SyncingViewModelTest {
             ),
         )
         every { metadataSyncWorker.status } returns statusFlow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync(userTriggered = true)
@@ -250,7 +250,7 @@ class SyncingViewModelTest {
         pump()
 
         // Resync Library must force a full track re-fetch
-        verify(atLeast = 1) { metadataSyncWorker.syncNowAsync(any(), any(), any()) }
+        verify(atLeast = 1) { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) }
         assertTrue(viewModel.isDone.value)
         cleanup(viewModel)
     }
@@ -275,7 +275,7 @@ class SyncingViewModelTest {
             ),
         )
         every { metadataSyncWorker.status } returns statusFlow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync(userTriggered = true)
@@ -327,7 +327,7 @@ class SyncingViewModelTest {
         )
         val __flow = MutableStateFlow(SyncStatus(phase = "albums", isRunning = true, runId = 1L))
         every { metadataSyncWorker.status } returns __flow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync()
@@ -362,7 +362,7 @@ class SyncingViewModelTest {
             ),
         )
         every { metadataSyncWorker.status } returns statusFlow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync(userTriggered = true)
@@ -398,7 +398,7 @@ class SyncingViewModelTest {
             ),
         )
         every { metadataSyncWorker.status } returns statusFlow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync()
@@ -431,7 +431,7 @@ class SyncingViewModelTest {
         )
         val __flow = MutableStateFlow(SyncStatus(phase = "albums", isRunning = true, runId = 1L))
         every { metadataSyncWorker.status } returns __flow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync()
@@ -457,7 +457,7 @@ class SyncingViewModelTest {
             ),
         )
         every { metadataSyncWorker.status } returns statusFlow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync(userTriggered = false)
@@ -500,7 +500,7 @@ class SyncingViewModelTest {
             ),
         )
         every { metadataSyncWorker.status } returns statusFlow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync(userTriggered = false)
@@ -527,12 +527,14 @@ class SyncingViewModelTest {
             metadataSyncWorker.syncNowAsync(
                 forceTrackResync = true,
                 allowCellularOverride = any(),
+                bypassCooldown = any(),
             )
         } returns null
         every {
             metadataSyncWorker.syncNowAsync(
                 mode = any(),
                 allowCellularOverride = any(),
+                bypassCooldown = any(),
             )
         } returns null
 
@@ -552,7 +554,7 @@ class SyncingViewModelTest {
         coEvery { genreMixDao.getTopGenres() } returns emptyList()
         val statusFlow = MutableStateFlow(SyncStatus(phase = "albums", isRunning = true))
         every { metadataSyncWorker.status } returns statusFlow
-        every { metadataSyncWorker.syncNowAsync(any(), any(), any()) } returns mockk(relaxed = true)
+        every { metadataSyncWorker.syncNowAsync(any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         val viewModel = createViewModel()
         viewModel.startSync(userTriggered = false)

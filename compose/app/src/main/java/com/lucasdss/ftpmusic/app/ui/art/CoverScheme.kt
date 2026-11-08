@@ -79,6 +79,20 @@ data class CoverScheme(
             return c
         }
 
+        /** Lift a darkened seed so chrome accents can clear WCAG AA on dark backdrops. */
+        fun lightenToMinLuminance(color: Color, minY: Float): Color {
+            var c = color.copy(alpha = 1f)
+            var y = c.luminance()
+            if (y >= minY) return c
+            var t = 0f
+            while (y < minY && t < 0.98f) {
+                t += 0.05f
+                c = lerp(color, Color.White, t).copy(alpha = 1f)
+                y = c.luminance()
+            }
+            return c
+        }
+
         fun contrastRatio(a: Color, b: Color): Float {
             val l1 = a.luminance() + 0.05f
             val l2 = b.luminance() + 0.05f

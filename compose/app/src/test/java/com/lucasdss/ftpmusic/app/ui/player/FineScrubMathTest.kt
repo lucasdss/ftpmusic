@@ -33,7 +33,13 @@ class FineScrubMathTest {
     @Test
     fun `axis lock yields when vertical dominates past threshold`() {
         assertFalse(FineScrubMath.shouldYieldVertical(10f, 40f))
-        assertTrue(FineScrubMath.shouldYieldVertical(40f, 10f))
+        // Fine-scrub half-speed zone must remain reachable (no early yield).
+        assertFalse(
+            FineScrubMath.shouldYieldVertical(FineScrubMath.HALF_SPEED_PULL_PX, 10f),
+        )
+        assertTrue(
+            FineScrubMath.shouldYieldVertical(FineScrubMath.AXIS_LOCK_THRESHOLD_PX, 10f),
+        )
     }
 
     @Test

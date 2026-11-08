@@ -289,19 +289,13 @@ class MetadataSyncWorker(
     val homeRecentRevision: StateFlow<Long> = _homeRecentRevision.asStateFlow()
 
     fun start(initialDelayMs: Long = 2000L) {
+        // Empty library / incomplete drain are owned by SyncingScreen (SplashRouter).
+        // Auto-FULL here raced the cellular dialog and cooldown → false "Sync failed".
+        // Periodic heal remains SyncHealthGuard / WorkManager.
         syncJob = scope.launch {
             delay(initialDelayMs)
             if (SubsonicCredentials.username.isNotEmpty()) {
-                // Skip startup sync when library exists AND track drain completed.
-                // Incomplete drain (never drained / soft-stopped) must FULL again.
-                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val drainIncomplete = LibraryDrainState.isDrainIncomplete(
-                    prefs.getLong(PREF_LAST_DRAIN_COMPLETE_MS, 0L),
-                    prefs.getString(PREF_LAST_SYNC_OUTCOME, ""),
-                )
-                if (metadataDao.albumCount() == 0 || drainIncomplete) {
-                    syncNow(mode = LibrarySyncMode.FULL)
-                }
+                android.util.Log.d(TAG, "start(): SyncingScreen owns empty/incomplete drain; no auto-FULL")
             }
         }
     }
@@ -361,6 +355,7 @@ class MetadataSyncWorker(
         forceTrackResync: Boolean = false,
         mode: LibrarySyncMode = if (forceTrackResync) LibrarySyncMode.FULL else LibrarySyncMode.DELTA,
         allowCellularOverride: Boolean = false,
+        bypassCooldown: Boolean = false,
     ): kotlinx.coroutines.Job? {
         // Software offline mode: metadata is already cached locally — nothing to
         // fetch, and the local-first contract forbids the network call.
@@ -388,8 +383,8 @@ class MetadataSyncWorker(
             return null
         }
         // Cooldown: skip auto-triggered syncs if the last sync finished recently.
-        // Force resyncs (user-triggered) bypass the cooldown.
-        if (!forceTrackResync) {
+        // Force resyncs and SyncingScreen-owned runs bypass the cooldown.
+        if (!forceTrackResync && !bypassCooldown) {
             val elapsed = System.currentTimeMillis() - lastSyncFinishMs
             if (lastSyncFinishMs > 0L && elapsed < MIN_SYNC_COOLDOWN_MS) {
                 android.util.Log.d(TAG, "Skipping sync — cooldown active (${elapsed}ms < ${MIN_SYNC_COOLDOWN_MS}ms)")

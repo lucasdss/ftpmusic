@@ -1,5 +1,9 @@
 # Play release 2.1.1
 
+> **Superseded for shipping:** use [PLAY_RELEASE_2_1_2.md](PLAY_RELEASE_2_1_2.md)
+> (`versionCode` 29 / Room 71). This document describes the earlier testing cut
+> (`ff26b49`).
+
 **versionCode:** 28 · **versionName:** 2.1.1 · **Room:** 71
 
 Ship signed AAB to **internal testing** first, then promote when green.

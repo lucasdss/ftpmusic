@@ -183,14 +183,14 @@ class MetadataSyncWorkerBranchTest {
     }
 
     @Test
-    fun `start syncs immediately when no metadata is cached`() {
+    fun `start does not auto-FULL — SyncingScreen owns empty and incomplete drain`() {
         val w = makeLifecycleWorker()
         coEvery { metadataDao.albumCount() } returns 0
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns okAlbumsResponse(emptyList())
         w.start(0)
         lifecycleScheduler.runCurrent()
         lifecycleScheduler.advanceUntilIdle()
-        coVerify(atLeast = 1) { api.getAlbumList2(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { api.getAlbumList2(any(), any(), any(), any()) }
     }
 
     @Test

@@ -206,26 +206,35 @@ class SyncingViewModel @Inject constructor(
             startElapsedTimer()
             // Retry loop (ADR-0106) for both first-login and user-triggered —
             // null syncNowAsync must not latch a stale prior phase=complete.
+            // SyncingScreen owns this session: bypass cooldown; adopt an already-running job.
             var retries = 0
             var job: kotlinx.coroutines.Job? = null
-            while (job == null && retries < 3) {
+            var adoptedRunning = false
+            while (job == null && !adoptedRunning && retries < 3) {
                 job = if (userTriggered) {
                     metadataSyncWorker.syncNowAsync(
                         forceTrackResync = true,
                         allowCellularOverride = allowCellularOverride,
+                        bypassCooldown = true,
                     )
                 } else {
                     metadataSyncWorker.syncNowAsync(
                         mode = LibrarySyncMode.FULL,
                         allowCellularOverride = allowCellularOverride,
+                        bypassCooldown = true,
                     )
                 }
                 if (job == null) {
+                    val current = metadataSyncWorker.status.value
+                    if (current.isRunning && current.runId > 0L) {
+                        adoptedRunning = true
+                        break
+                    }
                     metadataSyncWorker.status.first { !it.isRunning }
                     retries++
                 }
             }
-            if (job == null) {
+            if (job == null && !adoptedRunning) {
                 elapsedJob?.cancel()
                 _isError.value = true
                 _isDone.value = true

@@ -69,6 +69,24 @@ class PlaylistRepositoryTest {
     }
 
     @Test
+    fun `createPlaylist keeps temp id when remap missing — never name-match`() = runTest {
+        coEvery { syncWorker.flushNowAndAwait() } returns true
+        every { syncWorker.consumeIdRemap(any()) } returns null
+        coEvery { playlistDao.getAll() } returns listOf(
+            PlaylistEntity(
+                id = "older-same-name",
+                name = "Dup",
+                trackCount = 0,
+                coverArt = null,
+                updatedAt = 1L,
+            ),
+        )
+        val id = repo.createPlaylist("Dup")
+        assertTrue(id.startsWith("new-"))
+        coVerify(exactly = 0) { playlistDao.getAll() }
+    }
+
+    @Test
     fun `createPlaylist returns IDs starting with new- prefix`() = runTest {
         val id = repo.createPlaylist("My Playlist")
 
