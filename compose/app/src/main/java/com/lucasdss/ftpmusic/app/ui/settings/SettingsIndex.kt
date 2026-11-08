@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
@@ -255,12 +256,32 @@ object SettingsIndex {
             summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_notifications) },
         ),
         SettingNode(
+            id = "custom_mixes",
+            titleRes = R.string.settings_row_custom_mixes,
+            groupRes = R.string.settings_group_home,
+            route = SettingsRoutes.CUSTOM_MIXES,
+            icon = Icons.Default.Tune,
+            keywords = listOf(
+                "daily mix",
+                "daily mixes",
+                "custom mixes",
+                "custom daily mixes",
+                "genres",
+                "decades",
+                "artists",
+                "recipe",
+                "mixes",
+            ),
+            testTag = "settings_nav_custom_mixes",
+            summaryProvider = { _, ctx -> ctx.getString(R.string.settings_summary_custom_mixes) },
+        ),
+        SettingNode(
             id = "home",
             titleRes = R.string.settings_row_home,
             groupRes = R.string.settings_group_home,
             route = SettingsRoutes.HOME,
             icon = Icons.Default.Home,
-            keywords = listOf("home", "favorites", "playlists", "artists", "albums", "radio"),
+            keywords = listOf("home", "favorites", "playlists", "artists", "albums", "radio", "sections"),
             testTag = "settings_nav_home",
             summaryProvider = { state, ctx ->
                 val n = listOf(
@@ -341,7 +362,8 @@ object SettingsIndex {
     fun requiredIndexedRoutes(): Set<String> = SettingsRoutes.nestedLeaves.toSet() + setOf(
         SettingsRoutes.DOWNLOADS,
         SettingsRoutes.PROFILE,
-    ) - setOf(SettingsRoutes.CUSTOM_MIXES) // customMixes reached from network page, not hub
+        SettingsRoutes.CUSTOM_MIXES,
+    )
 }
 
 private fun hostSummary(url: String): String? {

@@ -12,7 +12,7 @@
     <string name="settings_group_network">Network &amp; data</string>
     <string name="settings_group_appearance">Appearance</string>
     <string name="settings_group_notifications">Notifications</string>
-    <string name="settings_group_home">Home &amp; favorites</string>
+    <string name="settings_group_home">Home &amp; mixes</string>
     <string name="settings_group_integrations">Integrations</string>
     <string name="settings_group_about">About</string>
 
@@ -28,7 +28,8 @@
     <string name="settings_row_typography">Text &amp; display size</string>
     <string name="settings_row_appearance">Track lists</string>
     <string name="settings_row_notifications">Notifications</string>
-    <string name="settings_row_home">Home &amp; favorites</string>
+    <string name="settings_row_home">Home sections</string>
+    <string name="settings_row_custom_mixes">Custom Daily Mixes</string>
     <string name="settings_row_lastfm">Last.fm</string>
     <string name="settings_row_advanced">Custom HTTP headers</string>
     <string name="settings_row_about">About &amp; diagnostics</string>
@@ -54,6 +55,7 @@
     <string name="settings_summary_appearance">Reactions, duration, numbers</string>
     <string name="settings_summary_notifications">Playback &amp; system permission</string>
     <string name="settings_summary_home_sections">%1$d sections shown</string>
+    <string name="settings_summary_custom_mixes">Manage mixes on Home</string>
     <string name="settings_summary_lastfm_saved">Key saved</string>
     <string name="settings_summary_lastfm_empty">No API key</string>
     <string name="settings_summary_headers">%1$d headers</string>
@@ -68,7 +70,7 @@
     <string name="settings_page_network">Network &amp; data</string>
     <string name="settings_page_appearance">Track lists</string>
     <string name="settings_page_notifications">Notifications</string>
-    <string name="settings_page_home">Home &amp; favorites</string>
+    <string name="settings_page_home">Home sections</string>
     <string name="settings_page_lastfm">Last.fm</string>
     <string name="settings_page_advanced">Advanced</string>
     <string name="settings_page_about">About</string>

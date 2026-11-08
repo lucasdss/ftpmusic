@@ -145,6 +145,56 @@ class CollectionCoverResolverTest {
     }
 
     @Test
+    fun `PLAYLIST skipDerived prefers pack over serverCoverArtId`() {
+        val path = "collection_defaults/anime/playlists/default.webp"
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "My Playlist",
+                fixedKind = null,
+                fixedValue = null,
+                serverCoverArtId = "pl-server-ca",
+                bundledPackId = "anime",
+                bundledAssetPath = path,
+                skipDerived = true,
+            ),
+        )
+        assertEquals(CollectionCoverResolver.Resolved.Bundled("anime", path), r)
+    }
+
+    @Test
+    fun `fixed BUNDLED survives regardless of active pack preference`() {
+        val pinned = "collection_defaults/anime/genres/rock.webp"
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "Rock Mix",
+                fixedKind = CollectionCoverKind.BUNDLED,
+                fixedValue = pinned,
+                bundledPackId = "noir",
+                bundledAssetPath = "collection_defaults/noir/mixes/default.webp",
+                skipDerived = true,
+            ),
+        )
+        assertEquals(CollectionCoverResolver.Resolved.Bundled("anime", pinned), r)
+    }
+
+    @Test
+    fun `clear fixed with skipDerived returns bundled AUTO`() {
+        val path = "collection_defaults/anime/mixes/default.webp"
+        val r = CollectionCoverResolver.resolve(
+            CollectionCoverResolver.Input(
+                name = "Rock Mix",
+                fixedKind = null,
+                fixedValue = null,
+                derivedCoverArtIds = listOf("al-1"),
+                bundledPackId = "anime",
+                bundledAssetPath = path,
+                skipDerived = true,
+            ),
+        )
+        assertEquals(CollectionCoverResolver.Resolved.Bundled("anime", path), r)
+    }
+
+    @Test
     fun `initials from two words`() {
         assertEquals("RM", CollectionCoverResolver.initials("Rock Mix"))
     }

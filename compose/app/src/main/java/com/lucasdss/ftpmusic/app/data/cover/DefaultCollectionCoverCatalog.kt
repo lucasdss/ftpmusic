@@ -27,10 +27,18 @@ class DefaultCollectionCoverCatalog @Inject constructor(
         val assetPath: String,
     )
 
+    data class PackAsset(
+        val packId: String,
+        val folder: String,
+        val fileName: String,
+        val assetPath: String,
+    )
+
     private val packsRef = AtomicReference<List<Pack>?>(null)
     private val genreSlugRef = AtomicReference<Map<String, String>?>(null)
     private val mixSlugRef = AtomicReference<Map<String, String>?>(null)
     private val playlistSlugRef = AtomicReference<Map<String, String>?>(null)
+    private val assetsByPackRef = AtomicReference<Map<String, List<PackAsset>>>(emptyMap())
 
     fun packs(): List<Pack> = packsRef.get() ?: loadPacks().also { packsRef.set(it) }
 
@@ -45,22 +53,84 @@ class DefaultCollectionCoverCatalog @Inject constructor(
             ?: assetIfExists(packId, "genres/default.webp")
     }
 
-    fun resolveMix(packId: String, mixName: String): ResolvedAsset? {
-        val slug = mixSlug()[normalize(mixName)]
-            ?: genreSlug()[normalize(mixName.removeSuffix(" mix"))]
-            ?: hashSlug(mixName)
-        return assetIfExists(packId, "mixes/${slug}_mix.webp")
-            ?: assetIfExists(packId, "mixes/$slug.webp")
-            ?: assetIfExists(packId, "mixes/default.webp")
+    fun resolveMix(
+        packId: String,
+        mixName: String,
+        dominantGenre: String? = null,
+    ): ResolvedAsset? {
+        val normalized = normalize(mixName)
+        val exactSlug = mixSlug()[normalized]
+        if (exactSlug != null) {
+            assetIfExists(packId, "mixes/${exactSlug}_mix.webp")?.let { return it }
+            assetIfExists(packId, "mixes/$exactSlug.webp")?.let { return it }
+        }
+        val withoutMix = genreSlug()[normalized.removeSuffix(" mix")]
+        if (withoutMix != null) {
+            assetIfExists(packId, "mixes/${withoutMix}_mix.webp")?.let { return it }
+            assetIfExists(packId, "mixes/$withoutMix.webp")?.let { return it }
+        }
+        dominantGenreAsset(packId, dominantGenre)?.let { return it }
+        return assetIfExists(packId, "mixes/default.webp")
     }
 
-    fun resolvePlaylist(packId: String, playlistName: String): ResolvedAsset? {
-        val slug = playlistSlug()[normalize(playlistName)] ?: return assetIfExists(packId, "playlists/default.webp")
-        return assetIfExists(packId, "playlists/$slug.webp")
-            ?: assetIfExists(packId, "playlists/default.webp")
+    fun resolvePlaylist(
+        packId: String,
+        playlistName: String,
+        dominantGenre: String? = null,
+    ): ResolvedAsset? {
+        val slug = playlistSlug()[normalize(playlistName)]
+        if (slug != null) {
+            assetIfExists(packId, "playlists/$slug.webp")?.let { return it }
+        }
+        dominantGenreAsset(packId, dominantGenre)?.let { return it }
+        return assetIfExists(packId, "playlists/default.webp")
+    }
+
+    /**
+     * Lists bundled WebPs for [packId], grouped folders genres/mixes/playlists.
+     * Cached in-process; safe to call repeatedly after first load.
+     */
+    fun listAssets(packId: String): List<PackAsset> {
+        val id = packId.trim()
+        if (id.isBlank()) return emptyList()
+        assetsByPackRef.get()[id]?.let { return it }
+        val loaded = loadPackAssets(id)
+        assetsByPackRef.updateAndGet { prev -> prev + (id to loaded) }
+        return loaded
     }
 
     fun assetUri(assetPath: String): String = "file:///android_asset/$assetPath"
+
+    private fun dominantGenreAsset(packId: String, dominantGenre: String?): ResolvedAsset? {
+        val genre = dominantGenre?.takeIf { it.isNotBlank() } ?: return null
+        val slug = genreSlug()[normalize(genre)] ?: return null
+        return assetIfExists(packId, "genres/$slug.webp")
+    }
+
+    private fun loadPackAssets(packId: String): List<PackAsset> {
+        val folders = listOf("genres", "mixes", "playlists")
+        return buildList {
+            for (folder in folders) {
+                val names = try {
+                    context.assets.list("collection_defaults/$packId/$folder") ?: emptyArray()
+                } catch (_: Exception) {
+                    emptyArray()
+                }
+                names.filter { it.endsWith(".webp", ignoreCase = true) }
+                    .sorted()
+                    .forEach { fileName ->
+                        add(
+                            PackAsset(
+                                packId = packId,
+                                folder = folder,
+                                fileName = fileName,
+                                assetPath = "collection_defaults/$packId/$folder/$fileName",
+                            ),
+                        )
+                    }
+            }
+        }
+    }
 
     private fun assetIfExists(packId: String, relative: String): ResolvedAsset? {
         val path = "collection_defaults/$packId/$relative"
@@ -127,9 +197,4 @@ class DefaultCollectionCoverCatalog @Inject constructor(
 
     private fun normalize(name: String): String =
         name.trim().lowercase().replace('_', ' ').replace(Regex("\\s+"), " ")
-
-    private fun hashSlug(name: String): String {
-        val h = name.lowercase().hashCode().and(0x7fffffff)
-        return "h%04x".format(h % 0x10000)
-    }
 }

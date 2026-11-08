@@ -71,6 +71,7 @@ fun HomeScreen(
     onAlbumClick: (String) -> Unit = {},
     onGenreClick: (String) -> Unit = {},
     onMixClick: (Long) -> Unit = {},
+    onManageMixes: () -> Unit = {},
     onPlaylistsClick: () -> Unit = {},
     onPlaylistClick: (String) -> Unit = {},
     onArtistClick: (String) -> Unit = {},
@@ -279,6 +280,8 @@ fun HomeScreen(
                             HomeSectionHeader(
                                 title = "Daily Mixes",
                                 leadingIcon = Icons.Default.AutoAwesome,
+                                textActionLabel = "Manage",
+                                onTextAction = onManageMixes,
                                 trailing = HomeSectionTrailing.Refresh(
                                     onClick = { viewModel.refreshAllMixes() },
                                     contentDescription = "Refresh mixes",
@@ -738,6 +741,8 @@ private fun HomeSectionHeader(
     title: String,
     leadingIcon: ImageVector,
     trailing: HomeSectionTrailing? = null,
+    textActionLabel: String? = null,
+    onTextAction: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -767,6 +772,18 @@ private fun HomeSectionHeader(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        if (textActionLabel != null && onTextAction != null) {
+            Text(
+                textActionLabel,
+                color = BrandTeal,
+                fontSize = textLabelM(),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable(onClick = onTextAction)
+                    .padding(horizontal = spacingS(), vertical = spacingXS())
+                    .semantics { testTag = "home_daily_mixes_manage" },
+            )
+        }
         if (trailing != null) {
             IconButton(
                 onClick = trailing.onClick,
@@ -941,6 +958,7 @@ private fun GenreMixCard(
             primaryArtist = mix.primaryArtist,
             primaryAlbum = mix.primaryAlbum,
             subject = CollectionCoverSubject.MIX,
+            dominantGenre = mix.recipeGenres.firstOrNull { it.isNotBlank() },
             decodeSize = decodeSize,
             contentDescription = "${mix.name} cover. Long-press to edit.",
             modifier = Modifier

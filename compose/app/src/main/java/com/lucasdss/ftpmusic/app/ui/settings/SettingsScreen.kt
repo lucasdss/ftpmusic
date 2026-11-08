@@ -75,6 +75,7 @@ fun SettingsScreen(
         when (node.route) {
             SettingsRoutes.PROFILE -> onProfile()
             SettingsRoutes.DOWNLOADS -> onDownloads()
+            SettingsRoutes.CUSTOM_MIXES -> onCustomMixes()
             SettingsRoutes.TYPOGRAPHY -> onTypography()
             else -> onNavigate(node.routeForQuery(query))
         }
@@ -87,12 +88,12 @@ fun SettingsScreen(
     val groupOrder = remember {
         listOf(
             R.string.settings_group_account,
+            R.string.settings_group_home,
             R.string.settings_group_playback,
             R.string.settings_group_storage,
             R.string.settings_group_network,
             R.string.settings_group_appearance,
             R.string.settings_group_notifications,
-            R.string.settings_group_home,
             R.string.settings_group_integrations,
             R.string.settings_group_about,
         )

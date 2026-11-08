@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -43,7 +42,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.data.cache.CellularMediaPolicy
-import com.lucasdss.ftpmusic.app.ui.BrandPurple
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.components.ConfirmationSheet
@@ -63,7 +61,6 @@ fun NetworkSettingsScreen(
     onBack: () -> Unit = {},
     onResyncLibrary: () -> Unit = {},
     onRebuildMixes: () -> Unit = {},
-    onCustomMixes: () -> Unit = {},
     scrollToAnchor: String? = null,
     viewModel: SettingsViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ComponentActivity,
@@ -201,27 +198,6 @@ fun NetworkSettingsScreen(
                         )
                         Text(
                             "Regenerate today's Daily Mixes",
-                            color = Color(0xFF888888),
-                            fontSize = textLabelM(),
-                        )
-                    }
-                }
-                Divider(color = Surface, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                Row(
-                    Modifier.clickable { onCustomMixes() }.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Tune, null, tint = BrandPurple, modifier = Modifier.size(iconSmall()))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Custom Daily Mixes",
-                            color = Color.White,
-                            fontSize = textHeadingS(),
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            "Create named mixes from genres, decades, or favorite artists",
                             color = Color(0xFF888888),
                             fontSize = textLabelM(),
                         )

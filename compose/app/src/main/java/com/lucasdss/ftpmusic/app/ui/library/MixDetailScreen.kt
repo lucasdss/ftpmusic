@@ -131,11 +131,15 @@ fun MixDetailScreen(
             viewModel.clearToast()
         }
     }
+    val dominantGenre = remember(state.recipeGenres) {
+        state.recipeGenres.firstOrNull { it.isNotBlank() }
+    }
     val coverEdit = rememberCollectionCoverEditController(
         title = mixName,
         hasFixedCover = state.fixedCoverKind != null,
         subject = CollectionCoverSubject.MIX,
         collectionName = mixName,
+        dominantGenre = dominantGenre,
         onLibraryCover = viewModel::setFixedCoverFromLibrary,
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
         onSavedCover = viewModel::setFixedCoverFromSaved,
@@ -184,6 +188,7 @@ fun MixDetailScreen(
         primaryAlbum = null,
         decodeSizePx = 200,
         subject = CollectionCoverSubject.MIX,
+        dominantGenre = dominantGenre,
         scope = "mix|$mixId",
     )
     val fallbackService = remember { CoverArtFallbackService.getInstance(context) }
@@ -402,6 +407,8 @@ fun MixDetailScreen(
                                             primaryAlbum = null,
                                             decodeSize = 200.dp,
                                             lettermarkLarge = true,
+                                            subject = CollectionCoverSubject.MIX,
+                                            dominantGenre = dominantGenre,
                                             contentDescription = "Mix cover. Long-press to edit.",
                                             modifier = Modifier.fillMaxSize(),
                                         )
@@ -429,29 +436,6 @@ fun MixDetailScreen(
 
                                     else -> {
                                         GenreMixCoverImage(covers[0], Modifier.fillMaxSize())
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(spacingS())) {
-                                TextButton(
-                                    onClick = coverEdit.openLibrary,
-                                    modifier = Modifier.semantics { testTag = "mix_detail_cover_library" },
-                                ) {
-                                    Text("Library", color = BrandTeal, fontSize = textLabelM())
-                                }
-                                TextButton(
-                                    onClick = coverEdit.openDevice,
-                                    modifier = Modifier.semantics { testTag = "mix_detail_cover_device" },
-                                ) {
-                                    Text("Device", color = BrandTeal, fontSize = textLabelM())
-                                }
-                                if (state.fixedCoverKind != null) {
-                                    TextButton(
-                                        onClick = coverEdit.clear,
-                                        modifier = Modifier.semantics { testTag = "mix_detail_cover_clear" },
-                                    ) {
-                                        Text("Clear", color = Color(0xFFE84040), fontSize = textLabelM())
                                     }
                                 }
                             }
@@ -738,6 +722,7 @@ class MixDetailViewModel @Inject constructor(
         val error: String? = null,
         val fixedCoverKind: String? = null,
         val fixedCoverValue: String? = null,
+        val recipeGenres: List<String> = emptyList(),
     )
 
     private val _state = MutableStateFlow(State())
@@ -1086,6 +1071,7 @@ class MixDetailViewModel @Inject constructor(
                 recipe?.let { _mixName.value = it.name }
                 val fixedKind = recipe?.fixedCoverKind
                 val fixedValue = recipe?.fixedCoverValue
+                val recipeGenres = recipe?.filters?.genres.orEmpty()
                 // DM-16: bind session to active pointer (not today|yesterday).
                 val dailyMix = dailyMixRepository.getActiveDailyMix(mixId)
                 sessionDailyMixId = dailyMix?.id
@@ -1101,7 +1087,7 @@ class MixDetailViewModel @Inject constructor(
                         "ftpmusic-dailymix",
                         "loadMix hit mixId=$mixId activeId=${dailyMix?.id} v=${dailyMix?.version} count=${trackIds.size}",
                     )
-                    applyTracks(trackIds, fixedKind, fixedValue)
+                    applyTracks(trackIds, fixedKind, fixedValue, recipeGenres)
                     return@launch
                 }
 
@@ -1120,6 +1106,9 @@ class MixDetailViewModel @Inject constructor(
                     } else {
                         "No mix generated yet — tap refresh"
                     },
+                    fixedCoverKind = fixedKind,
+                    fixedCoverValue = fixedValue,
+                    recipeGenres = recipeGenres,
                 )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1208,6 +1197,7 @@ class MixDetailViewModel @Inject constructor(
         trackIds: List<String>,
         fixedKind: String?,
         fixedValue: String?,
+        recipeGenres: List<String> = emptyList(),
     ) {
         val playableIds = dailyMixRepository.filterPlayableMixTrackIds(trackIds)
         val allTracks = if (playableIds.isEmpty()) {
@@ -1238,6 +1228,7 @@ class MixDetailViewModel @Inject constructor(
             isLoading = false,
             fixedCoverKind = fixedKind,
             fixedCoverValue = fixedValue,
+            recipeGenres = recipeGenres,
         )
     }
 

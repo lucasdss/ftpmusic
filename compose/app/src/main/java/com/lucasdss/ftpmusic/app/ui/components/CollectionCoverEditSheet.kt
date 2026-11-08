@@ -22,14 +22,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -75,10 +80,12 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Shared cover edit sheet: Defaults / Saved / albums / Device / Clear (ADR 0150 / 0151).
+ * Shared cover edit sheet: Style packs (image pick) / Saved / albums / Device / Clear.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -95,6 +102,7 @@ fun CollectionCoverEditSheet(
     onClear: () -> Unit,
     onSavedRemoved: () -> Unit,
     onDismiss: () -> Unit,
+    dominantGenre: String? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -108,16 +116,24 @@ fun CollectionCoverEditSheet(
     var savedEntries by remember { mutableStateOf<List<UserCoverLibrary.Entry>>(emptyList()) }
     var pendingDelete by remember { mutableStateOf<UserCoverLibrary.Entry?>(null) }
     var deleteUsageCount by remember { mutableStateOf(0) }
+    var browsingPackId by remember { mutableStateOf<String?>(null) }
+    var browsingAssets by remember {
+        mutableStateOf<List<DefaultCollectionCoverCatalog.PackAsset>>(emptyList())
+    }
+    var browsingLoading by remember { mutableStateOf(false) }
     val activePack = remember { deps.coverStylePackPreference().current() }
-    val packThumbs = remember(activePack, subject, collectionName) {
+    val packThumbs = remember(activePack, subject, collectionName, dominantGenre) {
         CollectionCoverPackOrder.orderedThumbs(
             packs = catalog.packs(),
             activePackId = activePack,
             resolveAsset = { packId ->
                 when (subject) {
-                    CollectionCoverSubject.GENRE -> catalog.resolveGenre(packId, collectionName)?.assetPath
-                    CollectionCoverSubject.MIX -> catalog.resolveMix(packId, collectionName)?.assetPath
-                    CollectionCoverSubject.PLAYLIST -> catalog.resolvePlaylist(packId, collectionName)?.assetPath
+                    CollectionCoverSubject.GENRE ->
+                        catalog.resolveGenre(packId, collectionName)?.assetPath
+                    CollectionCoverSubject.MIX ->
+                        catalog.resolveMix(packId, collectionName, dominantGenre)?.assetPath
+                    CollectionCoverSubject.PLAYLIST ->
+                        catalog.resolvePlaylist(packId, collectionName, dominantGenre)?.assetPath
                 }
             },
         )
@@ -125,6 +141,17 @@ fun CollectionCoverEditSheet(
 
     LaunchedEffect(Unit) {
         savedEntries = deps.userCoverLibrary().list()
+    }
+
+    LaunchedEffect(browsingPackId) {
+        val packId = browsingPackId ?: run {
+            browsingAssets = emptyList()
+            browsingLoading = false
+            return@LaunchedEffect
+        }
+        browsingLoading = true
+        browsingAssets = withContext(Dispatchers.IO) { catalog.listAssets(packId) }
+        browsingLoading = false
     }
 
     ModalBottomSheet(
@@ -163,12 +190,103 @@ fun CollectionCoverEditSheet(
                 modifier = Modifier.padding(horizontal = spacingL()),
             )
 
-            if (packThumbs.isNotEmpty()) {
+            val browsePack = browsingPackId
+            if (browsePack != null) {
+                val packLabel = catalog.packs().firstOrNull { it.id == browsePack }?.label ?: browsePack
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacingXL(), vertical = spacingS()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = { browsingPackId = null },
+                        modifier = Modifier.semantics { testTag = "collection_cover_pack_back" },
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = BrandTeal,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("Back", color = BrandTeal)
+                    }
+                    Text(
+                        packLabel,
+                        color = Color.White,
+                        fontSize = textLabelS(),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = spacingS()),
+                    )
+                }
+                Text(
+                    "Tap an image to use",
+                    color = Color(0xFF666666),
+                    fontSize = textMicro(),
+                    modifier = Modifier.padding(horizontal = spacingXL()).padding(bottom = spacingS()),
+                )
+                when {
+                    browsingLoading -> {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(color = BrandTeal, modifier = Modifier.size(28.dp))
+                        }
+                    }
+                    browsingAssets.isEmpty() -> {
+                        Text(
+                            "No images in this pack",
+                            color = Color(0xFF888888),
+                            fontSize = textBodyM(),
+                            modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingM()),
+                        )
+                    }
+                    else -> {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 72.dp),
+                            contentPadding = PaddingValues(horizontal = spacingXL()),
+                            horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                            verticalArrangement = Arrangement.spacedBy(spacingS()),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(280.dp)
+                                .semantics { testTag = "collection_cover_pack_browser" },
+                        ) {
+                            items(browsingAssets, key = { it.assetPath }) { asset ->
+                                AsyncImage(
+                                    model = catalog.assetUri(asset.assetPath),
+                                    contentDescription = "${asset.folder}/${asset.fileName}",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(72.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, BrandTeal.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                        .clickable { onPickBundled(asset.assetPath) },
+                                )
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(
+                    color = Color.White.copy(alpha = 0.06f),
+                    modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
+                )
+            } else if (packThumbs.isNotEmpty()) {
                 Text(
                     "Style packs",
                     color = Color(0xFF888888),
                     fontSize = textLabelS(),
                     modifier = Modifier.padding(horizontal = spacingXL(), vertical = spacingS()),
+                )
+                Text(
+                    "Tap a pack to choose an image",
+                    color = Color(0xFF666666),
+                    fontSize = textMicro(),
+                    modifier = Modifier.padding(horizontal = spacingXL()).padding(bottom = spacingS()),
                 )
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = spacingXL()),
@@ -196,7 +314,7 @@ fun CollectionCoverEditSheet(
                                         },
                                         RoundedCornerShape(8.dp),
                                     )
-                                    .clickable { onPickBundled(thumb.assetPath) },
+                                    .clickable { browsingPackId = thumb.packId },
                             )
                             Text(
                                 thumb.label,
@@ -384,6 +502,7 @@ fun rememberCollectionCoverEditController(
     onIdleDismiss: () -> Unit = {},
     subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
     collectionName: String = title,
+    dominantGenre: String? = null,
     onSavedCover: (relativePath: String) -> Unit = {},
     onBundledCover: (assetPath: String) -> Unit = {},
     onDerivedCover: () -> Unit = {},
@@ -410,6 +529,7 @@ fun rememberCollectionCoverEditController(
             hasFixedCover = hasFixedCover,
             subject = subject,
             collectionName = collectionName,
+            dominantGenre = dominantGenre,
             onPickLibrary = {
                 showSheet = false
                 showAlbumPicker = true
@@ -514,6 +634,7 @@ fun CollectionCoverEditHost(
     onExportFailed: () -> Unit,
     subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
     collectionName: String = title,
+    dominantGenre: String? = null,
     onSavedCover: (relativePath: String) -> Unit = {},
     onBundledCover: (assetPath: String) -> Unit = {},
     onDerivedCover: () -> Unit = {},
@@ -531,6 +652,7 @@ fun CollectionCoverEditHost(
         onIdleDismiss = {},
         subject = subject,
         collectionName = collectionName,
+        dominantGenre = dominantGenre,
         onSavedCover = onSavedCover,
         onBundledCover = onBundledCover,
         onDerivedCover = onDerivedCover,

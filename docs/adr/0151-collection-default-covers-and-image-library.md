@@ -23,3 +23,10 @@ Mix/playlist fixed covers deleted the previous local JPEG on switch/clear. Genre
 - Coil loads `file:///android_asset/collection_defaults/...`.
 - Legacy `mix_{id}.jpg` / `pl_{id}.jpg` still resolve; new imports go to the library.
 - Entity delete cleans only legacy prefix files (`mix_*` / `pl_*`), never Saved uploads.
+
+## Amendment (2026-11-08) — pack-first + in-pack image pick
+
+1. **AUTO skipDerived** for GENRE, MIX, **and PLAYLIST**. Pack art beats track collage and playlist `serverCoverArtId` unless the user pins fixed `NAVIDROME` / `LOCAL` / `BUNDLED` / `DERIVED`.
+2. **Bundled resolve chain:** name catalog slug → (mix) name-minus-` mix` → exact catalog `dominantGenre` → subject `default.webp`. No fuzzy/substring genre match. Home Daily Mix cards pass recipe genres; Home playlists use name/default only.
+3. **Edit sheet:** Style pack strip drills into a pack image grid (`listAssets`, cached, IO). Pinning stores absolute `BUNDLED` asset path (survives Settings pack change). Detail **Library | Device | Clear** rows removed; sheet remains the editor.
+4. **Upgrade:** Unpinned collections silently switch from collage/server AUTO to active pack (anime by default). Pinned fixed covers unchanged.

@@ -189,6 +189,8 @@ data class MixCard(
     val fixedCoverValue: String? = null,
     val primaryArtist: String? = null,
     val primaryAlbum: String? = null,
+    /** Recipe genres for pack-cover dominant-genre fallback (ADR 0151). */
+    val recipeGenres: List<String> = emptyList(),
     /** DM-16: active daily_mix version for Compose key / crossfade. */
     val activeVersion: Int = 1,
 )
@@ -897,6 +899,7 @@ class LibraryViewModel @Inject constructor(
                 fixedCoverValue = mix.fixedCoverValue,
                 primaryArtist = meta?.artist,
                 primaryAlbum = meta?.album,
+                recipeGenres = mix.filters.genres,
                 activeVersion = existing.version,
             )
         }

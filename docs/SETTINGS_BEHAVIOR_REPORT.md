@@ -96,10 +96,15 @@ Scrobble path = Subsonic `ScrobbleService` (Navidrome user/pass). Server may for
 | Control | Effect |
 |---------|--------|
 | Profile (card + row) | navigate `profile` — local My Listening + Recently Played |
-| Resync Library | syncing route |
-| Rebuild Daily Mixes | rebuildmix |
-| Custom Daily Mixes | customMixes |
+| Resync Library | syncing route (Network leaf) |
+| Rebuild Daily Mixes | rebuildmix (Network leaf — ops) |
 | Sync Interval | `KEY_SYNC_INTERVAL_HOURS` + WorkManager |
+
+### Home & mixes (hub, after Account)
+| Control | Effect |
+|---------|--------|
+| Custom Daily Mixes | hub row → `customMixes` (authoring); also Home Daily Mixes **Manage** |
+| Home sections | hub row → `settings/home` visibility toggles |
 
 ## Cold-start hydration (PreferenceBootstrap)
 

@@ -2,8 +2,8 @@ package com.lucasdss.ftpmusic.app.ui.settings
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.lucasdss.ftpmusic.app.R
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,8 +53,17 @@ class SettingsIndexTest {
     }
 
     @Test
-    fun `customMixes is not a hub index requirement`() {
-        assertFalse(SettingsRoutes.CUSTOM_MIXES in SettingsIndex.requiredIndexedRoutes())
+    fun `customMixes is a hub index requirement`() {
+        assertTrue(SettingsRoutes.CUSTOM_MIXES in SettingsIndex.requiredIndexedRoutes())
+        val node = SettingsIndex.nodes.first { it.route == SettingsRoutes.CUSTOM_MIXES }
+        assertEquals(R.string.settings_group_home, node.groupRes)
+        assertTrue(node.keywords.any { it.contains("daily mix", ignoreCase = true) })
+    }
+
+    @Test
+    fun `filter daily mix hits custom mixes node`() {
+        val hits = SettingsIndex.filter("daily mix", SettingsUiState(), context)
+        assertTrue(hits.any { it.route == SettingsRoutes.CUSTOM_MIXES })
     }
 
     @Test

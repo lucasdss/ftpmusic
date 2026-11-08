@@ -20,8 +20,8 @@ use a short grouped navigation list with dedicated sub-pages. Shared UI primitiv
    appearance,notifications,home,lastfm,advanced,about}`. Keep existing `downloads`, `profile`,
    `customMixes`, `settings/typography` path strings.
 3. **Network & data:** one hub row → `settings/network` (cellular policy, Wi‑Fi-only sync, interval,
-   TTL, Auto-Download Playlists, Resync/Rebuild, nav to `customMixes`). Storage Used stays on
-   `settings/storage`.
+   TTL, Auto-Download Playlists, Resync/Rebuild). Storage Used stays on `settings/storage`.
+   Custom Daily Mixes authoring is **not** under Network (see amendment).
 4. **Notifications:** `SystemStatusRow` for OS permission + keep `KEY_PLAYBACK_NOTIFICATIONS`
    rich/minimal product toggle (not equivalent to OS permission; FGS still posts minimal when off).
 5. **Battery / default music app:** `SystemStatusRow` wrappers; deep-link behavior unchanged.
@@ -41,3 +41,15 @@ use a short grouped navigation list with dedicated sub-pages. Shared UI primitiv
 - **Resync:** Network resync records origin route (`syncing?returnTo=` URL-encoded) and
   completes with `launchSingleTop` so the user returns to the leaf, not a duplicate hub.
 - **Status tokens:** `StatusOk` / `StatusWarn` are fixed Theme colors (not scheme-dynamic).
+
+## Amendment (2026-11-08) — Custom Daily Mixes hub discoverability
+
+Mix recipe authoring configures Home Daily Mix cards, so it is classified as a **setting** and
+hub-indexed (`SettingsRoutes.CUSTOM_MIXES` in `requiredIndexedRoutes`), superseding the prior
+Network-leaf-only exclusion.
+
+- Hub group **Home & mixes** (renamed from Home & favorites) sits immediately after Account & server.
+- First row: Custom Daily Mixes → existing `customMixes` route (unchanged path / back-stack).
+- Second row: Home sections visibility.
+- Authoring vs ops: recipes live under Home & mixes; **Rebuild Daily Mixes** stays on Network (data op).
+- Home Daily Mixes section exposes a **Manage** text action → `customMixes` for content-adjacent entry.

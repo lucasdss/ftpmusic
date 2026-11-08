@@ -257,6 +257,7 @@ fun PlaylistDetailScreen(
                                 primaryAlbum = state.tracks.firstOrNull()?.album,
                                 decodeSize = 160.dp,
                                 lettermarkLarge = true,
+                                subject = CollectionCoverSubject.PLAYLIST,
                                 contentDescription = "Playlist cover. Long-press to edit.",
                                 modifier = Modifier
                                     .size(adp(160f))
@@ -267,29 +268,6 @@ fun PlaylistDetailScreen(
                                     )
                                     .semantics { testTag = "playlist_cover_art" },
                             )
-                            Spacer(Modifier.height(spacingS()))
-                            Row(horizontalArrangement = Arrangement.spacedBy(spacingS())) {
-                                TextButton(
-                                    onClick = coverEdit.openLibrary,
-                                    modifier = Modifier.semantics { testTag = "playlist_cover_library" },
-                                ) {
-                                    Text("Library", color = BrandTeal, fontSize = textLabelM())
-                                }
-                                TextButton(
-                                    onClick = coverEdit.openDevice,
-                                    modifier = Modifier.semantics { testTag = "playlist_cover_device" },
-                                ) {
-                                    Text("Device", color = BrandTeal, fontSize = textLabelM())
-                                }
-                                if (pl?.fixedCoverKind != null) {
-                                    TextButton(
-                                        onClick = coverEdit.clear,
-                                        modifier = Modifier.semantics { testTag = "playlist_cover_clear" },
-                                    ) {
-                                        Text("Clear", color = Color(0xFFE84040), fontSize = textLabelM())
-                                    }
-                                }
-                            }
                         }
                         Spacer(Modifier.height(spacingS()))
                     }

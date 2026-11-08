@@ -38,7 +38,9 @@ fun CollectionCoverArt(
     lettermarkLarge: Boolean = false,
     subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
     stylePackId: String? = null,
-    skipDerived: Boolean = subject == CollectionCoverSubject.GENRE,
+    /** Pack-first for GENRE / MIX / PLAYLIST (ADR 0151 amendment). */
+    skipDerived: Boolean = true,
+    dominantGenre: String? = null,
 ) {
     val resolvedCover = rememberResolvedCollectionCover(
         name = name,
@@ -52,6 +54,7 @@ fun CollectionCoverArt(
         subject = subject,
         stylePackId = stylePackId,
         skipDerived = skipDerived,
+        dominantGenre = dominantGenre,
     )
 
     Box(

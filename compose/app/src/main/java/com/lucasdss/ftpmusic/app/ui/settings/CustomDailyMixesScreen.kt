@@ -877,6 +877,7 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
         hasFixedCover = editor.fixedCoverKind != null && !editor.clearFixedCover,
         subject = CollectionCoverSubject.MIX,
         collectionName = editor.name.ifBlank { "Mix" },
+        dominantGenre = editor.genres.firstOrNull(),
         onLibraryCover = viewModel::setFixedCoverFromLibrary,
         onCroppedBitmap = viewModel::setFixedCoverFromCroppedBitmap,
         onSavedCover = viewModel::setFixedCoverFromSaved,
@@ -895,46 +896,24 @@ private fun MixCoverEditorSection(editor: MixEditorState, viewModel: CustomDaily
                 fontSize = textLabelS(),
             )
             Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CollectionCoverArt(
-                    name = editor.name.ifBlank { "Mix" },
-                    fixedCoverKind = editor.fixedCoverKind,
-                    fixedCoverValue = editor.fixedCoverValue,
-                    derivedCoverArtIds = emptyList(),
-                    decodeSize = 72.dp,
-                    contentDescription = "Mix cover. Long-press to edit.",
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .combinedClickable(
-                            onClick = { openSheet() },
-                            onLongClick = { openSheet() },
-                        ),
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(
-                        onClick = { openLibrary() },
-                        modifier = Modifier.semantics { testTag = "mix_cover_library" },
-                    ) {
-                        Text("Library", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
-                    }
-                    TextButton(
-                        onClick = { openDevice() },
-                        modifier = Modifier.semantics { testTag = "mix_cover_device" },
-                    ) {
-                        Text("Device", color = TEAL, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
-                    }
-                    if (editor.fixedCoverKind != null || editor.clearFixedCover) {
-                        TextButton(
-                            onClick = { clear() },
-                            modifier = Modifier.semantics { testTag = "mix_cover_clear" },
-                        ) {
-                            Text("Clear", color = RED, fontSize = textLabelM(), fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
+            CollectionCoverArt(
+                name = editor.name.ifBlank { "Mix" },
+                fixedCoverKind = editor.fixedCoverKind,
+                fixedCoverValue = editor.fixedCoverValue,
+                derivedCoverArtIds = emptyList(),
+                decodeSize = 72.dp,
+                subject = CollectionCoverSubject.MIX,
+                dominantGenre = editor.genres.firstOrNull(),
+                contentDescription = "Mix cover. Long-press to edit.",
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .combinedClickable(
+                        onClick = { openSheet() },
+                        onLongClick = { openSheet() },
+                    )
+                    .semantics { testTag = "mix_cover_art" },
+            )
         }
     }
 }

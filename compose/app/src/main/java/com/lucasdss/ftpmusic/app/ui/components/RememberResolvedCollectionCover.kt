@@ -30,8 +30,9 @@ fun rememberResolvedCollectionCover(
     decodeSizePx: Int = 200,
     subject: CollectionCoverSubject = CollectionCoverSubject.MIX,
     stylePackId: String? = null,
-    skipDerived: Boolean = subject == CollectionCoverSubject.GENRE ||
-        subject == CollectionCoverSubject.MIX,
+    /** Pack-first for GENRE / MIX / PLAYLIST; DERIVED fixed kind still forces collage. */
+    skipDerived: Boolean = true,
+    dominantGenre: String? = null,
     scope: String = subject.name.lowercase(),
 ): ResolvedCover {
     val effectiveSkipDerived =
@@ -57,11 +58,13 @@ fun rememberResolvedCollectionCover(
         val candidate = stylePackId?.takeIf { it.isNotBlank() } ?: preferredPack
         if (candidate in knownPackIds) candidate else catalog.defaultPackId()
     }
-    val bundled = remember(name, activePack, subject) {
+    val bundled = remember(name, activePack, subject, dominantGenre) {
         when (subject) {
             CollectionCoverSubject.GENRE -> catalog.resolveGenre(activePack, name)
-            CollectionCoverSubject.MIX -> catalog.resolveMix(activePack, name)
-            CollectionCoverSubject.PLAYLIST -> catalog.resolvePlaylist(activePack, name)
+            CollectionCoverSubject.MIX ->
+                catalog.resolveMix(activePack, name, dominantGenre = dominantGenre)
+            CollectionCoverSubject.PLAYLIST ->
+                catalog.resolvePlaylist(activePack, name, dominantGenre = dominantGenre)
         }
     }
     val localPath = remember(fixedCoverKind, fixedCoverValue) {

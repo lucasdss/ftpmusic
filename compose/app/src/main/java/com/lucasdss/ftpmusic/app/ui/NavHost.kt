@@ -648,6 +648,7 @@ fun FtpmusicNavHost() {
                             onMixClick = { mixId ->
                                 navController.navigate("mix/$mixId")
                             },
+                            onManageMixes = { navController.navigate("customMixes") },
                             onPlaylistsClick = {
                                 TabNavigationPolicy.resolveActiveTabForDestination("library?tab=playlists")
                                     ?.let { activeBottomTab = it }
@@ -902,7 +903,6 @@ fun FtpmusicNavHost() {
                                 )
                             },
                             onRebuildMixes = { navController.navigate("rebuildmix") },
-                            onCustomMixes = { navController.navigate("customMixes") },
                         )
                     }
                     composable(
