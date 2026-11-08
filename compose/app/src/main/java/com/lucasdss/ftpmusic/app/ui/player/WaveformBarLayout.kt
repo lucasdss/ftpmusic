@@ -23,6 +23,8 @@ internal fun computeWaveformBarSpecs(
     barWidthPx: Float,
     minBarHeightPx: Float,
     maxBarHeightPx: Float,
+    playedStart: Color = BrandTeal,
+    playedEnd: Color = BrandPurple,
 ): List<WaveformBarSpec> {
     if (bars.isEmpty()) return emptyList()
     val count = bars.size
@@ -35,7 +37,7 @@ internal fun computeWaveformBarSpecs(
         val height = maxOf(minBarHeightPx, safeAmp * maxBarHeightPx)
         val color = when {
             i < playedIndex ->
-                lerpColor(BrandTeal, BrandPurple, i.toFloat() / count)
+                lerpColor(playedStart, playedEnd, i.toFloat() / count)
 
             i == playedIndex -> Color.White.copy(alpha = 0.7f)
 

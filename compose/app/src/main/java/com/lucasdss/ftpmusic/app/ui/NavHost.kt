@@ -240,10 +240,12 @@ fun FtpmusicNavHost() {
     val miniPlayerColors = PlayerBarColors(
         darkMuted = if (miniColors.hasColors) miniColors.darkMuted else null,
         vibrant = if (miniColors.hasColors) miniColors.vibrant else null,
+        coverScheme = miniColors.scheme,
     )
     val nowPlayingPlayerColors = PlayerBarColors(
         darkMuted = if (nowPlayingColors.hasColors) nowPlayingColors.darkMuted else null,
         vibrant = if (nowPlayingColors.hasColors) nowPlayingColors.vibrant else null,
+        coverScheme = nowPlayingColors.scheme,
     )
 
     val tabs = BottomNavItems
@@ -1252,6 +1254,7 @@ fun FtpmusicNavHost() {
                                 continuousPlayEnabled = sessionAutoplayEnabled,
                                 queueHistory = queueHistory,
                                 waveformBars = waveformBars,
+                                playerHapticsEnabled = settingsState.playerHapticsEnabled,
                             ),
                             position = position,
                             duration = playbackState.duration,

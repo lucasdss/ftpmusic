@@ -244,5 +244,8 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
 
         // ADR-0126: Settings → Appearance — auto-scroll lists to now playing (default ON)
         const val KEY_LIST_AUTO_CENTER_NOW_PLAYING = "list_auto_center_now_playing"
+
+        /** Appearance: player scrub / transport haptics (default ON). */
+        const val KEY_PLAYER_HAPTICS_ENABLED = "player_haptics_enabled"
     }
 }

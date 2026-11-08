@@ -220,6 +220,13 @@ fun AppearanceSettingsScreen(
                     checked = state.hideNavLabels,
                     onToggle = { viewModel.setHideNavLabels(it) },
                 )
+                SectionDivider()
+                SectionToggleRow(
+                    label = "Player haptics",
+                    subtitle = "Subtle vibration when scrubbing and on play/pause",
+                    checked = state.playerHapticsEnabled,
+                    onToggle = { viewModel.setPlayerHapticsEnabled(it) },
+                )
             }
 
             Spacer(Modifier.height(spacingXL()))

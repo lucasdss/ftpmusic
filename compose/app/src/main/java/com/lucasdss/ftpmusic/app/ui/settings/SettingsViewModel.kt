@@ -119,6 +119,8 @@ data class SettingsUiState(
     val playbackNotificationsEnabled: Boolean = true,
     // v49: Hide bottom-nav labels (icon-only). Default OFF = labels shown.
     val hideNavLabels: Boolean = false,
+    /** Appearance: Now Playing scrub / transport haptics (default ON). */
+    val playerHapticsEnabled: Boolean = true,
     // ADR-0099: Typography preferences (role scales + curated fonts + weight)
     val typographyPrefs: TypographyPrefs = TypographyPrefs.DEFAULT,
     // ADR-0104: Track list chrome (reactions + duration); defaults ON
@@ -230,6 +232,8 @@ class SettingsViewModel @Inject constructor(
             storage.get(SecureStorage.KEY_PLAYBACK_NOTIFICATIONS)?.toBooleanStrictOrNull() ?: true
         val savedHideNavLabels =
             storage.get(SecureStorage.KEY_NAV_HIDE_LABELS)?.toBooleanStrictOrNull() ?: false
+        val savedPlayerHaptics =
+            storage.get(SecureStorage.KEY_PLAYER_HAPTICS_ENABLED)?.toBooleanStrictOrNull() ?: true
         val savedTypographyPrefs = loadTypographyPrefs()
         val savedListChromePrefs = loadListChromePrefs()
         // ADR-0105: cellular media + sync Wi-Fi-only (holder already initialized at app start).
@@ -275,6 +279,7 @@ class SettingsViewModel @Inject constructor(
             showFavRadioSection = savedShowFavRadio,
             playbackNotificationsEnabled = savedPlaybackNotifications,
             hideNavLabels = savedHideNavLabels,
+            playerHapticsEnabled = savedPlayerHaptics,
             typographyPrefs = savedTypographyPrefs,
             listChromePrefs = savedListChromePrefs,
             castDeviceName = com.lucasdss.ftpmusic.app.playback.PlayerHolder.castDeviceName,
@@ -445,6 +450,11 @@ class SettingsViewModel @Inject constructor(
     fun setHideNavLabels(enabled: Boolean) {
         _state.value = _state.value.copy(hideNavLabels = enabled)
         storage.put(SecureStorage.KEY_NAV_HIDE_LABELS, enabled.toString())
+    }
+
+    fun setPlayerHapticsEnabled(enabled: Boolean) {
+        _state.value = _state.value.copy(playerHapticsEnabled = enabled)
+        storage.put(SecureStorage.KEY_PLAYER_HAPTICS_ENABLED, enabled.toString())
     }
 
     private fun loadTypographyPrefs(): TypographyPrefs = TypographyPrefs(

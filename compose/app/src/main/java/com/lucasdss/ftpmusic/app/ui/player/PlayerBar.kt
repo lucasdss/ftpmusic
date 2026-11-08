@@ -71,6 +71,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
 import com.lucasdss.ftpmusic.app.R
 import com.lucasdss.ftpmusic.app.playback.PlayerHolder
 import com.lucasdss.ftpmusic.app.ui.*
@@ -79,12 +81,14 @@ import com.lucasdss.ftpmusic.app.ui.BrandTeal
 import com.lucasdss.ftpmusic.app.ui.NavUnselected
 import com.lucasdss.ftpmusic.app.ui.Surface
 import com.lucasdss.ftpmusic.app.ui.SurfaceElevated
+import com.lucasdss.ftpmusic.app.ui.art.ArtBackdrop
 import com.lucasdss.ftpmusic.app.ui.components.CoverArtImage
 import com.lucasdss.ftpmusic.app.ui.components.DownloadDot
 import com.lucasdss.ftpmusic.app.ui.components.FittingText
 import com.lucasdss.ftpmusic.app.ui.components.InteractiveStarRating
 import com.lucasdss.ftpmusic.app.ui.components.ScrollToNowPlayingEffect
 import com.lucasdss.ftpmusic.app.ui.player.CastButton
+import com.lucasdss.ftpmusic.app.ui.theme.LocalReduceMotion
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -177,17 +181,22 @@ fun PlayerBar(
             val queueSheetHeightPx = remember(density, screenHeightDp) {
                 with(density) { screenHeightDp.dp.toPx() }
             }
-            Box(modifier = modifier.fillMaxSize().background(Color(0xFF0D0D14))) {
+            // drawBehind ArtBackdrop only — no layout/measure change vs prior full-bleed Box.
+            ArtBackdrop(
+                scheme = state.colors.coverScheme,
+                modifier = modifier.fillMaxSize(),
+            ) {
                 // ── Swipe-down-to-minimize (drag-to-dismiss) ──
                 var dismissOffset by remember { mutableFloatStateOf(0f) }
                 val dismissAnim = remember { Animatable(0f) }
                 val dismissScope = rememberCoroutineScope()
                 val dismissThresholdPx = with(density) { adp(48f).toPx() }
                 val maxDismissPx = with(density) { adp(200f).toPx() }
+                val reduceMotion = LocalReduceMotion.current
 
-                // Everything (background + content + overlays) — dragging down
-                // translates the screen; release past the threshold minimizes.
-                // Disabled while the queue sheet / lyrics overlay is open.
+                // Everything (content + overlays) — dragging down translates the
+                // screen; release past the threshold minimizes. Disabled while the
+                // queue sheet / lyrics overlay is open.
                 Box(
                     Modifier.fillMaxSize()
                         .graphicsLayer {
@@ -201,20 +210,26 @@ fun PlayerBar(
                                         dismissScope.launch {
                                             dismissAnim.snapTo(dismissOffset)
                                             dismissOffset = 0f
-                                            dismissAnim.animateTo(
-                                                0f,
-                                                spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
-                                            )
+                                            if (reduceMotion) {
+                                                dismissOffset = 0f
+                                            } else {
+                                                dismissAnim.animateTo(
+                                                    0f,
+                                                    spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
+                                                )
+                                            }
                                         }
                                     },
                                     onDragCancel = {
                                         dismissScope.launch {
                                             dismissAnim.snapTo(dismissOffset)
                                             dismissOffset = 0f
-                                            dismissAnim.animateTo(
-                                                0f,
-                                                spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
-                                            )
+                                            if (!reduceMotion) {
+                                                dismissAnim.animateTo(
+                                                    0f,
+                                                    spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
+                                                )
+                                            }
                                         }
                                     },
                                     onVerticalDrag = { _, dragAmount ->
@@ -227,29 +242,6 @@ fun PlayerBar(
                             }
                         },
                 ) {
-                    if (coverArtUrl != null) {
-                        AsyncImage(
-                            model = coverArtUrl,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .scale(1.2f)
-                                .blur(radius = adp(40f)),
-                            contentScale = ContentScale.Crop,
-                            alpha = 0.15f,
-                        )
-                    }
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to Color(0x990D0D14),
-                                    0.55f to Color(0xEB0D0D14),
-                                    1.0f to Color(0xFF0D0D14),
-                                ),
-                            ),
-                        ),
-                    )
                     Column(Modifier.fillMaxSize()) {
                         PlayerFullHeader(
                             state = state,
@@ -573,18 +565,28 @@ private fun PlayerFullHeader(
                     modifier = Modifier.weight(1f),
                 )
                 if (!isQueueSynced) {
-                    val rotation = rememberInfiniteTransition(label = "castSync").animateFloat(
-                        0f,
-                        360f,
-                        infiniteRepeatable(tween(1000, easing = LinearEasing)),
-                        "syncSpin",
-                    )
-                    Icon(
-                        Icons.Default.Refresh,
-                        null,
-                        tint = Color(0xFFF0A040),
-                        modifier = Modifier.size(adp(10f)).rotate(rotation.value),
-                    )
+                    val reduceMotion = LocalReduceMotion.current
+                    if (reduceMotion) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            null,
+                            tint = Color(0xFFF0A040),
+                            modifier = Modifier.size(adp(10f)),
+                        )
+                    } else {
+                        val rotation = rememberInfiniteTransition(label = "castSync").animateFloat(
+                            0f,
+                            360f,
+                            infiniteRepeatable(tween(1000, easing = LinearEasing)),
+                            "syncSpin",
+                        )
+                        Icon(
+                            Icons.Default.Refresh,
+                            null,
+                            tint = Color(0xFFF0A040),
+                            modifier = Modifier.size(adp(10f)).rotate(rotation.value),
+                        )
+                    }
                 }
             }
         }
@@ -858,6 +860,10 @@ private fun ColumnScope.PlayerMainBody(
                     val rawFraction = (position.toFloat() / duration).coerceIn(0f, 1f)
                     // Fraction animation lives inside WaveformScrubber so the whole
                     // PlayerBar body doesn't recompose at animation frame rate.
+                    val accent = com.lucasdss.ftpmusic.app.ui.art.PlayerCoverScheme.accentOrFallback(
+                        colors.vibrant,
+                        colors.coverScheme.bgTop,
+                    )
                     WaveformScrubber(
                         bars = waveformBars,
                         fraction = rawFraction,
@@ -865,6 +871,9 @@ private fun ColumnScope.PlayerMainBody(
                         duration = duration,
                         onSeek = onSeek,
                         modifier = Modifier.padding(horizontal = spacing2XL()),
+                        playedStart = accent,
+                        playedEnd = BrandPurple,
+                        hapticsEnabled = playerHapticsEnabled,
                     )
                 } else {
                     var isDragging by remember { mutableStateOf(false) }
@@ -1538,30 +1547,7 @@ private fun BoxScope.PlayerQueuePanel(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     if (isPlaying) {
-                                        Row(
-                                            Modifier.width(adp(16f)).height(adp(14f)),
-                                            horizontalArrangement = Arrangement.spacedBy(adp(2f)),
-                                            verticalAlignment = Alignment.Bottom,
-                                        ) {
-                                            val eqAnim = rememberInfiniteTransition(label = "eq_anchor")
-                                            listOf(0.4f, 0.7f, 1.0f).forEachIndexed { j, h ->
-                                                val anim by eqAnim.animateFloat(
-                                                    initialValue = h * 0.3f,
-                                                    targetValue = h,
-                                                    animationSpec = infiniteRepeatable(
-                                                        animation = tween(400 + j * 150, easing = FastOutSlowInEasing),
-                                                        repeatMode = RepeatMode.Reverse,
-                                                    ),
-                                                    label = "bar$j",
-                                                )
-                                                Box(
-                                                    Modifier.width(adp(3f))
-                                                        .fillMaxHeight(anim)
-                                                        .clip(RoundedCornerShape(adp(1f)))
-                                                        .background(BrandTeal),
-                                                )
-                                            }
-                                        }
+                                        NowPlayingEqBars(label = "eq_anchor")
                                     }
                                     Spacer(Modifier.width(spacingS()))
                                     Text(
@@ -2395,6 +2381,8 @@ data class PlayerBarState(
     val waveformBars: List<Float> = emptyList(),
     /** NP playback error strip (ADR-0094). */
     val playbackError: String? = null,
+    /** Appearance: scrub/transport haptics (View LocalHapticFeedback). Default ON. */
+    val playerHapticsEnabled: Boolean = true,
 )
 
 /** A single synced lyric line with timestamp (milliseconds from song start). */
@@ -2461,7 +2449,12 @@ internal fun lastLyricIndexBefore(lines: List<LyricLine>, positionMs: Long): Int
 
 /** Colors extracted from album cover art for gradient backgrounds. */
 @androidx.compose.runtime.Immutable
-data class PlayerBarColors(val darkMuted: Color? = null, val vibrant: Color? = null)
+data class PlayerBarColors(
+    val darkMuted: Color? = null,
+    val vibrant: Color? = null,
+    val coverScheme: com.lucasdss.ftpmusic.app.ui.art.CoverScheme =
+        com.lucasdss.ftpmusic.app.ui.art.CoverScheme.neutral(),
+)
 
 /** Formats milliseconds as m:ss for display on seek bars. */
 @VisibleForTesting
@@ -2514,6 +2507,18 @@ private fun SwipeableAlbumArt(
     val albumArtShape = RoundedCornerShape(16.dp)
     val albumArtGlowColor = BrandTeal.copy(alpha = if (isCasting) 0.45f else 0.30f)
     val albumArtElevation = if (isCasting) 30.dp else 24.dp
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val artPx = with(density) { artSize.roundToPx().coerceAtLeast(1) }
+    val currentPainter = rememberAsyncImagePainter(
+        ImageRequest.Builder(context).data(coverArtUrl).size(artPx).build(),
+    )
+    val prevPainter = rememberAsyncImagePainter(
+        ImageRequest.Builder(context).data(prevCoverArtUrl).size(artPx).build(),
+    )
+    val nextPainter = rememberAsyncImagePainter(
+        ImageRequest.Builder(context).data(nextCoverArtUrl).size(artPx).build(),
+    )
+    val reduceMotion = LocalReduceMotion.current
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         // Prev art peek — screen-left edge, drawn behind the current card.
@@ -2528,8 +2533,8 @@ private fun SwipeableAlbumArt(
                     .clip(albumArtShape)
                     .testTag("now_playing_prev_peek"),
             ) {
-                AsyncImage(
-                    model = prevCoverArtUrl,
+                androidx.compose.foundation.Image(
+                    painter = prevPainter,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
@@ -2546,8 +2551,8 @@ private fun SwipeableAlbumArt(
                     .clip(albumArtShape)
                     .testTag("now_playing_next_peek"),
             ) {
-                AsyncImage(
-                    model = nextCoverArtUrl,
+                androidx.compose.foundation.Image(
+                    painter = nextPainter,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
@@ -2578,18 +2583,26 @@ private fun SwipeableAlbumArt(
                                     SwipeDecision.NONE -> {}
                                 }
                                 scope.launch {
-                                    offset.animateTo(
-                                        0f,
-                                        spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
-                                    )
+                                    if (reduceMotion) {
+                                        offset.snapTo(0f)
+                                    } else {
+                                        offset.animateTo(
+                                            0f,
+                                            spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
+                                        )
+                                    }
                                 }
                             },
                             onDragCancel = {
                                 scope.launch {
-                                    offset.animateTo(
-                                        0f,
-                                        spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
-                                    )
+                                    if (reduceMotion) {
+                                        offset.snapTo(0f)
+                                    } else {
+                                        offset.animateTo(
+                                            0f,
+                                            spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
+                                        )
+                                    }
                                 }
                             },
                             onHorizontalDrag = { _, dragAmount ->
@@ -2609,8 +2622,8 @@ private fun SwipeableAlbumArt(
                 },
             ) {
                 if (coverArtUrl != null) {
-                    AsyncImage(
-                        model = coverArtUrl,
+                    androidx.compose.foundation.Image(
+                        painter = currentPainter,
                         contentDescription = "Cover",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
@@ -2625,6 +2638,46 @@ private fun SwipeableAlbumArt(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/** EQ bars that animate only when [LocalReduceMotion] is false. */
+@Composable
+private fun NowPlayingEqBars(label: String) {
+    Row(
+        Modifier.width(adp(16f)).height(adp(14f)),
+        horizontalArrangement = Arrangement.spacedBy(adp(2f)),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        if (LocalReduceMotion.current) {
+            listOf(0.45f, 0.75f, 0.55f).forEach { h ->
+                Box(
+                    Modifier.width(adp(3f))
+                        .fillMaxHeight(h)
+                        .clip(RoundedCornerShape(adp(1f)))
+                        .background(BrandTeal),
+                )
+            }
+        } else {
+            val eqAnim = rememberInfiniteTransition(label = label)
+            listOf(0.4f, 0.7f, 1.0f).forEachIndexed { j, h ->
+                val anim by eqAnim.animateFloat(
+                    initialValue = h * 0.3f,
+                    targetValue = h,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(400 + j * 150, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "bar$j",
+                )
+                Box(
+                    Modifier.width(adp(3f))
+                        .fillMaxHeight(anim)
+                        .clip(RoundedCornerShape(adp(1f)))
+                        .background(BrandTeal),
+                )
             }
         }
     }
@@ -2825,30 +2878,7 @@ private fun QueueTrackRow(
                     Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Row(
-                        Modifier.width(adp(16f)).height(adp(14f)),
-                        horizontalArrangement = Arrangement.spacedBy(adp(2f)),
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        val eqAnim = rememberInfiniteTransition(label = "eq_pb_${track.trackId ?: "q$index"}")
-                        listOf(0.4f, 0.7f, 1.0f).forEachIndexed { j, h ->
-                            val anim by eqAnim.animateFloat(
-                                initialValue = h * 0.3f,
-                                targetValue = h,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(400 + j * 150, easing = FastOutSlowInEasing),
-                                    repeatMode = RepeatMode.Reverse,
-                                ),
-                                label = "bar$j",
-                            )
-                            Box(
-                                Modifier.width(adp(3f))
-                                    .fillMaxHeight(anim)
-                                    .clip(RoundedCornerShape(adp(1f)))
-                                    .background(BrandTeal),
-                            )
-                        }
-                    }
+                    NowPlayingEqBars(label = "eq_pb_${track.trackId ?: "q$index"}")
                 }
             }
         }

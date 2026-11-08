@@ -29,6 +29,10 @@ keeping body text white / high-contrast secondary.
 6. **Montage** — detail Mix averages displayed tile seeds; Home LazyRow does not extract
    on the fling path.
 7. **Player** — reuses the extractor pipeline; keeps a separate seed from collection art.
+   Full Now Playing uses `ArtBackdrop` + `CoverScheme` (`PlayerCoverScheme.fromSeed`, Y≤0.04)
+   via `drawBehind` only (no layout change). Mini bar keeps the brighter mid gradient
+   (`Y≤0.15` vibrant). Research themes in `docs/Music Player UI Visual Effects.md`
+   (FFT/WebGPU/Canvas video/client PCM) remain non-goals.
 
 ## Consequences
 

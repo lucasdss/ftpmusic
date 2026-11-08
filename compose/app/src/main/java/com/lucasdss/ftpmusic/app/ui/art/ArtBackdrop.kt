@@ -46,7 +46,8 @@ fun ArtBackdrop(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val context = LocalContext.current
-    val reducedMotion = remember {
+    val localReduce = com.lucasdss.ftpmusic.app.ui.theme.LocalReduceMotion.current
+    val reducedMotion = localReduce || remember {
         Settings.Global.getFloat(
             context.contentResolver,
             Settings.Global.ANIMATOR_DURATION_SCALE,

@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import com.lucasdss.ftpmusic.app.ui.theme.ProvideReduceMotion
 
 /**
  * Design system color tokens per VISUAL-EFFECTS.md.
@@ -63,10 +64,12 @@ fun FtpmusicTheme(
         LocalListChromePrefs provides listChromePrefs,
     ) {
         val typography = ftpTypography()
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = typography,
-            content = content,
-        )
+        ProvideReduceMotion {
+            MaterialTheme(
+                colorScheme = colorScheme,
+                typography = typography,
+                content = content,
+            )
+        }
     }
 }

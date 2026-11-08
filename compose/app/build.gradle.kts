@@ -354,6 +354,10 @@ tasks.register<JacocoReport>("jacocoRegressionReport") {
             "**/com/lucasdss/ftpmusic/app/ui/settings/AboutWatermark*",
             "**/com/lucasdss/ftpmusic/app/data/cover/CollectionCoverPackOrder*",
             "**/com/lucasdss/ftpmusic/app/ui/playlist/PlaylistDetailChrome*",
+            "**/com/lucasdss/ftpmusic/app/ui/theme/ReduceMotionPolicy*",
+            "**/com/lucasdss/ftpmusic/app/ui/art/PlayerCoverScheme*",
+            "**/com/lucasdss/ftpmusic/app/ui/player/FineScrubMath*",
+            "**/com/lucasdss/ftpmusic/app/ui/player/PlayerHapticsPolicy*",
         )
     }
     sourceDirectories.setFrom(files("$projectDir/src/main/java"))
@@ -402,6 +406,10 @@ tasks.register<JacocoCoverageVerification>("jacocoRegressionGate") {
             "**/com/lucasdss/ftpmusic/app/ui/settings/AboutWatermark*",
             "**/com/lucasdss/ftpmusic/app/data/cover/CollectionCoverPackOrder*",
             "**/com/lucasdss/ftpmusic/app/ui/playlist/PlaylistDetailChrome*",
+            "**/com/lucasdss/ftpmusic/app/ui/theme/ReduceMotionPolicy*",
+            "**/com/lucasdss/ftpmusic/app/ui/art/PlayerCoverScheme*",
+            "**/com/lucasdss/ftpmusic/app/ui/player/FineScrubMath*",
+            "**/com/lucasdss/ftpmusic/app/ui/player/PlayerHapticsPolicy*",
         )
     }
     classDirectories.setFrom(files(regressionTree))

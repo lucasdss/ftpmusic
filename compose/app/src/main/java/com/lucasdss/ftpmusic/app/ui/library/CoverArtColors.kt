@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.lucasdss.ftpmusic.app.data.cover.ArtSeedExtractor
 import com.lucasdss.ftpmusic.app.ui.art.CoverScheme
+import com.lucasdss.ftpmusic.app.ui.art.PlayerCoverScheme
 
 /**
  * Player mini / now-playing palette derived from cover art via Coil + Palette.
@@ -18,6 +19,8 @@ import com.lucasdss.ftpmusic.app.ui.art.CoverScheme
 data class CoverArtColors(
     val vibrant: Color = Color.Unspecified,
     val darkMuted: Color = Color.Unspecified,
+    /** Standard NP/detail backdrop scheme (Y≤0.04). Mini gradient still uses vibrant/darkMuted. */
+    val scheme: CoverScheme = CoverScheme.neutral(),
 ) {
     /** True only when a usable (non-transparent) vibrant seed was extracted. */
     val hasColors: Boolean
@@ -56,11 +59,12 @@ fun rememberCoverArtColors(coverArtUrl: String?): CoverArtColors {
 private fun ArtSeedExtractor.SeedResult.toCoverArtColors(): CoverArtColors {
     val seed = color ?: return CoverArtColors()
     if (!CoverScheme.isUsableSeed(seed)) return CoverArtColors()
-    val scheme = CoverScheme.fromSeed(seed)
-    // Player keeps a brighter mid stop than detail backdrops (Y≤0.15) so the
-    // mini/now-playing gradient stays colorful while darkMuted stays readable.
+    val scheme = PlayerCoverScheme.fromSeed(seed)
+    // Player mini keeps a brighter mid stop than detail backdrops (Y≤0.15) so the
+    // mini gradient stays colorful while darkMuted / scheme.bgTop stay readable.
     return CoverArtColors(
         vibrant = CoverScheme.darkenToMaxLuminance(seed, 0.15f),
         darkMuted = scheme.bgTop,
+        scheme = scheme,
     )
 }

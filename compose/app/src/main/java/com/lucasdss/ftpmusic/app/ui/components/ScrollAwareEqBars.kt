@@ -23,18 +23,20 @@ import androidx.compose.ui.unit.dp
 import com.lucasdss.ftpmusic.app.ui.BrandTeal
 
 /**
- * Pure gate — when scrolling, skip infinite EQ transitions (ADR-0102).
- * Unit-testable without Compose animation clocks.
+ * Pure gate — when scrolling or reduce-motion, skip infinite EQ transitions
+ * (ADR-0102 + player visual refresh).
  */
-fun shouldAnimateEqBars(scrollInProgress: Boolean): Boolean = !scrollInProgress
+fun shouldAnimateEqBars(scrollInProgress: Boolean, reduceMotion: Boolean = false): Boolean =
+    !scrollInProgress && !reduceMotion
 
 /**
  * Teal EQ bars for active album/track overlays. Animates only when idle;
- * shows a static mid-height triad while [scrollInProgress] to avoid fling jank.
+ * shows a static mid-height triad while [scrollInProgress] or reduce-motion.
  */
 @Composable
 fun ScrollAwareEqBars(scrollInProgress: Boolean, modifier: Modifier = Modifier) {
-    if (!shouldAnimateEqBars(scrollInProgress)) {
+    val reduceMotion = com.lucasdss.ftpmusic.app.ui.theme.LocalReduceMotion.current
+    if (!shouldAnimateEqBars(scrollInProgress, reduceMotion)) {
         StaticEqBars(modifier)
         return
     }
