@@ -64,6 +64,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+enum class PlaylistSyncBadge { NONE, SYNCED, PENDING, CONFLICT }
+
+enum class PlaylistDownloadBadge { NONE, PARTIAL, FULL }
+
 data class PlaylistView(
     val id: String,
     val name: String,
@@ -71,6 +75,8 @@ data class PlaylistView(
     val coverArt: String? = null,
     val isSynced: Boolean = false,
     val isDownloaded: Boolean = false,
+    val syncBadge: PlaylistSyncBadge = PlaylistSyncBadge.NONE,
+    val downloadBadge: PlaylistDownloadBadge = PlaylistDownloadBadge.NONE,
     val fixedCoverKind: String? = null,
     val fixedCoverValue: String? = null,
     val primaryArtist: String? = null,
@@ -975,19 +981,38 @@ class LibraryViewModel @Inject constructor(
             var cached: List<PlaylistEntity> = emptyList()
             try {
                 cached = playlistDao.getAll()
-                val autoDownload =
-                    storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
                 _state.value = _state.value.copy(
                     playlists = cached.map { entity ->
-                        val pendingCount = pendingChangeDao.pendingCountForPlaylist(entity.id)
-                        val isSynced = entity.lastSyncedAt != null && pendingCount == 0
+                        // Per-row try: one badge failure must not wipe the whole list.
+                        val syncBadge = try {
+                            val pendingCount = pendingChangeDao.pendingCountForPlaylist(entity.id)
+                            when {
+                                entity.isConflicted -> PlaylistSyncBadge.CONFLICT
+                                pendingCount > 0 -> PlaylistSyncBadge.PENDING
+                                entity.lastSyncedAt != null -> PlaylistSyncBadge.SYNCED
+                                else -> PlaylistSyncBadge.NONE
+                            }
+                        } catch (_: Exception) {
+                            when {
+                                entity.isConflicted -> PlaylistSyncBadge.CONFLICT
+                                entity.lastSyncedAt != null -> PlaylistSyncBadge.SYNCED
+                                else -> PlaylistSyncBadge.NONE
+                            }
+                        }
+                        val downloadBadge = try {
+                            resolvePlaylistDownloadBadge(entity.id)
+                        } catch (_: Exception) {
+                            PlaylistDownloadBadge.NONE
+                        }
                         PlaylistView(
                             id = entity.id,
                             name = entity.name,
                             trackCount = entity.trackCount,
                             coverArt = entity.coverArt,
-                            isSynced = isSynced,
-                            isDownloaded = autoDownload,
+                            isSynced = syncBadge == PlaylistSyncBadge.SYNCED,
+                            isDownloaded = downloadBadge == PlaylistDownloadBadge.FULL,
+                            syncBadge = syncBadge,
+                            downloadBadge = downloadBadge,
                             fixedCoverKind = entity.fixedCoverKind,
                             fixedCoverValue = entity.fixedCoverValue,
                         )
@@ -1001,6 +1026,107 @@ class LibraryViewModel @Inject constructor(
                 if (cached.isEmpty()) {
                     _state.value = _state.value.copy(error = "Failed to load playlists")
                 }
+            }
+        }
+    }
+
+    /** Honest download badge: Full / Partial / None from track cache flags (no N+1 network). */
+    private suspend fun resolvePlaylistDownloadBadge(playlistId: String): PlaylistDownloadBadge {
+        val entries = playlistDao.getEntries(playlistId)
+        if (entries.isEmpty()) return PlaylistDownloadBadge.NONE
+        val trackIds = entries.map { it.trackId }
+        val tracks = trackDao.getTracksByIds(trackIds)
+        if (tracks.isEmpty()) return PlaylistDownloadBadge.NONE
+        val downloaded = tracks.count { it.isDownloaded }
+        // Denominator = entry count so missing TrackEntity rows never inflate FULL.
+        return when {
+            downloaded <= 0 -> PlaylistDownloadBadge.NONE
+            tracks.size >= entries.size && downloaded >= entries.size -> PlaylistDownloadBadge.FULL
+            else -> PlaylistDownloadBadge.PARTIAL
+        }
+    }
+
+    private val _pickerPlaylists = MutableStateFlow<List<PlaylistView>>(emptyList())
+    val pickerPlaylists: StateFlow<List<PlaylistView>> = _pickerPlaylists.asStateFlow()
+
+    fun loadPickerPlaylists() {
+        viewModelScope.launch {
+            try {
+                _pickerPlaylists.value = playlistDao.getAll().map {
+                    PlaylistView(id = it.id, name = it.name, trackCount = it.trackCount, coverArt = it.coverArt)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-library", "loadPickerPlaylists failed: ${e.message}")
+            }
+        }
+    }
+
+    fun addAlbumTracksToPlaylist(albumId: String, playlistId: String) {
+        viewModelScope.launch {
+            try {
+                val entities = trackDao.getTracksByAlbumIds(listOf(albumId))
+                if (entities.isEmpty()) return@launch
+                playlistRepo.addToPlaylist(playlistId, entities.map { it.id })
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-home", "addAlbumTracksToPlaylist failed: ${e.message}")
+            }
+        }
+    }
+
+    fun renamePlaylistLocal(playlistId: String, newName: String) {
+        val trimmed = newName.trim()
+        if (playlistId.isBlank() || trimmed.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val existing = playlistDao.getById(playlistId) ?: return@launch
+                playlistDao.upsertAll(
+                    listOf(existing.copy(name = trimmed, updatedAt = System.currentTimeMillis())),
+                )
+                pendingChangeDao.insert(
+                    com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeEntity(
+                        playlistId = playlistId,
+                        changeType = "rename",
+                        payload = "name=$trimmed",
+                    ),
+                )
+                syncWorker.flushNow()
+                loadPlaylists()
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-library", "renamePlaylistLocal failed: ${e.message}")
+            }
+        }
+    }
+
+    fun deletePlaylistFromLibrary(playlistId: String) {
+        if (playlistId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                playlistRepo.onPlaylistDeleted(playlistId)
+                playlistDao.clearEntries(playlistId)
+                playlistDao.delete(playlistId)
+                pendingChangeDao.insert(
+                    com.lucasdss.ftpmusic.app.data.db.PendingPlaylistChangeEntity(
+                        playlistId = playlistId,
+                        changeType = "delete",
+                        payload = "",
+                    ),
+                )
+                syncWorker.flushNow()
+                loadPlaylists()
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-library", "deletePlaylistFromLibrary failed: ${e.message}")
+            }
+        }
+    }
+
+    fun syncPlaylistFromServer(playlistId: String) {
+        if (playlistId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                playlistRepo.importPlaylist(playlistId)
+                loadPlaylists()
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-library", "syncPlaylistFromServer failed: ${e.message}")
             }
         }
     }

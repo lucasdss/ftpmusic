@@ -112,6 +112,11 @@ fun LibraryContent(
     // The playlist targeted by the confirm dialog — captured when the menu item
     // is tapped, because menuPlaylist is cleared to close the menu.
     var pendingRemovePlaylist by remember { mutableStateOf<PlaylistView?>(null) }
+    var showRenamePlaylistDialog by remember { mutableStateOf(false) }
+    var renamePlaylistTarget by remember { mutableStateOf<PlaylistView?>(null) }
+    var renamePlaylistDraft by remember { mutableStateOf("") }
+    var showDeletePlaylistConfirm by remember { mutableStateOf(false) }
+    var pendingDeletePlaylist by remember { mutableStateOf<PlaylistView?>(null) }
     var coverEditPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     val playlistsForCover by viewModel.state.collectAsStateWithLifecycle()
     // Admin radio CRUD (shared server catalog)
@@ -596,41 +601,101 @@ fun LibraryContent(
                                                                 color = Color(0xFF888888),
                                                                 fontSize = textLabelM(),
                                                             )
-                                                            if (pl.isSynced) {
-                                                                Spacer(Modifier.width(8.dp))
-                                                                Surface(
-                                                                    color = BrandTeal.copy(alpha = 0.12f),
-                                                                    shape = RoundedCornerShape(4.dp),
-                                                                ) {
-                                                                    Text(
-                                                                        "Synced",
-                                                                        modifier = Modifier.padding(
-                                                                            horizontal = 5.dp,
-                                                                            vertical = 1.dp,
-                                                                        ),
-                                                                        color = BrandTeal,
-                                                                        fontSize = textMicro(),
-                                                                        fontWeight = FontWeight.SemiBold,
-                                                                    )
+                                                            when (pl.syncBadge) {
+                                                                PlaylistSyncBadge.SYNCED -> {
+                                                                    Spacer(Modifier.width(8.dp))
+                                                                    Surface(
+                                                                        color = BrandTeal.copy(alpha = 0.12f),
+                                                                        shape = RoundedCornerShape(4.dp),
+                                                                    ) {
+                                                                        Text(
+                                                                            "Synced",
+                                                                            modifier = Modifier.padding(
+                                                                                horizontal = 5.dp,
+                                                                                vertical = 1.dp,
+                                                                            ),
+                                                                            color = BrandTeal,
+                                                                            fontSize = textMicro(),
+                                                                            fontWeight = FontWeight.SemiBold,
+                                                                        )
+                                                                    }
                                                                 }
+                                                                PlaylistSyncBadge.PENDING -> {
+                                                                    Spacer(Modifier.width(8.dp))
+                                                                    Surface(
+                                                                        color = Color(0xFFFFA726).copy(alpha = 0.12f),
+                                                                        shape = RoundedCornerShape(4.dp),
+                                                                    ) {
+                                                                        Text(
+                                                                            "Pending",
+                                                                            modifier = Modifier.padding(
+                                                                                horizontal = 5.dp,
+                                                                                vertical = 1.dp,
+                                                                            ),
+                                                                            color = Color(0xFFFFA726),
+                                                                            fontSize = textMicro(),
+                                                                            fontWeight = FontWeight.SemiBold,
+                                                                        )
+                                                                    }
+                                                                }
+                                                                PlaylistSyncBadge.CONFLICT -> {
+                                                                    Spacer(Modifier.width(8.dp))
+                                                                    Surface(
+                                                                        color = Color(0xFFE84040).copy(alpha = 0.12f),
+                                                                        shape = RoundedCornerShape(4.dp),
+                                                                    ) {
+                                                                        Text(
+                                                                            "Conflict",
+                                                                            modifier = Modifier.padding(
+                                                                                horizontal = 5.dp,
+                                                                                vertical = 1.dp,
+                                                                            ),
+                                                                            color = Color(0xFFE84040),
+                                                                            fontSize = textMicro(),
+                                                                            fontWeight = FontWeight.SemiBold,
+                                                                        )
+                                                                    }
+                                                                }
+                                                                PlaylistSyncBadge.NONE -> Unit
                                                             }
-                                                            if (pl.isDownloaded) {
-                                                                Spacer(Modifier.width(8.dp))
-                                                                Surface(
-                                                                    color = BrandPurple.copy(alpha = 0.12f),
-                                                                    shape = RoundedCornerShape(4.dp),
-                                                                ) {
-                                                                    Text(
-                                                                        "Downloaded",
-                                                                        modifier = Modifier.padding(
-                                                                            horizontal = 5.dp,
-                                                                            vertical = 1.dp,
-                                                                        ),
-                                                                        color = BrandPurple,
-                                                                        fontSize = textMicro(),
-                                                                        fontWeight = FontWeight.SemiBold,
-                                                                    )
+                                                            when (pl.downloadBadge) {
+                                                                PlaylistDownloadBadge.FULL -> {
+                                                                    Spacer(Modifier.width(8.dp))
+                                                                    Surface(
+                                                                        color = BrandPurple.copy(alpha = 0.12f),
+                                                                        shape = RoundedCornerShape(4.dp),
+                                                                    ) {
+                                                                        Text(
+                                                                            "Downloaded",
+                                                                            modifier = Modifier.padding(
+                                                                                horizontal = 5.dp,
+                                                                                vertical = 1.dp,
+                                                                            ),
+                                                                            color = BrandPurple,
+                                                                            fontSize = textMicro(),
+                                                                            fontWeight = FontWeight.SemiBold,
+                                                                        )
+                                                                    }
                                                                 }
+                                                                PlaylistDownloadBadge.PARTIAL -> {
+                                                                    Spacer(Modifier.width(8.dp))
+                                                                    Surface(
+                                                                        color = BrandPurple.copy(alpha = 0.08f),
+                                                                        shape = RoundedCornerShape(4.dp),
+                                                                    ) {
+                                                                        Text(
+                                                                            "Partial",
+                                                                            modifier = Modifier.padding(
+                                                                                horizontal = 5.dp,
+                                                                                vertical = 1.dp,
+                                                                            ),
+                                                                            color = BrandPurple,
+                                                                            fontSize = textMicro(),
+                                                                            fontWeight = FontWeight.SemiBold,
+                                                                        )
+                                                                    }
+                                                                }
+                                                                PlaylistDownloadBadge.NONE -> Unit
                                                             }
                                                         }
                                                     }
@@ -642,11 +707,40 @@ fun LibraryContent(
                                                     )
                                                 }
                                             }
-                                            // Long-press menu
+                                            // Long-press / overflow manage menu (cover LP stays cover-edit)
                                             DropdownMenu(
                                                 expanded = menuPlaylist?.id == pl.id,
                                                 onDismissRequest = { menuPlaylist = null },
                                             ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Rename") },
+                                                    onClick = {
+                                                        renamePlaylistTarget = pl
+                                                        renamePlaylistDraft = pl.name
+                                                        menuPlaylist = null
+                                                        showRenamePlaylistDialog = true
+                                                    },
+                                                    leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Sync from Server") },
+                                                    onClick = {
+                                                        viewModel.syncPlaylistFromServer(pl.id)
+                                                        menuPlaylist = null
+                                                    },
+                                                    leadingIcon = { Icon(Icons.Default.CloudDownload, null) },
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete Playlist") },
+                                                    onClick = {
+                                                        pendingDeletePlaylist = pl
+                                                        menuPlaylist = null
+                                                        showDeletePlaylistConfirm = true
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.DeleteForever, null, tint = Color(0xFFE84040))
+                                                    },
+                                                )
                                                 DropdownMenuItem(
                                                     text = { Text("Remove Locally") },
                                                     onClick = {
@@ -942,6 +1036,68 @@ fun LibraryContent(
                 TextButton(onClick = {
                     pendingRemovePlaylist = null
                     showRemovePlaylistConfirm = false
+                }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showRenamePlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showRenamePlaylistDialog = false
+                renamePlaylistTarget = null
+            },
+            title = { Text("Rename Playlist") },
+            text = {
+                OutlinedTextField(
+                    value = renamePlaylistDraft,
+                    onValueChange = { renamePlaylistDraft = it },
+                    singleLine = true,
+                    placeholder = { Text("Playlist name") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        renamePlaylistTarget?.let { viewModel.renamePlaylistLocal(it.id, renamePlaylistDraft) }
+                        showRenamePlaylistDialog = false
+                        renamePlaylistTarget = null
+                    },
+                    enabled = renamePlaylistDraft.isNotBlank(),
+                ) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showRenamePlaylistDialog = false
+                    renamePlaylistTarget = null
+                }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showDeletePlaylistConfirm) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingDeletePlaylist = null
+                showDeletePlaylistConfirm = false
+            },
+            title = { Text("Delete Playlist") },
+            text = {
+                Text("Delete \"${pendingDeletePlaylist?.name ?: ""}\"? This removes it from the server too.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDeletePlaylist?.let { viewModel.deletePlaylistFromLibrary(it.id) }
+                    pendingDeletePlaylist = null
+                    showDeletePlaylistConfirm = false
+                }) {
+                    Text("Delete", color = Color(0xFFE84040))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingDeletePlaylist = null
+                    showDeletePlaylistConfirm = false
                 }) { Text("Cancel") }
             },
         )

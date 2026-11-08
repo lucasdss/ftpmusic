@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -29,7 +30,10 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -98,6 +102,15 @@ fun PlaylistDetailScreen(
     // Seeded before opening the picker — never rely on menuTrackIndex after dismiss.
     var addToPlaylistTrackIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAddSongsSheet by remember { mutableStateOf(false) }
+    var sortMode by rememberSaveable { mutableStateOf(PlaylistSortMode.CUSTOM) }
+    var playlistSearch by rememberSaveable { mutableStateOf("") }
+    var editMode by rememberSaveable { mutableStateOf(false) }
+    var selectedEditIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val displayTracks = remember(state.tracks, sortMode, playlistSearch) {
+        playlistDisplayTracks(state.tracks, sortMode, playlistSearch)
+    }
+    val canStructuralReorder = playlistReorderEnabled(sortMode, playlistSearch)
+    val canReorder = editMode && canStructuralReorder
     val availablePlaylists by viewModel.availablePlaylists.collectAsStateWithLifecycle()
     val coverEdit = rememberCollectionCoverEditController(
         title = state.playlist?.name ?: "Playlist",
@@ -117,12 +130,24 @@ fun PlaylistDetailScreen(
     val listState = rememberLazyListState(
         cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
     )
+    val reorderableState = rememberReorderableLazyListState(listState) { from, to ->
+        if (!canReorder) return@rememberReorderableLazyListState
+        val fromId = from.key as? String ?: return@rememberReorderableLazyListState
+        val toId = to.key as? String ?: return@rememberReorderableLazyListState
+        val fromIdx = state.tracks.indexOfFirst { it.id == fromId }
+        val toIdx = state.tracks.indexOfFirst { it.id == toId }
+        if (fromIdx >= 0 && toIdx >= 0) viewModel.applyLocalReorder(fromIdx, toIdx)
+    }
     val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
-    val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
+    // Auto-center against display order (sorted/filtered), not Room source order.
+    val displayTrackIds = remember(displayTracks) { displayTracks.map { it.second.id } }
     // cover + optional actions + divider before track rows
     val headerCount = if (state.tracks.isNotEmpty()) 3 else 2
-    val nowPlayingLazyIndex = remember(trackIds, currentTrackId, headerCount) {
-        resolveLazyIndex(headerCount = headerCount, trackIndex = indexOfTrackId(trackIds, currentTrackId))
+    val nowPlayingLazyIndex = remember(displayTrackIds, currentTrackId, headerCount) {
+        resolveLazyIndex(
+            headerCount = headerCount,
+            trackIndex = indexOfTrackId(displayTrackIds, currentTrackId),
+        )
     }
     ScrollToNowPlayingEffect(
         enabled = autoCenter && state.tracks.isNotEmpty(),
@@ -393,6 +418,96 @@ fun PlaylistDetailScreen(
                                 }
                             }
                             Spacer(Modifier.height(spacingS()))
+                            // Add / Sort / Edit cluster (market parity; sort is view-only)
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = spacingL()),
+                                horizontalArrangement = Arrangement.spacedBy(spacingS()),
+                            ) {
+                                AssistChip(
+                                    onClick = { showAddSongsSheet = true },
+                                    label = { Text("Add") },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        labelColor = Color.White,
+                                        containerColor = Color(0xFF252538),
+                                    ),
+                                )
+                                var sortExpanded by remember { mutableStateOf(false) }
+                                Box {
+                                    AssistChip(
+                                        onClick = { sortExpanded = true },
+                                        label = { Text("Sort: ${sortMode.name.lowercase().replaceFirstChar { it.titlecase() }}") },
+                                        colors = AssistChipDefaults.assistChipColors(
+                                            labelColor = Color.White,
+                                            containerColor = Color(0xFF252538),
+                                        ),
+                                    )
+                                    DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                                        PlaylistSortMode.entries.forEach { mode ->
+                                            DropdownMenuItem(
+                                                text = { Text(mode.name.lowercase().replaceFirstChar { it.titlecase() }) },
+                                                onClick = {
+                                                    sortMode = mode
+                                                    sortExpanded = false
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                                AssistChip(
+                                    onClick = {
+                                        val leavingEdit = editMode
+                                        editMode = !editMode
+                                        if (leavingEdit) {
+                                            // Flush coalesce before leaving edit; avoid mid-drag Done racing a stale job.
+                                            viewModel.commitTrackOrder()
+                                            selectedEditIds = emptySet()
+                                        }
+                                    },
+                                    label = { Text(if (editMode) "Done" else "Edit") },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        labelColor = if (editMode) BrandTeal else Color.White,
+                                        containerColor = Color(0xFF252538),
+                                    ),
+                                )
+                            }
+                            if (state.isConflicted) {
+                                Text(
+                                    state.conflictMessage ?: "Sync conflict — Sync to Server to resolve",
+                                    color = Color(0xFFE84040),
+                                    fontSize = textLabelM(),
+                                    modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingXS()),
+                                )
+                            }
+                            OutlinedTextField(
+                                value = playlistSearch,
+                                onValueChange = { playlistSearch = it },
+                                placeholder = { Text("Search in playlist…", color = Color(0xFF666666)) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = spacingL(), vertical = spacingXS()),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = BrandTeal,
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedContainerColor = Color(0xFF1C1C1C),
+                                    unfocusedContainerColor = Color(0xFF1C1C1C),
+                                    cursorColor = BrandTeal,
+                                ),
+                            )
+                            if (editMode && selectedEditIds.isNotEmpty()) {
+                                TextButton(
+                                    onClick = {
+                                        viewModel.removeTracks(selectedEditIds)
+                                        selectedEditIds = emptySet()
+                                    },
+                                    modifier = Modifier.padding(horizontal = spacingL()),
+                                ) {
+                                    Text("Remove ${selectedEditIds.size} selected", color = Color(0xFFE84040))
+                                }
+                            }
+                            Spacer(Modifier.height(spacingS()))
                         }
                     }
 
@@ -450,32 +565,61 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    itemsIndexed(
-                        state.tracks,
-                        key = { _, t -> t.id },
-                        contentType = { _, _ -> "song" },
-                    ) { index, track ->
+                    items(
+                        displayTracks.size,
+                        key = { i -> displayTracks[i].second.id },
+                        contentType = { _ -> "song" },
+                    ) { displayIndex ->
+                        val (sourceIndex, track) = displayTracks[displayIndex]
+                        val index = sourceIndex
+                        ReorderableItem(
+                            reorderableState,
+                            key = track.id,
+                            enabled = canReorder,
+                        ) {
                         val isCached = viewModel.isCached(track.id)
                         val isDownloaded = viewModel.isDownloaded(track.id)
                         val isQueued = viewModel.isQueued(track.id)
                         val ds = downloadStatus(isDownloaded, isQueued, isCached)
                         val isActive = currentTrackId != null && track.id == currentTrackId && isPlaying
+                        val isSelected = track.id in selectedEditIds
 
                         SongListRow(
                             title = track.title,
                             subtitle = track.artist,
-                            isActive = isActive,
+                            isActive = isActive || (editMode && isSelected),
                             downloadStatus = ds,
                             durationLabel = track.duration?.let { formatSongDuration(it) },
-                            isLiked = track.id in state.likedTrackIds,
-                            isDisliked = track.id in state.dislikedTrackIds,
-                            onLike = { viewModel.toggleTrackLike(track.id) },
-                            onDislike = { viewModel.toggleTrackDislike(track.id) },
-                            onMore = { menuTrackIndex = index },
-                            onClick = { viewModel.playTrack(index) },
-                            onLongClick = { menuTrackIndex = index },
+                            isLiked = if (editMode) null else track.id in state.likedTrackIds,
+                            isDisliked = if (editMode) null else track.id in state.dislikedTrackIds,
+                            onLike = if (editMode) null else ({ viewModel.toggleTrackLike(track.id) }),
+                            onDislike = if (editMode) null else ({ viewModel.toggleTrackDislike(track.id) }),
+                            onMore = if (editMode) null else ({ menuTrackIndex = index }),
+                            onClick = {
+                                if (editMode) {
+                                    selectedEditIds = if (isSelected) {
+                                        selectedEditIds - track.id
+                                    } else {
+                                        selectedEditIds + track.id
+                                    }
+                                } else {
+                                    viewModel.playTrack(index)
+                                }
+                            },
+                            // No long-click in edit mode — avoids fighting the drag handle.
+                            onLongClick = if (editMode) null else ({ menuTrackIndex = index }),
                             modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                             leadingContent = when {
+                                editMode -> {
+                                    {
+                                        Icon(
+                                            if (isSelected) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                                            tint = if (isSelected) BrandTeal else Color(0xFF666666),
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                }
                                 isActive -> {
                                     {
                                         Box(
@@ -501,6 +645,20 @@ fun PlaylistDetailScreen(
                                     }
 
                                 else -> null
+                            },
+                            trailingContent = if (canReorder) {
+                                {
+                                    Icon(
+                                        Icons.Default.DragHandle,
+                                        contentDescription = "Reorder",
+                                        tint = Color(0xFF666666),
+                                        modifier = Modifier
+                                            .size(knobSize())
+                                            .draggableHandle(),
+                                    )
+                                }
+                            } else {
+                                null
                             },
                         )
 
@@ -551,7 +709,7 @@ fun PlaylistDetailScreen(
                                         viewModel.moveTrack(index, index - 1)
                                         menuTrackIndex = -1
                                     },
-                                    enabled = index > 0,
+                                    enabled = canStructuralReorder && index > 0,
                                     leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null) },
                                 )
                                 DropdownMenuItem(
@@ -560,7 +718,7 @@ fun PlaylistDetailScreen(
                                         viewModel.moveTrack(index, index + 1)
                                         menuTrackIndex = -1
                                     },
-                                    enabled = index < state.tracks.lastIndex,
+                                    enabled = canStructuralReorder && index < state.tracks.lastIndex,
                                     leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null) },
                                 )
                                 HorizontalDivider()
@@ -598,6 +756,7 @@ fun PlaylistDetailScreen(
                                 )
                             }
                         }
+                        } // ReorderableItem
                     }
 
                     item { Spacer(Modifier.height(adp(80f))) }

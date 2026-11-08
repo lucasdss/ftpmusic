@@ -1,8 +1,8 @@
 # Playlist management — market + behavior report
 
 Date: 2026-11-08  
-Status: Phase 0 delivered (DeepSeek cross-checked)  
-Related: ADR-0015, ADR-0025, ADR-0150, ADR-0114 (FAB), PLAY_RELEASE_2_1_4  
+Status: Phases 0–4 implemented (2.1.5) — local deep review + DeepSeek Phase-5  
+Related: ADR-0015, ADR-0025, ADR-0150, ADR-0114 (FAB), PLAY_RELEASE_2_1_5  
 Plan: Playlist UX Market Research (cross-checked)
 
 ## Verdict
@@ -69,6 +69,13 @@ smart playlists — we differentiate via Daily Mixes, not a rule builder.
 | **3a** | Detail Add/Sort/Edit; view-only sort default; list ⋮ |
 | **3b** | Edit-mode drag → one `sync_tracks` |
 | **4** | Multi-select; Synced/Pending/Conflict; in-playlist search |
+| **5** | Local deep review + DeepSeek audit → ship **2.1.5** |
+
+### Phase-5 gate (DeepSeek)
+
+- First audit: **PASS WITH FIXES** (Library badge N+1 broke unit tests; reorder cancel could flush stale).
+- Fixes: per-row badge try/catch + test stubs; `orderVersion` short-circuit in `persistTrackOrder`; repo `add_tracks` payload = actually-added; DragHandle; honest download denominator; Done → `commitTrackOrder()`.
+- Re-audit: **PASS WITH FIXES** → **P0 NONE** (residual P1: refresh-vs-reorder test gap; comma id delimiter).
 
 ## Regression freeze
 

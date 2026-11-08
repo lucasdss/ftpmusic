@@ -331,22 +331,26 @@ class PlaylistRepository @Inject constructor(
 
     /**
      * Add tracks to an existing playlist and enqueue sync.
-     * Deduplicates tracks already present.
+     * Deduplicates tracks already present. Pending payload = actually-added ids only
+     * (contract #8 — avoids server dupes on flush).
      */
     suspend fun addToPlaylist(playlistId: String, trackIds: List<String>) {
         if (trackIds.isEmpty()) return
-        playlistDao.addTracksToPlaylist(playlistId, trackIds)
+        val existingIds = playlistDao.getEntries(playlistId).map { it.trackId }.toSet()
+        val newTrackIds = trackIds.filter { it !in existingIds }.distinct()
+        if (newTrackIds.isEmpty()) return
+        playlistDao.addTracksToPlaylist(playlistId, newTrackIds)
         pendingChangeDao.insert(
             PendingPlaylistChangeEntity(
                 playlistId = playlistId,
                 changeType = "add_tracks",
-                payload = trackIds.joinToString(","),
+                payload = newTrackIds.joinToString(","),
             ),
         )
         syncWorker.flushNow()
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
             "ftpmusic-playlist",
-            "addToPlaylist playlistId=$playlistId count=${trackIds.size}",
+            "addToPlaylist playlistId=$playlistId count=${newTrackIds.size}",
         )
     }
 

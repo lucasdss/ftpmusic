@@ -1191,6 +1191,16 @@ fun FtpmusicNavHost() {
                         val onSaveQueueAsPlaylist = remember(playbackViewModel, appContext) {
                             { name: String -> playbackViewModel.saveQueueAsPlaylist(appContext, name) }
                         }
+                        var showSaveTrackPlaylist by remember { mutableStateOf(false) }
+                        val addToPlaylistVm: com.lucasdss.ftpmusic.app.ui.playlist.AddToPlaylistViewModel =
+                            androidx.hilt.navigation.compose.hiltViewModel()
+                        val addPlaylistToast by addToPlaylistVm.toast.collectAsStateWithLifecycle()
+                        LaunchedEffect(addPlaylistToast) {
+                            addPlaylistToast?.let {
+                                android.widget.Toast.makeText(appContext, it, android.widget.Toast.LENGTH_SHORT).show()
+                                addToPlaylistVm.clearToast()
+                            }
+                        }
                         val onPlayHistoryTrack = remember(playbackViewModel) {
                             { trackId: String -> playbackViewModel.playNextFromHistory(trackId) }
                         }
@@ -1267,6 +1277,10 @@ fun FtpmusicNavHost() {
                             onShuffleToggle = onShuffleToggle,
                             onToggleLike = onToggleLike,
                             onToggleDislike = onToggleDislike,
+                            onSaveTrackToPlaylist = {
+                                addToPlaylistVm.loadPlaylists()
+                                showSaveTrackPlaylist = true
+                            },
                             onRate = onRate,
                             onArtistClick = onArtistClick,
                             onAlbumClick = onAlbumClick,
@@ -1291,6 +1305,20 @@ fun FtpmusicNavHost() {
                             defaultQueuePlaylistName = playbackViewModel.defaultQueuePlaylistName(),
                             modifier = Modifier,
                         )
+
+                        if (showSaveTrackPlaylist) {
+                            val pickerPlaylists by addToPlaylistVm.playlists.collectAsStateWithLifecycle()
+                            com.lucasdss.ftpmusic.app.ui.playlist.AddToPlaylistPickerSheet(
+                                playlists = pickerPlaylists,
+                                onPick = { playlistId ->
+                                    val tid = playbackState.currentTrackId
+                                    if (tid != null) addToPlaylistVm.addTracks(playlistId, listOf(tid))
+                                    showSaveTrackPlaylist = false
+                                },
+                                onDismiss = { showSaveTrackPlaylist = false },
+                                title = "Save to Playlist",
+                            )
+                        }
 
                         if (showSleepTimerDialog) {
                             androidx.compose.material3.AlertDialog(

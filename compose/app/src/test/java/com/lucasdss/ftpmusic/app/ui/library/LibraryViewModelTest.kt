@@ -1813,6 +1813,8 @@ class LibraryViewModelTest {
             com.lucasdss.ftpmusic.app.data.db.PlaylistEntity(id = "pl-2", name = "Favorites", trackCount = 8),
         )
         coEvery { playlistDao.getAll() } returns local
+        coEvery { playlistDao.getEntries(any()) } returns emptyList()
+        coEvery { trackDao.getTracksByIds(any()) } returns emptyList()
 
         viewModel =
             LibraryViewModel(
@@ -3276,6 +3278,7 @@ class LibraryViewModelTest {
             com.lucasdss.ftpmusic.app.data.db.PlaylistEntryEntity(playlistId = "pl-1", trackId = "t1", position = 0),
         )
         coEvery { playlistDao.getEntries("pl-2") } returns emptyList()
+        coEvery { trackDao.getTracksByIds(any()) } returns emptyList()
         coEvery { metadataDao.getPlaylistMontageCovers(listOf("t1")) } returns listOf("ca-1", "ca-2")
         coEvery { metadataDao.getPlaylistPrimaryCoverMeta(listOf("t1")) } returns
             com.lucasdss.ftpmusic.app.data.db.MixCoverMetaProjection(

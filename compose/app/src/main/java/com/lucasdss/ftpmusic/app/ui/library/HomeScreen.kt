@@ -88,6 +88,7 @@ fun HomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val coverToast by viewModel.coverToast.collectAsStateWithLifecycle()
     var showAlbumSheet by remember { mutableStateOf<com.lucasdss.ftpmusic.app.data.model.Album?>(null) }
+    var addAlbumToPlaylistId by remember { mutableStateOf<String?>(null) }
     var coverEditTarget by rememberSaveable(stateSaver = HomeCoverEditTargetSaver) {
         mutableStateOf<HomeCoverEditTarget?>(null)
     }
@@ -690,13 +691,29 @@ fun HomeScreen(
             },
             onAddToPlaylist = {
                 showAlbumSheet = null
-                onAlbumClick(album.id)
+                addAlbumToPlaylistId = album.id
             },
             onDownload = {
                 showAlbumSheet = null
                 viewModel.albumAction(album.id, "download")
             },
             onDismiss = { showAlbumSheet = null },
+        )
+    }
+
+    addAlbumToPlaylistId?.let { albumId ->
+        val pickerPlaylists by viewModel.pickerPlaylists.collectAsStateWithLifecycle()
+        LaunchedEffect(albumId) { viewModel.loadPickerPlaylists() }
+        com.lucasdss.ftpmusic.app.ui.playlist.AddToPlaylistPickerSheet(
+            playlists = pickerPlaylists.map {
+                com.lucasdss.ftpmusic.app.ui.playlist.PlaylistPickerItem(it.id, it.name, it.trackCount)
+            },
+            onPick = { playlistId ->
+                viewModel.addAlbumTracksToPlaylist(albumId, playlistId)
+                Toast.makeText(context, "Added to playlist", Toast.LENGTH_SHORT).show()
+                addAlbumToPlaylistId = null
+            },
+            onDismiss = { addAlbumToPlaylistId = null },
         )
     }
 

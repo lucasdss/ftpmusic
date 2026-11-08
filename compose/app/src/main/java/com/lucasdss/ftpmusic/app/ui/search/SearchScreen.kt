@@ -96,6 +96,19 @@ fun SearchScreen(
     val artistArtCache = remember { mutableStateMapOf<String, String?>() }
     var isFocused by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
+    var searchSaveTrackId by remember { mutableStateOf<String?>(null) }
+    val addToPlaylistVm: com.lucasdss.ftpmusic.app.ui.playlist.AddToPlaylistViewModel = hiltViewModel()
+    val addPlaylistItems by addToPlaylistVm.playlists.collectAsStateWithLifecycle()
+    val addPlaylistToast by addToPlaylistVm.toast.collectAsStateWithLifecycle()
+    LaunchedEffect(addPlaylistToast) {
+        addPlaylistToast?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            addToPlaylistVm.clearToast()
+        }
+    }
+    LaunchedEffect(searchSaveTrackId) {
+        if (searchSaveTrackId != null) addToPlaylistVm.loadPlaylists()
+    }
 
     // Filtered history for autocomplete dropdown
     val dropdownItems = remember(state.query, state.recentSearches) {
@@ -1397,6 +1410,7 @@ fun SearchScreen(
                             onLike = { viewModel.toggleTrackLike(t.id) },
                             onDislike = { viewModel.toggleTrackDislike(t.id) },
                             onClick = { onTrackClick(t) },
+                            onLongClick = { searchSaveTrackId = t.id },
                             modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingS()),
                             leadingContent = {
                                 if (trackCoverUrl != null) {
@@ -1781,6 +1795,18 @@ fun SearchScreen(
                 }
             }
         }
+    }
+
+    searchSaveTrackId?.let { trackId ->
+        com.lucasdss.ftpmusic.app.ui.playlist.AddToPlaylistPickerSheet(
+            playlists = addPlaylistItems,
+            onPick = { playlistId ->
+                addToPlaylistVm.addTracks(playlistId, listOf(trackId))
+                searchSaveTrackId = null
+            },
+            onDismiss = { searchSaveTrackId = null },
+            title = "Save to Playlist",
+        )
     }
 }
 

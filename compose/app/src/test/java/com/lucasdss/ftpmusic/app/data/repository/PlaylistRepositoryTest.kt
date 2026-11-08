@@ -450,6 +450,7 @@ class PlaylistRepositoryTest {
 
     @Test
     fun `addToPlaylist inserts entries at correct position and enqueues sync`() = runTest {
+        coEvery { playlistDao.getEntries("target") } returns emptyList()
         repo.addToPlaylist("target", listOf("t1", "t2"))
 
         coVerify { playlistDao.addTracksToPlaylist("target", listOf("t1", "t2")) }
@@ -459,9 +460,24 @@ class PlaylistRepositoryTest {
 
     @Test
     fun `addToPlaylist skips already-existing track IDs`() = runTest {
+        coEvery { playlistDao.getEntries("target") } returns listOf(
+            PlaylistEntryEntity(playlistId = "target", trackId = "t1", position = 0),
+        )
+        repo.addToPlaylist("target", listOf("t1", "t2"))
+
+        coVerify { playlistDao.addTracksToPlaylist("target", listOf("t2")) }
+        coVerify { pendingChangeDao.insert(match { it.changeType == "add_tracks" && it.payload == "t2" }) }
+    }
+
+    @Test
+    fun `addToPlaylist does not enqueue when all ids already present`() = runTest {
+        coEvery { playlistDao.getEntries("target") } returns listOf(
+            PlaylistEntryEntity(playlistId = "target", trackId = "t1", position = 0),
+        )
         repo.addToPlaylist("target", listOf("t1"))
 
-        coVerify { playlistDao.addTracksToPlaylist("target", listOf("t1")) }
+        coVerify(exactly = 0) { playlistDao.addTracksToPlaylist(any(), any()) }
+        coVerify(exactly = 0) { pendingChangeDao.insert(any()) }
     }
 
     @Test
@@ -474,6 +490,7 @@ class PlaylistRepositoryTest {
 
     @Test
     fun `addToPlaylist starts at position 0 for empty target`() = runTest {
+        coEvery { playlistDao.getEntries("empty") } returns emptyList()
         repo.addToPlaylist("empty", listOf("t1"))
 
         coVerify { playlistDao.addTracksToPlaylist("empty", listOf("t1")) }

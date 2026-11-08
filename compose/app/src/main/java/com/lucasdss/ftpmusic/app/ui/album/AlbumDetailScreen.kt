@@ -476,9 +476,11 @@ fun AlbumDetailScreen(
         var showServerPlaylists by remember { mutableStateOf(false) }
         val playlists by viewModel.playlists.collectAsStateWithLifecycle()
         LaunchedEffect(showPlaylistPicker) { viewModel.loadPlaylists() }
-        PlaylistPickerSheet(
-            playlists = playlists,
-            onAdd = { plId ->
+        com.lucasdss.ftpmusic.app.ui.playlist.AddToPlaylistPickerSheet(
+            playlists = playlists.map {
+                com.lucasdss.ftpmusic.app.ui.playlist.PlaylistPickerItem(it.id, it.name, it.trackCount)
+            },
+            onPick = { plId ->
                 viewModel.addToPlaylist(plId, playlistTrackIds)
                 showPlaylistPicker = false
                 playlistTrackIds = emptyList()
@@ -746,106 +748,6 @@ private fun AlbumActionSheet(
                 Color(0xFF888888),
                 onDownloadAll,
             )
-        }
-    }
-}
-
-// ─── Playlist Picker Sheet ───
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PlaylistPickerSheet(
-    playlists: List<PlaylistView>,
-    onAdd: (String) -> Unit,
-    onCreateNew: () -> Unit,
-    onAddFromServer: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Surface,
-        shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
-    ) {
-        Column(Modifier.padding(bottom = spacing3XL())) {
-            Box(Modifier.fillMaxWidth().padding(top = spacingS()), contentAlignment = Alignment.Center) {
-                Box(Modifier.width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)))
-            }
-            Text(
-                "Add to Playlist",
-                color = Color.White,
-                fontSize = textHeadingM(),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
-            )
-            // New Playlist row
-            Row(
-                Modifier.fillMaxWidth().clickable {
-                    onCreateNew()
-                }.padding(horizontal = spacingL(), vertical = spacingM())
-                    .clip(
-                        RoundedCornerShape(cornerM()),
-                    ).border(1.dp, BrandTeal.copy(alpha = 0.3f), RoundedCornerShape(cornerM()))
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.Add, null, tint = BrandTeal, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "New Playlist…",
-                    color = BrandTeal,
-                    fontSize = textBodyM(),
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            // Add from Server
-            Row(
-                Modifier.fillMaxWidth().clickable {
-                    onAddFromServer()
-                }.padding(horizontal = spacingL(), vertical = spacingM()),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.CloudDownload, null, tint = BrandTeal, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(12.dp))
-                Text("Add from Server", color = Color.White, fontSize = textBodyM(), fontWeight = FontWeight.Medium)
-            }
-            Spacer(Modifier.height(8.dp))
-            if (playlists.isEmpty()) {
-                Text(
-                    "No playlists yet",
-                    color = Color(0xFF888888),
-                    fontSize = textBodyM(),
-                    modifier = Modifier.padding(horizontal = spacingL()),
-                )
-            } else {
-                playlists.forEach { pl ->
-                    HorizontalDivider(
-                        color = Color.White.copy(alpha = 0.04f),
-                        modifier = Modifier.padding(horizontal = spacingL()),
-                    )
-                    Row(
-                        Modifier.fillMaxWidth().clickable {
-                            onAdd(pl.id)
-                        }.padding(horizontal = spacingL(), vertical = spacingM()),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.QueueMusic,
-                            null,
-                            tint = Color(0xFF444444),
-                            modifier = Modifier.size(iconSmall()),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            pl.name,
-                            color = Color.White,
-                            fontSize = textBodyM(),
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text("${pl.trackCount} tracks", color = Color(0xFF888888), fontSize = textLabelM())
-                    }
-                }
-            }
         }
     }
 }

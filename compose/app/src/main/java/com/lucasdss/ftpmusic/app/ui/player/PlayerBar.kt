@@ -146,6 +146,7 @@ fun PlayerBar(
     onCommitQueueReorder: () -> Unit = {},
     onShareQueue: () -> Unit = {},
     onSaveQueueAsPlaylist: (String) -> Unit = {},
+    onSaveTrackToPlaylist: () -> Unit = {},
     onPlayHistoryTrack: (String) -> Unit = {},
     onRemoveFromQueueBatch: (Set<Int>) -> Unit = {},
     onQueueSheetOpened: () -> Unit = {},
@@ -268,6 +269,7 @@ fun PlayerBar(
                             onShuffleToggle = onShuffleToggle,
                             onToggleLike = onToggleLike,
                             onToggleDislike = onToggleDislike,
+                            onSaveTrackToPlaylist = onSaveTrackToPlaylist,
                             onRate = onRate,
                             onShowLyrics = { showLyrics = true },
                             onDismissPlaybackError = onDismissPlaybackError,
@@ -741,6 +743,7 @@ private fun ColumnScope.PlayerMainBody(
     onShuffleToggle: () -> Unit,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
+    onSaveTrackToPlaylist: () -> Unit = {},
     onRate: (Int) -> Unit,
     onShowLyrics: () -> Unit,
     onDismissPlaybackError: () -> Unit = {},
@@ -848,6 +851,17 @@ private fun ColumnScope.PlayerMainBody(
                             },
                             onClick = onToggleDislike,
                             modifier = Modifier.padding(start = spacingXS()),
+                        )
+                        Icon(
+                            Icons.Default.PlaylistAdd,
+                            contentDescription = "Save to playlist",
+                            tint = NavUnselected,
+                            modifier = Modifier
+                                .padding(start = spacingXS())
+                                .size(adp(36f))
+                                .clickable(onClick = onSaveTrackToPlaylist)
+                                .padding(adp(6f))
+                                .testTag("player_save_to_playlist"),
                         )
                     }
                     // Interactive 0-5 star rating

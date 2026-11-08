@@ -500,86 +500,28 @@ fun ArtistDetailScreen(
 
             // ═══ Playlist Picker ═══
             if (showPlaylistPicker) {
-                var showCreatePlaylist by remember { mutableStateOf(false) }
                 val playlists by viewModel.playlists.collectAsStateWithLifecycle()
                 LaunchedEffect(showPlaylistPicker) { viewModel.loadPlaylists() }
-                ModalBottomSheet(
-                    onDismissRequest = {
+                com.lucasdss.ftpmusic.app.ui.playlist.AddToPlaylistPickerSheet(
+                    playlists = playlists.map {
+                        com.lucasdss.ftpmusic.app.ui.playlist.PlaylistPickerItem(it.id, it.name, it.trackCount)
+                    },
+                    onPick = { plId ->
+                        val name = playlists.find { it.id == plId }?.name ?: "playlist"
+                        viewModel.addToPlaylist(plId, playlistTrackIds)
+                        android.widget.Toast.makeText(
+                            context,
+                            "Added to $name",
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
                         showPlaylistPicker = false
                         playlistTrackIds = emptyList()
                     },
-                    containerColor = Surface,
-                    shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
-                ) {
-                    Column(Modifier.padding(bottom = spacing3XL())) {
-                        Box(
-                            Modifier.fillMaxWidth().padding(top = spacingS()),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Box(
-                                Modifier.width(
-                                    32.dp,
-                                ).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)),
-                            )
-                        }
-                        Text(
-                            "Add to Playlist",
-                            color = Color.White,
-                            fontSize = textHeadingM(),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = spacingL(), vertical = spacingM()),
-                        )
-                        if (playlists.isEmpty()) {
-                            Text(
-                                "No playlists yet",
-                                color = Color(0xFF888888),
-                                fontSize = textBodyM(),
-                                modifier = Modifier.padding(horizontal = spacingL()),
-                            )
-                        } else {
-                            playlists.forEach { pl ->
-                                HorizontalDivider(
-                                    color = Color.White.copy(alpha = 0.04f),
-                                    modifier = Modifier.padding(horizontal = spacingL()),
-                                )
-                                Row(
-                                    Modifier.fillMaxWidth().clickable {
-                                        viewModel.addToPlaylist(pl.id, playlistTrackIds)
-                                        android.widget.Toast.makeText(
-                                            context,
-                                            "Added to ${pl.name}",
-                                            android.widget.Toast.LENGTH_SHORT,
-                                        ).show()
-                                        showPlaylistPicker = false
-                                        playlistTrackIds = emptyList()
-                                    }.padding(horizontal = spacingL(), vertical = spacingM()),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.QueueMusic,
-                                        null,
-                                        tint = Color(0xFF444444),
-                                        modifier = Modifier.size(iconSmall()),
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(
-                                        pl.name,
-                                        color = Color.White,
-                                        fontSize = textBodyM(),
-                                        modifier = Modifier.weight(1f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        "${pl.trackCount} tracks",
-                                        color = Color(0xFF888888),
-                                        fontSize = textLabelM(),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                    onDismiss = {
+                        showPlaylistPicker = false
+                        playlistTrackIds = emptyList()
+                    },
+                )
             }
         }
     }

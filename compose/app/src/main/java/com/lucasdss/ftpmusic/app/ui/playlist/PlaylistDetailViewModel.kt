@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class PlaylistDetailState(
     val playlist: PlaylistEntity? = null,
@@ -168,7 +170,7 @@ class PlaylistDetailViewModel @Inject constructor(
                         trackMap[entry.trackId]?.let { entity ->
                             Track(
                                 id = entity.id, title = entity.title,
-                                artist = entity.artist, album = null,
+                                artist = entity.artist, album = entity.album,
                                 albumId = entity.albumId, artistId = entity.artistId,
                                 duration = entity.durationSeconds, trackNumber = entity.trackNumber,
                                 coverArt = entity.coverArtUrl, suffix = entity.suffix,
@@ -228,35 +230,49 @@ class PlaylistDetailViewModel @Inject constructor(
                 )
             } ?: emptyList()
 
-            // Persist to database
+            // Persist metadata always; skip entry wipe while a local reorder is
+            // coalescing (plan contract: mutex vs refreshFromServer).
             playlistDao.upsertAll(listOf(playlistMeta))
-            playlistDao.clearEntries(playlistId)
-            playlistDao.upsertEntries(
-                tracks.mapIndexed { idx, t ->
-                    PlaylistEntryEntity(playlistId = playlistId, trackId = t.id, position = idx)
-                },
-            )
-            // Batch save track entities
-            val trackEntities = tracks.map { t ->
-                com.lucasdss.ftpmusic.app.data.db.TrackEntity(
-                    id = t.id, title = t.title, artist = t.artist,
-                    albumId = t.albumId,
-                    durationSeconds = t.duration, trackNumber = t.trackNumber,
-                    coverArtUrl = t.coverArt, suffix = t.suffix,
-                    contentType = t.contentType,
+            val reorderPending = reorderPersistPending()
+            if (!reorderPending) {
+                playlistDao.clearEntries(playlistId)
+                playlistDao.upsertEntries(
+                    tracks.mapIndexed { idx, t ->
+                        PlaylistEntryEntity(playlistId = playlistId, trackId = t.id, position = idx)
+                    },
                 )
+                // Batch save track entities
+                val trackEntities = tracks.map { t ->
+                    com.lucasdss.ftpmusic.app.data.db.TrackEntity(
+                        id = t.id, title = t.title, artist = t.artist,
+                        albumId = t.albumId,
+                        durationSeconds = t.duration, trackNumber = t.trackNumber,
+                        coverArtUrl = t.coverArt, suffix = t.suffix,
+                        contentType = t.contentType,
+                    )
+                }
+                if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
             }
-            if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
 
             // Update UI with fresh server data, clearing any conflict state
-            _state.value = _state.value.copy(
-                playlist = playlistMeta,
-                tracks = tracks.distinctBy { it.id },
-                isLoading = false,
-                error = null,
-                isConflicted = false,
-                conflictMessage = null,
-            )
+            _state.value = if (reorderPending) {
+                _state.value.copy(
+                    playlist = playlistMeta,
+                    isLoading = false,
+                    error = null,
+                    isConflicted = false,
+                    conflictMessage = null,
+                )
+            } else {
+                _state.value.copy(
+                    playlist = playlistMeta,
+                    tracks = tracks.distinctBy { it.id },
+                    isLoading = false,
+                    error = null,
+                    isConflicted = false,
+                    conflictMessage = null,
+                )
+            }
         } catch (_: Exception) {
             android.util.Log.w("ftpmusic-playlist", "Background refresh failed for $playlistId")
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
@@ -505,7 +521,7 @@ class PlaylistDetailViewModel @Inject constructor(
             try {
                 val existingEntries = playlistDao.getEntries(targetPlaylistId)
                 val existingIds = existingEntries.map { it.trackId }.toSet()
-                val newTrackIds = trackIds.filter { it !in existingIds }
+                val newTrackIds = trackIds.filter { it !in existingIds }.distinct()
                 if (newTrackIds.isEmpty()) {
                     _toast.value = "Already in playlist"
                     return@launch
@@ -581,7 +597,7 @@ class PlaylistDetailViewModel @Inject constructor(
                 val newTracks = newIds.mapNotNull { entityById[it] }.map { entity ->
                     Track(
                         id = entity.id, title = entity.title,
-                        artist = entity.artist, album = null,
+                        artist = entity.artist, album = entity.album,
                         albumId = entity.albumId, artistId = entity.artistId,
                         duration = entity.durationSeconds, trackNumber = entity.trackNumber,
                         coverArt = entity.coverArtUrl, suffix = entity.suffix,
@@ -634,46 +650,105 @@ class PlaylistDetailViewModel @Inject constructor(
     suspend fun pickerSuggestions(): List<com.lucasdss.ftpmusic.app.data.db.TrackEntity> =
         trackDao.getRecentlyPlayed(limit = 50)
 
-    /** Move a track from fromIndex to toIndex within this playlist. */
-    fun moveTrack(fromIndex: Int, toIndex: Int) {
+    private var reorderCommitJob: kotlinx.coroutines.Job? = null
+    private val reorderMutex = Mutex()
+    /** Bumped on every local order mutation; stale persist jobs short-circuit. */
+    private var orderVersion: Long = 0L
+
+    /** True while a reorder debounce or Room persist is in flight (blocks refresh wipe). */
+    private fun reorderPersistPending(): Boolean =
+        reorderCommitJob?.isActive == true || reorderMutex.isLocked
+
+    /** In-memory reorder during drag; persists once via coalesced [commitTrackOrder]. */
+    fun applyLocalReorder(fromIndex: Int, toIndex: Int) {
         val tracks = _state.value.tracks
-        val playlist = _state.value.playlist ?: return
         if (fromIndex < 0 || fromIndex >= tracks.size || toIndex < 0 || toIndex >= tracks.size) return
         if (fromIndex == toIndex) return
-        viewModelScope.launch {
+        val mutable = tracks.toMutableList()
+        val moved = mutable.removeAt(fromIndex)
+        mutable.add(toIndex, moved)
+        _state.value = _state.value.copy(tracks = mutable)
+        val version = ++orderVersion
+        reorderCommitJob?.cancel()
+        reorderCommitJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(350)
+            persistTrackOrder(version)
+        }
+    }
+
+    /** Persist current [state.tracks] order + one coalesced `sync_tracks`. */
+    fun commitTrackOrder() {
+        val version = orderVersion
+        reorderCommitJob?.cancel()
+        reorderCommitJob = viewModelScope.launch {
+            persistTrackOrder(version)
+        }
+    }
+
+    private suspend fun persistTrackOrder(version: Long) {
+        val playlist = _state.value.playlist ?: return
+        val tracks = _state.value.tracks
+        if (tracks.isEmpty()) return
+        reorderMutex.withLock {
+            if (version != orderVersion) return@withLock
             try {
-                // Reorder in local state
-                val mutable = tracks.toMutableList()
-                val moved = mutable.removeAt(fromIndex)
-                mutable.add(toIndex, moved)
-                // Persist new positions
                 playlistDao.clearEntries(playlist.id)
-                val entries = mutable.mapIndexed { idx, track ->
+                val entries = tracks.mapIndexed { idx, track ->
                     PlaylistEntryEntity(playlistId = playlist.id, trackId = track.id, position = idx)
                 }
                 playlistDao.upsertEntries(entries)
-                _state.value = _state.value.copy(tracks = mutable)
-                // Enqueue full track sync to update server order
-                val trackIds = mutable.joinToString(",") { it.id }
                 pendingChangeDao.insert(
                     PendingPlaylistChangeEntity(
                         playlistId = playlist.id,
                         changeType = "sync_tracks",
-                        payload = trackIds,
+                        payload = tracks.joinToString(",") { it.id },
                     ),
                 )
                 syncWorker.flushNow()
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
-                    "ftpmusic-playlist",
-                    "moveTrack playlistId=${playlist.id} from=$fromIndex to=$toIndex",
-                )
             } catch (e: Exception) {
-                android.util.Log.w("ftpmusic-playlist", "moveTrack failed: ${e.message}")
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                    "ftpmusic-playlist",
-                    "moveTrack failed",
-                    e,
-                )
+                android.util.Log.w("ftpmusic-playlist", "commitTrackOrder failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Move a track from fromIndex to toIndex within this playlist. */
+    fun moveTrack(fromIndex: Int, toIndex: Int) {
+        val tracks = _state.value.tracks
+        if (fromIndex < 0 || fromIndex >= tracks.size || toIndex < 0 || toIndex >= tracks.size) return
+        if (fromIndex == toIndex) return
+        applyLocalReorder(fromIndex, toIndex)
+        commitTrackOrder()
+    }
+
+    /** Batch-remove tracks (one Room write + one `sync_tracks`). */
+    fun removeTracks(trackIds: Collection<String>) {
+        val playlist = _state.value.playlist ?: return
+        val ids = trackIds.filter { it.isNotBlank() }.distinct().toSet()
+        if (ids.isEmpty()) return
+        orderVersion++
+        reorderCommitJob?.cancel()
+        viewModelScope.launch {
+            reorderMutex.withLock {
+                try {
+                    val updatedTracks = _state.value.tracks.filter { it.id !in ids }
+                    ids.forEach { playlistDao.removeEntry(playlist.id, it) }
+                    val updatedMeta = playlist.copy(
+                        trackCount = updatedTracks.size,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                    playlistDao.upsertAll(listOf(updatedMeta))
+                    _state.value = _state.value.copy(playlist = updatedMeta, tracks = updatedTracks)
+                    pendingChangeDao.insert(
+                        PendingPlaylistChangeEntity(
+                            playlistId = playlist.id,
+                            changeType = "sync_tracks",
+                            payload = updatedTracks.joinToString(",") { it.id },
+                        ),
+                    )
+                    syncWorker.flushNow()
+                } catch (e: Exception) {
+                    android.util.Log.w("ftpmusic-playlist", "removeTracks failed: ${e.message}")
+                }
             }
         }
     }
