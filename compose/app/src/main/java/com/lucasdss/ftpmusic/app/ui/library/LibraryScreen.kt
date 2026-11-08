@@ -180,10 +180,13 @@ fun LibraryContent(
     // (ADR-0107 / post-1.8.0 hard-fix). Lazy top pad is local spacing only.
     // ADR-0114: chrome + list ride via appHeaderRidingContent (fixed over-measure +
     // graphicsLayer -offsetPx) so collapse leaves no mid/bottom Background strip.
+    // FABs must be siblings of the riding Column (inside clipHost Box, outside riding):
+    // BottomEnd inside riding sits in the clipped overhang at offset=0.
     val headerPad = LocalAppHeaderContentPadding.current
     val headerOffset = LocalAppHeaderOffsetPx.current
     val headerPadPx = with(LocalDensity.current) { headerPad.toPx() }
-    Column(
+    val shellReady = !(shell.isLoading && !shell.hasLoadedOnce)
+    Box(
         Modifier.appHeaderRidingClipHost(headerPad),
     ) {
         // Refresh favorites (thumbs/bookmarks) whenever Library becomes visible
@@ -519,6 +522,12 @@ fun LibraryContent(
                                         )
                                         Spacer(Modifier.height(12.dp))
                                         Text("No playlists yet", color = Color(0xFF888888), fontSize = textBodyM())
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            "Add a playlist with +",
+                                            color = Color(0xFF666666),
+                                            fontSize = textLabelM(),
+                                        )
                                     }
                                 }
                             } else {
@@ -530,7 +539,10 @@ fun LibraryContent(
                                 )
                                 LazyColumn(
                                     state = playlistListState,
-                                    contentPadding = PaddingValues(top = spacingS()),
+                                    contentPadding = PaddingValues(
+                                        top = spacingS(),
+                                        bottom = 88.dp,
+                                    ),
                                 ) {
                                     items(filteredPlaylists, key = { it.id }, contentType = { "playlist" }) { pl ->
                                         Box {
@@ -653,20 +665,6 @@ fun LibraryContent(
                                             modifier = Modifier.padding(horizontal = spacingL()),
                                         )
                                     }
-                                }
-                            }
-                            // Create playlist FAB
-                            Box(Modifier.fillMaxSize()) {
-                                FloatingActionButton(
-                                    onClick = {
-                                        viewModel.clearCreatedPlaylist()
-                                        createStep = CreateSheetStep.NAME
-                                        showCreatePlaylistSheet = true
-                                    },
-                                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                                    containerColor = BrandTeal,
-                                ) {
-                                    Icon(Icons.Default.Add, null, tint = Color.White)
                                 }
                             }
                         }
@@ -866,33 +864,58 @@ fun LibraryContent(
                                         }
                                     }
                                 }
-                                if (state.isAdmin) {
-                                    FloatingActionButton(
-                                        onClick = {
-                                            editingRadioStation = null
-                                            radioName = ""
-                                            radioStreamUrl = ""
-                                            radioHomepageUrl = ""
-                                            viewModel.clearRadioMutationError()
-                                            viewModel.clearRadioMutationSuccess()
-                                            showRadioEditorSheet = true
-                                        },
-                                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                                        containerColor = BrandTeal,
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Add,
-                                            contentDescription = "Add radio station",
-                                            tint = Color.White,
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
                 } // close Box(Modifier.weight(1f))
             }
         } // chrome + list appHeaderRidingContent wrap
+
+        // Viewport-static FABs: outside riding so ADR-0114 overhang clip cannot hide them.
+        if (shellReady && selectedTab == LibraryTab.PLAYLISTS) {
+            FloatingActionButton(
+                onClick = {
+                    viewModel.clearCreatedPlaylist()
+                    createStep = CreateSheetStep.NAME
+                    showCreatePlaylistSheet = true
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .semantics { testTag = "library_create_playlist_fab" },
+                containerColor = BrandTeal,
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Create playlist",
+                    tint = Color.White,
+                )
+            }
+        }
+        if (shellReady && selectedTab == LibraryTab.RADIO && playlistsForCover.isAdmin) {
+            FloatingActionButton(
+                onClick = {
+                    editingRadioStation = null
+                    radioName = ""
+                    radioStreamUrl = ""
+                    radioHomepageUrl = ""
+                    viewModel.clearRadioMutationError()
+                    viewModel.clearRadioMutationSuccess()
+                    showRadioEditorSheet = true
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .semantics { testTag = "library_add_radio_fab" },
+                containerColor = BrandTeal,
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add radio station",
+                    tint = Color.White,
+                )
+            }
+        }
     }
 
     // ── Remove from device confirmation ──

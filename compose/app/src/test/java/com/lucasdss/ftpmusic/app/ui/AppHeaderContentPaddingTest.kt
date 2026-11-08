@@ -96,4 +96,15 @@ class AppHeaderContentPaddingTest {
         assertEquals(parentH + 72, childH)
         assertEquals(-40f, translationY, 0f)
     }
+
+    @Test
+    fun `at offset zero painted bottom exceeds parent by full extra`() {
+        // Why Library FABs must not BottomEnd-align inside riding: overhang == extra.
+        val maxOffset = 72f
+        val parentH = 800
+        val childH = appHeaderRidingMeasureHeight(parentH, maxOffset)
+        val paintedBottom = childH + appHeaderChromeTranslationY(0f)
+        assertEquals(parentH + 72, paintedBottom.toInt())
+        assertEquals(72, paintedBottom.toInt() - parentH)
+    }
 }
