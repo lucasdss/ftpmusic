@@ -506,7 +506,10 @@ class PlaylistDetailViewModel @Inject constructor(
                 val existingEntries = playlistDao.getEntries(targetPlaylistId)
                 val existingIds = existingEntries.map { it.trackId }.toSet()
                 val newTrackIds = trackIds.filter { it !in existingIds }
-                if (newTrackIds.isEmpty()) return@launch
+                if (newTrackIds.isEmpty()) {
+                    _toast.value = "Already in playlist"
+                    return@launch
+                }
                 val nextPosition = (existingEntries.maxOfOrNull { it.position } ?: -1) + 1
                 val newEntries = newTrackIds.mapIndexed { idx, tid ->
                     PlaylistEntryEntity(playlistId = targetPlaylistId, trackId = tid, position = nextPosition + idx)
@@ -527,7 +530,8 @@ class PlaylistDetailViewModel @Inject constructor(
                     PendingPlaylistChangeEntity(
                         playlistId = targetPlaylistId,
                         changeType = "add_tracks",
-                        payload = trackIds.joinToString(","),
+                        // Payload = actually-added ids only (avoid server dupes).
+                        payload = newTrackIds.joinToString(","),
                     ),
                 )
                 syncWorker.flushNow()
@@ -718,7 +722,10 @@ class PlaylistDetailViewModel @Inject constructor(
     fun syncToServer() {
         val playlist = _state.value.playlist ?: return
         val tracks = _state.value.tracks
-        if (tracks.isEmpty()) return
+        if (tracks.isEmpty()) {
+            _toast.value = "Nothing to sync"
+            return
+        }
         viewModelScope.launch {
             if (_state.value.isSyncing) return@launch
             _state.value = _state.value.copy(isSyncing = true)
@@ -738,14 +745,21 @@ class PlaylistDetailViewModel @Inject constructor(
                         payload = trackIds,
                     ),
                 )
-                syncWorker.flushNow()
-                // Clear conflict state immediately — user sees instant feedback
-                _state.value = _state.value.copy(
-                    playlist = updated,
-                    isSyncing = false,
-                    isConflicted = false,
-                    conflictMessage = null,
-                )
+                val flushed = syncWorker.flushNowAndAwait()
+                // Clear conflict only after a confirmed empty pending queue.
+                _state.value = if (flushed) {
+                    _state.value.copy(
+                        playlist = updated,
+                        isSyncing = false,
+                        isConflicted = false,
+                        conflictMessage = null,
+                    )
+                } else {
+                    _state.value.copy(
+                        playlist = updated,
+                        isSyncing = false,
+                    )
+                }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isSyncing = false)
                 android.util.Log.w("ftpmusic-playlist", "syncToServer failed: ${e.message}")
@@ -962,70 +976,22 @@ class PlaylistDetailViewModel @Inject constructor(
 
     fun copyPlaylist() {
         val tracks = _state.value.tracks
-        if (tracks.isEmpty()) return
+        if (tracks.isEmpty()) {
+            _toast.value = "Nothing to copy"
+            return
+        }
         viewModelScope.launch {
             try {
-                val params = auth.buildAuthParams(username, password)
                 val copyName = "${_state.value.playlist?.name ?: "Playlist"} (copy)"
-                val response = api.createPlaylist(
-                    params,
-                    name = copyName,
-                    songIds = tracks.map { it.id },
+                // Local-first create+add (ADR-0015); server id only when flush remaps.
+                val serverId = playlistRepository.createPlaylistWithTracksSynced(
+                    copyName,
+                    tracks.map { it.id },
                 )
-                if (!auth.checkResponseStatus(response)) {
-                    android.util.Log.w(
-                        "ftpmusic-playlist",
-                        "copyPlaylist server error: ${auth.getResponseError(response)}",
-                    )
-                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                        "ftpmusic-playlist",
-                        "copyPlaylist server error",
-                    )
-                    return@launch
-                }
-                val sr = response["subsonic-response"] as? Map<*, *>
-                val pl = sr?.get("playlist") as? Map<*, *>
-                val newId = pl?.get("id") as? String
-                if (newId != null) {
-                    // Persist metadata + entries locally
-                    playlistDao.upsertAll(
-                        listOf(
-                            PlaylistEntity(
-                                id = newId,
-                                name = copyName,
-                                trackCount = tracks.size,
-                                coverArt = _state.value.playlist?.coverArt,
-                            ),
-                        ),
-                    )
-                    playlistDao.clearEntries(newId)
-                    playlistDao.upsertEntries(
-                        tracks.mapIndexed { idx, t ->
-                            PlaylistEntryEntity(playlistId = newId, trackId = t.id, position = idx)
-                        },
-                    )
-                    // Save track entities for offline access
-                    val trackEntities = tracks.mapNotNull { t ->
-                        // Track from ViewModel state may be incomplete; save what we have
-                        com.lucasdss.ftpmusic.app.data.db.TrackEntity(
-                            id = t.id, title = t.title, artist = t.artist,
-                            albumId = t.albumId, artistId = t.artistId,
-                            durationSeconds = t.duration, trackNumber = t.trackNumber,
-                            coverArtUrl = t.coverArt, suffix = t.suffix,
-                            contentType = t.contentType,
-                        )
-                    }
-                    if (trackEntities.isNotEmpty()) trackDao.upsertTracksPreserveCache(trackEntities)
-                    // Enqueue full track sync
-                    val trackIds = tracks.joinToString(",") { it.id }
-                    pendingChangeDao.insert(
-                        PendingPlaylistChangeEntity(
-                            playlistId = newId,
-                            changeType = "sync_tracks",
-                            payload = trackIds,
-                        ),
-                    )
-                    syncWorker.flushNow()
+                _toast.value = if (serverId != null) {
+                    "Copied playlist"
+                } else {
+                    "Copied locally — will sync when online"
                 }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "copyPlaylist failed: ${e.message}")
@@ -1034,6 +1000,7 @@ class PlaylistDetailViewModel @Inject constructor(
                     "copyPlaylist failed",
                     e,
                 )
+                _toast.value = "Copy failed"
             }
         }
     }

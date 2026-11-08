@@ -95,6 +95,8 @@ fun PlaylistDetailScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showPlaylistSheet by remember { mutableStateOf(false) }
     var showAddToPlaylistPicker by remember { mutableStateOf(false) }
+    // Seeded before opening the picker — never rely on menuTrackIndex after dismiss.
+    var addToPlaylistTrackIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAddSongsSheet by remember { mutableStateOf(false) }
     val availablePlaylists by viewModel.availablePlaylists.collectAsStateWithLifecycle()
     val coverEdit = rememberCollectionCoverEditController(
@@ -575,6 +577,11 @@ fun PlaylistDetailScreen(
                                 DropdownMenuItem(
                                     text = { Text("Add to Playlist") },
                                     onClick = {
+                                        addToPlaylistTrackIds = resolvePickerSelection(
+                                            mode = PlaylistPickerSeedMode.SINGLE,
+                                            tracks = state.tracks,
+                                            menuIndex = index,
+                                        ).toList()
                                         viewModel.loadAvailablePlaylists()
                                         showAddToPlaylistPicker = true
                                         menuTrackIndex = -1
@@ -677,10 +684,13 @@ fun PlaylistDetailScreen(
                     false
             },
             onAddAllToPlaylist = {
+                addToPlaylistTrackIds = resolvePickerSelection(
+                    mode = PlaylistPickerSeedMode.ALL,
+                    tracks = state.tracks,
+                ).toList()
                 viewModel.loadAvailablePlaylists()
                 showAddToPlaylistPicker = true
-                showPlaylistSheet =
-                    false
+                showPlaylistSheet = false
             },
             onDownloadAll = {
                 viewModel.downloadAll()
@@ -717,46 +727,53 @@ fun PlaylistDetailScreen(
 
     // ── Add to Playlist picker ──
     if (showAddToPlaylistPicker) {
-        var selectedTrackIds by remember { mutableStateOf(setOf<String>()) }
-        LaunchedEffect(showAddToPlaylistPicker) {
-            selectedTrackIds = if (menuTrackIndex >= 0) {
-                setOf(state.tracks.getOrElse(menuTrackIndex) { state.tracks.firstOrNull() }?.id ?: "")
-            } else {
-                emptySet()
-            }
-        }
+        val selectionEmpty = addToPlaylistTrackIds.isEmpty()
         AlertDialog(
-            onDismissRequest = { showAddToPlaylistPicker = false },
+            onDismissRequest = {
+                showAddToPlaylistPicker = false
+                addToPlaylistTrackIds = emptyList()
+            },
             title = { Text("Add to Playlist") },
             text = {
-                if (availablePlaylists.isEmpty()) {
-                    Text("No other playlists available", color = Color(0xFF888888))
-                } else {
-                    LazyColumn {
-                        itemsIndexed(availablePlaylists) { _, pl ->
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        pl.name,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                                supportingContent = { Text("${pl.trackCount} tracks", color = Color(0xFF888888)) },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                modifier = Modifier.clickable {
-                                    viewModel.addToPlaylist(pl.id, selectedTrackIds.toList())
-                                    showAddToPlaylistPicker = false
-                                },
-                            )
+                when {
+                    selectionEmpty -> Text("No tracks selected", color = Color(0xFF888888))
+                    availablePlaylists.isEmpty() ->
+                        Text("No other playlists available", color = Color(0xFF888888))
+                    else -> {
+                        LazyColumn {
+                            itemsIndexed(availablePlaylists) { _, pl ->
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            pl.name,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    },
+                                    supportingContent = {
+                                        Text("${pl.trackCount} tracks", color = Color(0xFF888888))
+                                    },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                    modifier = Modifier.clickable {
+                                        viewModel.addToPlaylist(pl.id, addToPlaylistTrackIds)
+                                        showAddToPlaylistPicker = false
+                                        addToPlaylistTrackIds = emptyList()
+                                    },
+                                )
+                            }
                         }
                     }
                 }
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showAddToPlaylistPicker = false }) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        showAddToPlaylistPicker = false
+                        addToPlaylistTrackIds = emptyList()
+                    },
+                ) { Text("Cancel") }
             },
         )
     }

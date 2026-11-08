@@ -11,7 +11,7 @@ import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.model.Track
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
-import com.lucasdss.ftpmusic.app.data.repository.WaveformRepository
+import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import io.mockk.*
@@ -44,6 +44,7 @@ class PlaylistDetailViewModelTest {
     private val downloadManager: com.lucasdss.ftpmusic.app.data.cache.DownloadManager = mockk(relaxed = true)
     private val cacheQueueDao: CacheQueueDao = mockk(relaxed = true)
     private val storage: SecureStorage = mockk(relaxed = true)
+    private val playlistRepository: PlaylistRepository = mockk(relaxed = true)
 
     private lateinit var viewModel: PlaylistDetailViewModel
 
@@ -54,11 +55,12 @@ class PlaylistDetailViewModelTest {
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         every { storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS) } returns
             "true"
+        coEvery { syncWorker.flushNowAndAwait() } returns true
         viewModel = PlaylistDetailViewModel(
             api, playlistDao, pendingChangeDao, syncWorker, trackDao, playbackManager,
             cacheService, downloadManager, cacheQueueDao, storage,
             favoriteRepository = mockk(relaxed = true),
-            playlistRepository = mockk(relaxed = true),
+            playlistRepository = playlistRepository,
             coverStore = mockk(relaxed = true),
         )
     }
@@ -492,22 +494,39 @@ class PlaylistDetailViewModelTest {
     }
 
     @Test
-    fun `copyPlaylist creates copy with (copy) suffix`() = runTest {
+    fun `copyPlaylist creates copy with (copy) suffix via local-first repo`() = runTest {
         setupTracks(
             listOf(
                 Track("t1", "First", duration = 200),
                 Track("t2", "Second", duration = 300),
             ),
         )
-        val createResponse = mapOf("subsonic-response" to mapOf("playlist" to mapOf("id" to "pl-copy")))
-        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns
-            createResponse
+        coEvery {
+            playlistRepository.createPlaylistWithTracksSynced("Test Playlist (copy)", listOf("t1", "t2"))
+        } returns "pl-copy"
 
         viewModel.copyPlaylist()
         advanceUntilIdle()
 
-        coVerify { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) }
-        coVerify { playlistDao.upsertAll(match { it.size == 1 && it[0].id == "pl-copy" }) }
+        coVerify {
+            playlistRepository.createPlaylistWithTracksSynced("Test Playlist (copy)", listOf("t1", "t2"))
+        }
+        coVerify(exactly = 0) { api.createPlaylist(any(), name = any(), songIds = any()) }
+        assertEquals("Copied playlist", viewModel.toast.value)
+    }
+
+    @Test
+    fun `copyPlaylist offline keeps local toast without server create`() = runTest {
+        setupTracks(listOf(Track("t1", "First", duration = 200)))
+        coEvery {
+            playlistRepository.createPlaylistWithTracksSynced("Test Playlist (copy)", listOf("t1"))
+        } returns null
+
+        viewModel.copyPlaylist()
+        advanceUntilIdle()
+
+        coVerify { playlistRepository.createPlaylistWithTracksSynced("Test Playlist (copy)", listOf("t1")) }
+        assertEquals("Copied locally — will sync when online", viewModel.toast.value)
     }
 
     @Test
@@ -517,7 +536,8 @@ class PlaylistDetailViewModelTest {
         viewModel.copyPlaylist()
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { api.createPlaylist(any(), name = any()) }
+        coVerify(exactly = 0) { playlistRepository.createPlaylistWithTracksSynced(any(), any()) }
+        assertEquals("Nothing to copy", viewModel.toast.value)
     }
 
     @Test
@@ -563,7 +583,7 @@ class PlaylistDetailViewModelTest {
     }
 
     @Test
-    fun `syncToServer clears conflict state immediately`() = runTest {
+    fun `syncToServer clears conflict after successful flush`() = runTest {
         // Pre-set conflicted state
         val field = PlaylistDetailViewModel::class.java.getDeclaredField("_state")
         field.isAccessible = true
@@ -579,6 +599,7 @@ class PlaylistDetailViewModelTest {
             isConflicted = true,
             conflictMessage = "Server rejected",
         )
+        coEvery { syncWorker.flushNowAndAwait() } returns true
 
         viewModel.syncToServer()
         advanceUntilIdle()
@@ -586,6 +607,32 @@ class PlaylistDetailViewModelTest {
         val state = viewModel.state.value
         assertFalse(state.isConflicted)
         assertNull(state.conflictMessage)
+    }
+
+    @Test
+    fun `syncToServer keeps conflict when flush fails`() = runTest {
+        val field = PlaylistDetailViewModel::class.java.getDeclaredField("_state")
+        field.isAccessible = true
+        val stateFlow = field.get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<PlaylistDetailState>
+        stateFlow.value = PlaylistDetailState(
+            playlist = PlaylistEntity(
+                id = "pl-1",
+                name = "Test Playlist",
+                isConflicted = true,
+                conflictMessage = "Server rejected",
+            ),
+            tracks = listOf(Track("t1", "First", duration = 200)),
+            isConflicted = true,
+            conflictMessage = "Server rejected",
+        )
+        coEvery { syncWorker.flushNowAndAwait() } returns false
+
+        viewModel.syncToServer()
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertTrue(state.isConflicted)
+        assertEquals("Server rejected", state.conflictMessage)
     }
 
     @Test
@@ -597,7 +644,7 @@ class PlaylistDetailViewModelTest {
 
         coVerify { playlistDao.upsertAll(match { it.size == 1 && it[0].trackCount == 1 }) }
         coVerify { pendingChangeDao.insert(match { it.changeType == "sync_tracks" }) }
-        coVerify { syncWorker.flushNow() }
+        coVerify { syncWorker.flushNowAndAwait() }
     }
 
     @Test
@@ -659,7 +706,7 @@ class PlaylistDetailViewModelTest {
     }
 
     @Test
-    fun `copyPlaylist saves TrackEntity to DB`() = runTest {
+    fun `copyPlaylist delegates track persistence to repository`() = runTest {
         setupTracks(
             listOf(
                 Track(
@@ -674,18 +721,18 @@ class PlaylistDetailViewModelTest {
                 Track("t2", "Second", duration = 300, artist = "Artist B", albumId = "al-2"),
             ),
         )
-        val createResponse = mapOf("subsonic-response" to mapOf("playlist" to mapOf("id" to "pl-copy")))
-        coEvery { api.createPlaylist(any(), name = "Test Playlist (copy)", songIds = listOf("t1", "t2")) } returns
-            createResponse
-        coEvery { playlistDao.upsertAll(any()) } returns Unit
-        coEvery { playlistDao.clearEntries(any()) } returns Unit
-        coEvery { playlistDao.upsertEntries(any()) } returns Unit
-        coEvery { trackDao.upsertTracksPreserveCache(any()) } returns Unit
+        coEvery {
+            playlistRepository.createPlaylistWithTracksSynced("Test Playlist (copy)", listOf("t1", "t2"))
+        } returns "pl-copy"
 
         viewModel.copyPlaylist()
         advanceUntilIdle()
 
-        coVerify { trackDao.upsertTracksPreserveCache(match { it.size == 2 && it[0].id == "t1" && it[1].id == "t2" }) }
+        coVerify {
+            playlistRepository.createPlaylistWithTracksSynced("Test Playlist (copy)", listOf("t1", "t2"))
+        }
+        // Track upserts happen inside the repository / worker path, not the VM.
+        coVerify(exactly = 0) { trackDao.upsertTracksPreserveCache(any()) }
     }
 
     @Test
@@ -790,7 +837,9 @@ class PlaylistDetailViewModelTest {
 
         // No new entries added — t1 already exists
         coVerify(exactly = 0) { playlistDao.upsertEntries(any()) }
+        coVerify(exactly = 0) { pendingChangeDao.insert(any()) }
         coVerify(exactly = 0) { downloadManager.enqueue(any(), any(), any()) }
+        assertEquals("Already in playlist", viewModel.toast.value)
     }
 
     @Test
