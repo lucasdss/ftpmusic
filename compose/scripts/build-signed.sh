@@ -10,19 +10,14 @@ if [ ! -f keystore.properties ]; then
     exit 1
 fi
 
-# Read properties
-source <(grep -v '^#' keystore.properties | sed 's/\(.*\)=\(.*\)/\1="\2"/')
+# Signing is wired via compose/keystore.properties in app/build.gradle.kts
+# (signingConfigs.release). Do not pass -Pandroid.injected.signing.* with a
+# relative storeFile — AGP resolves it against the daemon cwd and fails.
+echo "=== Building signed release (project signingConfig) ==="
+./gradlew :app:assembleRelease
 
-echo "=== Building signed release ==="
-echo "Keystore: $storeFile"
-echo "Alias: $keyAlias"
-
-./gradlew assembleRelease \
-  -Pandroid.injected.signing.store.file="$storeFile" \
-  -Pandroid.injected.signing.store.password="$storePassword" \
-  -Pandroid.injected.signing.key.alias="$keyAlias" \
-  -Pandroid.injected.signing.key.password="$keyPassword"
-
+APK="app/build/outputs/apk/release/app-release.apk"
 echo ""
-echo "✅ Signed APK: app/build/outputs/apk/release/app-release.apk"
+echo "✅ Signed APK: $APK"
+ls -la "$APK"
 echo "📤 Upload to Google Play Console → Internal Testing → Create release"
