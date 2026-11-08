@@ -451,8 +451,9 @@ class PlaylistRepositoryTest {
     @Test
     fun `addToPlaylist inserts entries at correct position and enqueues sync`() = runTest {
         coEvery { playlistDao.getEntries("target") } returns emptyList()
-        repo.addToPlaylist("target", listOf("t1", "t2"))
+        val added = repo.addToPlaylist("target", listOf("t1", "t2"))
 
+        assertEquals(2, added)
         coVerify { playlistDao.addTracksToPlaylist("target", listOf("t1", "t2")) }
         coVerify { pendingChangeDao.insert(match { it.changeType == "add_tracks" && it.payload == "t1,t2" }) }
         coVerify { syncWorker.flushNow() }
@@ -463,8 +464,9 @@ class PlaylistRepositoryTest {
         coEvery { playlistDao.getEntries("target") } returns listOf(
             PlaylistEntryEntity(playlistId = "target", trackId = "t1", position = 0),
         )
-        repo.addToPlaylist("target", listOf("t1", "t2"))
+        val added = repo.addToPlaylist("target", listOf("t1", "t2"))
 
+        assertEquals(1, added)
         coVerify { playlistDao.addTracksToPlaylist("target", listOf("t2")) }
         coVerify { pendingChangeDao.insert(match { it.changeType == "add_tracks" && it.payload == "t2" }) }
     }
@@ -474,16 +476,18 @@ class PlaylistRepositoryTest {
         coEvery { playlistDao.getEntries("target") } returns listOf(
             PlaylistEntryEntity(playlistId = "target", trackId = "t1", position = 0),
         )
-        repo.addToPlaylist("target", listOf("t1"))
+        val added = repo.addToPlaylist("target", listOf("t1"))
 
+        assertEquals(0, added)
         coVerify(exactly = 0) { playlistDao.addTracksToPlaylist(any(), any()) }
         coVerify(exactly = 0) { pendingChangeDao.insert(any()) }
     }
 
     @Test
     fun `addToPlaylist does nothing with empty trackIds`() = runTest {
-        repo.addToPlaylist("target", emptyList())
+        val added = repo.addToPlaylist("target", emptyList())
 
+        assertEquals(0, added)
         coVerify(exactly = 0) { playlistDao.addTracksToPlaylist(any(), any()) }
         coVerify(exactly = 0) { pendingChangeDao.insert(any()) }
     }
@@ -491,8 +495,9 @@ class PlaylistRepositoryTest {
     @Test
     fun `addToPlaylist starts at position 0 for empty target`() = runTest {
         coEvery { playlistDao.getEntries("empty") } returns emptyList()
-        repo.addToPlaylist("empty", listOf("t1"))
+        val added = repo.addToPlaylist("empty", listOf("t1"))
 
+        assertEquals(1, added)
         coVerify { playlistDao.addTracksToPlaylist("empty", listOf("t1")) }
     }
 

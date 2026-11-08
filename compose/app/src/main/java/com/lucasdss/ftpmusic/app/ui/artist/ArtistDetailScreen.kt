@@ -102,10 +102,17 @@ fun ArtistDetailScreen(
     viewModel: ArtistDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val toast by viewModel.toast.collectAsStateWithLifecycle()
     LaunchedEffect(artistId) { viewModel.loadArtist(artistId) }
 
     // Fetch + display artist art (iTunes fallback cached on disk)
     val context = LocalContext.current
+    LaunchedEffect(toast) {
+        toast?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearToast()
+        }
+    }
     var artistArtUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(state.name) {
         if (state.name.isNotEmpty()) {
@@ -507,13 +514,7 @@ fun ArtistDetailScreen(
                         com.lucasdss.ftpmusic.app.ui.playlist.PlaylistPickerItem(it.id, it.name, it.trackCount)
                     },
                     onPick = { plId ->
-                        val name = playlists.find { it.id == plId }?.name ?: "playlist"
                         viewModel.addToPlaylist(plId, playlistTrackIds)
-                        android.widget.Toast.makeText(
-                            context,
-                            "Added to $name",
-                            android.widget.Toast.LENGTH_SHORT,
-                        ).show()
                         showPlaylistPicker = false
                         playlistTrackIds = emptyList()
                     },

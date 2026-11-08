@@ -132,10 +132,17 @@ fun LibraryContent(
     val context = LocalContext.current
     val coverArtFallback = remember { CoverArtFallbackService.getInstance(context) }
     val coverToast by viewModel.coverToast.collectAsStateWithLifecycle()
+    val playlistToast by viewModel.playlistToast.collectAsStateWithLifecycle()
     LaunchedEffect(coverToast) {
         coverToast?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearCoverToast()
+        }
+    }
+    LaunchedEffect(playlistToast) {
+        playlistToast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearPlaylistToast()
         }
     }
     val coverEditPlaylist = coverEditPlaylistId?.let { id ->
@@ -1588,11 +1595,6 @@ fun LibraryContent(
                     suggestions = viewModel::pickerSuggestions,
                     onAdd = { trackIds ->
                         viewModel.addTracksToNewPlaylist(state.createdPlaylist?.id ?: "", trackIds)
-                        android.widget.Toast.makeText(
-                            context,
-                            "Added ${trackIds.size} song${if (trackIds.size == 1) "" else "s"}",
-                            android.widget.Toast.LENGTH_SHORT,
-                        ).show()
                         createStep = CreateSheetStep.CREATED
                     },
                     onDismiss = { createStep = CreateSheetStep.CREATED },

@@ -67,10 +67,23 @@ class AddToPlaylistViewModelTest {
         )
         viewModel.loadPlaylists()
         advanceUntilIdle()
-        coEvery { playlistRepository.addToPlaylist("p1", listOf("t1")) } returns Unit
+        coEvery { playlistRepository.addToPlaylist("p1", listOf("t1")) } returns 1
         viewModel.addTracks("p1", listOf("t1"))
         advanceUntilIdle()
         coVerify(exactly = 1) { playlistRepository.addToPlaylist("p1", listOf("t1")) }
         assertEquals("Added to Chill", viewModel.toast.value)
+    }
+
+    @Test
+    fun `addTracks toasts Already when repo adds zero`() = runTest {
+        coEvery { playlistDao.getAll() } returns listOf(
+            PlaylistEntity(id = "p1", name = "Chill", trackCount = 1),
+        )
+        viewModel.loadPlaylists()
+        advanceUntilIdle()
+        coEvery { playlistRepository.addToPlaylist("p1", listOf("t1")) } returns 0
+        viewModel.addTracks("p1", listOf("t1"))
+        advanceUntilIdle()
+        assertEquals("Already in playlist", viewModel.toast.value)
     }
 }

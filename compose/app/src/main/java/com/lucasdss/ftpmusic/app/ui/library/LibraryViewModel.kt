@@ -1065,12 +1065,27 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val entities = trackDao.getTracksByAlbumIds(listOf(albumId))
-                if (entities.isEmpty()) return@launch
-                playlistRepo.addToPlaylist(playlistId, entities.map { it.id })
+                if (entities.isEmpty()) {
+                    _playlistToast.value = "Could not add to playlist"
+                    return@launch
+                }
+                val added = playlistRepo.addToPlaylist(playlistId, entities.map { it.id })
+                _playlistToast.value = when {
+                    added > 0 -> "Added to playlist"
+                    else -> "Already in playlist"
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-home", "addAlbumTracksToPlaylist failed: ${e.message}")
+                _playlistToast.value = "Could not add to playlist"
             }
         }
+    }
+
+    private val _playlistToast = MutableStateFlow<String?>(null)
+    val playlistToast: StateFlow<String?> = _playlistToast.asStateFlow()
+
+    fun clearPlaylistToast() {
+        _playlistToast.value = null
     }
 
     fun renamePlaylistLocal(playlistId: String, newName: String) {
@@ -1343,13 +1358,18 @@ class LibraryViewModel @Inject constructor(
                 // id; add against the playlist's CURRENT id so tracks are not
                 // orphaned under a dead temp id.
                 val currentId = resolveCurrentPlaylistId(playlistId)
-                playlistRepo.addToPlaylist(currentId, trackIds.distinct())
+                val distinctIds = trackIds.distinct()
+                val added = playlistRepo.addToPlaylist(currentId, distinctIds)
+                _playlistToast.value = when {
+                    added > 0 -> "Added $added song${if (added == 1) "" else "s"}"
+                    else -> "Already in playlist"
+                }
                 // Mirror PlaylistDetailViewModel: auto-download when enabled
                 val autoDownload =
                     storage.get(SecureStorage.KEY_AUTO_DOWNLOAD_PLAYLISTS)?.toBooleanStrictOrNull() ?: true
-                if (autoDownload) {
+                if (autoDownload && added > 0) {
                     val base = com.lucasdss.ftpmusic.app.di.DynamicBaseUrl.url.trimEnd('/')
-                    trackIds.distinct().forEach { tid ->
+                    distinctIds.forEach { tid ->
                         downloadManager.enqueue(
                             tid,
                             authHelper.buildStreamUrl(base, tid, username(), password()),
@@ -1360,6 +1380,7 @@ class LibraryViewModel @Inject constructor(
                 loadPlaylists()
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-library", "addTracksToNewPlaylist failed: ${e.message}")
+                _playlistToast.value = "Could not add to playlist"
             }
         }
     }

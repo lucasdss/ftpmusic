@@ -1084,12 +1084,26 @@ class ArtistDetailViewModel @Inject constructor(
         }
     }
 
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast.asStateFlow()
+
+    fun clearToast() {
+        _toast.value = null
+    }
+
     fun addToPlaylist(playlistId: String, trackIds: List<String>) {
+        if (playlistId.isBlank() || trackIds.isEmpty()) return
         viewModelScope.launch {
             try {
-                playlistRepo.addToPlaylist(playlistId, trackIds)
+                val name = _playlists.value.find { it.id == playlistId }?.name ?: "playlist"
+                val added = playlistRepo.addToPlaylist(playlistId, trackIds)
+                _toast.value = when {
+                    added > 0 -> "Added to $name"
+                    else -> "Already in playlist"
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-artist", "addToPlaylist failed: ${e.message}")
+                _toast.value = "Could not add to playlist"
             }
         }
     }

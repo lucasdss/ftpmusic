@@ -333,12 +333,14 @@ class PlaylistRepository @Inject constructor(
      * Add tracks to an existing playlist and enqueue sync.
      * Deduplicates tracks already present. Pending payload = actually-added ids only
      * (contract #8 — avoids server dupes on flush).
+     *
+     * @return count of tracks actually added (0 when empty input or all duplicates).
      */
-    suspend fun addToPlaylist(playlistId: String, trackIds: List<String>) {
-        if (trackIds.isEmpty()) return
+    suspend fun addToPlaylist(playlistId: String, trackIds: List<String>): Int {
+        if (trackIds.isEmpty()) return 0
         val existingIds = playlistDao.getEntries(playlistId).map { it.trackId }.toSet()
         val newTrackIds = trackIds.filter { it !in existingIds }.distinct()
-        if (newTrackIds.isEmpty()) return
+        if (newTrackIds.isEmpty()) return 0
         playlistDao.addTracksToPlaylist(playlistId, newTrackIds)
         pendingChangeDao.insert(
             PendingPlaylistChangeEntity(
@@ -352,6 +354,7 @@ class PlaylistRepository @Inject constructor(
             "ftpmusic-playlist",
             "addToPlaylist playlistId=$playlistId count=${newTrackIds.size}",
         )
+        return newTrackIds.size
     }
 
     /**

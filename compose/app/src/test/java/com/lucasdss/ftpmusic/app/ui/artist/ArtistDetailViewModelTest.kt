@@ -1502,12 +1502,13 @@ class ArtistDetailViewModelTest {
 
     @Test
     fun `addToPlaylist delegates to repository`() = runTest(testDispatcher) {
-        coEvery { playlistRepo.addToPlaylist("pl-1", listOf("t1")) } just Runs
+        coEvery { playlistRepo.addToPlaylist("pl-1", listOf("t1")) } returns 1
 
         viewModel.addToPlaylist("pl-1", listOf("t1"))
         advanceUntilIdle()
 
         coVerify { playlistRepo.addToPlaylist("pl-1", listOf("t1")) }
+        assertEquals("Added to playlist", viewModel.toast.value)
     }
 
     // ── Remaining branch coverage ──────────────────────────────────────────

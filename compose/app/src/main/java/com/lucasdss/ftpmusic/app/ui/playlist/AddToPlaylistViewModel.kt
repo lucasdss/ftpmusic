@@ -49,9 +49,12 @@ class AddToPlaylistViewModel @Inject constructor(
         if (playlistId.isBlank() || trackIds.isEmpty()) return
         viewModelScope.launch {
             try {
-                playlistRepository.addToPlaylist(playlistId, trackIds)
+                val added = playlistRepository.addToPlaylist(playlistId, trackIds)
                 val name = _playlists.value.find { it.id == playlistId }?.name ?: "playlist"
-                _toast.value = "Added to $name"
+                _toast.value = when {
+                    added > 0 -> "Added to $name"
+                    else -> "Already in playlist"
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ftpmusic-playlist", "addTracks failed: ${e.message}")
                 _toast.value = "Could not add to playlist"

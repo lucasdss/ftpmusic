@@ -1123,6 +1123,44 @@ class PlaylistDetailViewModelTest {
         coVerify(exactly = 0) { downloadManager.enqueue(any(), any(), any()) }
     }
 
+    @Test
+    fun `refreshFromServer skips entry wipe when pending outbound changes`() = runTest {
+        val cached = PlaylistEntity(id = "pl-1", name = "Local Order", trackCount = 3)
+        coEvery { playlistDao.getById("pl-1") } returns cached
+        coEvery { playlistDao.getEntries("pl-1") } returns listOf(
+            PlaylistEntryEntity(playlistId = "pl-1", trackId = "t1", position = 0),
+            PlaylistEntryEntity(playlistId = "pl-1", trackId = "t2", position = 1),
+            PlaylistEntryEntity(playlistId = "pl-1", trackId = "t3", position = 2),
+        )
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(
+            TrackEntity(id = "t1", title = "A"),
+            TrackEntity(id = "t2", title = "B"),
+            TrackEntity(id = "t3", title = "C"),
+        )
+        coEvery { pendingChangeDao.pendingCountForPlaylist("pl-1") } returns 1
+        coEvery { api.getPlaylist(any(), id = "pl-1") } returns mapOf(
+            "subsonic-response" to mapOf(
+                "playlist" to mapOf(
+                    "id" to "pl-1",
+                    "name" to "Server Old",
+                    "songCount" to 3,
+                    "entry" to listOf(
+                        mapOf<String, Any?>("id" to "t3", "title" to "C", "duration" to 1),
+                        mapOf<String, Any?>("id" to "t2", "title" to "B", "duration" to 1),
+                        mapOf<String, Any?>("id" to "t1", "title" to "A", "duration" to 1),
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.loadPlaylist("pl-1")
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { playlistDao.clearEntries("pl-1") }
+        // Local Room order preserved in UI (from cache load), not replaced by server reverse.
+        assertEquals(listOf("t1", "t2", "t3"), viewModel.state.value.tracks.map { it.id })
+    }
+
     private fun setupTracks(tracks: List<Track>) {
         val field = PlaylistDetailViewModel::class.java.getDeclaredField("_state")
         field.isAccessible = true

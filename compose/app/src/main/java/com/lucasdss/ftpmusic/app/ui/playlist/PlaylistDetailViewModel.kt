@@ -230,11 +230,16 @@ class PlaylistDetailViewModel @Inject constructor(
                 )
             } ?: emptyList()
 
-            // Persist metadata always; skip entry wipe while a local reorder is
-            // coalescing (plan contract: mutex vs refreshFromServer).
+            // Re-check after network: local reorder in flight OR outbound pending
+            // (sync_tracks etc.) — do not wipe Room; worker re-reads entries on flush.
+            val pendingAfter = try {
+                pendingChangeDao.pendingCountForPlaylist(playlistId)
+            } catch (_: Exception) {
+                0
+            }
+            val skipEntryWipe = reorderPersistPending() || pendingAfter > 0
             playlistDao.upsertAll(listOf(playlistMeta))
-            val reorderPending = reorderPersistPending()
-            if (!reorderPending) {
+            if (!skipEntryWipe) {
                 playlistDao.clearEntries(playlistId)
                 playlistDao.upsertEntries(
                     tracks.mapIndexed { idx, t ->
@@ -255,7 +260,7 @@ class PlaylistDetailViewModel @Inject constructor(
             }
 
             // Update UI with fresh server data, clearing any conflict state
-            _state.value = if (reorderPending) {
+            _state.value = if (skipEntryWipe) {
                 _state.value.copy(
                     playlist = playlistMeta,
                     isLoading = false,

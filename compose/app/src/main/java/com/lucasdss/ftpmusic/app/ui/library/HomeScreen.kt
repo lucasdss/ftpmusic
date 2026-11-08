@@ -87,6 +87,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val coverToast by viewModel.coverToast.collectAsStateWithLifecycle()
+    val playlistToast by viewModel.playlistToast.collectAsStateWithLifecycle()
     var showAlbumSheet by remember { mutableStateOf<com.lucasdss.ftpmusic.app.data.model.Album?>(null) }
     var addAlbumToPlaylistId by remember { mutableStateOf<String?>(null) }
     var coverEditTarget by rememberSaveable(stateSaver = HomeCoverEditTargetSaver) {
@@ -97,6 +98,12 @@ fun HomeScreen(
         coverToast?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearCoverToast()
+        }
+    }
+    LaunchedEffect(playlistToast) {
+        playlistToast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearPlaylistToast()
         }
     }
     coverEditTarget?.let { target ->
@@ -710,7 +717,6 @@ fun HomeScreen(
             },
             onPick = { playlistId ->
                 viewModel.addAlbumTracksToPlaylist(albumId, playlistId)
-                Toast.makeText(context, "Added to playlist", Toast.LENGTH_SHORT).show()
                 addAlbumToPlaylistId = null
             },
             onDismiss = { addAlbumToPlaylistId = null },
