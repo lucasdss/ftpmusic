@@ -67,7 +67,7 @@ class MetadataEnrichRunnerTest {
         coEvery { metadataDao.getAlbumsNeedingEnrichment(any()) } returns emptyList()
         coEvery { api.getArtistInfo2("ar-1", any()) } returns mapOf(
             "subsonic-response" to mapOf(
-                "artistInfo2" to mapOf("biography" to "Long bio text"),
+                "artistInfo2" to mapOf("biography" to "<p>Long <b>bio</b> text</p>"),
             ),
         )
 

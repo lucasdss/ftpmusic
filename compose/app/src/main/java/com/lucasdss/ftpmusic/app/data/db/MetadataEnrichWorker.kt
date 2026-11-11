@@ -97,7 +97,9 @@ class MetadataEnrichRunner @Inject constructor(
                 val response = api.getArtistInfo2(artist.id, params)
                 val sr = response["subsonic-response"] as? Map<*, *> ?: continue
                 val info = sr["artistInfo2"] as? Map<*, *> ?: continue
-                val bio = (info["biography"] as? String)?.take(2000)
+                val bio = com.lucasdss.ftpmusic.app.util.TextHtml.sanitizeBiography(
+                    info["biography"] as? String,
+                )
                 if (!bio.isNullOrBlank()) {
                     metadataDao.setArtistBiography(artist.id, bio)
                 }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Artist detail biography teaser + sheet -->
+    <string name="artist_bio_read_more">Read more</string>
+    <string name="artist_bio_sheet_title">About %1$s</string>
+    <string name="artist_bio_source">Artist info</string>
+    <string name="artist_bio_source_lastfm">Last.fm</string>
+</resources>

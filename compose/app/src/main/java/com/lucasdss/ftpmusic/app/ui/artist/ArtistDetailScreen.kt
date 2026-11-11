@@ -21,8 +21,10 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -42,11 +44,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -84,6 +91,7 @@ import com.lucasdss.ftpmusic.app.ui.components.SongListRow
 import com.lucasdss.ftpmusic.app.ui.components.downloadStatus
 import com.lucasdss.ftpmusic.app.ui.components.formatSongDuration
 import com.lucasdss.ftpmusic.app.ui.components.indexOfTrackId
+import com.lucasdss.ftpmusic.app.ui.components.rememberAppHeaderScrollState
 import com.lucasdss.ftpmusic.app.ui.components.resolveLazyIndex
 import com.lucasdss.ftpmusic.app.ui.art.ArtBackdrop
 import com.lucasdss.ftpmusic.app.ui.art.rememberCoverSchemeFromUrl
@@ -125,9 +133,13 @@ fun ArtistDetailScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var showArtistSheet by remember { mutableStateOf(false) }
     var showTrackSheet by remember { mutableStateOf<Int?>(null) }
+    var showBioSheet by remember { mutableStateOf(false) }
     var showPlaylistPicker by remember { mutableStateOf(false) }
     var playlistTrackIds by remember { mutableStateOf(emptyList<String>()) }
     val scope = rememberCoroutineScope()
+    val chromeScroll = rememberAppHeaderScrollState()
+    val density = LocalDensity.current
+    LaunchedEffect(artistId) { chromeScroll.resetExpanded() }
 
     val coverScheme = rememberCoverSchemeFromUrl(
         scope = "artist|$artistId",
@@ -231,145 +243,154 @@ fun ArtistDetailScreen(
                     }
                 }
             }
-            // Content below hero — weight(1f) fills remaining space so the
-            // inner tab Box(weight 1f) + LazyColumn/Grid get bounded height.
-            Column(Modifier.weight(1f)) {
-                // Public rating (MusicBrainz) — ABOVE Play/Shuffle (parity with Album)
-                state.publicRating?.let { rating ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "★ %.1f".format(rating),
-                            color = Color(0xFFFFC107),
-                            fontSize = textLabelM(),
-                            fontWeight = FontWeight.SemiBold,
+            // Content below hero — collapsing chrome above pinned TabRow so
+            // Albums/Songs reclaim height (bio never expands in chrome).
+            Column(
+                Modifier
+                    .weight(1f)
+                    .nestedScroll(chromeScroll.nestedScrollConnection),
+            ) {
+                val chromeMeasured = chromeScroll.headerHeightPx > 0f
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (chromeMeasured) {
+                                Modifier
+                                    .height(with(density) { chromeScroll.visibleHeightPx.toDp() })
+                                    .clipToBounds()
+                            } else {
+                                Modifier
+                            },
                         )
-                        state.publicRatingVotes?.let { votes ->
-                            Spacer(Modifier.width(6.dp))
-                            FittingText(
-                                text = "($votes votes · MusicBrainz)",
-                                color = Color(0xFF666666),
-                                fontSize = textLabelM(),
-                                minFontSize = textMicro(),
-                                modifier = Modifier.weight(1f, fill = false),
-                                fillMaxWidth = false,
-                            )
-                        }
-                    }
-                }
-                state.biography?.takeIf { it.isNotBlank() }?.let { bio ->
-                    var expanded by remember(bio) { mutableStateOf(false) }
+                        .testTag("artist_collapsing_chrome"),
+                ) {
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = spacingL(), vertical = spacingS())
-                            .clickable { expanded = !expanded }
-                            .testTag("artist_biography"),
+                            .onSizeChanged { chromeScroll.updateHeaderHeight(it.height.toFloat()) }
+                            .graphicsLayer {
+                                if (chromeMeasured) translationY = -chromeScroll.offsetPx
+                            },
                     ) {
-                        Text(
-                            bio,
-                            color = Color(0xFFBBBBBB),
-                            fontSize = textLabelM(),
-                            maxLines = if (expanded) Int.MAX_VALUE else 4,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (bio.length > 160) {
-                            Text(
-                                if (expanded) "Show less" else "Read more",
-                                color = BrandTeal,
-                                fontSize = textLabelM(),
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                        }
-                    }
-                }
-                // Play All only — order from Settings (ADR-0141); no artist Shuffle chrome
-                DetailActionRow(
-                    playLabel = "Play All",
-                    onPlay = { viewModel.playAll() },
-                    onShuffle = null,
-                    onMore = { showArtistSheet = true },
-                    enabled = state.tracks.isNotEmpty() && !state.isPreparingPlay,
-                )
-                if (state.showAddDesired) {
-                    TextButton(
-                        onClick = { viewModel.toggleDesired() },
-                        modifier = Modifier
-                            .padding(horizontal = spacingL())
-                            .testTag("artist_add_desired"),
-                    ) {
-                        Text(
-                            if (state.isDesired) "Remove from Desired" else "Add to Desired",
-                            color = BrandTeal,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-                // Similar artists (last.fm)
-                if (state.similarArtists.isNotEmpty()) {
-                    Text(
-                        "Similar Artists",
-                        color = Color(0xFF888888),
-                        fontSize = textLabelM(),
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = spacingL(), vertical = 2.dp),
-                    )
-                    LazyRow(
-                        Modifier.fillMaxWidth().padding(horizontal = spacingL()),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        itemsIndexed(
-                            state.similarArtists,
-                            key = { _, sa -> sa.mbid?.takeIf { it.isNotBlank() } ?: sa.name },
-                        ) { _, sa ->
-                            Column(
-                                Modifier.clickable {
-                                    viewModel.resolveSimilarArtist(sa.name) { resolvedId ->
-                                        if (resolvedId != null) {
-                                            onArtistClick(resolvedId)
-                                        } else {
-                                            android.widget.Toast.makeText(
-                                                context,
-                                                "“${sa.name}” not in your library",
-                                                android.widget.Toast.LENGTH_SHORT,
-                                            ).show()
-                                        }
-                                    }
-                                }.width(64.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
+                        // Public rating (MusicBrainz) — ABOVE Play (parity with Album)
+                        state.publicRating?.let { rating ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = spacingL(), vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Box(
-                                    Modifier.size(52.dp).clip(CircleShape).background(Color(0xFF1E1E2E)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        sa.name.take(1).uppercase(),
-                                        color = BrandTeal,
-                                        fontSize = textHeadingL(),
-                                        fontWeight = FontWeight.Bold,
+                                Text(
+                                    "★ %.1f".format(rating),
+                                    color = Color(0xFFFFC107),
+                                    fontSize = textLabelM(),
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                state.publicRatingVotes?.let { votes ->
+                                    Spacer(Modifier.width(6.dp))
+                                    FittingText(
+                                        text = "($votes votes · MusicBrainz)",
+                                        color = Color(0xFF666666),
+                                        fontSize = textLabelM(),
+                                        minFontSize = textMicro(),
+                                        modifier = Modifier.weight(1f, fill = false),
+                                        fillMaxWidth = false,
                                     )
                                 }
-                                Spacer(Modifier.height(4.dp))
+                            }
+                        }
+                        state.biography?.takeIf { it.isNotBlank() }?.let { bio ->
+                            ArtistBioTeaser(
+                                bio = bio,
+                                onReadMore = { showBioSheet = true },
+                            )
+                        }
+                        // Play All only — order from Settings (ADR-0141); no artist Shuffle chrome
+                        DetailActionRow(
+                            playLabel = "Play All",
+                            onPlay = { viewModel.playAll() },
+                            onShuffle = null,
+                            onMore = { showArtistSheet = true },
+                            enabled = state.tracks.isNotEmpty() && !state.isPreparingPlay,
+                        )
+                        if (state.showAddDesired) {
+                            TextButton(
+                                onClick = { viewModel.toggleDesired() },
+                                modifier = Modifier
+                                    .padding(horizontal = spacingL())
+                                    .testTag("artist_add_desired"),
+                            ) {
                                 Text(
-                                    sa.name,
-                                    color = Color.White,
-                                    fontSize = textLabelM(),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    if (state.isDesired) "Remove from Desired" else "Add to Desired",
+                                    color = BrandTeal,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
+                            }
+                        }
+                        // Similar artists (last.fm)
+                        if (state.similarArtists.isNotEmpty()) {
+                            Text(
+                                "Similar Artists",
+                                color = Color(0xFF888888),
+                                fontSize = textLabelM(),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = spacingL(), vertical = 2.dp),
+                            )
+                            LazyRow(
+                                Modifier.fillMaxWidth().padding(horizontal = spacingL()),
+                                contentPadding = PaddingValues(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                itemsIndexed(
+                                    state.similarArtists,
+                                    key = { _, sa -> sa.mbid?.takeIf { it.isNotBlank() } ?: sa.name },
+                                ) { _, sa ->
+                                    Column(
+                                        Modifier.clickable {
+                                            viewModel.resolveSimilarArtist(sa.name) { resolvedId ->
+                                                if (resolvedId != null) {
+                                                    onArtistClick(resolvedId)
+                                                } else {
+                                                    android.widget.Toast.makeText(
+                                                        context,
+                                                        "“${sa.name}” not in your library",
+                                                        android.widget.Toast.LENGTH_SHORT,
+                                                    ).show()
+                                                }
+                                            }
+                                        }.width(64.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Box(
+                                            Modifier.size(52.dp).clip(CircleShape).background(Color(0xFF1E1E2E)),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                sa.name.take(1).uppercase(),
+                                                color = BrandTeal,
+                                                fontSize = textHeadingL(),
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            sa.name,
+                                            color = Color.White,
+                                            fontSize = textLabelM(),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                // Tab row — Albums first (market discography-led); Songs = full catalog
+                // Tab row pinned — Albums first (market discography-led); Songs = full catalog
                 TabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = Color.Transparent,
                     contentColor = BrandTeal,
+                    modifier = Modifier.testTag("artist_tab_row"),
                 ) {
                     Tab(
                         selected = selectedTab == 0,
@@ -410,6 +431,17 @@ fun ArtistDetailScreen(
                         )
                     }
                 }
+            }
+
+            val sheetBio = state.biography?.takeIf { it.isNotBlank() }
+            if (showBioSheet && sheetBio != null) {
+                ArtistBioSheet(
+                    artistName = state.name.ifEmpty { "Artist" },
+                    bio = sheetBio,
+                    onDismiss = { showBioSheet = false },
+                )
+            } else if (showBioSheet && sheetBio == null) {
+                LaunchedEffect(Unit) { showBioSheet = false }
             }
 
             // ═══ Overwrite Protection (Ask mode) ═══
@@ -660,6 +692,92 @@ private fun ArtistSongsSortBar(sort: ArtistSongsSort, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+internal fun ArtistBioTeaser(bio: String, onReadMore: () -> Unit) {
+    val showReadMore = ArtistBioUi.shouldShowReadMore(bio)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacingL(), vertical = spacingS())
+            .then(
+                if (showReadMore) {
+                    Modifier.clickable(onClick = onReadMore)
+                } else {
+                    Modifier
+                },
+            )
+            .testTag("artist_biography"),
+    ) {
+        Text(
+            bio,
+            color = Color(0xFFBBBBBB),
+            fontSize = textLabelM(),
+            maxLines = ArtistBioUi.TEASER_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("artist_biography_teaser"),
+        )
+        if (showReadMore) {
+            Text(
+                stringResource(R.string.artist_bio_read_more),
+                color = BrandTeal,
+                fontSize = textLabelM(),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .testTag("artist_biography_read_more"),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ArtistBioSheet(artistName: String, bio: String, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Surface,
+        shape = RoundedCornerShape(topStart = spacingXL(), topEnd = spacingXL()),
+        modifier = Modifier.testTag("artist_biography_sheet"),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = spacing3XL())
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Box(Modifier.fillMaxWidth().padding(top = spacingS()), contentAlignment = Alignment.Center) {
+                Box(Modifier.width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF444444)))
+            }
+            Text(
+                stringResource(R.string.artist_bio_sheet_title, artistName),
+                color = Color.White,
+                fontSize = textHeadingS(),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("artist_biography_sheet_title"),
+            )
+            Text(
+                bio,
+                color = Color(0xFFCCCCCC),
+                fontSize = textBodyM(),
+                modifier = Modifier
+                    .padding(horizontal = spacingL())
+                    .testTag("artist_biography_sheet_body"),
+            )
+            Text(
+                stringResource(R.string.artist_bio_source),
+                color = Color(0xFF666666),
+                fontSize = textLabelM(),
+                modifier = Modifier
+                    .padding(horizontal = spacingL(), vertical = spacingM())
+                    .testTag("artist_biography_sheet_source"),
+            )
+        }
     }
 }
 

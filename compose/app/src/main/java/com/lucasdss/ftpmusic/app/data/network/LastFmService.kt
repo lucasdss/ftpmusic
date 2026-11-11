@@ -1,6 +1,7 @@
 package com.lucasdss.ftpmusic.app.data.network
 
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import com.lucasdss.ftpmusic.app.util.TextHtml
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -206,17 +207,7 @@ class LastFmService @Inject constructor(private val storage: SecureStorage) {
         "",
     ).trim()
 
-    internal fun stripHtml(raw: String): String {
-        // Drop tags + collapse whitespace; keep apostrophes/punctuation.
-        val noTags = raw.replace(Regex("<[^>]+>"), " ")
-        return noTags
-            .replace(Regex("&nbsp;?", RegexOption.IGNORE_CASE), " ")
-            .replace(Regex("&amp;"), "&")
-            .replace(Regex("&quot;"), "\"")
-            .replace(Regex("&#39;|&apos;"), "'")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-    }
+    internal fun stripHtml(raw: String): String = TextHtml.strip(raw)
 
     internal fun parseArtistSearch(json: String, limit: Int = 8): List<SearchArtistHit> {
         return try {

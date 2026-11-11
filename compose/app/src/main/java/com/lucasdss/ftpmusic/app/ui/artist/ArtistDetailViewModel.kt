@@ -25,6 +25,7 @@ import com.lucasdss.ftpmusic.app.playback.ArtistPlayOrder
 import com.lucasdss.ftpmusic.app.playback.ArtistPlayOrderer
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
 import com.lucasdss.ftpmusic.app.ui.library.PlaylistView
+import com.lucasdss.ftpmusic.app.util.TextHtml
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -241,7 +242,7 @@ class ArtistDetailViewModel @Inject constructor(
                         publicRating = cachedArtist?.publicRating,
                         publicRatingVotes = cachedArtist?.publicRatingVotes,
                         similarArtists = lastFmService.parseStoredJson(cachedArtist?.similarArtistsJson),
-                        biography = cachedArtist?.biography?.takeIf { it.isNotBlank() },
+                        biography = TextHtml.sanitizeBiography(cachedArtist?.biography),
                         isLoading = false,
                         isLoadingSongs = false,
                         showAddDesired = emptyCatalog,
@@ -362,7 +363,7 @@ class ArtistDetailViewModel @Inject constructor(
         if (artistName.isNullOrBlank()) return
         viewModelScope.launch {
             try {
-                val bio = lastFmService.fetchArtistInfo(artistName, mbid)
+                val bio = TextHtml.sanitizeBiography(lastFmService.fetchArtistInfo(artistName, mbid))
                 if (!bio.isNullOrBlank()) {
                     try {
                         metadataDao.setArtistBiography(artistId, bio)

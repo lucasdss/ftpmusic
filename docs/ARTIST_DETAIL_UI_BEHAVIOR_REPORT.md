@@ -8,13 +8,26 @@
 ## Layout (top → bottom)
 
 ```
-Hero (adp 130) + back + like/dislike + name + album/track counts
-→ optional MusicBrainz public ★ (textLabelM)
-→ DetailActionRow: Play All | Shuffle | ⋮   (full catalog)
-→ optional Similar Artists LazyRow
-→ TabRow: Albums (default 0) | Songs (1)
+Hero (adp 130) + back + like/dislike + name + album/track counts  [fixed]
+→ collapsing chrome (nestedScroll; scrolls away above tabs):
+    optional MusicBrainz public ★ (textLabelM)
+    biography teaser (max 3 lines; never in-place expand)
+    DetailActionRow: Play All | ⋮   (full catalog; no Shuffle)
+    optional Desired CTA
+    optional Similar Artists LazyRow
+→ TabRow: Albums (default 0) | Songs (1)  [pinned]
 → AlbumsTab grid XOR Songs LazyColumn
 ```
+
+## Biography
+
+- Source: Last.fm / Navidrome `getArtistInfo2` (≤2000 chars). MusicBrainz = public ★ only.
+- Chrome shows a **compact teaser** (`ArtistBioUi.TEASER_MAX_LINES` = 3, ellipsis). Never
+  `Int.MAX_VALUE` expand in chrome (that collapsed the album grid).
+- “Read more” (length > 160) opens a scrollable **`ModalBottomSheet`** with full text +
+  subtle “Artist info” source line. No dedicated `artist/{id}/bio` route.
+- HTML stripped on Navidrome enrich (`TextHtml.sanitizeBiography`) and again at display
+  for already-cached dirty rows.
 
 ## Tab contract
 
@@ -71,6 +84,12 @@ Tab state: local `remember`; process death → Albums. No VM persistence.
 - Reaction thumbs remain ~40dp visible hit (`reactionHitSize`) — dense grids.
 - Songs = full catalog; ordering is the user's browse sort (ADR-0152), not a
   server-side “Popular” ranking.
+
+## Amendment (2026-11-11) — bio teaser + collapsing chrome
+
+- Bio expand-in-chrome removed; sheet + teaser only.
+- Rating / teaser / Play All / Desired / Similar live in collapsing header region;
+  TabRow stays pinned. Not Library AppHeader ride.
 
 ## Amendment (2026-11-03, ADR-0152)
 
