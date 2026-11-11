@@ -30,6 +30,11 @@ new timeout windows is unnecessary and policy-hostile.
 6. Notification permission is requested from the Settings playback-notification
    control, not automatically at cold launch.
 7. No artificial foreground-service timeout restart exists.
+8. **Warm-player user play (2026-11-11):** `PlaybackManager` must still send
+   `startForegroundService(ACTION_PLAYBACK)` on `playAlbum` / `shuffleAlbum` /
+   `playSingleTrack` / `playStream` even when `PlayerHolder.player != null`.
+   Quiet `restoreQueue` must not promote (no idle FGS while browsing). See
+   ADR-0032 and `docs/PLAY_WARM_FGS_DESTROY_BEHAVIOR_REPORT.md`.
 
 ## Consequences
 
@@ -38,5 +43,8 @@ new timeout windows is unnecessary and policy-hostile.
 - Process-restored playback remains restartable.
 - First playback remains safe because app launch pre-warms the player; a killed
   service receives the explicit playback marker before recreation.
+- User play after warm INITIALIZE reasserts mediaPlayback FGS before Dual/
+  Exo mutate, closing the demotion/stop race that destroyed the service within
+  tens of ms of `playAlbum` (diagnostics 2026-11-11).
 - Play Console must declare `mediaPlayback` and provide a playback demonstration
   video.

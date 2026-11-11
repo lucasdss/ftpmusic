@@ -193,6 +193,49 @@ class MediaServiceFgsReassertTest {
         assertEquals(android.app.Service.START_STICKY, playbackServiceStartMode(null))
     }
 
+    @Test
+    fun `user-play promote coalesces only while foreground live and recent`() {
+        assertTrue(
+            shouldCoalesceUserPlaybackPromote(
+                foregroundLive = true,
+                lastAssertAtMs = 1_000L,
+                nowMs = 1_000L + MediaServiceStartRequest.FOREGROUND_PROMOTE_COALESCE_MS - 1,
+            ),
+        )
+        assertFalse(
+            shouldCoalesceUserPlaybackPromote(
+                foregroundLive = true,
+                lastAssertAtMs = 1_000L,
+                nowMs = 1_000L + MediaServiceStartRequest.FOREGROUND_PROMOTE_COALESCE_MS,
+            ),
+        )
+        assertFalse(
+            shouldCoalesceUserPlaybackPromote(
+                foregroundLive = false,
+                lastAssertAtMs = 1_000L,
+                nowMs = 1_001L,
+            ),
+        )
+    }
+
+    @Test
+    fun `teardown queue persist is epoch-gated`() {
+        assertTrue(shouldPersistTeardownQueue(instanceEpoch = 3L, liveEpoch = 3L))
+        assertFalse(shouldPersistTeardownQueue(instanceEpoch = 2L, liveEpoch = 3L))
+        assertFalse(shouldPersistTeardownQueue(instanceEpoch = 0L, liveEpoch = 0L))
+    }
+
+    @Test
+    fun `reassert marks MediaServiceStartRequest foreground live`() {
+        MediaServiceStartRequest.clearForegroundLive()
+        injectField(service, "lastForegroundNotification", null)
+        injectField(service, "foregroundStarted", false)
+
+        assertTrue(service.reassertForegroundIfNeeded())
+        assertTrue(MediaServiceStartRequest.foregroundLive)
+        MediaServiceStartRequest.clearForegroundLive()
+    }
+
     // ── applyBtPlayAfterSeat offline (ADR-0101) ─────────────────────────
 
     @Test

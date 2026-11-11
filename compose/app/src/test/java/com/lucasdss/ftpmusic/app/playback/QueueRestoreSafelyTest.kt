@@ -1,7 +1,9 @@
 package com.lucasdss.ftpmusic.app.playback
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,6 +32,32 @@ class QueueRestoreSafelyTest {
         }
         assertTrue(result.isFailure)
         assertEquals("bad queue", failure?.message)
+        assertEquals(1, finallyCount)
+    }
+
+    @Test
+    fun `CancellationException is classified as restore cancellation`() {
+        assertTrue(isQueueRestoreCancellation(CancellationException("scope cancelled")))
+        assertTrue(
+            isQueueRestoreCancellation(
+                RuntimeException("wrap", CancellationException("nested")),
+            ),
+        )
+        assertFalse(isQueueRestoreCancellation(IllegalStateException("bad queue")))
+    }
+
+    @Test
+    fun `cancellation still runs finally via QueueRestoreSafely`() = runTest {
+        var finallyCount = 0
+        var failure: Exception? = null
+        val result = QueueRestoreSafely.run(
+            onFailure = { failure = it },
+            finallyBlock = { finallyCount++ },
+        ) {
+            throw CancellationException("destroyed")
+        }
+        assertTrue(result.isFailure)
+        assertTrue(isQueueRestoreCancellation(failure!!))
         assertEquals(1, finallyCount)
     }
 }

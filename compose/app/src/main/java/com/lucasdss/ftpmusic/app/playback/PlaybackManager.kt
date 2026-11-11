@@ -561,24 +561,50 @@ class PlaybackManager @Inject constructor(
         android.util.Log.w("ftpmusic-playback", "[$tag] $msg")
     }
 
+    private fun requestPlaybackForeground() {
+        MediaServiceStartRequest.foregroundRequested = true
+        val intent = android.content.Intent(appContext, MediaService::class.java)
+        intent.action = MediaServiceStartRequest.ACTION_PLAYBACK
+        // minSdk is 26 — startForegroundService is always available
+        try {
+            appContext.startForegroundService(intent)
+        } catch (e: Exception) {
+            MediaServiceStartRequest.foregroundRequested = false
+            // ForegroundServiceStartNotAllowedException (API 31+) when a
+            // play action fires while the app is backgrounded — the service
+            // will start on the next foreground resume instead.
+            android.util.Log.w(
+                "ftpmusic-playback",
+                "[ensureForeground] startForegroundService failed: ${e.message}",
+            )
+        }
+    }
+
+    /**
+     * ADR-0019: user playback must deliver ACTION_PLAYBACK even when a warm
+     * PlayerHolder already exists — otherwise a demoted MediaService can be
+     * torn down during setMediaItems without FGS reassert. Quiet restore keeps
+     * [ensurePlayer] so browsing does not claim idle FGS.
+     */
+    private fun ensureForegroundForUserPlayback(
+        nowMs: Long = android.os.SystemClock.elapsedRealtime(),
+    ) {
+        // Never coalesce when the player is missing — service must (re)start.
+        if (PlayerHolder.player != null &&
+            shouldCoalesceUserPlaybackPromote(
+                foregroundLive = MediaServiceStartRequest.foregroundLive,
+                lastAssertAtMs = MediaServiceStartRequest.lastForegroundAssertAtMs,
+                nowMs = nowMs,
+            )
+        ) {
+            return
+        }
+        requestPlaybackForeground()
+    }
+
     private fun ensurePlayer() {
         if (PlayerHolder.player == null) {
-            MediaServiceStartRequest.foregroundRequested = true
-            val intent = android.content.Intent(appContext, MediaService::class.java)
-            intent.action = MediaServiceStartRequest.ACTION_PLAYBACK
-            // minSdk is 26 — startForegroundService is always available
-            try {
-                appContext.startForegroundService(intent)
-            } catch (e: Exception) {
-                MediaServiceStartRequest.foregroundRequested = false
-                // ForegroundServiceStartNotAllowedException (API 31+) when a
-                // play action fires while the app is backgrounded — the service
-                // will start on the next foreground resume instead.
-                android.util.Log.w(
-                    "ftpmusic-playback",
-                    "[ensurePlayer] startForegroundService failed: ${e.message}",
-                )
-            }
+            requestPlaybackForeground()
             // Don't block main thread — service will be ready on next call
         }
     }
@@ -593,7 +619,8 @@ class PlaybackManager @Inject constructor(
         sourceName: String? = null,
         journalSource: JournalSource? = null,
     ) {
-        ensurePlayer()
+        // Promote before Dual/playAll mutate (FGS race with Media3 stop).
+        ensureForegroundForUserPlayback()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "playAlbum")
         if (alignedTracks.isEmpty()) return
         resetSessionAutoplayFromMaster()
@@ -728,7 +755,7 @@ class PlaybackManager @Inject constructor(
         sourceName: String? = null,
         journalSource: JournalSource? = null,
     ) {
-        ensurePlayer()
+        ensureForegroundForUserPlayback()
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "shuffleAlbum")
         if (alignedTracks.isEmpty()) return
         resetSessionAutoplayFromMaster()
@@ -763,7 +790,7 @@ class PlaybackManager @Inject constructor(
         sourceName: String? = null,
         journalSource: JournalSource? = null,
     ) {
-        ensurePlayer()
+        ensureForegroundForUserPlayback()
         resetSessionAutoplayFromMaster()
         val mimeType = MimeTypeResolver.resolve(track.contentType, track.suffix)
         val item = queueManager.buildMediaItem(
@@ -792,7 +819,7 @@ class PlaybackManager @Inject constructor(
      * market keep-Up-Next semantics (ADR 0067).
      */
     fun playStream(url: String, title: String) {
-        ensurePlayer()
+        ensureForegroundForUserPlayback()
         val item = queueManager.buildMediaItem(
             id = "radio:${url.hashCode()}",
             title = title,

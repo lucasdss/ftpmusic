@@ -258,6 +258,9 @@ internal object MediaServiceStartRequest {
     const val EXTRA_USER_INITIATED_RESUME =
         "com.lucasdss.ftpmusic.extra.USER_INITIATED_RESUME"
 
+    /** Coalesce rapid user-play FGS reasserts (album tap storms). */
+    const val FOREGROUND_PROMOTE_COALESCE_MS = 1_500L
+
     @Volatile
     var foregroundRequested: Boolean = false
 
@@ -279,12 +282,58 @@ internal object MediaServiceStartRequest {
     @Volatile
     var backgroundWarmStart: Boolean = false
 
+    /**
+     * True after a successful mediaPlayback [startForeground] / reassert on the
+     * live service. Cleared on destroy. Used to coalesce user-play promotes.
+     */
+    @Volatile
+    var foregroundLive: Boolean = false
+
+    /** [android.os.SystemClock.elapsedRealtime] of last successful FGS assert. */
+    @Volatile
+    var lastForegroundAssertAtMs: Long = 0L
+
+    private val serviceEpochCounter = java.util.concurrent.atomic.AtomicLong(0L)
+
+    /** Bump on each MediaService onCreate — identifies the live instance. */
+    fun nextServiceEpoch(): Long = serviceEpochCounter.incrementAndGet()
+
+    fun currentServiceEpoch(): Long = serviceEpochCounter.get()
+
+    fun markForegroundAsserted(nowMs: Long = android.os.SystemClock.elapsedRealtime()) {
+        foregroundLive = true
+        lastForegroundAssertAtMs = nowMs
+    }
+
+    fun clearForegroundLive() {
+        foregroundLive = false
+    }
+
     /** Clear both BT autoplay flags after seat / play / abort. */
     fun clearBtAutoplayFlags() {
         btAutoplayRequested = false
         userInitiatedResume = false
     }
 }
+
+/** Skip redundant user-play FGS promote when already live and recently asserted. */
+internal fun shouldCoalesceUserPlaybackPromote(
+    foregroundLive: Boolean,
+    lastAssertAtMs: Long,
+    nowMs: Long,
+    coalesceMs: Long = MediaServiceStartRequest.FOREGROUND_PROMOTE_COALESCE_MS,
+): Boolean = foregroundLive && coalesceMs > 0L && (nowMs - lastAssertAtMs) < coalesceMs
+
+/** Destroy-time queue persist belongs only to the live MediaService epoch. */
+internal fun shouldPersistTeardownQueue(
+    instanceEpoch: Long,
+    liveEpoch: Long,
+): Boolean = instanceEpoch > 0L && instanceEpoch == liveEpoch
+
+/** Restore cancel must not be logged as failure or clear BT flags. */
+internal fun isQueueRestoreCancellation(error: Throwable): Boolean =
+    error is kotlinx.coroutines.CancellationException ||
+        error.cause is kotlinx.coroutines.CancellationException
 
 /**
  * Promote mediaPlayback FGS before heavy onCreate work.
@@ -843,6 +892,9 @@ class MediaService : MediaLibraryService() {
 
     /** True once startForeground succeeded — lets onStartCommand retry it. */
     @Volatile private var foregroundStarted = false
+
+    /** Live-instance id from [MediaServiceStartRequest.nextServiceEpoch]. */
+    @Volatile private var serviceEpoch: Long = 0L
 
     /** ADR-0119: warm A2DP adds while service alive (complements manifest receiver). */
     private var btWarmAudioDeviceMonitor: BtWarmAudioDeviceMonitor? = null
@@ -2097,6 +2149,7 @@ class MediaService : MediaLibraryService() {
             // startForegroundService. Promote before heavy player/Cast setup to
             // satisfy the five-second deadline. Plain app initialization stays
             // background and does not show an idle playback notification.
+            serviceEpoch = MediaServiceStartRequest.nextServiceEpoch()
             val warmStart = MediaServiceStartRequest.backgroundWarmStart
             if (shouldPromotePlaybackOnCreate(
                     foregroundRequested = MediaServiceStartRequest.foregroundRequested,
@@ -2110,6 +2163,7 @@ class MediaService : MediaLibraryService() {
                         buildPlaceholderNotification(this),
                     )
                     foregroundStarted = true
+                    MediaServiceStartRequest.markForegroundAsserted()
                 } finally {
                     MediaServiceStartRequest.foregroundRequested = false
                 }
@@ -2566,12 +2620,21 @@ class MediaService : MediaLibraryService() {
             "ftpmusic-service",
             "service teardown reason=destroy pid=${android.os.Process.myPid()}",
         )
+        MediaServiceStartRequest.clearForegroundLive()
         // Persist state BEFORE any cleanup. State is snapshotted synchronously
         // here; the Room writes drain async on persistenceScope (never parking
         // main — an idle-stop teardown blocking main on Room was the 09-07
-        // freeze wedge).
+        // freeze wedge). Skip when a newer MediaService epoch already owns the
+        // process — overlapping destroy must not clobber the live DualQueue.
         persistPlaybackState()
-        saveQueueStateSync()
+        if (shouldPersistTeardownQueue(serviceEpoch, MediaServiceStartRequest.currentServiceEpoch())) {
+            saveQueueStateSync()
+        } else {
+            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                "ftpmusic-queue",
+                "saveQueueStateSync skip stale epoch=$serviceEpoch live=${MediaServiceStartRequest.currentServiceEpoch()}",
+            )
+        }
 
         // Release the cast-state mirror closure held by the @Singleton provider
         // (a stale closure would leak this service and keep polling a released
@@ -2591,7 +2654,14 @@ class MediaService : MediaLibraryService() {
         PlayerHolder.onPlaybackErrorCleared = null
 
         lastTrackId = null
-        PlayerHolder.player = null
+        // Only clear the process-wide holder when it still points at THIS
+        // instance's player — a newer service may already have rewired it.
+        if (PlayerHolder.player === exoPlayer || PlayerHolder.player === castPlayer) {
+            PlayerHolder.player = null
+        }
+        if (PlayerHolder.exoPlayer === exoPlayer) {
+            PlayerHolder.exoPlayer = null
+        }
         // Unregister Cast receiver callbacks
         mediaQueueCallback?.let { cb ->
             try {
@@ -2783,16 +2853,27 @@ class MediaService : MediaLibraryService() {
         scope.launch {
             QueueRestoreSafely.run(
                 onFailure = { e ->
-                    android.util.Log.e(
-                        "ftpmusic",
-                        "[MediaService] queue restore failed: ${e.message}",
-                        e,
-                    )
-                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                        "ftpmusic-playback",
-                        "queue_restore_failed=${e.javaClass.simpleName}",
-                    )
-                    MediaServiceStartRequest.clearBtAutoplayFlags()
+                    if (isQueueRestoreCancellation(e)) {
+                        android.util.Log.d(
+                            "ftpmusic",
+                            "[MediaService] queue restore cancelled: ${e.message}",
+                        )
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
+                            "ftpmusic-playback",
+                            "queue_restore_cancelled=${e.javaClass.name}",
+                        )
+                    } else {
+                        android.util.Log.e(
+                            "ftpmusic",
+                            "[MediaService] queue restore failed: ${e.message}",
+                            e,
+                        )
+                        com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                            "ftpmusic-playback",
+                            "queue_restore_failed=${e.javaClass.name}",
+                        )
+                        MediaServiceStartRequest.clearBtAutoplayFlags()
+                    }
                 },
                 finallyBlock = {
                     queueRestoreInFlight = false
@@ -3104,6 +3185,7 @@ class MediaService : MediaLibraryService() {
             ?: buildPlaceholderNotification(this)
         startForegroundInternal(PlaybackNotificationProvider.NOTIFICATION_ID, notification)
         foregroundStarted = true
+        MediaServiceStartRequest.markForegroundAsserted()
         android.util.Log.d("ftpmusic", "[MediaService] startForeground re-asserted")
         true
     } catch (e: Exception) {

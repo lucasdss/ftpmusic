@@ -51,6 +51,9 @@ class PlaybackManagerCoverageTest {
         PlayerHolder.player = null
         PlayerHolder.exoPlayer = null
         PlayerHolder.isCasting = false
+        MediaServiceStartRequest.clearForegroundLive()
+        MediaServiceStartRequest.foregroundRequested = false
+        MediaServiceStartRequest.lastForegroundAssertAtMs = 0L
     }
 
     // ── Accessors / simple state ─────────────────────────────────────────
@@ -470,5 +473,89 @@ class PlaybackManagerCoverageTest {
             listOf("http://s/t1"),
         )
         verify { mockAppContext.startForegroundService(match { true }) }
+    }
+
+    @Test
+    fun `playAlbum with warm player still promotes FGS`() {
+        // Plain JVM: Intent ctor yields null arg — verify call count, not action.
+        MediaServiceStartRequest.foregroundLive = false
+        MediaServiceStartRequest.lastForegroundAssertAtMs = 0L
+        val mgr = baseManager()
+        clearMocks(mockAppContext, answers = false, recordedCalls = true, childMocks = false)
+
+        mgr.playAlbum(
+            listOf(Track("t1", "T1", duration = 100)),
+            listOf("http://s/t1"),
+        )
+
+        verify(exactly = 1) { mockAppContext.startForegroundService(any()) }
+    }
+
+    @Test
+    fun `shuffleAlbum with warm player promotes FGS`() {
+        MediaServiceStartRequest.foregroundLive = false
+        val mgr = baseManager()
+        clearMocks(mockAppContext, answers = false, recordedCalls = true, childMocks = false)
+
+        mgr.shuffleAlbum(
+            listOf(Track("t1", "T1", duration = 100)),
+            listOf("http://s/t1"),
+        )
+
+        verify(exactly = 1) { mockAppContext.startForegroundService(any()) }
+    }
+
+    @Test
+    fun `playSingleTrack with warm player promotes FGS`() {
+        MediaServiceStartRequest.foregroundLive = false
+        val mgr = baseManager()
+        clearMocks(mockAppContext, answers = false, recordedCalls = true, childMocks = false)
+
+        mgr.playSingleTrack(Track("t1", "T1", duration = 100), "http://s/t1")
+
+        verify(exactly = 1) { mockAppContext.startForegroundService(any()) }
+    }
+
+    @Test
+    fun `playStream with warm player promotes FGS`() {
+        MediaServiceStartRequest.foregroundLive = false
+        val mgr = baseManager()
+        clearMocks(mockAppContext, answers = false, recordedCalls = true, childMocks = false)
+
+        mgr.playStream("http://radio.example/stream", "Radio")
+
+        verify(exactly = 1) { mockAppContext.startForegroundService(any()) }
+    }
+
+    @Test
+    fun `restoreQueue with warm player does not promote FGS`() {
+        MediaServiceStartRequest.foregroundLive = false
+        val mgr = baseManager()
+        clearMocks(mockAppContext, answers = false, recordedCalls = true, childMocks = false)
+
+        mgr.restoreQueue(
+            listOf(Track("t1", "T1", duration = 100)),
+            listOf("http://s/t1"),
+            playWhenReady = false,
+        )
+
+        verify(exactly = 0) { mockAppContext.startForegroundService(any()) }
+    }
+
+    @Test
+    fun `playAlbum coalesces promote when foreground already live`() {
+        MediaServiceStartRequest.foregroundLive = true
+        MediaServiceStartRequest.lastForegroundAssertAtMs =
+            android.os.SystemClock.elapsedRealtime()
+        val mgr = baseManager()
+        clearMocks(mockAppContext, answers = false, recordedCalls = true, childMocks = false)
+
+        mgr.playAlbum(
+            listOf(Track("t1", "T1", duration = 100)),
+            listOf("http://s/t1"),
+        )
+
+        verify(exactly = 0) { mockAppContext.startForegroundService(any()) }
+        MediaServiceStartRequest.clearForegroundLive()
     }
 }
