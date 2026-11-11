@@ -289,14 +289,29 @@ class MetadataSyncWorker(
     val homeRecentRevision: StateFlow<Long> = _homeRecentRevision.asStateFlow()
 
     fun start(initialDelayMs: Long = 2000L) {
-        // Empty library / incomplete drain are owned by SyncingScreen (SplashRouter).
-        // Auto-FULL here raced the cellular dialog and cooldown → false "Sync failed".
-        // Periodic heal remains SyncHealthGuard / WorkManager.
+        // Empty library stays SyncingScreen-owned (SplashRouter → first-login lock).
+        // Soft-stop / incomplete drain with cached albums heals in the background
+        // so returning users are not trapped on SyncingScreen.
         syncJob = scope.launch {
             delay(initialDelayMs)
-            if (SubsonicCredentials.username.isNotEmpty()) {
-                android.util.Log.d(TAG, "start(): SyncingScreen owns empty/incomplete drain; no auto-FULL")
+            if (SubsonicCredentials.username.isEmpty()) return@launch
+            if (!hasMetadata()) {
+                android.util.Log.d(TAG, "start(): empty library — SyncingScreen owns first sync")
+                DiagnosticLog.d(TAG, "start skip — empty library")
+                return@launch
             }
+            if (!isDrainIncomplete()) {
+                android.util.Log.d(TAG, "start(): drain complete — no auto sync")
+                return@launch
+            }
+            android.util.Log.d(TAG, "start(): incomplete drain with metadata — background FULL")
+            DiagnosticLog.d(TAG, "start background heal mode=FULL reason=drain_incomplete")
+            // Bypass cooldown: soft-stop hangover must not wait out a prior finish stamp.
+            // CAS inside syncNowAsync collapses races with SyncHealthGuard / WM.
+            syncNowAsync(
+                mode = LibrarySyncMode.FULL,
+                bypassCooldown = true,
+            )
         }
     }
 
@@ -666,7 +681,7 @@ class MetadataSyncWorker(
                 DiagnosticLog.d(
                     TAG,
                     "sync end phase=$phase drain=${if (drain.complete) "complete" else "soft-stopped"} " +
-                        "failed=${drain.failed} pending=${drain.pending} " +
+                        "drainFailed=${drain.failed} drainAttempted=${drain.pending} " +
                         "elapsed=${System.currentTimeMillis() - startMs}ms " +
                         "albums=${_status.value.albums} artists=${_status.value.artists} " +
                         "tracks=${_status.value.trackCount}",
@@ -1598,7 +1613,7 @@ class MetadataSyncWorker(
                                         TAG,
                                         "sync soft-stop trackDrain streak=$streak " +
                                             "albumId=${album.id} reason=get_album_null " +
-                                            "failed=${failedCount.get()} pending=$pendingTotal " +
+                                            "drainFailed=${failedCount.get()} drainAttempted=$pendingTotal " +
                                             "fetched=${count.get()}",
                                     )
                                 }

@@ -23,9 +23,10 @@ class SplashRouterTest {
     }
 
     @Test
-    fun `B0-7 drain incomplete routes to syncing even with albums`() {
+    fun `drain incomplete with albums routes home — background heal`() {
+        // Soft-stop hangover must not trap returning users on SyncingScreen.
         assertEquals(
-            syncingRoute("home"),
+            "home",
             SplashRouter.resolveRoute(hasCredentials = true, albumCount = 10, drainIncomplete = true),
         )
     }
@@ -35,6 +36,18 @@ class SplashRouterTest {
         assertEquals(
             "home",
             SplashRouter.resolveRoute(hasCredentials = true, albumCount = 10, drainIncomplete = false),
+        )
+    }
+
+    @Test
+    fun `empty library still routes to syncing regardless of drain flag`() {
+        assertEquals(
+            syncingRoute("home"),
+            SplashRouter.resolveRoute(hasCredentials = true, albumCount = 0, drainIncomplete = false),
+        )
+        assertEquals(
+            syncingRoute("home"),
+            SplashRouter.resolveRoute(hasCredentials = true, albumCount = 0, drainIncomplete = true),
         )
     }
 }

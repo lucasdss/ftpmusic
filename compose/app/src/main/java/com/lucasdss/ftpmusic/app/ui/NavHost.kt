@@ -94,15 +94,19 @@ import kotlinx.coroutines.withContext
 /**
  * Resolves the initial route after splash based on credentials and sync state.
  * Extracted for testability — unit tests verify each decision branch.
+ *
+ * Returning users with a cached library always go Home; incomplete drain heals
+ * in the background via [MetadataSyncWorker.start] / SyncHealthGuard. Only an
+ * empty catalog uses the blocking SyncingScreen (true first login).
  */
 object SplashRouter {
     fun resolveRoute(
         hasCredentials: Boolean,
         albumCount: Int,
-        drainIncomplete: Boolean = false,
+        @Suppress("UNUSED_PARAMETER") drainIncomplete: Boolean = false,
     ): String = when {
         !hasCredentials -> "connect"
-        albumCount == 0 || drainIncomplete -> syncingRoute("home")
+        albumCount == 0 -> syncingRoute("home")
         else -> "home"
     }
 }

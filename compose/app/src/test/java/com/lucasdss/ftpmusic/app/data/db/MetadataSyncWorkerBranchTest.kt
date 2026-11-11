@@ -183,7 +183,7 @@ class MetadataSyncWorkerBranchTest {
     }
 
     @Test
-    fun `start does not auto-FULL — SyncingScreen owns empty and incomplete drain`() {
+    fun `start does not auto-FULL when library is empty — SyncingScreen owns first sync`() {
         val w = makeLifecycleWorker()
         coEvery { metadataDao.albumCount() } returns 0
         coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns okAlbumsResponse(emptyList())
@@ -194,7 +194,7 @@ class MetadataSyncWorkerBranchTest {
     }
 
     @Test
-    fun `start skips sync when metadata already cached`() {
+    fun `start skips sync when metadata already cached and drain complete`() {
         val w = makeLifecycleWorker()
         coEvery { metadataDao.albumCount() } returns 42
         // Complete drain: start must not FULL-resync solely because albums exist.
@@ -203,6 +203,29 @@ class MetadataSyncWorkerBranchTest {
         w.start(0)
         lifecycleScheduler.runCurrent()
         coVerify(exactly = 0) { api.getAlbumList2(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `start background FULL when albums exist but drain soft-stopped`() = runTest {
+        com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.resetForTests(true)
+        com.lucasdss.ftpmusic.app.data.cache.NetworkPolicyState.resetForTests()
+        val w = makeWorker()
+        coEvery { metadataDao.albumCount() } returns 42
+        every { prefs.getLong("last_drain_complete_ms", any()) } returns 1_700_000_000_000L
+        every { prefs.getString("last_sync_outcome", any()) } returns
+            MetadataSyncWorker.SYNC_OUTCOME_SOFT_STOPPED
+        coEvery { api.getAlbumList2(any(), any(), any(), any()) } returns okAlbumsResponse(emptyList())
+        coEvery { api.getArtists(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "artists" to mapOf("index" to emptyList<Any>())),
+        )
+        coEvery { api.getGenres(any()) } returns mapOf(
+            "subsonic-response" to mapOf("status" to "ok", "genres" to mapOf<String, Any>()),
+        )
+        coEvery { metadataDao.getAllAlbums() } returns emptyList()
+        coEvery { metadataDao.countUncachedAlbums() } returns 0
+        w.start(0)
+        advanceUntilIdle()
+        coVerify(atLeast = 1) { api.getAlbumList2(any(), any(), any(), any()) }
     }
 
     @Test
