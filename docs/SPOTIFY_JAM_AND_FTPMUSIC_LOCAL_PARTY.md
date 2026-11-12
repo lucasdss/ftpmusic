@@ -22,10 +22,12 @@ FTP Music can approximate **in-person host DJ / shared-speaker control** with:
 1. **Near-term (no plugin):** **Host Dual + LAN WS = only control/queue SoT.**
    Guests send commands over Wi‑Fi; BLE/QR for invite. Optional **lossy**
    Navidrome playlist export (not recovery SoT — see §3 / §6).
-2. **Strategic:** custom **`ftpmusic-jam` WASM plugin** holding revisioned
-   session state in **KVStore**, exposed via `/rest/ext/ftpmusic-jam/*` once
-   inbound **HTTPEndpoint** ships (#5045). App feature-detects; mesh and
-   plugin must not both apply transport without a mutex.
+2. **Strategic (server SoT):** **`ftpmusic-session` sidecar** — transparent
+   Subsonic proxy + revisioned KV + WS; stable **`/rest/ext/party/*`** (see
+   [`NAVIDROME_SESSION_SIDECAR.md`](NAVIDROME_SESSION_SIDECAR.md)). Optional
+   later: same contract as in-process **`ftpmusic-jam` WASM plugin** once
+   inbound **HTTPEndpoint** ships (#5045). Feature-detect; never run mesh +
+   server SoT for the same party without a mutex.
 
 **Playlist-only multi-writer Jam is blocked** on stock Navidrome: only the
 playlist **owner** (or admin) may `updatePlaylist`. `public=true` = visibility,
@@ -476,19 +478,26 @@ waiting for #5045.
 }
 ```
 
-### 7.3 REST contract (when endpoints exist)
+### 7.3 REST contract (canonical: `/rest/ext/party`)
+
+**Frozen for sidecar + future plugin** (full detail:
+[`NAVIDROME_SESSION_SIDECAR.md`](NAVIDROME_SESSION_SIDECAR.md) §6). Alias
+`/rest/ext/ftpmusic-jam/*` may map to the same handlers.
 
 | Method | Path | Actor | Behavior |
 |--------|------|-------|----------|
-| POST | `/rest/ext/ftpmusic-jam/sessions` | Host | Create session; seed queue; return id+code |
-| POST | `/rest/ext/ftpmusic-jam/sessions/{id}/join` | Guest | Add member |
-| GET | `/rest/ext/ftpmusic-jam/sessions/{id}` | Member | Snapshot by revision |
-| POST | `/rest/ext/ftpmusic-jam/sessions/{id}/queue` | Member | add/remove/move |
-| POST | `/rest/ext/ftpmusic-jam/sessions/{id}/transport` | Permitted | play/pause/skip/seek |
-| PATCH | `/rest/ext/ftpmusic-jam/sessions/{id}/permissions` | Host | Toggles |
-| DELETE | `/rest/ext/ftpmusic-jam/sessions/{id}` | Host | End + cleanup |
+| GET | `/rest/ext/party/health` | Any | Feature detect |
+| POST | `/rest/ext/party/sessions` | Host | Create; seed queue; return id+code+memberToken |
+| POST | `/rest/ext/party/sessions/{id}/join` | Guest | Add member |
+| GET | `/rest/ext/party/sessions/{id}` | Member | Snapshot by revision |
+| POST | `/rest/ext/party/sessions/{id}/queue` | Member | add/remove/move (CAS) |
+| POST | `/rest/ext/party/sessions/{id}/transport` | Permitted | play/pause/skip/seek intent |
+| PATCH | `/rest/ext/party/sessions/{id}/permissions` | Host | Toggles |
+| POST | `/rest/ext/party/sessions/{id}/playback-node` | Host device | Lease playback node |
+| DELETE | `/rest/ext/party/sessions/{id}` | Host | End + cleanup |
+| GET | `/rest/ext/party/resolve` | Auth’d | `joinCode` → sessionId + wsUrl |
 
-KV keys: `jam:{id}`, `jam:{id}:rev`, `code:{short}→id`. TTL refresh on activity.
+KV keys (sidecar): `party:session:{id}`, `party:code:{short}→id`. TTL on activity.
 
 ### 7.4 Host device role with plugin
 
@@ -496,11 +505,12 @@ Plugin holds **control SoT**; **playback node** (host phone) still applies
 transport to Dual/Cast. Host polls snapshot or receives optional future push.
 Guests never become Cast senders.
 
-### 7.5 Sidecar fallback
+### 7.5 Sidecar (primary server path today)
 
-If #5045 stalls: small Go/Kotlin service beside Navidrome implementing the same
-REST paths, authenticating via Subsonic token validate proxy. Ops cost higher;
-same app feature detection (`OPTIONS` or well-known URL).
+**Preferred before #5045:** transparent gateway
+[`NAVIDROME_SESSION_SIDECAR.md`](NAVIDROME_SESSION_SIDECAR.md) —
+pass-through `/rest/*` to ND; own KV CAS + `/ws/party`; same `/rest/ext/party`
+contract as §7.3. Feature detect: `GET /rest/ext/party/health`.
 
 ---
 
@@ -518,12 +528,12 @@ party/
 
 Feature flag: `party_local_enabled` (default off until OOS reopen + QA).
 
-Detect plugin:
+Detect server party (sidecar or plugin):
 
 ```text
-GET /rest/ext/ftpmusic-jam/sessions?…  // or dedicated health
-→ if 404/501: mesh mode only
-→ if 200/401 with plugin header: server mode available
+GET /rest/ext/party/health?… 
+→ if 404/unreachable raw ND: mesh-only / no server party
+→ if 200 { ok: true }: server party mode available
 ```
 
 ---
@@ -566,7 +576,8 @@ Coverage bar per android-feature-loop: ≥80% on new `party` packages.
 | 2 | LAN WS guests (add/transport/permissions); Cast fence; guest playback lock | Phase 1 |
 | 3 | BLE invite | Phase 2 |
 | 4 | Optional private playlist export; `getPlayQueue` experiment; Cast volume | Phase 2 |
-| 5 | `ftpmusic-jam` plugin + app server mode (mutex vs mesh) | #5045 merged |
+| 5 | `ftpmusic-session` sidecar + app `/rest/ext/party` client (mutex vs mesh) | OOS reopen + ADR |
+| 5b | Optional in-process `ftpmusic-jam` plugin replacing sidecar HTTP | #5045 merged |
 | C | Guest-direct playlist edits | Navidrome #5460 |
 
 ---
