@@ -2779,10 +2779,19 @@ class MediaService : MediaLibraryService() {
         }
         // Handle MEDIA_PLAY_FROM_SEARCH (Google Assistant / Gemini voice commands)
         if (intent?.action == "android.media.action.MEDIA_PLAY_FROM_SEARCH") {
-            val query = intent.getStringExtra(android.app.SearchManager.QUERY)
-            if (!query.isNullOrBlank()) {
-                android.util.Log.d("ftpmusic", "[MediaService] MEDIA_PLAY_FROM_SEARCH: '$query'")
-                launchSearchAndPlay(query)
+            val query = intent.getStringExtra(android.app.SearchManager.QUERY).orEmpty()
+            val artist = intent.getStringExtra(android.provider.MediaStore.EXTRA_MEDIA_ARTIST)
+            val album = intent.getStringExtra(android.provider.MediaStore.EXTRA_MEDIA_ALBUM)
+            val title = intent.getStringExtra(android.provider.MediaStore.EXTRA_MEDIA_TITLE)
+            val focus = intent.getStringExtra(android.provider.MediaStore.EXTRA_MEDIA_FOCUS)
+            if (query.isNotBlank() || !artist.isNullOrBlank() || !album.isNullOrBlank() || !title.isNullOrBlank()) {
+                android.util.Log.d(
+                    "ftpmusic",
+                    "[MediaService] MEDIA_PLAY_FROM_SEARCH: query='$query' artist='$artist' album='$album' title='$title' focus='$focus'",
+                )
+                launchSearchAndPlay(query, artist, album, title, focus)
+            } else {
+                android.util.Log.w("ftpmusic", "[MediaService] MEDIA_PLAY_FROM_SEARCH ignored — empty query/extras")
             }
         }
         return playbackServiceStartMode(intent?.action)
@@ -3205,33 +3214,50 @@ class MediaService : MediaLibraryService() {
         startForeground(id, notification)
     }
 
-    private fun launchSearchAndPlay(query: String) {
+    private fun launchSearchAndPlay(
+        query: String,
+        artist: String? = null,
+        album: String? = null,
+        title: String? = null,
+        mediaFocus: String? = null,
+    ) {
         scope.launch {
             try {
                 val items = withContext(Dispatchers.IO) {
-                    mediaSessionCallback.searchAndNavidromeExpand(query)
+                    mediaSessionCallback.searchAndNavidromeExpand(
+                        query = query,
+                        artistExtra = artist,
+                        albumExtra = album,
+                        titleExtra = title,
+                        mediaFocus = mediaFocus,
+                    )
                 }
-                if (items.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        val player = PlayerHolder.player
-                        if (player == null) {
-                            // E14: the service is still mid-create (player not
-                            // attached yet). Retry once shortly after; if still
-                            // null the Assistant command is dropped rather than
-                            // silently lost on a race.
-                            delay(1500)
-                            val retried = PlayerHolder.player
-                            if (retried == null) {
-                                android.util.Log.w(
-                                    "ftpmusic",
-                                    "[MediaService] Search dropped: player still null after retry",
-                                )
-                                return@withContext
-                            }
-                            playSearchItems(retried, items)
-                        } else {
-                            playSearchItems(player, items)
+                if (items.isEmpty()) {
+                    android.util.Log.w(
+                        "ftpmusic",
+                        "[MediaService] Voice search no hit query='$query' artist='$artist' album='$album' title='$title'",
+                    )
+                    return@launch
+                }
+                withContext(Dispatchers.Main) {
+                    val player = PlayerHolder.player
+                    if (player == null) {
+                        // E14: the service is still mid-create (player not
+                        // attached yet). Retry once shortly after; if still
+                        // null the Assistant command is dropped rather than
+                        // silently lost on a race.
+                        delay(1500)
+                        val retried = PlayerHolder.player
+                        if (retried == null) {
+                            android.util.Log.w(
+                                "ftpmusic",
+                                "[MediaService] Search dropped: player still null after retry",
+                            )
+                            return@withContext
                         }
+                        playSearchItems(retried, items)
+                    } else {
+                        playSearchItems(player, items)
                     }
                 }
             } catch (e: Exception) {

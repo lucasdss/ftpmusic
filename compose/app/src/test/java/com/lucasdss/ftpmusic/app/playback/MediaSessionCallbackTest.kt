@@ -978,7 +978,7 @@ class MediaSessionCallbackTest {
     }
 
     @Test
-    fun `onGetChildren root returns ten nodes including Queue`() {
+    fun `onGetChildren root returns Home first then Queue and library`() {
         val callback = createCallback(mockk(relaxed = true))
         val result = callback.onGetChildren(
             mockk(relaxed = true),
@@ -988,7 +988,8 @@ class MediaSessionCallbackTest {
             50,
             null,
         ).get()
-        assertEquals(10, result.value?.size)
+        assertEquals(11, result.value?.size)
+        assertEquals(AutoBrowseIds.HOME, result.value?.firstOrNull()?.mediaId)
         assertTrue(result.value?.any { it.mediaId == AutoBrowseIds.QUEUE } == true)
     }
 

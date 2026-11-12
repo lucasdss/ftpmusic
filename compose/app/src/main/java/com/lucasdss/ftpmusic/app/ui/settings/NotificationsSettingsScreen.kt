@@ -106,6 +106,24 @@ fun NotificationsSettingsScreen(
                         }
                     },
                 )
+                SectionDivider()
+                Column(
+                    Modifier.settingsScrollAnchor(SettingsAnchors.AA_CONNECT_ALERT, scrollToAnchor),
+                ) {
+                    SectionToggleRow(
+                        label = stringResource(R.string.aa_connect_settings_title),
+                        subtitle = stringResource(R.string.aa_connect_settings_subtitle),
+                        checked = state.aaConnectAlertEnabled,
+                        onToggle = { enabled ->
+                            viewModel.setAaConnectAlertEnabled(enabled)
+                            if (enabled && !systemNotificationsEnabled &&
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                            ) {
+                                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
+                    )
+                }
             }
         }
     }

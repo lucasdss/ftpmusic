@@ -13,17 +13,20 @@ import com.lucasdss.ftpmusic.app.data.db.CustomMixEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreDao
 import com.lucasdss.ftpmusic.app.data.db.GenreEntity
 import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
+import com.lucasdss.ftpmusic.app.data.db.ArtistEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
+import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
+import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
 import com.lucasdss.ftpmusic.app.ui.player.QueueSheetGrouping
 
 /**
- * Local-first Android Auto browse tree (ADR-0091 / ADR-0131 / ADR-0138).
+ * Local-first Android Auto browse tree (ADR-0091 / ADR-0131 / ADR-0138 / ADR-0160).
  * Room for library nodes; radio uses [AutoRadioStationsSource] (network + bookmarks).
- * Dual Up-Next via optional [queueSnapshotProvider].
+ * Dual Up-Next via optional [queueSnapshotProvider]. Home hub mirrors phone Home feeds.
  */
 class AutoBrowseCatalog(
     private val trackDao: TrackDao,
@@ -36,6 +39,7 @@ class AutoBrowseCatalog(
     private val genreMixDao: GenreMixDao? = null,
     private val dailyMixRepository: DailyMixRepository? = null,
     private val radioSource: AutoRadioStationsSource? = null,
+    private val radioFavoriteDao: RadioFavoriteDao? = null,
     private val queueSnapshotProvider: AutoQueueSnapshotProvider? = null,
 ) {
     /** Revision-scoped Up-Next cache so page N matches page 0 (ADR-0138). */
@@ -70,20 +74,37 @@ class AutoBrowseCatalog(
         return when (parentId) {
             AutoBrowseIds.ROOT -> rootChildren()
 
-            AutoBrowseIds.RECENT -> trackDao.getRecentlyPlayedPaged(limit = size, offset = offset).map {
+            AutoBrowseIds.HOME -> homeChildren()
+
+            AutoBrowseIds.HOME_RECENT,
+            AutoBrowseIds.RECENT,
+            -> trackDao.getRecentlyPlayedPaged(limit = size, offset = offset).map {
                 trackItem(it)
             }
+
+            AutoBrowseIds.HOME_SURPRISE -> emptyList()
+
+            AutoBrowseIds.HOME_MIXES,
+            AutoBrowseIds.MIXES,
+            -> {
+                val mixes = customMixDao?.getAll().orEmpty().drop(offset).take(size)
+                mixes.map { mixFolder(it) }
+            }
+
+            AutoBrowseIds.HOME_FAV_PLAYLISTS -> syncedPlaylists()
+                .drop(offset).take(size).map { playlistFolder(it) }
+
+            AutoBrowseIds.HOME_FAV_ARTISTS -> metadataDao.getStarredArtists(limit = size, offset = offset)
+                .map { starredArtistFolder(it) }
+
+            AutoBrowseIds.HOME_FAV_RADIO -> loadFavoriteRadio()
+                .drop(offset).take(size).map { favoriteRadioItem(it) }
 
             AutoBrowseIds.OFFLINE -> trackDao.getDownloadedPaged(limit = size, offset = offset).map {
                 trackItem(it)
             }
 
             AutoBrowseIds.FAVORITES -> trackDao.getStarred(limit = size, offset = offset).map { trackItem(it) }
-
-            AutoBrowseIds.MIXES -> {
-                val mixes = customMixDao?.getAll().orEmpty().drop(offset).take(size)
-                mixes.map { mixFolder(it) }
-            }
 
             AutoBrowseIds.PLAYLISTS -> playlistDao.getAll().drop(offset).take(size).map { playlistFolder(it) }
 
@@ -123,6 +144,36 @@ class AutoBrowseCatalog(
     suspend fun item(mediaId: String): MediaItem? {
         when (mediaId) {
             AutoBrowseIds.ROOT -> return rootItem()
+
+            AutoBrowseIds.HOME -> return folder(AutoBrowseIds.HOME, "Home", playable = false)
+
+            AutoBrowseIds.HOME_RECENT -> return folder(
+                AutoBrowseIds.HOME_RECENT,
+                "Continue listening",
+                playable = false,
+            )
+
+            AutoBrowseIds.HOME_SURPRISE -> return surpriseMeItem()
+
+            AutoBrowseIds.HOME_MIXES -> return folder(AutoBrowseIds.HOME_MIXES, "Daily Mixes", playable = false)
+
+            AutoBrowseIds.HOME_FAV_PLAYLISTS -> return folder(
+                AutoBrowseIds.HOME_FAV_PLAYLISTS,
+                "Favorite playlists",
+                playable = false,
+            )
+
+            AutoBrowseIds.HOME_FAV_ARTISTS -> return folder(
+                AutoBrowseIds.HOME_FAV_ARTISTS,
+                "Favorite artists",
+                playable = false,
+            )
+
+            AutoBrowseIds.HOME_FAV_RADIO -> return folder(
+                AutoBrowseIds.HOME_FAV_RADIO,
+                "Favorite radio",
+                playable = false,
+            )
 
             AutoBrowseIds.RECENT -> return folder(AutoBrowseIds.RECENT, "Recently played", playable = false)
 
@@ -211,8 +262,35 @@ class AutoBrowseCatalog(
 
             AutoBrowseIds.FAVORITES -> return trackDao.getStarred(limit = 500, offset = 0).map { trackItem(it) }
 
-            AutoBrowseIds.RECENT -> return trackDao.getRecentlyPlayedPaged(limit = 500, offset = 0).map {
+            AutoBrowseIds.HOME_RECENT,
+            AutoBrowseIds.RECENT,
+            -> return trackDao.getRecentlyPlayedPaged(limit = 500, offset = 0).map {
                 trackItem(it)
+            }
+
+            AutoBrowseIds.HOME_SURPRISE -> return surpriseMeTracks()
+
+            AutoBrowseIds.HOME_MIXES,
+            AutoBrowseIds.MIXES,
+            -> {
+                val firstMix = customMixDao?.getAll().orEmpty().firstOrNull() ?: return emptyList()
+                return mixTracks(firstMix.id, offset = 0, size = 500)
+            }
+
+            AutoBrowseIds.HOME_FAV_PLAYLISTS -> {
+                val first = syncedPlaylists().firstOrNull() ?: return emptyList()
+                return playlistTracks(first.id, offset = 0, size = 500)
+            }
+
+            AutoBrowseIds.HOME_FAV_ARTISTS -> {
+                val first = metadataDao.getStarredArtists(limit = 1, offset = 0).firstOrNull()
+                    ?: return emptyList()
+                return expandForPlayback(AutoBrowseIds.artist(first.id))
+            }
+
+            AutoBrowseIds.HOME_FAV_RADIO -> {
+                val first = loadFavoriteRadio().firstOrNull() ?: return emptyList()
+                return listOf(favoriteRadioItem(first))
             }
         }
         if (AutoBrowseIds.isBrowseNode(mediaId)) return emptyList()
@@ -246,8 +324,9 @@ class AutoBrowseCatalog(
     }
 
     private fun rootChildren(): List<MediaItem> = listOf(
-        folder(AutoBrowseIds.RECENT, "Recently played", playable = false),
+        folder(AutoBrowseIds.HOME, "Home", playable = false),
         folder(AutoBrowseIds.QUEUE, "Queue", playable = false),
+        folder(AutoBrowseIds.RECENT, "Recently played", playable = false),
         folder(AutoBrowseIds.OFFLINE, "Downloads", playable = false),
         folder(AutoBrowseIds.FAVORITES, "Favorites", playable = false),
         folder(AutoBrowseIds.MIXES, "Daily Mixes", playable = false),
@@ -257,6 +336,92 @@ class AutoBrowseCatalog(
         folder(AutoBrowseIds.GENRES, "Genres", playable = false),
         folder(AutoBrowseIds.RADIO, "Live Radio", playable = false),
     )
+
+    /** Spotify-like Home hub — omit empty sections (ADR-0160). */
+    private suspend fun homeChildren(): List<MediaItem> = buildList {
+        val recent = trackDao.getRecentlyPlayedPaged(limit = 1, offset = 0)
+        if (recent.isNotEmpty()) {
+            add(folder(AutoBrowseIds.HOME_RECENT, "Continue listening", playable = false))
+        }
+        val surpriseCount = trackDao.getRandomTracks(limit = 1).size
+        if (surpriseCount > 0) {
+            add(surpriseMeItem())
+        }
+        val mixes = customMixDao?.getAll().orEmpty()
+        if (mixes.isNotEmpty()) {
+            add(folder(AutoBrowseIds.HOME_MIXES, "Daily Mixes", subtitle = "${mixes.size}", playable = false))
+        }
+        val playlists = syncedPlaylists()
+        if (playlists.isNotEmpty()) {
+            add(
+                folder(
+                    AutoBrowseIds.HOME_FAV_PLAYLISTS,
+                    "Favorite playlists",
+                    subtitle = "${playlists.size}",
+                    playable = false,
+                ),
+            )
+        }
+        val artists = metadataDao.getStarredArtists(limit = 1, offset = 0)
+        if (artists.isNotEmpty()) {
+            add(folder(AutoBrowseIds.HOME_FAV_ARTISTS, "Favorite artists", playable = false))
+        }
+        val radios = loadFavoriteRadio()
+        if (radios.isNotEmpty()) {
+            add(
+                folder(
+                    AutoBrowseIds.HOME_FAV_RADIO,
+                    "Favorite radio",
+                    subtitle = "${radios.size}",
+                    playable = false,
+                ),
+            )
+        }
+    }
+
+    /** Phone Home filter: synced playlists only (`lastSyncedAt != null`). */
+    private suspend fun syncedPlaylists(): List<PlaylistEntity> =
+        playlistDao.getAll().filter { it.lastSyncedAt != null }
+
+    private suspend fun loadFavoriteRadio(): List<RadioFavoriteEntity> = try {
+        radioFavoriteDao?.getAll().orEmpty().filter { it.streamUrl.isNotBlank() }
+    } catch (e: Exception) {
+        android.util.Log.w("ftpmusic", "[AutoBrowse] favorite radio load failed: ${e.message}")
+        emptyList()
+    }
+
+    private suspend fun surpriseMeTracks(): List<MediaItem> {
+        val tracks = trackDao.getRandomTracks(limit = 50).ifEmpty {
+            trackDao.getRandomCachedTracks(limit = 50)
+        }
+        return tracks.map { trackItem(it) }
+    }
+
+    private fun surpriseMeItem(): MediaItem = folder(
+        mediaId = AutoBrowseIds.HOME_SURPRISE,
+        title = "Surprise Me",
+        subtitle = "Random tracks",
+        playable = true,
+        mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
+    )
+
+    private fun starredArtistFolder(artist: ArtistEntity): MediaItem = folder(
+        mediaId = AutoBrowseIds.artist(artist.id),
+        title = artist.name,
+        artwork = artworkUriFor(artist.coverArtUrl),
+        playable = true,
+        mediaType = MediaMetadata.MEDIA_TYPE_ARTIST,
+    )
+
+    private fun favoriteRadioItem(fav: RadioFavoriteEntity): MediaItem {
+        val station = AutoRadioStation(
+            id = fav.stationId,
+            name = fav.name,
+            streamUrl = fav.streamUrl,
+            homePageUrl = fav.homePageUrl,
+        )
+        return radioItem(station)
+    }
 
     private fun queueSnapshot(): AutoQueueBrowseSnapshot {
         val cached = cachedQueueSnapshot

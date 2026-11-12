@@ -4,6 +4,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.ThumbRating
+import androidx.media3.session.CommandButton
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -28,6 +29,21 @@ class MediaSessionReactionCommandsTest {
         assertEquals(MediaSessionReactionCommands.ACTION_DISLIKE, buttons[1].sessionCommand?.customAction)
         assertEquals("Like", buttons[0].displayName.toString())
         assertEquals("Dislike", buttons[1].displayName.toString())
+        assertTrue(buttons[0].slots.contains(CommandButton.SLOT_OVERFLOW))
+        assertFalse(buttons[0].slots.contains(CommandButton.SLOT_FORWARD))
+    }
+
+    @Test
+    fun `auto companion buttons prefer forward and back slots`() {
+        val buttons = MediaSessionReactionCommands.buttons(
+            isStarred = true,
+            isDisliked = false,
+            forAutoCompanion = true,
+        )
+        assertTrue(buttons[0].slots.contains(CommandButton.SLOT_FORWARD))
+        assertTrue(buttons[0].slots.contains(CommandButton.SLOT_OVERFLOW))
+        assertTrue(buttons[1].slots.contains(CommandButton.SLOT_BACK))
+        assertTrue(buttons[1].slots.contains(CommandButton.SLOT_OVERFLOW))
     }
 
     @Test

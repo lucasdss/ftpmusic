@@ -80,13 +80,14 @@ class AutoBrowseCatalogTest {
     }
 
     @Test
-    fun `root has ten browse nodes with Queue after Recent`() = runBlocking {
+    fun `root has Home first then Queue then library nodes`() = runBlocking {
         val kids = catalog.children(AutoBrowseIds.ROOT, page = 0, pageSize = 50)
-        assertEquals(10, kids.size)
+        assertEquals(11, kids.size)
         assertEquals(
             listOf(
-                AutoBrowseIds.RECENT,
+                AutoBrowseIds.HOME,
                 AutoBrowseIds.QUEUE,
+                AutoBrowseIds.RECENT,
                 AutoBrowseIds.OFFLINE,
                 AutoBrowseIds.FAVORITES,
                 AutoBrowseIds.MIXES,
@@ -177,6 +178,8 @@ class AutoBrowseCatalogTest {
     @Test
     fun `browse node ids detected`() {
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.ROOT))
+        assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.HOME))
+        assertTrue(AutoBrowseIds.isHomeNode(AutoBrowseIds.HOME_SURPRISE))
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.album("x")))
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.OFFLINE))
         assertTrue(AutoBrowseIds.isBrowseNode(AutoBrowseIds.mix(1)))
@@ -189,6 +192,31 @@ class AutoBrowseCatalogTest {
         assertTrue(AutoBrowseIds.isRadioMediaId(AutoBrowseIds.radio("s1")))
         assertTrue(AutoBrowseIds.isRadioMediaId("radio:123"))
         assertFalse(AutoBrowseIds.isBrowseNode("plain-track-id"))
+    }
+
+    @Test
+    fun `home omits empty sections and includes surprise when tracks exist`() = runBlocking {
+        coEvery { trackDao.getRecentlyPlayedPaged(limit = 1, offset = 0) } returns emptyList()
+        coEvery { trackDao.getRandomTracks(limit = 1) } returns listOf(
+            TrackEntity(id = "r1", title = "Rand"),
+        )
+        coEvery { customMixDao.getAll() } returns emptyList()
+        coEvery { playlistDao.getAll() } returns emptyList()
+        coEvery { metadataDao.getStarredArtists(limit = 1, offset = 0) } returns emptyList()
+
+        val kids = catalog.children(AutoBrowseIds.HOME, 0, 20)
+        assertEquals(listOf(AutoBrowseIds.HOME_SURPRISE), kids.map { it.mediaId })
+        assertTrue(kids[0].mediaMetadata.isPlayable == true)
+    }
+
+    @Test
+    fun `surprise me expand returns random tracks`() = runBlocking {
+        coEvery { trackDao.getRandomTracks(limit = 50) } returns listOf(
+            TrackEntity(id = "a", title = "A"),
+            TrackEntity(id = "b", title = "B"),
+        )
+        val items = catalog.expandForPlayback(AutoBrowseIds.HOME_SURPRISE)
+        assertEquals(listOf("a", "b"), items.map { it.mediaId })
     }
 
     @Test

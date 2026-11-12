@@ -3,11 +3,18 @@ package com.lucasdss.ftpmusic.app.playback
 import android.net.Uri
 
 /**
- * Media3 library media-id scheme for Android Auto browse (ADR-0091 / ADR-0131).
+ * Media3 library media-id scheme for Android Auto browse (ADR-0091 / ADR-0131 / ADR-0160).
  * Track ids stay bare Subsonic ids so [MediaSessionCallback.onAddMediaItems] expand works.
  */
 object AutoBrowseIds {
     const val ROOT = "auto_root"
+    const val HOME = "auto_home"
+    const val HOME_RECENT = "auto_home_recent"
+    const val HOME_SURPRISE = "auto_home_surprise"
+    const val HOME_MIXES = "auto_home_mixes"
+    const val HOME_FAV_PLAYLISTS = "auto_home_fav_playlists"
+    const val HOME_FAV_ARTISTS = "auto_home_fav_artists"
+    const val HOME_FAV_RADIO = "auto_home_fav_radio"
     const val RECENT = "auto_recent"
     const val OFFLINE = "auto_offline"
     const val FAVORITES = "auto_favorites"
@@ -76,7 +83,16 @@ object AutoBrowseIds {
         mediaId == QUEUE_AUTOPLAY ||
         mediaId == QUEUE_LATE
 
+    fun isHomeNode(mediaId: String): Boolean = mediaId == HOME ||
+        mediaId == HOME_RECENT ||
+        mediaId == HOME_SURPRISE ||
+        mediaId == HOME_MIXES ||
+        mediaId == HOME_FAV_PLAYLISTS ||
+        mediaId == HOME_FAV_ARTISTS ||
+        mediaId == HOME_FAV_RADIO
+
     fun isBrowseNode(mediaId: String): Boolean = mediaId == ROOT ||
+        isHomeNode(mediaId) ||
         mediaId == RECENT ||
         mediaId == OFFLINE ||
         mediaId == FAVORITES ||

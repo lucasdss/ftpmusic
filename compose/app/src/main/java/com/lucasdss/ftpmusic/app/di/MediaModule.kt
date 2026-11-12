@@ -55,6 +55,7 @@ object MediaModule {
     @Provides
     @Singleton
     fun provideMediaSessionCallback(
+        @ApplicationContext context: Context,
         trackDao: TrackDao,
         metadataDao: CachedMetadataDao,
         authHelper: SubsonicAuthHelper,
@@ -68,6 +69,7 @@ object MediaModule {
         genreMixDao: GenreMixDao,
         dailyMixRepository: DailyMixRepository,
         radioSource: AutoRadioStationsSource,
+        radioFavoriteDao: RadioFavoriteDao,
         offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
         playbackManager: com.lucasdss.ftpmusic.app.playback.PlaybackManager,
         storage: SecureStorage,
@@ -85,8 +87,11 @@ object MediaModule {
         genreMixDao = genreMixDao,
         dailyMixRepository = dailyMixRepository,
         radioSource = radioSource,
+        radioFavoriteDao = radioFavoriteDao,
         offlineModeManager = offlineModeManager,
         playbackManager = playbackManager,
+        appContext = context,
+        secureStorage = storage,
         ignoreRemoteStop = {
             com.lucasdss.ftpmusic.app.playback.BtResumeStorage.ignoreRemoteStop(storage)
         },

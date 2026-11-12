@@ -12,7 +12,13 @@ import com.lucasdss.ftpmusic.app.R
 
 /**
  * Media3 custom session commands + command buttons for like/dislike.
- * Thumbs go in [CommandButton.SLOT_OVERFLOW] so compact transport stays play/pause/prev/next.
+ *
+ * Default (shade / QS): thumbs in [CommandButton.SLOT_OVERFLOW] so compact
+ * transport stays play/pause/prev/next (ADR-0118).
+ *
+ * Android Auto companion: prefer [CommandButton.SLOT_FORWARD] /
+ * [CommandButton.SLOT_BACK] so the HU shows filled/unfilled thumbs without
+ * opening overflow (ADR-0159).
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object MediaSessionReactionCommands {
@@ -23,14 +29,28 @@ object MediaSessionReactionCommands {
     val LIKE_COMMAND: SessionCommand by lazy { SessionCommand(ACTION_LIKE, Bundle.EMPTY) }
     val DISLIKE_COMMAND: SessionCommand by lazy { SessionCommand(ACTION_DISLIKE, Bundle.EMPTY) }
 
-    fun buttons(isStarred: Boolean, isDisliked: Boolean): ImmutableList<CommandButton> {
+    fun buttons(
+        isStarred: Boolean,
+        isDisliked: Boolean,
+        forAutoCompanion: Boolean = false,
+    ): ImmutableList<CommandButton> {
+        val likeSlots = if (forAutoCompanion) {
+            intArrayOf(CommandButton.SLOT_FORWARD, CommandButton.SLOT_OVERFLOW)
+        } else {
+            intArrayOf(CommandButton.SLOT_OVERFLOW)
+        }
+        val dislikeSlots = if (forAutoCompanion) {
+            intArrayOf(CommandButton.SLOT_BACK, CommandButton.SLOT_OVERFLOW)
+        } else {
+            intArrayOf(CommandButton.SLOT_OVERFLOW)
+        }
         val like = CommandButton.Builder(
             if (isStarred) CommandButton.ICON_THUMB_UP_FILLED else CommandButton.ICON_THUMB_UP_UNFILLED,
         )
             .setDisplayName(if (isStarred) "Unlike" else "Like")
             .setCustomIconResId(R.drawable.ic_thumb_up)
             .setSessionCommand(LIKE_COMMAND)
-            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setSlots(*likeSlots)
             .build()
         val dislike = CommandButton.Builder(
             if (isDisliked) {
@@ -42,7 +62,7 @@ object MediaSessionReactionCommands {
             .setDisplayName(if (isDisliked) "Remove dislike" else "Dislike")
             .setCustomIconResId(R.drawable.ic_thumb_down)
             .setSessionCommand(DISLIKE_COMMAND)
-            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setSlots(*dislikeSlots)
             .build()
         return ImmutableList.of(like, dislike)
     }

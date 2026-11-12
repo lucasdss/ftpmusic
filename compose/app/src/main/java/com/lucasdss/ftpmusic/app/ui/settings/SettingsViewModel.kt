@@ -27,6 +27,7 @@ import com.lucasdss.ftpmusic.app.data.update.AppUpdateAvailabilityHolder
 import com.lucasdss.ftpmusic.app.data.update.AppUpdateChecker
 import com.lucasdss.ftpmusic.app.data.update.FlexibleInstallEvent
 import com.lucasdss.ftpmusic.app.data.update.UpdateCheckResult
+import com.lucasdss.ftpmusic.app.playback.AutoConnectAlertNotifier
 import com.lucasdss.ftpmusic.app.playback.CastPreferences
 import com.lucasdss.ftpmusic.app.playback.OverwriteBehavior
 import com.lucasdss.ftpmusic.app.playback.PlaybackManager
@@ -117,6 +118,8 @@ data class SettingsUiState(
     // v46: Playback notifications feature toggle (default ON). OFF still posts
     // the FGS-satisfying minimal notification, without media controls/art.
     val playbackNotificationsEnabled: Boolean = true,
+    /** ADR-0158: first Android Auto connect availability alert (default ON). */
+    val aaConnectAlertEnabled: Boolean = true,
     // v49: Hide bottom-nav labels (icon-only). Default OFF = labels shown.
     val hideNavLabels: Boolean = false,
     /** Appearance: Now Playing scrub / transport haptics (default ON). */
@@ -230,6 +233,8 @@ class SettingsViewModel @Inject constructor(
         val savedShowFavRadio = storage.get(SecureStorage.KEY_HOME_SHOW_FAV_RADIO)?.toBooleanStrictOrNull() ?: true
         val savedPlaybackNotifications =
             storage.get(SecureStorage.KEY_PLAYBACK_NOTIFICATIONS)?.toBooleanStrictOrNull() ?: true
+        val savedAaConnectAlert =
+            storage.get(SecureStorage.KEY_AA_CONNECT_ALERT_ENABLED)?.toBooleanStrictOrNull() ?: true
         val savedHideNavLabels =
             storage.get(SecureStorage.KEY_NAV_HIDE_LABELS)?.toBooleanStrictOrNull() ?: false
         val savedPlayerHaptics =
@@ -278,6 +283,7 @@ class SettingsViewModel @Inject constructor(
             showFavAlbumsSection = savedShowFavAlbums,
             showFavRadioSection = savedShowFavRadio,
             playbackNotificationsEnabled = savedPlaybackNotifications,
+            aaConnectAlertEnabled = savedAaConnectAlert,
             hideNavLabels = savedHideNavLabels,
             playerHapticsEnabled = savedPlayerHaptics,
             typographyPrefs = savedTypographyPrefs,
@@ -441,6 +447,11 @@ class SettingsViewModel @Inject constructor(
     // v46: Playback notifications feature toggle. OFF keeps the FGS-satisfying
     // minimal notification (silent, no controls/art) — Android's foreground
     // service contract forbids a completely absent notification while playing.
+    fun setAaConnectAlertEnabled(enabled: Boolean) {
+        _state.value = _state.value.copy(aaConnectAlertEnabled = enabled)
+        AutoConnectAlertNotifier.setAlertsEnabled(storage, enabled)
+    }
+
     fun setPlaybackNotificationsEnabled(enabled: Boolean) {
         _state.value = _state.value.copy(playbackNotificationsEnabled = enabled)
         storage.put(SecureStorage.KEY_PLAYBACK_NOTIFICATIONS, enabled.toString())

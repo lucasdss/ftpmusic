@@ -247,5 +247,10 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
 
         /** Appearance: player scrub / transport haptics (default ON). */
         const val KEY_PLAYER_HAPTICS_ENABLED = "player_haptics_enabled"
+
+        /** ADR-0158: phone alert when Android Auto first connects (default ON). */
+        const val KEY_AA_CONNECT_ALERT_ENABLED = "aa_connect_alert_enabled"
+        /** Comma-separated Auto controller package fingerprints already notified. */
+        const val KEY_AA_SEEN_CONTROLLERS = "aa_seen_controllers"
     }
 }
