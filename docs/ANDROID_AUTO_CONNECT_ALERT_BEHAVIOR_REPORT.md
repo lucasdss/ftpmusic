@@ -28,6 +28,7 @@ Substreamer is intentional and documented here.
 | Trigger | `MediaSession.isAutoCompanionController` (or automotive) on `onConnect` |
 | Not A2DP | Separate from `BtConnectionReceiver` / Bluetooth auto play |
 | Frequency | Once per controller package fingerprint until prefs cleared |
+| Persist | Fingerprint written **only after** successful `notify` (notifs off / denied → retry later) |
 | Surface | Phone notification (DEFAULT channel); Car App Library out of scope |
 | Settings | Notifications → “Android Auto available alert” (default ON) |
 | Copy | Title: “FTP Music on Android Auto”; body: available on this car |

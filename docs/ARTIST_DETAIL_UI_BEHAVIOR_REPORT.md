@@ -90,6 +90,9 @@ Tab state: local `remember`; process death → Albums. No VM persistence.
 - Bio expand-in-chrome removed; sheet + teaser only.
 - Rating / teaser / Play All / Desired / Similar live in collapsing header region;
   TabRow stays pinned. Not Library AppHeader ride.
+- **2.1.8:** chrome `Column` measured with `wrapContentHeight(unbounded=true)` inside the
+  clipped visible-height `Box` (NavHost / ADR-0107) so `onSizeChanged` never feeds
+  constrained height into `updateHeaderHeight`.
 
 ## Amendment (2026-11-03, ADR-0152)
 

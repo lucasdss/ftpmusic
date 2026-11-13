@@ -41,6 +41,8 @@ class AutoBrowseCatalog(
     private val radioSource: AutoRadioStationsSource? = null,
     private val radioFavoriteDao: RadioFavoriteDao? = null,
     private val queueSnapshotProvider: AutoQueueSnapshotProvider? = null,
+    /** ADR-0136 / phone Surprise Me offline: prefer cached tracks when LocalOnly. */
+    private val isLocalOnly: () -> Boolean = { false },
 ) {
     /** Revision-scoped Up-Next cache so page N matches page 0 (ADR-0138). */
     @Volatile
@@ -228,7 +230,7 @@ class AutoBrowseCatalog(
                 ?: folder(AutoBrowseIds.genre(name), name, playable = false)
         }
         AutoBrowseIds.parseRadio(mediaId)?.let { stationId ->
-            return loadRadioStations().firstOrNull { it.id == stationId }?.let { radioItem(it) }
+            return resolveRadioItem(stationId)
         }
         val track = trackDao.getTrack(mediaId) ?: return null
         return trackItem(track)
@@ -254,8 +256,8 @@ class AutoBrowseCatalog(
             return genreTracks(name, offset = 0, size = 500)
         }
         AutoBrowseIds.parseRadio(mediaId)?.let { stationId ->
-            val station = loadRadioStations().firstOrNull { it.id == stationId } ?: return emptyList()
-            return listOf(radioItem(station))
+            val item = resolveRadioItem(stationId) ?: return emptyList()
+            return listOf(item)
         }
         when (mediaId) {
             AutoBrowseIds.OFFLINE -> return trackDao.getDownloadedPaged(limit = 500, offset = 0).map { trackItem(it) }
@@ -343,8 +345,7 @@ class AutoBrowseCatalog(
         if (recent.isNotEmpty()) {
             add(folder(AutoBrowseIds.HOME_RECENT, "Continue listening", playable = false))
         }
-        val surpriseCount = trackDao.getRandomTracks(limit = 1).size
-        if (surpriseCount > 0) {
+        if (surprisePresenceTracks().isNotEmpty()) {
             add(surpriseMeItem())
         }
         val mixes = customMixDao?.getAll().orEmpty()
@@ -390,20 +391,42 @@ class AutoBrowseCatalog(
         emptyList()
     }
 
+    private suspend fun surprisePresenceTracks(): List<TrackEntity> =
+        if (isLocalOnly()) {
+            trackDao.getRandomCachedTracks(limit = 1)
+        } else {
+            trackDao.getRandomTracks(limit = 1).ifEmpty {
+                trackDao.getRandomCachedTracks(limit = 1)
+            }
+        }
+
     private suspend fun surpriseMeTracks(): List<MediaItem> {
-        val tracks = trackDao.getRandomTracks(limit = 50).ifEmpty {
+        val tracks = if (isLocalOnly()) {
             trackDao.getRandomCachedTracks(limit = 50)
+        } else {
+            trackDao.getRandomTracks(limit = 50).ifEmpty {
+                trackDao.getRandomCachedTracks(limit = 50)
+            }
         }
         return tracks.map { trackItem(it) }
     }
 
+    /** Playable-only leaf — not browsable (children always empty). */
     private fun surpriseMeItem(): MediaItem = folder(
         mediaId = AutoBrowseIds.HOME_SURPRISE,
         title = "Surprise Me",
         subtitle = "Random tracks",
         playable = true,
+        browsable = false,
         mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
     )
+
+    /** Live Radio source first; Home favorite-only stations via Room fallback. */
+    private suspend fun resolveRadioItem(stationId: String): MediaItem? {
+        loadRadioStations().firstOrNull { it.id == stationId }?.let { return radioItem(it) }
+        val fav = loadFavoriteRadio().firstOrNull { it.stationId == stationId } ?: return null
+        return favoriteRadioItem(fav)
+    }
 
     private fun starredArtistFolder(artist: ArtistEntity): MediaItem = folder(
         mediaId = AutoBrowseIds.artist(artist.id),
@@ -726,12 +749,13 @@ class AutoBrowseCatalog(
         subtitle: String? = null,
         artwork: Uri? = null,
         playable: Boolean,
+        browsable: Boolean = true,
         mediaType: @MediaMetadata.MediaType Int = MediaMetadata.MEDIA_TYPE_FOLDER_MIXED,
     ): MediaItem {
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
             .setArtist(subtitle)
-            .setIsBrowsable(true)
+            .setIsBrowsable(browsable)
             .setIsPlayable(playable)
             .setMediaType(mediaType)
             .apply { if (artwork != null) setArtworkUri(artwork) }

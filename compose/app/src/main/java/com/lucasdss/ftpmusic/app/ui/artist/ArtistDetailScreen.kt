@@ -250,6 +250,9 @@ fun ArtistDetailScreen(
                     .weight(1f)
                     .nestedScroll(chromeScroll.nestedScrollConnection),
             ) {
+                // NavHost / ADR-0107 pattern: measure chrome unbounded so
+                // onSizeChanged never sees the clipped visible height (avoids
+                // headerHeightPx ratcheting down while collapsing).
                 val chromeMeasured = chromeScroll.headerHeightPx > 0f
                 Box(
                     Modifier
@@ -268,6 +271,7 @@ fun ArtistDetailScreen(
                     Column(
                         Modifier
                             .fillMaxWidth()
+                            .wrapContentHeight(align = Alignment.Top, unbounded = true)
                             .onSizeChanged { chromeScroll.updateHeaderHeight(it.height.toFloat()) }
                             .graphicsLayer {
                                 if (chromeMeasured) translationY = -chromeScroll.offsetPx

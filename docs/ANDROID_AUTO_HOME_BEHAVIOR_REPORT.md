@@ -13,7 +13,7 @@ Playlists → Albums → Artists → Genres → Live Radio
 | Section | Media id | Source |
 |---------|----------|--------|
 | Continue listening | `auto_home_recent` | `TrackDao.getRecentlyPlayedPaged` |
-| Surprise Me | `auto_home_surprise` | Random Room tracks (playable) |
+| Surprise Me | `auto_home_surprise` | Random Room tracks (playable-only, not browsable); LocalOnly → cached only |
 | Daily Mixes | `auto_home_mixes` | `CustomMixDao` |
 | Favorite playlists | `auto_home_fav_playlists` | Playlists with `lastSyncedAt != null` |
 | Favorite artists | `auto_home_fav_artists` | `CachedMetadataDao.getStarredArtists` |

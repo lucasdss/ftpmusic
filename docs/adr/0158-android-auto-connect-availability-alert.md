@@ -17,7 +17,8 @@ alert; we still ship the first-connect phone notice.
 1. Detect Auto via Media3 `MediaSession.isAutoCompanionController` /
    `isAutomotiveController` in `MediaSessionCallback.onConnect`.
 2. Phone informational notification once per controller package fingerprint
-   stored in SecureStorage; Settings toggle (default ON).
+   stored in SecureStorage **after a successful notify** (notifs denied/off do not
+   burn the fingerprint); Settings toggle (default ON).
 3. Do not conflate with Bluetooth A2DP autoplay.
 
 ## Consequences

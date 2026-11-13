@@ -841,6 +841,92 @@ class MediaSessionCallbackTest {
     }
 
     @Test
+    fun `searchAndNavidromeExpand album focus prefers local album over track`() = runBlocking {
+        val localSearch = mockk<com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository>()
+        coEvery { localSearch.search(any(), any(), any()) } returns
+            com.lucasdss.ftpmusic.app.data.search.LocalSearchHit(
+                tracks = listOf(TrackEntity(id = "wrong-track", title = "Noise", albumId = "other")),
+                albums = listOf(
+                    com.lucasdss.ftpmusic.app.data.db.CachedAlbumEntity(id = "al-focus", name = "Focus Album"),
+                ),
+            )
+        val metadataDao = mockk<CachedMetadataDao>(relaxed = true)
+        coEvery { metadataDao.getAlbumTracks("al-focus") } returns listOf(
+            CachedAlbumTrackEntity(
+                id = "t1",
+                albumId = "al-focus",
+                title = "One",
+                artist = "A",
+                trackNumber = 1,
+                duration = 100,
+            ),
+        )
+        coEvery { metadataDao.getAlbumName("al-focus") } returns "Focus Album"
+        val callback = MediaSessionCallback(
+            trackDao = mockk(relaxed = true),
+            metadataDao = metadataDao,
+            authHelper = SubsonicAuthHelper(),
+            api = mockk(relaxed = true),
+            localSearch = localSearch,
+            playlistDao = mockk(relaxed = true),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val items = callback.searchAndNavidromeExpand(
+            query = "",
+            albumExtra = "Focus Album",
+            mediaFocus = android.provider.MediaStore.Audio.Albums.ENTRY_CONTENT_TYPE,
+        )
+        assertEquals(listOf("t1"), items.map { it.mediaId })
+    }
+
+    @Test
+    fun `searchAndNavidromeExpand album focus uses search3 album`() = runBlocking {
+        val api = mockk<SubsonicApi>(relaxed = true)
+        coEvery {
+            api.search3(any(), any(), any(), any(), any(), any(), any(), any())
+        } returns mapOf(
+            "subsonic-response" to mapOf(
+                "searchResult3" to mapOf(
+                    "album" to mapOf("id" to "net-al", "name" to "Net Album"),
+                    "song" to mapOf("id" to "net-song", "title" to "Wrong"),
+                ),
+            ),
+        )
+        val localSearch = mockk<com.lucasdss.ftpmusic.app.data.search.LocalSearchRepository>()
+        coEvery { localSearch.search(any(), any(), any()) } returns
+            com.lucasdss.ftpmusic.app.data.search.LocalSearchHit()
+        val metadataDao = mockk<CachedMetadataDao>(relaxed = true)
+        coEvery { metadataDao.getAlbumTracks("net-al") } returns listOf(
+            CachedAlbumTrackEntity(
+                id = "nt1",
+                albumId = "net-al",
+                title = "Net One",
+                artist = "A",
+                trackNumber = 1,
+                duration = 100,
+            ),
+        )
+        coEvery { metadataDao.getAlbumName("net-al") } returns "Net Album"
+        val callback = MediaSessionCallback(
+            trackDao = mockk(relaxed = true),
+            metadataDao = metadataDao,
+            authHelper = SubsonicAuthHelper(),
+            api = api,
+            localSearch = localSearch,
+            playlistDao = mockk(relaxed = true),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            mainDispatcher = Dispatchers.Unconfined,
+        )
+        val items = callback.searchAndNavidromeExpand(
+            query = "Net Album",
+            albumExtra = "Net Album",
+            mediaFocus = android.provider.MediaStore.Audio.Albums.ENTRY_CONTENT_TYPE,
+        )
+        assertEquals(listOf("nt1"), items.map { it.mediaId })
+    }
+
+    @Test
     fun `onPlaybackResumption returns playlist from Room and applies transport when for playback`() {
         val persistence = mockk<QueuePersistenceManager>()
         coEvery { persistence.restore() } returns SavedQueueState(

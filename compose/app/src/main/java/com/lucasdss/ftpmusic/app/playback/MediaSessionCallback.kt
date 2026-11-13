@@ -145,6 +145,7 @@ class MediaSessionCallback(
             dailyMixRepository = dailyMixRepository,
             radioSource = radioSource,
             radioFavoriteDao = radioFavoriteDao,
+            isLocalOnly = { isLocalOnly() },
         )
     }
 
@@ -700,6 +701,8 @@ class MediaSessionCallback(
         val focus = mediaFocus.orEmpty()
         val artistOnly = focus == MediaStore.Audio.Artists.ENTRY_CONTENT_TYPE ||
             (titleExtra.isNullOrBlank() && albumExtra.isNullOrBlank() && !artistExtra.isNullOrBlank())
+        val albumFocus = focus == MediaStore.Audio.Albums.ENTRY_CONTENT_TYPE ||
+            (!albumExtra.isNullOrBlank() && titleExtra.isNullOrBlank())
 
         // Prefer local FTS/LIKE corpus (same as Search tab), then search3.
         try {
@@ -720,6 +723,17 @@ class MediaSessionCallback(
                     return expandForPlaybackArtist(localArtist.id)
                 }
             }
+            // Album-focused Assistant extras: expand album before any track hit.
+            if (albumFocus) {
+                val localAlbum = local?.albums?.firstOrNull()
+                if (localAlbum != null) {
+                    android.util.Log.d(
+                        "ftpmusic",
+                        "[MediaSessionCallback] searchAndNavidromeExpand: local album '$effectiveQuery' → ${localAlbum.id}",
+                    )
+                    return browseCatalog?.expandForPlayback(AutoBrowseIds.album(localAlbum.id)).orEmpty()
+                }
+            }
             val localTrack = local?.tracks?.firstOrNull()
             if (localTrack != null) {
                 android.util.Log.d(
@@ -730,7 +744,7 @@ class MediaSessionCallback(
                     ?: listOfNotNull(singleTrackMediaItem(localTrack, auth))
             }
             val localAlbum = local?.albums?.firstOrNull()
-            if (localAlbum != null && (focus == MediaStore.Audio.Albums.ENTRY_CONTENT_TYPE || local?.tracks.isNullOrEmpty())) {
+            if (localAlbum != null) {
                 return browseCatalog?.expandForPlayback(AutoBrowseIds.album(localAlbum.id)).orEmpty()
             }
         } catch (e: Exception) {
@@ -779,6 +793,23 @@ class MediaSessionCallback(
                     "[MediaSessionCallback] searchAndNavidromeExpand: network artist '$artistExtra' → $artistId",
                 )
                 return expandForPlaybackArtist(artistId)
+            }
+        }
+
+        if (albumFocus) {
+            val albums: List<*> = when (val raw = searchResult["album"]) {
+                is List<*> -> raw
+                is Map<*, *> -> listOf(raw)
+                else -> emptyList<Any>()
+            }
+            val firstAlbum = albums.firstOrNull() as? Map<*, *>
+            val albumId = songIdOf(firstAlbum?.get("id"))
+            if (albumId != null) {
+                android.util.Log.d(
+                    "ftpmusic",
+                    "[MediaSessionCallback] searchAndNavidromeExpand: network album '$effectiveQuery' → $albumId",
+                )
+                return browseCatalog?.expandForPlayback(AutoBrowseIds.album(albumId)).orEmpty()
             }
         }
 

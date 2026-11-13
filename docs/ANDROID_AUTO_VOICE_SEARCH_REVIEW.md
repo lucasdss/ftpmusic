@@ -14,9 +14,11 @@ Related: ADR-0131 (browse ≠ voice), ADR-0132, ADR-0136
 
 1. Parse Assistant extras: `EXTRA_MEDIA_ARTIST` / `ALBUM` / `TITLE` / `FOCUS`.
 2. Artist-only focus → expand artist albums/tracks (local then network).
-3. Empty query+extras → log and ignore (no silent success).
-4. No-hit voice → explicit warn log (was silent empty).
-5. LocalOnly still skips `search3`.
+3. Album focus (or album extra without title) → expand album before track path;
+   network uses `searchResult3.album` before songs.
+4. Empty query+extras → log and ignore (no silent success).
+5. No-hit voice → explicit warn log (was silent empty).
+6. LocalOnly still skips `search3`.
 
 ## Explicit non-goals
 

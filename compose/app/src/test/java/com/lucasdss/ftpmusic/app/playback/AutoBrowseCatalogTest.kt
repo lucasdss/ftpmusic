@@ -14,6 +14,8 @@ import com.lucasdss.ftpmusic.app.data.db.GenreMixDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistDao
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntity
 import com.lucasdss.ftpmusic.app.data.db.PlaylistEntryEntity
+import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
+import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteEntity
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.repository.DailyMixRepository
@@ -26,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -40,6 +43,8 @@ class AutoBrowseCatalogTest {
     private lateinit var genreMixDao: GenreMixDao
     private lateinit var dailyMixRepository: DailyMixRepository
     private lateinit var radioSource: AutoRadioStationsSource
+    private lateinit var radioFavoriteDao: RadioFavoriteDao
+    private var localOnly: Boolean = false
     private lateinit var catalog: AutoBrowseCatalog
 
     @Before
@@ -60,6 +65,8 @@ class AutoBrowseCatalogTest {
         genreMixDao = mockk(relaxed = true)
         dailyMixRepository = mockk(relaxed = true)
         radioSource = mockk(relaxed = true)
+        radioFavoriteDao = mockk(relaxed = true)
+        localOnly = false
         catalog = AutoBrowseCatalog(
             trackDao = trackDao,
             metadataDao = metadataDao,
@@ -71,6 +78,8 @@ class AutoBrowseCatalogTest {
             genreMixDao = genreMixDao,
             dailyMixRepository = dailyMixRepository,
             radioSource = radioSource,
+            radioFavoriteDao = radioFavoriteDao,
+            isLocalOnly = { localOnly },
         )
     }
 
@@ -207,6 +216,7 @@ class AutoBrowseCatalogTest {
         val kids = catalog.children(AutoBrowseIds.HOME, 0, 20)
         assertEquals(listOf(AutoBrowseIds.HOME_SURPRISE), kids.map { it.mediaId })
         assertTrue(kids[0].mediaMetadata.isPlayable == true)
+        assertFalse(kids[0].mediaMetadata.isBrowsable == true)
     }
 
     @Test
@@ -217,6 +227,51 @@ class AutoBrowseCatalogTest {
         )
         val items = catalog.expandForPlayback(AutoBrowseIds.HOME_SURPRISE)
         assertEquals(listOf("a", "b"), items.map { it.mediaId })
+    }
+
+    @Test
+    fun `localOnly surprise omits tile when only uncached tracks exist`() = runBlocking {
+        localOnly = true
+        coEvery { trackDao.getRecentlyPlayedPaged(limit = 1, offset = 0) } returns emptyList()
+        coEvery { trackDao.getRandomTracks(limit = 1) } returns listOf(
+            TrackEntity(id = "uncached", title = "Meta"),
+        )
+        coEvery { trackDao.getRandomCachedTracks(limit = 1) } returns emptyList()
+        coEvery { customMixDao.getAll() } returns emptyList()
+        coEvery { playlistDao.getAll() } returns emptyList()
+        coEvery { metadataDao.getStarredArtists(limit = 1, offset = 0) } returns emptyList()
+        coEvery { radioFavoriteDao.getAll() } returns emptyList()
+
+        assertTrue(catalog.children(AutoBrowseIds.HOME, 0, 20).isEmpty())
+    }
+
+    @Test
+    fun `localOnly surprise expand uses cached tracks`() = runBlocking {
+        localOnly = true
+        coEvery { trackDao.getRandomCachedTracks(limit = 50) } returns listOf(
+            TrackEntity(id = "c1", title = "Cached", cachedFilePath = "/c1"),
+        )
+        val items = catalog.expandForPlayback(AutoBrowseIds.HOME_SURPRISE)
+        assertEquals(listOf("c1"), items.map { it.mediaId })
+    }
+
+    @Test
+    fun `favorite-only radio resolves via RadioFavoriteDao fallback`() = runBlocking {
+        coEvery { radioSource.loadStations() } returns emptyList()
+        coEvery { radioFavoriteDao.getAll() } returns listOf(
+            RadioFavoriteEntity(
+                stationId = "fav-only",
+                name = "Fav Station",
+                streamUrl = "https://example.com/stream",
+            ),
+        )
+        val mediaId = AutoBrowseIds.radio("fav-only")
+        val item = catalog.item(mediaId)
+        assertNotNull(item)
+        assertEquals(mediaId, item!!.mediaId)
+        val expanded = catalog.expandForPlayback(mediaId)
+        assertEquals(1, expanded.size)
+        assertEquals(mediaId, expanded[0].mediaId)
     }
 
     @Test

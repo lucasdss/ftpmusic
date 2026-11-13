@@ -38,7 +38,9 @@ object AutoConnectAlertNotifier {
         if (fingerprint.isBlank()) return
         val seen = seenFingerprints(storage)
         if (fingerprint in seen) return
-        postNotification(context)
+        // Persist fingerprint only after a successful post — notifications-off /
+        // POST_NOTIFICATIONS denied must not burn the once-per-fingerprint notice.
+        if (!postNotification(context)) return
         storage.put(
             SecureStorage.KEY_AA_SEEN_CONTROLLERS,
             (seen + fingerprint).sorted().joinToString(","),
@@ -84,11 +86,12 @@ object AutoConnectAlertNotifier {
         manager.createNotificationChannel(channel)
     }
 
-    private fun postNotification(context: Context) {
+    /** @return true when the system accepted the notification. */
+    internal fun postNotification(context: Context): Boolean {
         ensureChannel(context)
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             android.util.Log.w("ftpmusic-aa", "Auto availability alert blocked — notifications off")
-            return
+            return false
         }
         val launch = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -108,11 +111,13 @@ object AutoConnectAlertNotifier {
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()
-        try {
+        return try {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(NOTIFICATION_ID, notification)
+            true
         } catch (e: SecurityException) {
             android.util.Log.w("ftpmusic-aa", "Auto availability notify SecurityException: ${e.message}")
+            false
         }
     }
 }
