@@ -382,11 +382,36 @@ class MediaServiceFgsReassertTest {
             networkBlocked = false,
             cancelResumeNotif = { cancelled++ },
             a2dpOutputActive = true,
+            btAutoplaySource = MediaServiceStartRequest.BT_SOURCE_COLD,
         )
         assertEquals(1, cancelled)
         verify(exactly = 0) { player.pause() }
         verify(exactly = 0) { player.play() }
         assertTrue(BtResumeEvents.recent().any { it.contains("skip_playing") && it.contains("a2dpOut=true") })
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat warm rebinds even when already playing on A2DP`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
+        every { player.isPlaying } returns true
+        var cancelled = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            userInitiated = false,
+            networkBlocked = false,
+            cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = true,
+            btAutoplaySource = MediaServiceStartRequest.BT_SOURCE_WARM,
+        )
+        assertEquals(1, cancelled)
+        verify { player.play() }
+        verify(exactly = 0) { player.pause() }
+        assertTrue(
+            BtResumeEvents.recent().any {
+                it.contains("autoplay_rebind") && it.contains("a2dpOut=true")
+            },
+        )
     }
 
     @Test
@@ -410,6 +435,28 @@ class MediaServiceFgsReassertTest {
                 it.contains("autoplay_rebind") && it.contains("a2dpOut=false")
             },
         )
+    }
+
+    @Test
+    fun `maybeResumeAfterAutoSkipIdle seeks first new item when flag set`() {
+        injectField(service, "autoSkipLeftIdle", true)
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("corpse", "a", "b"))
+        every { player.playWhenReady } returns false
+        every { player.playbackState } returns Player.STATE_IDLE
+        service.maybeResumeAfterAutoSkipIdle(player, indexBeforeAppend = 1, casting = false)
+        verify { player.seekTo(1, 0L) }
+        verify { player.prepare() }
+        assertFalse(readField(service, "autoSkipLeftIdle") as Boolean)
+    }
+
+    @Test
+    fun `maybeResumeAfterAutoSkipIdle no-op when casting`() {
+        injectField(service, "autoSkipLeftIdle", true)
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
+        every { player.playWhenReady } returns false
+        service.maybeResumeAfterAutoSkipIdle(player, indexBeforeAppend = 0, casting = true)
+        verify(exactly = 0) { player.seekTo(any(), any<Long>()) }
+        assertTrue(readField(service, "autoSkipLeftIdle") as Boolean)
     }
 
     @Test

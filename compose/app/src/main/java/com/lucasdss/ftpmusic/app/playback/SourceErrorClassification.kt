@@ -33,7 +33,8 @@ internal const val MISSING_ALBUM_MAX_GAP = 2
 
 /**
  * Pure mapper. [httpCode] is read from `HttpDataSource.InvalidResponseCodeException`
- * when present; [causeName] is the simple class name of the one-level cause.
+ * when present; [causeName] is the simple class name of the one-level cause;
+ * [causeMessage] is the throwable message (OfflineAware "network blocked" etc.).
  * [span] is only consulted for the codes where the local cache is the tie-breaker.
  */
 internal fun classifySourceError(
@@ -41,6 +42,7 @@ internal fun classifySourceError(
     httpCode: Int?,
     causeName: String?,
     span: CacheSpanState,
+    causeMessage: String? = null,
 ): SourceErrorKind = when (errorCode) {
     PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> SourceErrorKind.LOCAL_FAULT
 
@@ -63,7 +65,12 @@ internal fun classifySourceError(
     PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED,
     -> SourceErrorKind.UNKNOWN
 
-    PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> causeKind(causeName)
+    PlaybackException.ERROR_CODE_IO_UNSPECIFIED ->
+        if (causeMessage?.contains("network blocked", ignoreCase = true) == true) {
+            SourceErrorKind.NETWORK
+        } else {
+            causeKind(causeName)
+        }
 
     PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
     PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,

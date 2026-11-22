@@ -24,8 +24,12 @@ object BtAutoplayStarter {
     const val INFO_CHANNEL_ID = "ftpmusic_bt_info"
     const val INFO_NOTIFICATION_ID = 1003
 
-    fun startAutoplay(context: Context): StartResult = startAutoplay(
+    fun startAutoplay(
+        context: Context,
+        source: String = MediaServiceStartRequest.BT_SOURCE_COLD,
+    ): StartResult = startAutoplay(
         context = context,
+        source = source,
         startForegroundService = { ctx, intent -> ctx.startForegroundService(intent) },
         postFallback = { postResumeNotification(it) },
     )
@@ -39,6 +43,7 @@ object BtAutoplayStarter {
         startForegroundService: (Context, Intent) -> Unit,
         postFallback: (Context) -> Unit,
         sdkInt: Int = Build.VERSION.SDK_INT,
+        source: String = MediaServiceStartRequest.BT_SOURCE_COLD,
     ): StartResult {
         MediaServiceStartRequest.foregroundRequested = true
         // ADR-0133: preserve an in-flight Resume tap across A2DP reconnect storms;
@@ -46,11 +51,13 @@ object BtAutoplayStarter {
         val preservePendingTap = MediaServiceStartRequest.btAutoplayRequested &&
             MediaServiceStartRequest.userInitiatedResume
         MediaServiceStartRequest.btAutoplayRequested = true
+        MediaServiceStartRequest.btAutoplaySource = source
         if (!preservePendingTap) {
             MediaServiceStartRequest.userInitiatedResume = false
         }
         val intent = Intent(context, MediaService::class.java).apply {
             action = MediaServiceStartRequest.ACTION_BT_AUTOPLAY
+            putExtra(MediaServiceStartRequest.EXTRA_BT_AUTOPLAY_SOURCE, source)
         }
         return try {
             startForegroundService(context, intent)

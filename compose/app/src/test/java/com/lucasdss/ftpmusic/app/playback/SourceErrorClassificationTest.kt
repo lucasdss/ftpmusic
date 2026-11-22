@@ -17,7 +17,8 @@ class SourceErrorClassificationTest {
         httpCode: Int? = null,
         causeName: String? = null,
         span: CacheSpanState = CacheSpanState.NONE,
-    ) = classifySourceError(errorCode, httpCode, causeName, span)
+        causeMessage: String? = null,
+    ) = classifySourceError(errorCode, httpCode, causeName, span, causeMessage)
 
     // --- classifier -------------------------------------------------------
 
@@ -134,6 +135,34 @@ class SourceErrorClassificationTest {
         assertEquals(
             SourceErrorKind.UNKNOWN,
             classify(PlaybackException.ERROR_CODE_IO_UNSPECIFIED, causeName = "IllegalStateException"),
+        )
+    }
+
+    @Test
+    fun `unspecified io with OfflineAware network blocked message is NETWORK`() {
+        assertEquals(
+            SourceErrorKind.NETWORK,
+            classify(
+                PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                causeName = "IOException",
+                causeMessage = "No network — network blocked",
+            ),
+        )
+        assertEquals(
+            SourceErrorKind.NETWORK,
+            classify(
+                PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                causeName = "IOException",
+                causeMessage = "Offline mode — network blocked",
+            ),
+        )
+        // Message absent → still UNKNOWN for bare IOException.
+        assertEquals(
+            SourceErrorKind.UNKNOWN,
+            classify(
+                PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                causeName = "IOException",
+            ),
         )
     }
 

@@ -21,9 +21,11 @@ class BtAutoplayStarterTest {
         MediaServiceStartRequest.btAutoplayRequested = false
         MediaServiceStartRequest.foregroundRequested = false
         MediaServiceStartRequest.userInitiatedResume = true // stale tap must not leak
+        MediaServiceStartRequest.btAutoplaySource = MediaServiceStartRequest.BT_SOURCE_COLD
         val ctx = mockk<Context>(relaxed = true)
         val result = BtAutoplayStarter.startAutoplay(
             context = ctx,
+            source = MediaServiceStartRequest.BT_SOURCE_WARM,
             startForegroundService = { _, _ -> },
             postFallback = {},
         )
@@ -31,6 +33,10 @@ class BtAutoplayStarterTest {
         assertTrue(MediaServiceStartRequest.btAutoplayRequested)
         assertTrue(MediaServiceStartRequest.foregroundRequested)
         assertFalse(MediaServiceStartRequest.userInitiatedResume)
+        assertEquals(
+            MediaServiceStartRequest.BT_SOURCE_WARM,
+            MediaServiceStartRequest.btAutoplaySource,
+        )
         val snap = com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.snapshot(
             ctx,
             offline = false,

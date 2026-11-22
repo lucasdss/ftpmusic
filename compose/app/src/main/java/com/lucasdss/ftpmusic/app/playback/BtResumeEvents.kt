@@ -20,7 +20,7 @@ object BtResumeEvents {
      * `autoplay`, `autoplay_rebind`, `empty_queue`, `offline_empty`, `skip_playing`,
      * `play_suppressed`, `ignore_remote_stop`, `play_gated`.
      * Path B allow/Started extras include `source=warm|cold` (ADR-0154).
-     * Skip/rebind extras include `isPlaying` / `a2dpOut` for Tesla triage.
+     * Skip/rebind extras include `isPlaying` / `a2dpOut` / `source` for Tesla triage.
      */
     fun record(reason: String, extras: String = "") {
         val safeReason = reason.replace('\n', ' ').take(48)

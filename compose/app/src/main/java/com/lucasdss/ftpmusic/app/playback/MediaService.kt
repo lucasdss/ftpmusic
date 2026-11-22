@@ -258,6 +258,11 @@ internal object MediaServiceStartRequest {
     const val EXTRA_USER_INITIATED_RESUME =
         "com.lucasdss.ftpmusic.extra.USER_INITIATED_RESUME"
 
+    /** Warm AudioDeviceCallback vs cold ACL/manifest — Intent + static (ADR-0161 harden). */
+    const val EXTRA_BT_AUTOPLAY_SOURCE = "com.lucasdss.ftpmusic.extra.BT_AUTOPLAY_SOURCE"
+    const val BT_SOURCE_WARM = "warm"
+    const val BT_SOURCE_COLD = "cold"
+
     /** Coalesce rapid user-play FGS reasserts (album tap storms). */
     const val FOREGROUND_PROMOTE_COALESCE_MS = 1_500L
 
@@ -274,6 +279,13 @@ internal object MediaServiceStartRequest {
      */
     @Volatile
     var userInitiatedResume: Boolean = false
+
+    /**
+     * [BT_SOURCE_WARM] or [BT_SOURCE_COLD] for the in-flight Path B wake.
+     * Cleared with [clearBtAutoplayFlags].
+     */
+    @Volatile
+    var btAutoplaySource: String = BT_SOURCE_COLD
 
     /**
      * MainActivity ACTION_INITIALIZE warm-start — skip early FGS notification.
@@ -309,10 +321,11 @@ internal object MediaServiceStartRequest {
         foregroundLive = false
     }
 
-    /** Clear both BT autoplay flags after seat / play / abort. */
+    /** Clear BT autoplay flags after seat / play / abort. */
     fun clearBtAutoplayFlags() {
         btAutoplayRequested = false
         userInitiatedResume = false
+        btAutoplaySource = BT_SOURCE_COLD
     }
 }
 
@@ -789,13 +802,21 @@ class MediaService : MediaLibraryService() {
      */
     private var burstPaused = false
 
+    /**
+     * Set when auto-skip stops into IDLE (LAST_TRACK_STOP / remove-to-empty).
+     * Continuous Play append while this is set seeks+resumes the first new item.
+     * Cleared on user pause, verified play, Cast, or after resume.
+     */
+    @Volatile
+    private var autoSkipLeftIdle = false
+
     /** N11-2: remembers the first REMOTE_MISSING album so the second collapses the run. */
     private val missingAlbumRun = MissingAlbumRun()
 
     /** N1-C/N2: aggregate of consecutive auto-skips for the bound and the terminal line. */
     private val autoSkipBurst = AutoSkipBurst()
 
-    /** Bumped on each SKIP_NEXT launch — stale coroutines abort on Main. */
+    /** Bumped on each SKIP_NEXT / sticky last-track launch — stale coroutines abort on Main. */
     private var autoSkipGeneration = 0
     private var hasLoadedContinuation = false
 
@@ -1000,6 +1021,12 @@ class MediaService : MediaLibraryService() {
             ) {
                 armPlaySuppressionWatch("user_play")
             }
+            // User pause must not be overridden by a later CP append after auto-skip stop.
+            if (!playWhenReady &&
+                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST
+            ) {
+                autoSkipLeftIdle = false
+            }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -1016,6 +1043,7 @@ class MediaService : MediaLibraryService() {
             )
             notificationProvider?.notifyChanged()
             if (isPlaying) {
+                autoSkipLeftIdle = false
                 handler.post(positionPoller)
                 val currentId = lastTrackId
                 if (currentId != null) {
@@ -1395,6 +1423,7 @@ class MediaService : MediaLibraryService() {
                 PlayerHolder.isCasting = true
                 PlayerHolder.castDeviceName = deviceName
                 CastButtonState.isCasting.value = true
+                autoSkipLeftIdle = false
                 // Cast tier 3: start LAN proxy so the receiver can stream cached audio from the phone
                 if (castPreferences.castFromPhone) {
                     // LAN proxy: the Cast receiver streams cached files from the
@@ -1509,6 +1538,7 @@ class MediaService : MediaLibraryService() {
             val albumId = ep?.currentMediaItem?.albumIdExtra()
             val httpCode = playbackErrorHttpCode(error)
             val causeName = error.cause?.javaClass?.simpleName
+            val causeMessage = error.cause?.message ?: error.message
             val reachable = com.lucasdss.ftpmusic.app.di.ReachabilityStateHolder.isReachable.value
             android.util.Log.e("MediaService", "Playback error: ${error.message}", error)
             // N11-1: the export must be able to tell a deleted track (HTTP 404 /
@@ -1535,7 +1565,13 @@ class MediaService : MediaLibraryService() {
             // common 404/network codes this already decides which counter owns
             // the run.
             val provisionalKind =
-                classifySourceError(error.errorCode, httpCode, causeName, CacheSpanState.NONE)
+                classifySourceError(
+                    error.errorCode,
+                    httpCode,
+                    causeName,
+                    CacheSpanState.NONE,
+                    causeMessage,
+                )
             val remoteMissing = provisionalKind == SourceErrorKind.REMOTE_MISSING
             val advancing = reachable && baseAction == ErrorSkipAction.SKIP_NEXT && !remoteMissing
             val circuitTripped = if (remoteMissing) {
@@ -1563,20 +1599,20 @@ class MediaService : MediaLibraryService() {
                     itemCount = itemCount,
                     httpCode = httpCode,
                     causeName = causeName,
+                    causeMessage = causeMessage,
                     reachable = reachable,
                     nowMs = nowMs,
                 )
 
-                ErrorSkipAction.LAST_TRACK_STOP -> {
-                    android.util.Log.w("ftpmusic", "[MediaService] Last track failed ($playerErrorCount) — stopping")
-                    com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                        "ftpmusic-playback",
-                        "autoSkip action=LAST_TRACK_STOP trackId=$failedId errorCount=$playerErrorCount",
-                    )
-                    playerErrorCount = 0
-                    resetPlaybackErrorTrackers(src = "last-track-stop", resetCircuit = false)
-                    ep.stop()
-                }
+                ErrorSkipAction.LAST_TRACK_STOP -> handleLastTrackStop(
+                    ep = ep,
+                    error = error,
+                    failedId = failedId,
+                    fromIdx = fromIdx,
+                    itemCount = itemCount,
+                    httpCode = httpCode,
+                    nowMs = nowMs,
+                )
 
                 ErrorSkipAction.RETRY_LIMIT_STOP -> {
                     android.util.Log.e("ftpmusic", "[MediaService] Too many errors ($playerErrorCount) — stopping")
@@ -1652,6 +1688,7 @@ class MediaService : MediaLibraryService() {
         itemCount: Int,
         httpCode: Int?,
         causeName: String?,
+        causeMessage: String?,
         reachable: Boolean,
         nowMs: Long,
     ) {
@@ -1673,7 +1710,13 @@ class MediaService : MediaLibraryService() {
                     runCatching { cacheService.spanState(failedId) }.getOrDefault(CacheSpanState.NONE)
                 }
             }
-            val kind = classifySourceError(error.errorCode, httpCode, causeName, span)
+            val kind = classifySourceError(
+                error.errorCode,
+                httpCode,
+                causeName,
+                span,
+                causeMessage,
+            )
             // N11-2: only a demonstrably local fault may evict. A remote 404 that
             // happened to have a stale pointer must not destroy a usable span.
             val evicted = if (kind == SourceErrorKind.LOCAL_FAULT && !failedId.isNullOrEmpty()) {
@@ -1723,6 +1766,21 @@ class MediaService : MediaLibraryService() {
                     PlayerHolder.playbackErrorAutoSkipInFlight = false
                     return@withContext
                 }
+                // Sticky corpse (failed_ct / live sticky) — REMOVE before kind switch so
+                // NETWORK/UNKNOWN live errors on already-poison tracks still excise.
+                val sticky = isStickyUnplayable(error.errorCode, span, hasFailedCt)
+                if (sticky && !PlayerHolder.isCasting) {
+                    applyRemoveTerminal(
+                        ep = ep,
+                        failedId = failedId,
+                        fromIdx = fromIdx,
+                        itemCount = itemCount,
+                        httpCode = httpCode,
+                        nowMs = nowMs,
+                        errorCode = error.errorCode,
+                    )
+                    return@withContext
+                }
                 if (!reachable) {
                     applyUnreachableSkip(ep, failedId, fromIdx, cachedIdx)
                     return@withContext
@@ -1761,6 +1819,71 @@ class MediaService : MediaLibraryService() {
                 }
                 ep.seekToNextMediaItem()
                 resumeAfterSkip(ep)
+            }
+        }
+    }
+
+    /**
+     * Last queue index failed: sticky + local → REMOVE_TERMINAL (empty → stop);
+     * Cast / non-sticky → stop and arm [autoSkipLeftIdle] for CP append resume.
+     */
+    private fun handleLastTrackStop(
+        ep: Player,
+        error: PlaybackException,
+        failedId: String?,
+        fromIdx: Int,
+        itemCount: Int,
+        httpCode: Int?,
+        nowMs: Long,
+    ) {
+        PlayerHolder.playbackErrorAutoSkipInFlight = true
+        val skipGen = ++autoSkipGeneration
+        scope.launch {
+            val span = withContext(Dispatchers.IO) {
+                if (failedId.isNullOrEmpty()) {
+                    CacheSpanState.NONE
+                } else {
+                    runCatching { cacheService.spanState(failedId) }.getOrDefault(CacheSpanState.NONE)
+                }
+            }
+            val hasFailedCt = if (!failedId.isNullOrEmpty()) {
+                StickyUnplayableRegistry.contains(failedId) ||
+                    runCatching { downloadManager.isStickyCt(failedId) }.getOrDefault(false)
+            } else {
+                false
+            }
+            withContext(Dispatchers.Main) {
+                if (skipGen != autoSkipGeneration) {
+                    PlayerHolder.playbackErrorAutoSkipInFlight = false
+                    return@withContext
+                }
+                val sticky = isStickyUnplayable(error.errorCode, span, hasFailedCt)
+                if (sticky && !PlayerHolder.isCasting) {
+                    applyRemoveTerminal(
+                        ep = ep,
+                        failedId = failedId,
+                        fromIdx = fromIdx,
+                        itemCount = itemCount,
+                        httpCode = httpCode,
+                        nowMs = nowMs,
+                        errorCode = error.errorCode,
+                    )
+                    return@withContext
+                }
+                android.util.Log.w(
+                    "ftpmusic",
+                    "[MediaService] Last track failed ($playerErrorCount) — stopping sticky=$sticky casting=${PlayerHolder.isCasting}",
+                )
+                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
+                    "ftpmusic-playback",
+                    "autoSkip action=LAST_TRACK_STOP trackId=$failedId errorCount=$playerErrorCount " +
+                        "sticky=$sticky casting=${PlayerHolder.isCasting}",
+                )
+                playerErrorCount = 0
+                resetPlaybackErrorTrackers(src = "last-track-stop", resetCircuit = false)
+                autoSkipLeftIdle = true
+                PlayerHolder.playbackErrorAutoSkipInFlight = false
+                ep.stop()
             }
         }
     }
@@ -1960,6 +2083,7 @@ class MediaService : MediaLibraryService() {
             playerErrorCount = 0
             PlayerHolder.playbackErrorAutoSkipInFlight = false
             resetPlaybackErrorTrackers(src = "remove-terminal-empty", resetCircuit = false)
+            autoSkipLeftIdle = true
             ep.stop()
             return
         }
@@ -2011,8 +2135,40 @@ class MediaService : MediaLibraryService() {
         // player would sit in STATE_IDLE forever — Now Playing / QuickSettings
         // show "stopped". media3's internal error-advance policy would have
         // prepared + played, which the old retry loop suppressed.
+        autoSkipLeftIdle = false
         ep.playWhenReady = true
         ep.prepare()
+    }
+
+    /**
+     * After Continuous Play appends while auto-skip left the player IDLE (last-track
+     * stop / remove-to-empty), seek to the first new item and resume. No-op when
+     * casting, user-paused, or flag already cleared.
+     */
+    @VisibleForTesting
+    internal fun maybeResumeAfterAutoSkipIdle(
+        player: Player?,
+        indexBeforeAppend: Int,
+        casting: Boolean = PlayerHolder.isCasting,
+    ) {
+        if (!autoSkipLeftIdle || casting || player == null) return
+        if (player.playWhenReady) {
+            autoSkipLeftIdle = false
+            return
+        }
+        val count = player.mediaItemCount
+        if (count <= 0 || indexBeforeAppend >= count) {
+            autoSkipLeftIdle = false
+            return
+        }
+        val seekIdx = indexBeforeAppend.coerceIn(0, count - 1)
+        DiagnosticLog.d(
+            "ftpmusic-playback",
+            "continuous-play resume-after-auto-skip-idle seekIdx=$seekIdx " +
+                "before=$indexBeforeAppend count=$count",
+        )
+        player.seekTo(seekIdx, 0L)
+        resumeAfterSkip(player)
     }
 
     /**
@@ -2768,6 +2924,11 @@ class MediaService : MediaLibraryService() {
                         false,
                     )
             }
+            if (intent?.hasExtra(MediaServiceStartRequest.EXTRA_BT_AUTOPLAY_SOURCE) == true) {
+                MediaServiceStartRequest.btAutoplaySource =
+                    intent.getStringExtra(MediaServiceStartRequest.EXTRA_BT_AUTOPLAY_SOURCE)
+                        ?: MediaServiceStartRequest.BT_SOURCE_COLD
+            }
         }
         if (shouldReassertPlayback(intent?.action)) {
             MediaServiceStartRequest.foregroundRequested = false
@@ -2994,15 +3155,17 @@ class MediaService : MediaLibraryService() {
         }
         if (resumeForBt) {
             val tapResume = MediaServiceStartRequest.userInitiatedResume
+            val btSource = MediaServiceStartRequest.btAutoplaySource
             MediaServiceStartRequest.clearBtAutoplayFlags()
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-bt",
-                "seat idx=${saved.currentIndex} pos=${saved.positionMs} tracks=${saved.tracks.size}",
+                "seat idx=${saved.currentIndex} pos=${saved.positionMs} tracks=${saved.tracks.size} source=$btSource",
             )
             applyBtPlayAfterSeat(
                 p,
                 userInitiated = tapResume,
                 a2dpOutputActive = BtAudioRoute.isA2dpOutputActive(audioManager),
+                btAutoplaySource = btSource,
             )
         } else if (userInitiatedPlayback) {
             android.util.Log.w(
@@ -3039,8 +3202,11 @@ class MediaService : MediaLibraryService() {
         isCached: (String) -> Boolean = { id -> cacheService.hasPlayableSpan(id) },
         /** When null, resolve via [BtAudioRoute] (needs a real service Context). */
         a2dpOutputActive: Boolean? = null,
+        /** Warm AudioDeviceCallback vs cold ACL — warm+isPlaying always rebinds. */
+        btAutoplaySource: String = MediaServiceStartRequest.BT_SOURCE_COLD,
     ) {
         val a2dpOut = a2dpOutputActive ?: BtAudioRoute.isA2dpOutputActive(audioManager)
+        val warmWake = btAutoplaySource == MediaServiceStartRequest.BT_SOURCE_WARM
         if (player != null && networkBlocked && player.mediaItemCount > 0) {
             val cachedIdx = resolveOfflineStartIndex(
                 fromIndex = player.currentMediaItemIndex.coerceAtLeast(0),
@@ -3076,24 +3242,28 @@ class MediaService : MediaLibraryService() {
                 )
             }
         }
-        // F3 + Tesla rebind: already playing on A2DP → market no-op. Already
-        // playing but media not yet on A2DP → reassert play() so the OS rebinds
-        // the route (warm A2DP on Tesla often leaves isPlaying true on phone).
-        if (!userInitiated && player?.isPlaying == true && a2dpOut) {
+        // Cold + already playing on A2DP → market no-op. Warm Path B (AudioDeviceCallback)
+        // always reasserts play() even when a2dpOut is already true — Tesla often reports
+        // A2DP before Exo has rebound the sink (false skip_playing). Cold + playing but
+        // media not yet on A2DP → rebind via play().
+        if (!userInitiated && !warmWake && player?.isPlaying == true && a2dpOut) {
             cancelResumeNotif(this)
             android.util.Log.i(
                 "ftpmusic-bt",
-                "BT seat skip — already playing on A2DP sdk=$sdkInt",
+                "BT seat skip — already playing on A2DP sdk=$sdkInt source=$btAutoplaySource",
             )
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-bt",
-                "result=skip_playing sdk=$sdkInt isPlaying=true a2dpOut=true",
+                "result=skip_playing sdk=$sdkInt isPlaying=true a2dpOut=true source=$btAutoplaySource",
             )
-            BtResumeEvents.record("skip_playing", "sdk=$sdkInt isPlaying=true a2dpOut=true")
+            BtResumeEvents.record(
+                "skip_playing",
+                "sdk=$sdkInt isPlaying=true a2dpOut=true source=$btAutoplaySource",
+            )
             return
         }
         val wasPlaying = player?.isPlaying == true
-        val rebind = !userInitiated && wasPlaying && !a2dpOut
+        val rebind = !userInitiated && wasPlaying && (warmWake || !a2dpOut)
         if (PlaybackResumptionMapper.shouldPlayAfterBtSeat(sdkInt, userInitiated)) {
             if (player == null) {
                 android.util.Log.w(
@@ -3185,11 +3355,13 @@ class MediaService : MediaLibraryService() {
             return
         }
         val tapResume = MediaServiceStartRequest.userInitiatedResume
+        val btSource = MediaServiceStartRequest.btAutoplaySource
         MediaServiceStartRequest.clearBtAutoplayFlags()
         applyBtPlayAfterSeat(
             p,
             userInitiated = tapResume,
             a2dpOutputActive = BtAudioRoute.isA2dpOutputActive(audioManager),
+            btAutoplaySource = btSource,
         )
     }
 
@@ -3497,7 +3669,9 @@ class MediaService : MediaLibraryService() {
                             val urls = similar.map { auth.buildStreamUrl(base, it.id, user, pass) }
                             withContext(Dispatchers.Main) {
                                 if (!canCommitContinuousPlay(loadEpoch)) return@withContext
+                                val before = PlayerHolder.player?.mediaItemCount ?: 0
                                 playbackManager.appendToContext(similar, urls, asAutoplay = true)
+                                maybeResumeAfterAutoSkipIdle(PlayerHolder.player, before)
                                 appended = true
                                 hasLoadedContinuation = true
                                 android.util.Log.d(
@@ -3563,11 +3737,13 @@ class MediaService : MediaLibraryService() {
                 if (candidates.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
                         if (!canCommitContinuousPlay(loadEpoch)) return@withContext
+                        val before = PlayerHolder.player?.mediaItemCount ?: 0
                         playbackManager.appendToContext(
                             candidates.map { it.track },
                             candidates.map { it.streamUrl },
                             asAutoplay = true,
                         )
+                        maybeResumeAfterAutoSkipIdle(PlayerHolder.player, before)
                         appended = true
                         hasLoadedContinuation = true
                         android.util.Log.d(
@@ -3612,11 +3788,13 @@ class MediaService : MediaLibraryService() {
                     val (fallbackCandidates, tiers) = fallback
                     withContext(Dispatchers.Main) {
                         if (!canCommitContinuousPlay(loadEpoch)) return@withContext
+                        val before = PlayerHolder.player?.mediaItemCount ?: 0
                         playbackManager.appendToContext(
                             fallbackCandidates.map { it.track },
                             fallbackCandidates.map { it.streamUrl },
                             asAutoplay = true,
                         )
+                        maybeResumeAfterAutoSkipIdle(PlayerHolder.player, before)
                         appended = true
                         hasLoadedContinuation = true
                         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(

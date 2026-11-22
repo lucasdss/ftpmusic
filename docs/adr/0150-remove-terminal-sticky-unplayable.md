@@ -23,9 +23,16 @@ and bounced (`circuit clear src=user-seek`).
    / `failed_ct` neighbors; never removes on Previous.
 5. Do **not** silently filter only inside `buildMediaItems` (Dual/Exo desync).
 
+**Amendment (ADR-0164):** sticky consult also runs (a) early in `handleSkipNext`
+before the kind switch (covers NETWORK/UNKNOWN on already-`failed_ct` tracks)
+and (b) on `LAST_TRACK_STOP` (last index). Empty remove / last stop arms
+`autoSkipLeftIdle` so Continuous Play append can seek+resume. Cast still never
+Dual-removes from the error path.
+
 ## Consequences
 
 - Previous after a CT poison failure lands on the prior playable track.
 - Prefetch `isTerminalFailed` (legacy sticky `failed`) remains prefetch-only; play-queue
   excision uses `failed_ct` / live sticky predicate.
 - User Download (`isDownload=true`) can still `retry_user` after server fix.
+- Last sticky corpse no longer stays seated after auto-skip stop.

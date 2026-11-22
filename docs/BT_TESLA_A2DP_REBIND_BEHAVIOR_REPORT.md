@@ -14,6 +14,10 @@ playback is still routed to the phone.
 
 [`BtAudioRoute`](compose/app/src/main/java/com/lucasdss/ftpmusic/app/playback/BtAudioRoute.kt) +
 [`MediaService.applyBtPlayAfterSeat`](compose/app/src/main/java/com/lucasdss/ftpmusic/app/playback/MediaService.kt):
-skip only when playing **and** A2DP route active; else `autoplay_rebind`.
+cold Path B skips only when playing **and** A2DP route active; else
+`autoplay_rebind`. Warm Path B (`source=warm`) always rebinds when playing
+(ADR-0164) — OS A2DP-on often races Exo.
 
-ADR: [0161](adr/0161-bt-a2dp-rebind-when-playing.md). Spec: `specs/tesla-bt-a2dp-rebind-spec.md`.
+ADR: [0161](adr/0161-bt-a2dp-rebind-when-playing.md),
+[0164](adr/0164-warm-bt-force-rebind-and-terminal-idle-resume.md).
+Spec: `specs/tesla-bt-a2dp-rebind-spec.md`.

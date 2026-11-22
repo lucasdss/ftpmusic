@@ -75,9 +75,6 @@ class BtConnectionReceiver : BroadcastReceiver() {
             deviceMac: String?,
             casting: Boolean,
             nowMs: Long = System.currentTimeMillis(),
-            starter: (Context) -> BtAutoplayStarter.StartResult = {
-                BtAutoplayStarter.startAutoplay(it)
-            },
             postSelectedNullMacNotif: (Context) -> Unit = {
                 BtAutoplayStarter.postResumeNotification(
                     it,
@@ -86,6 +83,9 @@ class BtConnectionReceiver : BroadcastReceiver() {
             },
             sdkInt: Int = Build.VERSION.SDK_INT,
             source: String = SOURCE_COLD,
+            starter: (Context) -> BtAutoplayStarter.StartResult = {
+                BtAutoplayStarter.startAutoplay(it, source = source)
+            },
         ): Boolean {
             val sourceTag = "source=$source"
             val enabled = BtResumeStorage.isEnabled(storage)
@@ -161,6 +161,7 @@ class BtConnectionReceiver : BroadcastReceiver() {
                 "policy=allow mode=$mode sdk=$sdkInt $sourceTag",
             )
             BtResumeEvents.record("allow", "mode=$mode sdk=$sdkInt $sourceTag")
+            MediaServiceStartRequest.btAutoplaySource = source
             val result = starter(context)
             android.util.Log.i(
                 "ftpmusic-bt",

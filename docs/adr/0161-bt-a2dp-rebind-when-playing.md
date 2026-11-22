@@ -16,8 +16,13 @@ works via MediaSession PLAY.
 Gate `skip_playing` on **both** `isPlaying` and `BtAudioRoute.isA2dpOutputActive`.
 If playing but not on A2DP, call `play()` and record `autoplay_rebind`.
 
+**Amendment (ADR-0164):** warm Path B (`btAutoplaySource=warm`) always
+`autoplay_rebind` when `isPlaying` (ignore `a2dpOut`) — OS A2DP-on often races
+ahead of Exo sink rebind. Cold keeps the dual gate above.
+
 ## Consequences
 
 - Tesla reconnect while “playing” on phone rebinds audio without requiring AA.
-- True on-car playing stays a no-op (no mid-track pause/replay).
-- Diagnostics gain `a2dpOut` / `isPlaying` extras for field triage.
+- True on-car playing stays a no-op (no mid-track pause/replay) for **cold** wakes.
+- Warm wakes reassert `play()` even when A2DP already reports active.
+- Diagnostics gain `a2dpOut` / `isPlaying` / `source` extras for field triage.
