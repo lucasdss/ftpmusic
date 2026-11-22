@@ -578,6 +578,50 @@ class SourceErrorClassificationTest {
     }
 
     @Test
+    fun `non-sticky last finish seeks when CP grew during sticky IO`() {
+        assertEquals(
+            NonStickyLastFinish.SEEK_FIRST_NEW,
+            decideNonStickyLastFinish(liveMediaItemCount = 65, itemCountAtError = 45),
+        )
+        assertEquals(
+            NonStickyLastFinish.STOP_IDLE,
+            decideNonStickyLastFinish(liveMediaItemCount = 45, itemCountAtError = 45),
+        )
+        assertEquals(
+            NonStickyLastFinish.STOP_IDLE,
+            decideNonStickyLastFinish(liveMediaItemCount = 1, itemCountAtError = 1),
+        )
+    }
+
+    @Test
+    fun `sticky remove current finish prefers CP on last index`() {
+        assertEquals(
+            StickyRemoveCurrentFinish.RESUME_MID,
+            decideStickyRemoveCurrentFinish(
+                wasLastIndex = false,
+                liveCountAfterRemove = 46,
+                removeIdx = 25,
+            ),
+        )
+        assertEquals(
+            StickyRemoveCurrentFinish.SEEK_FIRST_NEW,
+            decideStickyRemoveCurrentFinish(
+                wasLastIndex = true,
+                liveCountAfterRemove = 64,
+                removeIdx = 44,
+            ),
+        )
+        assertEquals(
+            StickyRemoveCurrentFinish.STOP_IDLE,
+            decideStickyRemoveCurrentFinish(
+                wasLastIndex = true,
+                liveCountAfterRemove = 44,
+                removeIdx = 44,
+            ),
+        )
+    }
+
+    @Test
     fun `StickyPreviousBridge falls back to sync seek when no handler`() {
         StickyUnplayableRegistry.clearForTests()
         StickyPreviousBridge.handler = null

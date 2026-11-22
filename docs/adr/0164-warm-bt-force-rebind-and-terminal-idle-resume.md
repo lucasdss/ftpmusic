@@ -37,9 +37,20 @@ Also: OfflineAware throws `IOException("… network blocked")` under
    not casting / not user-paused → seek to first new index + `resumeAfterSkip`.
    Clear flag on user pause, verified play, Cast, or after resume.
 
+### Amendment — last-track vs CP race / sticky-last UX
+
+7. Non-sticky last after sticky IO: if `mediaItemCount > itemCountAtError`
+   (CP already appended), `seekTo(itemCountAtError)` + resume — do not stop.
+   Else stop + `autoSkipLeftIdle` (flag still covers post-stop appends).
+8. Sticky `REMOVE_TERMINAL` of the **last** index: never resume previous.
+   If items already sit at/after `removeIdx` after excision, seek that index +
+   resume; else stop + `autoSkipLeftIdle`. Mid-queue sticky REMOVE unchanged.
+
 ## Consequences
 
 - Warm Path B no longer false-skips when the OS already claims A2DP.
-- Poison last track is excised (or CP resumes past a non-sticky last stop).
+- Poison last track is excised; last sticky prefers CP first-new over replaying
+  the prior track.
+- Non-sticky last + in-flight CP during sticky IO cannot miss resume.
 - OfflineAware blocks classify as NETWORK; sticky corpses still REMOVE on
   live NETWORK/UNKNOWN when `failed_ct` is already set.

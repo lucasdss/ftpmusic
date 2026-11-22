@@ -124,6 +124,51 @@ internal fun decideErrorSkipAction(
 }
 
 /**
+ * Non-sticky [ErrorSkipAction.LAST_TRACK_STOP] after sticky IO (ADR-0164 harden):
+ * if Continuous Play already grew the timeline during the hop, jump to the first
+ * new index ([itemCountAtError]); else stop and arm [MediaService] autoSkipLeftIdle.
+ */
+internal enum class NonStickyLastFinish {
+    SEEK_FIRST_NEW,
+    STOP_IDLE,
+}
+
+internal fun decideNonStickyLastFinish(
+    liveMediaItemCount: Int,
+    itemCountAtError: Int,
+): NonStickyLastFinish =
+    if (liveMediaItemCount > itemCountAtError) {
+        NonStickyLastFinish.SEEK_FIRST_NEW
+    } else {
+        NonStickyLastFinish.STOP_IDLE
+    }
+
+/**
+ * After sticky [REMOVE_TERMINAL] excised current. Mid-queue resumes; last index
+ * prefers CP first-new over replaying previous (dump 17:11 shape).
+ */
+internal enum class StickyRemoveCurrentFinish {
+    /** Mid-queue: Media3 already advanced on remove-current — prepare/play. */
+    RESUME_MID,
+
+    /** Last index and CP/items already sit at [seekIndex] — seek + prepare/play. */
+    SEEK_FIRST_NEW,
+
+    /** Last index, no next yet — stop and arm autoSkipLeftIdle for a later CP append. */
+    STOP_IDLE,
+}
+
+internal fun decideStickyRemoveCurrentFinish(
+    wasLastIndex: Boolean,
+    liveCountAfterRemove: Int,
+    removeIdx: Int,
+): StickyRemoveCurrentFinish = when {
+    !wasLastIndex -> StickyRemoveCurrentFinish.RESUME_MID
+    liveCountAfterRemove > removeIdx -> StickyRemoveCurrentFinish.SEEK_FIRST_NEW
+    else -> StickyRemoveCurrentFinish.STOP_IDLE
+}
+
+/**
  * When the Subsonic server is unreachable, skip past uncached queue items to
  * the next fully-cached track (cache-only playback). Returns null if none.
  */
@@ -1870,20 +1915,39 @@ class MediaService : MediaLibraryService() {
                     )
                     return@withContext
                 }
-                android.util.Log.w(
-                    "ftpmusic",
-                    "[MediaService] Last track failed ($playerErrorCount) — stopping sticky=$sticky casting=${PlayerHolder.isCasting}",
-                )
-                com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.w(
-                    "ftpmusic-playback",
-                    "autoSkip action=LAST_TRACK_STOP trackId=$failedId errorCount=$playerErrorCount " +
-                        "sticky=$sticky casting=${PlayerHolder.isCasting}",
-                )
                 playerErrorCount = 0
                 resetPlaybackErrorTrackers(src = "last-track-stop", resetCircuit = false)
-                autoSkipLeftIdle = true
                 PlayerHolder.playbackErrorAutoSkipInFlight = false
-                ep.stop()
+                // CP may have appended during sticky IO — jump to first new instead of stop.
+                when (decideNonStickyLastFinish(ep.mediaItemCount, itemCount)) {
+                    NonStickyLastFinish.SEEK_FIRST_NEW -> {
+                        android.util.Log.w(
+                            "ftpmusic",
+                            "[MediaService] Last track failed — CP already appended; seek first new idx=$itemCount",
+                        )
+                        DiagnosticLog.w(
+                            "ftpmusic-playback",
+                            "autoSkip action=LAST_TRACK_STOP trackId=$failedId errorCount=0 " +
+                                "sticky=$sticky casting=${PlayerHolder.isCasting} finish=SEEK_FIRST_NEW " +
+                                "seekIdx=$itemCount liveCount=${ep.mediaItemCount}",
+                        )
+                        ep.seekTo(itemCount, 0L)
+                        resumeAfterSkip(ep)
+                    }
+                    NonStickyLastFinish.STOP_IDLE -> {
+                        android.util.Log.w(
+                            "ftpmusic",
+                            "[MediaService] Last track failed — stopping sticky=$sticky casting=${PlayerHolder.isCasting}",
+                        )
+                        DiagnosticLog.w(
+                            "ftpmusic-playback",
+                            "autoSkip action=LAST_TRACK_STOP trackId=$failedId errorCount=0 " +
+                                "sticky=$sticky casting=${PlayerHolder.isCasting} finish=STOP_IDLE",
+                        )
+                        autoSkipLeftIdle = true
+                        ep.stop()
+                    }
+                }
             }
         }
     }
@@ -2078,6 +2142,8 @@ class MediaService : MediaLibraryService() {
         }
         val removingCurrent = ep.currentMediaItemIndex == removeIdx ||
             (!failedId.isNullOrEmpty() && ep.currentMediaItem?.mediaId == failedId)
+        // itemCount is the error-time sample; last-index sticky prefers CP over previous.
+        val wasLastIndex = removeIdx == itemCount - 1
         playbackManager.removeFromQueue(removeIdx)
         if (ep.mediaItemCount == 0) {
             playerErrorCount = 0
@@ -2092,7 +2158,35 @@ class MediaService : MediaLibraryService() {
             return
         }
         if (removingCurrent) {
-            resumeAfterSkip(ep)
+            when (
+                decideStickyRemoveCurrentFinish(
+                    wasLastIndex = wasLastIndex,
+                    liveCountAfterRemove = ep.mediaItemCount,
+                    removeIdx = removeIdx,
+                )
+            ) {
+                StickyRemoveCurrentFinish.RESUME_MID -> resumeAfterSkip(ep)
+                StickyRemoveCurrentFinish.SEEK_FIRST_NEW -> {
+                    DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "autoSkip action=REMOVE_TERMINAL_LAST finish=SEEK_FIRST_NEW " +
+                            "seekIdx=$removeIdx liveCount=${ep.mediaItemCount}",
+                    )
+                    ep.seekTo(removeIdx, 0L)
+                    resumeAfterSkip(ep)
+                }
+                StickyRemoveCurrentFinish.STOP_IDLE -> {
+                    DiagnosticLog.w(
+                        "ftpmusic-playback",
+                        "autoSkip action=REMOVE_TERMINAL_LAST finish=STOP_IDLE " +
+                            "removeIdx=$removeIdx liveCount=${ep.mediaItemCount}",
+                    )
+                    playerErrorCount = 0
+                    PlayerHolder.playbackErrorAutoSkipInFlight = false
+                    autoSkipLeftIdle = true
+                    ep.stop()
+                }
+            }
         } else {
             ep.seekToNextMediaItem()
             resumeAfterSkip(ep)

@@ -22,4 +22,7 @@ ADR-0164: early sticky REMOVE in `handleSkipNext`; sticky `LAST_TRACK_STOP` →
 `applyRemoveTerminal`; `autoSkipLeftIdle` + CP seek/resume; `causeMessage` →
 NETWORK for `network blocked`.
 
+Harden: non-sticky last seeks first new if CP grew during sticky IO; sticky
+REMOVE of last index stops (or seeks first CP) instead of replaying previous.
+
 Cast remains seek/stop-only (ADR-0150).
