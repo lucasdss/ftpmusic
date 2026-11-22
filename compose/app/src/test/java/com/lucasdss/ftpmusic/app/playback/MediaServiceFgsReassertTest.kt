@@ -250,6 +250,7 @@ class MediaServiceFgsReassertTest {
             postWiuNotif = { error("no WIU on API36") },
             postOfflineNotif = { error("must not offline-notif when cache exists") },
             cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = false,
         )
         verify { player.seekTo(1, 0L) }
         verify { player.play() }
@@ -270,6 +271,7 @@ class MediaServiceFgsReassertTest {
             postWiuNotif = { error("no WIU when offline empty") },
             // Spy has no attached Context — stub cancel (production cancels Resume 1002).
             cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = false,
         )
         assertEquals(1, offline)
         assertEquals(1, cancelled)
@@ -291,6 +293,7 @@ class MediaServiceFgsReassertTest {
             postWiuNotif = { wiu++ },
             postOfflineNotif = { error("current is cached") },
             cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = false,
         )
         assertEquals(0, wiu)
         assertEquals(1, cancelled)
@@ -315,6 +318,7 @@ class MediaServiceFgsReassertTest {
             postOfflineNotif = { info++ },
             postWiuNotif = { wiu++ },
             cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = false,
         )
         assertEquals(1, info)
         assertEquals(0, wiu)
@@ -337,6 +341,7 @@ class MediaServiceFgsReassertTest {
             networkBlocked = false,
             postWiuNotif = { wiu++ },
             cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = false,
         )
         assertEquals(0, wiu)
         assertEquals(1, cancelled)
@@ -356,6 +361,7 @@ class MediaServiceFgsReassertTest {
             networkBlocked = false,
             postWiuNotif = { wiu++ },
             cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = false,
         )
         assertEquals(0, wiu)
         assertEquals(1, cancelled)
@@ -365,7 +371,7 @@ class MediaServiceFgsReassertTest {
     }
 
     @Test
-    fun `applyBtPlayAfterSeat A17 skips when already playing — F3 no pause`() {
+    fun `applyBtPlayAfterSeat A17 skips when already playing on A2DP — F3 no pause`() {
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
         every { player.isPlaying } returns true
         var cancelled = 0
@@ -375,11 +381,51 @@ class MediaServiceFgsReassertTest {
             userInitiated = false,
             networkBlocked = false,
             cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = true,
         )
         assertEquals(1, cancelled)
         verify(exactly = 0) { player.pause() }
         verify(exactly = 0) { player.play() }
-        assertTrue(BtResumeEvents.recent().any { it.contains("skip_playing") })
+        assertTrue(BtResumeEvents.recent().any { it.contains("skip_playing") && it.contains("a2dpOut=true") })
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat rebinds when playing but not on A2DP — Tesla`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
+        every { player.isPlaying } returns true
+        var cancelled = 0
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            userInitiated = false,
+            networkBlocked = false,
+            cancelResumeNotif = { cancelled++ },
+            a2dpOutputActive = false,
+        )
+        assertEquals(1, cancelled)
+        verify { player.play() }
+        verify(exactly = 0) { player.pause() }
+        assertTrue(
+            BtResumeEvents.recent().any {
+                it.contains("autoplay_rebind") && it.contains("a2dpOut=false")
+            },
+        )
+    }
+
+    @Test
+    fun `applyBtPlayAfterSeat paused autoplays when A2DP inactive`() {
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
+        every { player.isPlaying } returns false
+        service.applyBtPlayAfterSeat(
+            player = player,
+            sdkInt = 37,
+            userInitiated = false,
+            networkBlocked = false,
+            cancelResumeNotif = {},
+            a2dpOutputActive = false,
+        )
+        verify { player.play() }
+        assertTrue(BtResumeEvents.recent().any { it.contains("autoplay") && !it.contains("rebind") })
     }
 
     private fun mockOfflineQueuePlayer(currentIndex: Int, ids: List<String>): Player {

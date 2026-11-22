@@ -1966,6 +1966,17 @@ interface GenreMixDao {
     @Query("SELECT * FROM daily_mix WHERE mix_id = :mixId AND status = :status LIMIT 1")
     suspend fun getDailyMixByStatus(mixId: Long, status: String): DailyMixEntity?
 
+    /** Newest-first superseded rows for anti-repeat history depth. */
+    @Query(
+        """
+        SELECT * FROM daily_mix
+        WHERE mix_id = :mixId AND status = 'superseded'
+        ORDER BY version DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getSupersededDailyMixes(mixId: Long, limit: Int): List<DailyMixEntity>
+
     /** Batch read for Home cards: active rows for the given recipe ids. */
     @Query(
         """
@@ -2005,7 +2016,23 @@ interface GenreMixDao {
     @Query("DELETE FROM daily_mix WHERE date = :date AND mix_id = :mixId")
     suspend fun deleteDailyMix(date: String, mixId: Long)
 
-    @Query("DELETE FROM daily_mix WHERE mix_id = :mixId AND status IN ('building', 'ready')")
+    /**
+     * Drop orphan building/ready rows for [mixId], but **never** the sticky
+     * active or pending pointer targets (ADR-0147). Active lists stay
+     * `status=ready`, so a blind ready-delete removed the Home card until
+     * activate — exclude pointer IDs explicitly.
+     */
+    @Query(
+        """
+        DELETE FROM daily_mix
+        WHERE mix_id = :mixId
+          AND status IN ('building', 'ready')
+          AND id != COALESCE(
+                (SELECT active_daily_mix_id FROM custom_mixes WHERE id = :mixId), -1)
+          AND id != COALESCE(
+                (SELECT pending_daily_mix_id FROM custom_mixes WHERE id = :mixId), -1)
+        """,
+    )
     suspend fun deleteUnpublishedBuilds(mixId: Long)
 
     @Query(
@@ -2316,6 +2343,19 @@ interface ListenEventDao {
         endMs: Long? = null,
         includeBackfill: Boolean = false,
     ): List<String>
+
+    /**
+     * Global honest listens since [startMs] for Daily Mix rebuild anti-repeat
+     * (7-day cooldown across recipes).
+     */
+    @Query(
+        """
+        SELECT DISTINCT track_id FROM listen_events
+        WHERE is_backfill = 0
+          AND listened_at >= :startMs
+        """,
+    )
+    suspend fun getDistinctTrackIdsSince(startMs: Long): List<String>
 
     @Query(
         """

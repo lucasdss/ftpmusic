@@ -492,10 +492,12 @@ class DailyMixGeneratorTest {
     // ── Anti-repetition: previously listened tracks ────────────────────────
 
     @Test
-    fun `previouslyListenedTrackIds are excluded when enough tracks exist`() {
-        // 50 artists × 1 track = 50 tracks. Mark 10 as previously listened.
-        val songs = (1..50).map { song("s$it", "Artist$it") }
+    fun `previouslyListenedTrackIds are preferred out when enough fresh exist`() {
+        // 80 artists × 1 track; 10 previously excluded → 70 fresh. Prefer-exclude
+        // (not hard ban): all fresh are used before any hard-fill re-admit.
+        val songs = (1..80).map { song("s$it", "Artist$it") }
         val listened = (1..10).map { "s$it" }.toSet()
+        val freshCount = songs.size - listened.size
 
         val result = DailyMixGenerator.generate(
             songs,
@@ -506,13 +508,11 @@ class DailyMixGeneratorTest {
             random = kotlin.random.Random(42),
         )
 
-        // None of the previously listened tracks should appear
-        for (track in result) {
-            assertFalse(
-                "Previously listened track ${track.id} must be excluded",
-                listened.contains(track.id),
-            )
-        }
+        assertEquals(
+            "Fresh ids must be exhausted before familiar hard-fill",
+            minOf(result.size, freshCount),
+            result.count { it.id !in listened },
+        )
     }
 
     @Test
@@ -531,10 +531,62 @@ class DailyMixGeneratorTest {
             random = kotlin.random.Random(42),
         )
 
-        // Must produce output — falls back to previously listened tracks
+        // Must produce output — hard-fill re-admits previously excluded tracks
         assertTrue(
             "Must produce tracks even when all are previously listened",
             result.isNotEmpty(),
+        )
+    }
+
+    @Test
+    fun `29 fresh of large pool still prefers fresh — no cliff`() {
+        // 100 tracks; 71 previously excluded → 29 fresh. Old cliff flipped the
+        // whole pool to include favorites; now every fresh id is used first and
+        // familiar only enters via hard-fill for target ≥ 30.
+        val songs = (1..100).map { song("s$it", "Artist$it") }
+        val excluded = (30..100).map { "s$it" }.toSet()
+        val fresh = (1..29).map { "s$it" }.toSet()
+
+        val result = DailyMixGenerator.generate(
+            songs,
+            emptyMap(),
+            emptyList(),
+            emptySet(),
+            previouslyListenedTrackIds = excluded,
+            random = kotlin.random.Random(7),
+        )
+
+        assertTrue(result.size >= 30)
+        assertEquals(
+            "All 29 fresh ids must be consumed before familiar hard-fill",
+            29,
+            result.count { it.id in fresh },
+        )
+        assertTrue(
+            "Hard-fill may re-admit excluded ids only after fresh is exhausted",
+            result.any { it.id in excluded },
+        )
+    }
+
+    @Test
+    fun `rebuild overlap stays low when pool much larger than prior list`() {
+        val songs = (1..200).map { song("s$it", "Artist$it") }
+        val prior = (1..80).map { "s$it" }.toSet()
+
+        val result = DailyMixGenerator.generate(
+            songs,
+            emptyMap(),
+            emptyList(),
+            yesterdayTrackIds = prior,
+            previouslyListenedTrackIds = prior,
+            random = kotlin.random.Random(11),
+        )
+
+        val overlap = result.count { it.id in prior }
+        val ratio = overlap.toDouble() / result.size.coerceAtLeast(1)
+        assertTrue(
+            "Overlap with prior list must be under 25% when pool >> prior (was $ratio)",
+            ratio < 0.25,
         )
     }
 

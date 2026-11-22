@@ -90,6 +90,10 @@ class DailyMixRepository @Inject constructor(
         const val MAX_MIXES = 20
         const val NAME_MAX = 32
         const val COVER_PREFIX = "mix"
+        /** Superseded versions retained for rebuild anti-repeat. */
+        const val SUPERSEDED_ANTI_REPEAT_DEPTH = 2
+        /** Global honest-listen cooldown excluded from preferred rebuild pool. */
+        const val RECENT_LISTEN_COOLDOWN_MS = 7L * 24L * 60L * 60L * 1000L
 
         const val KIND_GENRES = "genres"
         const val KIND_DECADES = "decades"
@@ -656,6 +660,11 @@ class DailyMixRepository @Inject constructor(
         if (row.status == DailyMixStatus.BUILDING) return false
         val recipe = customMixDao.getById(mixId) ?: return false
         val prevActive = recipe.activeDailyMixId
+        // Snapshot older superseded before we mark prevActive superseded.
+        val priorSuperseded = genreMixDao.getSupersededDailyMixes(
+            mixId,
+            limit = SUPERSEDED_ANTI_REPEAT_DEPTH,
+        )
         // Status + pointers + cleanup must commit atomically; failure rolls back
         // so the previous active pointer remains valid.
         val ids = dbTransaction.run {
@@ -668,10 +677,15 @@ class DailyMixRepository @Inject constructor(
                 genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
             }
             customMixDao.updateActivationPointers(mixId, dailyMixId, null)
-            // Keep last superseded for anti-repeat; drop older.
+            // Keep last 2 superseded for anti-repeat depth; drop older.
             val keep = buildList {
                 add(dailyMixId)
                 if (prevActive != null && prevActive != dailyMixId) add(prevActive)
+                priorSuperseded
+                    .map { it.id }
+                    .filter { it != dailyMixId && it != prevActive }
+                    .take((SUPERSEDED_ANTI_REPEAT_DEPTH - 1).coerceAtLeast(0))
+                    .forEach { add(it) }
             }
             genreMixDao.deleteSupersededExcept(mixId, keep)
             trackIds ?: genreMixDao.getDailyMixTrackIds(dailyMixId)
@@ -713,43 +727,51 @@ class DailyMixRepository @Inject constructor(
         }
     }
 
+    /**
+     * Hard prefer-exclude set for rebuild anti-repeat:
+     * - **all** track IDs from active + last 2 superseded lists (not listen-only)
+     * - honest global listens in the last [RECENT_LISTEN_COOLDOWN_MS] window
+     *
+     * Generator prefers these out; hard-fill may re-admit when the pool is tiny.
+     */
     private suspend fun buildPreviouslyListenedIds(
         recipe: CustomMixEntity,
         active: DailyMixEntity?,
     ): Set<String> {
         val ids = mutableSetOf<String>()
         if (active != null) {
-            ids += listenEventDao.getListenedTrackIdsForMix(
-                dailyMixId = active.id,
-                startMs = active.createdAt,
-                includeBackfill = false,
-            )
+            ids += genreMixDao.getDailyMixTrackIds(active.id)
         }
-        // Union last superseded for anti-repeat (DM-13 / DM-16).
-        val latest = genreMixDao.getLatestDailyMix(recipe.id)
-        if (latest != null && latest.id != active?.id && latest.status == DailyMixStatus.SUPERSEDED) {
-            ids += listenEventDao.getListenedTrackIdsForMix(
-                dailyMixId = latest.id,
-                startMs = latest.createdAt,
-                includeBackfill = false,
-            )
-        }
+        genreMixDao.getSupersededDailyMixes(recipe.id, limit = SUPERSEDED_ANTI_REPEAT_DEPTH)
+            .forEach { row ->
+                if (row.id != active?.id) {
+                    ids += genreMixDao.getDailyMixTrackIds(row.id)
+                }
+            }
+        val sinceMs = System.currentTimeMillis() - RECENT_LISTEN_COOLDOWN_MS
+        ids += listenEventDao.getDistinctTrackIdsSince(sinceMs)
         return ids
     }
 
+    /**
+     * Soft weight demotion for re-admitted fillers: active ∪ last superseded
+     * tracklists (sticky-safe — not calendar-yesterday lookup).
+     */
     private suspend fun buildPenaltyIds(
         recipe: CustomMixEntity,
         active: DailyMixEntity?,
-        yesterday: String,
+        @Suppress("UNUSED_PARAMETER") yesterday: String,
     ): Set<String> {
         val ids = mutableSetOf<String>()
         if (active != null) {
             ids += genreMixDao.getDailyMixTrackIds(active.id)
         }
-        val yRow = genreMixDao.getDailyMix(yesterday, recipe.id)
-        if (yRow != null && yRow.id != active?.id) {
-            ids += genreMixDao.getDailyMixTrackIds(yRow.id)
-        }
+        genreMixDao.getSupersededDailyMixes(recipe.id, limit = SUPERSEDED_ANTI_REPEAT_DEPTH)
+            .forEach { row ->
+                if (row.id != active?.id) {
+                    ids += genreMixDao.getDailyMixTrackIds(row.id)
+                }
+            }
         return ids
     }
 

@@ -2999,7 +2999,11 @@ class MediaService : MediaLibraryService() {
                 "ftpmusic-bt",
                 "seat idx=${saved.currentIndex} pos=${saved.positionMs} tracks=${saved.tracks.size}",
             )
-            applyBtPlayAfterSeat(p, userInitiated = tapResume)
+            applyBtPlayAfterSeat(
+                p,
+                userInitiated = tapResume,
+                a2dpOutputActive = BtAudioRoute.isA2dpOutputActive(audioManager),
+            )
         } else if (userInitiatedPlayback) {
             android.util.Log.w(
                 "ftpmusic",
@@ -3033,7 +3037,10 @@ class MediaService : MediaLibraryService() {
         },
         networkBlocked: Boolean = isBtPlaybackNetworkBlocked(),
         isCached: (String) -> Boolean = { id -> cacheService.hasPlayableSpan(id) },
+        /** When null, resolve via [BtAudioRoute] (needs a real service Context). */
+        a2dpOutputActive: Boolean? = null,
     ) {
+        val a2dpOut = a2dpOutputActive ?: BtAudioRoute.isA2dpOutputActive(audioManager)
         if (player != null && networkBlocked && player.mediaItemCount > 0) {
             val cachedIdx = resolveOfflineStartIndex(
                 fromIndex = player.currentMediaItemIndex.coerceAtLeast(0),
@@ -3069,20 +3076,24 @@ class MediaService : MediaLibraryService() {
                 )
             }
         }
-        // F3: already playing — market no-op (do not pause / re-play).
-        if (!userInitiated && player?.isPlaying == true) {
+        // F3 + Tesla rebind: already playing on A2DP → market no-op. Already
+        // playing but media not yet on A2DP → reassert play() so the OS rebinds
+        // the route (warm A2DP on Tesla often leaves isPlaying true on phone).
+        if (!userInitiated && player?.isPlaying == true && a2dpOut) {
             cancelResumeNotif(this)
             android.util.Log.i(
                 "ftpmusic-bt",
-                "BT seat skip — already playing sdk=$sdkInt",
+                "BT seat skip — already playing on A2DP sdk=$sdkInt",
             )
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-bt",
-                "result=skip_playing sdk=$sdkInt",
+                "result=skip_playing sdk=$sdkInt isPlaying=true a2dpOut=true",
             )
-            BtResumeEvents.record("skip_playing", "sdk=$sdkInt")
+            BtResumeEvents.record("skip_playing", "sdk=$sdkInt isPlaying=true a2dpOut=true")
             return
         }
+        val wasPlaying = player?.isPlaying == true
+        val rebind = !userInitiated && wasPlaying && !a2dpOut
         if (PlaybackResumptionMapper.shouldPlayAfterBtSeat(sdkInt, userInitiated)) {
             if (player == null) {
                 android.util.Log.w(
@@ -3098,16 +3109,23 @@ class MediaService : MediaLibraryService() {
             }
             player.play()
             cancelResumeNotif(this)
-            val resultToken = if (userInitiated) "tap_play" else "autoplay"
+            val resultToken = when {
+                userInitiated -> "tap_play"
+                rebind -> "autoplay_rebind"
+                else -> "autoplay"
+            }
             android.util.Log.i(
                 "ftpmusic",
-                "[MediaService] BT $resultToken — play() after restore sdk=$sdkInt",
+                "[MediaService] BT $resultToken — play() after restore sdk=$sdkInt a2dpOut=$a2dpOut",
             )
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-bt",
-                "result=$resultToken sdk=$sdkInt",
+                "result=$resultToken sdk=$sdkInt isPlaying=$wasPlaying a2dpOut=$a2dpOut",
             )
-            BtResumeEvents.record(resultToken, "sdk=$sdkInt")
+            BtResumeEvents.record(
+                resultToken,
+                "sdk=$sdkInt isPlaying=$wasPlaying a2dpOut=$a2dpOut",
+            )
             armPlaySuppressionWatch(resultToken)
         } else {
             // ADR-0154: shouldPlayAfterBtSeat is always true; defensive seat if gate changes.
@@ -3151,7 +3169,8 @@ class MediaService : MediaLibraryService() {
      * ADR-0154: when BT resume is pending and a player already has media, autoplay
      * and clear the flag (all API levels).
      * ADR-0133: Resume notif tap sets [MediaServiceStartRequest.userInitiatedResume].
-     * F3: if already playing and not a user tap, skip (market no-op — do not pause).
+     * F3 + Tesla rebind: already playing on A2DP → skip; playing but not on A2DP →
+     * [applyBtPlayAfterSeat] reasserts play() (`autoplay_rebind`).
      */
     @VisibleForTesting
     internal fun handleBtAutoplayIfNeeded() {
@@ -3166,19 +3185,12 @@ class MediaService : MediaLibraryService() {
             return
         }
         val tapResume = MediaServiceStartRequest.userInitiatedResume
-        // F3: A2DP reconnect while audible must not pause / re-play.
-        if (!tapResume && p.isPlaying) {
-            MediaServiceStartRequest.clearBtAutoplayFlags()
-            android.util.Log.i("ftpmusic-bt", "BT autoplay skip — already playing")
-            com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
-                "ftpmusic-bt",
-                "result=skip_playing",
-            )
-            BtResumeEvents.record("skip_playing")
-            return
-        }
         MediaServiceStartRequest.clearBtAutoplayFlags()
-        applyBtPlayAfterSeat(p, userInitiated = tapResume)
+        applyBtPlayAfterSeat(
+            p,
+            userInitiated = tapResume,
+            a2dpOutputActive = BtAudioRoute.isA2dpOutputActive(audioManager),
+        )
     }
 
     /**

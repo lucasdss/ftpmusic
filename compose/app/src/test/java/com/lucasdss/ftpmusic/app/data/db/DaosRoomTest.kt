@@ -473,6 +473,57 @@ class DaosRoomTest {
     }
 
     @Test
+    fun `deleteUnpublishedBuilds keeps active and pending ready rows`() = runBlocking {
+        val mixDao = db.customMixDao()
+        val mixId = mixDao.insert(CustomMixEntity(name = "Sticky Mix", sourceKind = "genres", genresJson = "Rock"))
+        val genreMixDao = db.genreMixDao()
+        val activeId = genreMixDao.upsertDailyMix(
+            DailyMixEntity(
+                date = "2026-11-20",
+                mixId = mixId,
+                version = 1,
+                status = DailyMixStatus.READY,
+            ),
+        ).toInt()
+        val pendingId = genreMixDao.upsertDailyMix(
+            DailyMixEntity(
+                date = "2026-11-21",
+                mixId = mixId,
+                version = 2,
+                status = DailyMixStatus.READY,
+            ),
+        ).toInt()
+        val orphanId = genreMixDao.upsertDailyMix(
+            DailyMixEntity(
+                date = "2026-11-19",
+                mixId = mixId,
+                version = 3,
+                status = DailyMixStatus.READY,
+            ),
+        ).toInt()
+        val buildingId = genreMixDao.upsertDailyMix(
+            DailyMixEntity(
+                date = "2026-11-21",
+                mixId = mixId,
+                version = 4,
+                status = DailyMixStatus.BUILDING,
+            ),
+        ).toInt()
+        mixDao.updateActivationPointers(mixId, activeId, pendingId)
+
+        genreMixDao.deleteUnpublishedBuilds(mixId)
+
+        assertNotNull("active ready must survive", genreMixDao.getDailyMixById(activeId))
+        assertNotNull("pending ready must survive", genreMixDao.getDailyMixById(pendingId))
+        assertNull("orphan ready must go", genreMixDao.getDailyMixById(orphanId))
+        assertNull("orphan building must go", genreMixDao.getDailyMixById(buildingId))
+        assertEquals(
+            listOf(activeId),
+            genreMixDao.getActiveDailyMixesForRecipes(listOf(mixId)).map { it.id },
+        )
+    }
+
+    @Test
     fun `mix source pools filter disliked tracks and join albums and artists`() = runBlocking {
         val trackDao = db.trackDao()
         trackDao.upsert(TrackEntity(id = "g1", title = "G1", genre = "Rock"))

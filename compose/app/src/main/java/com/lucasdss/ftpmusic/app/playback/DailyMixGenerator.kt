@@ -85,22 +85,25 @@ object DailyMixGenerator {
     ): List<SongInfo> {
         if (songs.isEmpty()) return emptyList()
 
-        // Anti-repetition: exclude previously listened tracks unless necessary.
-        // Build a candidate pool of unlistened songs first.
-        val unlistenedSongs = songs.filter { it.id !in previouslyListenedTrackIds }
-        val primaryPool = if (unlistenedSongs.size >= 30) unlistenedSongs else songs
+        // Anti-repetition: prefer tracks not in [previouslyListenedTrackIds].
+        // Never cliff-switch the whole pool when fresh < 30 — keep preferring
+        // fresh and only re-admit excluded IDs via hard-fill below.
+        val freshSongs = songs.filter { it.id !in previouslyListenedTrackIds }
+        val familiarSongs = songs.filter { it.id in previouslyListenedTrackIds }
+        val primaryPool = freshSongs.ifEmpty { songs }
         val primaryIds = primaryPool.mapTo(mutableSetOf()) { it.id }
         // Supplemental is a fallback pool: drop IDs already selectable from the
         // primary pool so Phase 3 cannot waste slots on duplicates.
         val supplementalPool = supplementalTracks.filter { it.id !in primaryIds }
 
-        val targetSize = random.nextInt(30, 121).coerceAtMost(primaryPool.size + supplementalPool.size)
+        val targetCap = (songs.size + supplementalPool.size).coerceAtLeast(1)
+        val targetSize = random.nextInt(30, 121).coerceAtMost(targetCap)
 
-        // DM-3: the weight map must cover BOTH pools. It used to be built from
-        // the primary pool only, so every supplemental lookup fell back to 1
-        // and the Phase-3 sort was a no-op. Yesterday's penalty applies to
-        // supplemental tracks too.
-        val weightMap = (primaryPool.asSequence() + supplementalPool.asSequence()).associate { s ->
+        // DM-3: the weight map must cover primary, familiar (hard-fill), and
+        // supplemental. Prior-list / recent-listen penalty applies to all.
+        val weightMap = (
+            primaryPool.asSequence() + familiarSongs.asSequence() + supplementalPool.asSequence()
+            ).distinctBy { it.id }.associate { s ->
             var w = (ratings[s.id] ?: 1).coerceIn(1, 5)
             if (s.id in yesterdayTrackIds) w = (w - 1).coerceAtLeast(1)
             s.id to w
@@ -230,10 +233,13 @@ object DailyMixGenerator {
 
         // Hard fill: if small alternative pools exhausted before the target, the
         // soft cap must not leave the mix short. Fresh tracks get one adjacency-
-        // aware pass; familiar tracks are then allowed so the mix still reaches
-        // the requested size.
+        // aware pass; familiar (previously excluded) tracks are then allowed so
+        // the mix still reaches the requested size — never a binary cliff.
         if (result.size < targetSize) {
-            val leftover = (primaryPool.asSequence() + supplementalPool.asSequence())
+            val leftover = (
+                primaryPool.asSequence() + familiarSongs.asSequence() + supplementalPool.asSequence()
+                )
+                .distinctBy { it.id }
                 .filter { it.id !in resultIds }
                 .sortedByDescending { weightMap[it.id] ?: 1 }
                 .toList()

@@ -119,7 +119,9 @@ class DailyMixRepositoryTest {
         coEvery { genreMixDao.getActiveDailyMix(any()) } returns null
         coEvery { genreMixDao.getPendingDailyMix(any()) } returns null
         coEvery { genreMixDao.getDailyMixByStatus(any(), any()) } returns null
+        coEvery { genreMixDao.getSupersededDailyMixes(any(), any()) } returns emptyList()
         coEvery { genreMixDao.getAllReadyDailyMixes() } returns emptyList()
+        coEvery { listenEventDao.getDistinctTrackIdsSince(any()) } returns emptyList()
         coEvery { genreMixDao.upsertDailyMix(any()) } coAnswers {
             val entity = invocation.args[0] as DailyMixEntity
             100L + entity.mixId
@@ -730,19 +732,53 @@ class DailyMixRepositoryTest {
     }
 
     @Test
-    fun `generateForMix reuses yesterday's mix for anti-repetition`() = runTest {
-        val mix = mixEntity(id = 1L, genres = "Rock")
+    fun `generateForMix prefers excluding prior superseded tracklists`() = runTest {
+        val mix = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 9)
         seeded()
         coEvery { customMixDao.getAll() } returns listOf(mix)
-        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1", "r2")
-        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"), track("r2"))
-        coEvery { genreMixDao.getDailyMix(today, 1L) } returns null
-        coEvery { genreMixDao.getDailyMix(yesterday, 1L) } returns
-            DailyMixEntity(id = 8, date = yesterday, mixId = 1L)
-        coEvery { genreMixDao.getDailyMixTrackIds(8) } returns listOf("r1")
+        coEvery { customMixDao.getById(1L) } returns mix
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1", "r2", "r3")
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"), track("r2"), track("r3"))
+        val active = DailyMixEntity(
+            id = 9,
+            date = today,
+            mixId = 1L,
+            createdAt = System.currentTimeMillis() - 50L * 60L * 60L * 1000L,
+            version = 2,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        val superseded = DailyMixEntity(
+            id = 8,
+            date = yesterday,
+            mixId = 1L,
+            version = 1,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.SUPERSEDED,
+        )
+        coEvery { genreMixDao.getDailyMixById(9) } returns active
+        coEvery { genreMixDao.getDailyMixTrackIds(9) } returns listOf("r1")
+        coEvery { genreMixDao.getSupersededDailyMixes(1L, any()) } returns listOf(superseded)
+        coEvery { genreMixDao.getDailyMixTrackIds(8) } returns listOf("r2")
+        coEvery { listenEventDao.countDistinctTracksForMix(9, any(), null, false) } returns 1
 
-        assertEquals(1, repository.generateAll(today, manual = true))
-        coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
+        val excludeSlot = slot<Set<String>>()
+        mockkObject(com.lucasdss.ftpmusic.app.playback.DailyMixGenerator)
+        try {
+            every {
+                com.lucasdss.ftpmusic.app.playback.DailyMixGenerator.shouldRegenerate(
+                    any(), any(), any(), any(), any(),
+                )
+            } returns true
+            every {
+                com.lucasdss.ftpmusic.app.playback.DailyMixGenerator.generate(
+                    any(), any(), any(), any(), capture(excludeSlot), any(),
+                )
+            } returns listOf(songInfo("r3"))
+
+            assertEquals(1, repository.generateAll(today, manual = true))
+            assertTrue(excludeSlot.captured.containsAll(setOf("r1", "r2")))
+        } finally {
+            unmockkObject(com.lucasdss.ftpmusic.app.playback.DailyMixGenerator)
+        }
     }
 
     @Test
@@ -812,10 +848,8 @@ class DailyMixRepositoryTest {
             version = 1,
         )
         coEvery { genreMixDao.getDailyMixById(11) } returns oldRow
-        coEvery { genreMixDao.getLatestDailyMix(1L) } returns oldRow
         coEvery { genreMixDao.getDailyMixTrackIds(11) } returns listOf("r1")
         coEvery { listenEventDao.countDistinctTracksForMix(11, any(), null, false) } returns 0
-        coEvery { listenEventDao.getListenedTrackIdsForMix(11, any(), null, false) } returns listOf("r1")
 
         val penaltySlot = slot<Set<String>>()
         val listenedSlot = slot<Set<String>>()
@@ -835,16 +869,56 @@ class DailyMixRepositoryTest {
             val produced = repository.generateAll(today, manual = false)
 
             assertEquals(1, produced)
-            // DM-13: both signals must come from the latest persisted list even
-            // though it is older than yesterday.
+            // Sticky anti-repeat: full active tracklist (not listen-only / calendar).
             assertEquals(setOf("r1"), listenedSlot.captured)
             assertEquals(setOf("r1"), penaltySlot.captured)
         } finally {
             unmockkObject(com.lucasdss.ftpmusic.app.playback.DailyMixGenerator)
         }
-        coVerify { genreMixDao.getLatestDailyMix(1L) }
         coVerify { genreMixDao.getDailyMixTrackIds(11) }
+        coVerify { genreMixDao.getSupersededDailyMixes(1L, any()) }
         coVerify { genreMixDao.upsertDailyMix(match { it.mixId == 1L }) }
+    }
+
+    @Test
+    fun `generateAll unions recent global listens into exclude set`() = runTest {
+        val rock = mixEntity(id = 1L, genres = "Rock", activeDailyMixId = 11)
+        seeded()
+        coEvery { customMixDao.getAll() } returns listOf(rock)
+        coEvery { customMixDao.getById(1L) } returns rock
+        coEvery { trackDao.getMixTrackIdsByGenre("Rock") } returns listOf("r1", "r2", "r3")
+        coEvery { trackDao.getTracksByIds(any()) } returns listOf(track("r1"), track("r2"), track("r3"))
+        val active = DailyMixEntity(
+            id = 11,
+            date = today,
+            mixId = 1L,
+            createdAt = System.currentTimeMillis() - 50L * 60L * 60L * 1000L,
+            version = 1,
+        )
+        coEvery { genreMixDao.getDailyMixById(11) } returns active
+        coEvery { genreMixDao.getDailyMixTrackIds(11) } returns listOf("r1")
+        coEvery { listenEventDao.countDistinctTracksForMix(11, any(), null, false) } returns 1
+        coEvery { listenEventDao.getDistinctTrackIdsSince(any()) } returns listOf("r3")
+
+        val excludeSlot = slot<Set<String>>()
+        mockkObject(com.lucasdss.ftpmusic.app.playback.DailyMixGenerator)
+        try {
+            every {
+                com.lucasdss.ftpmusic.app.playback.DailyMixGenerator.shouldRegenerate(
+                    any(), any(), any(), any(), any(),
+                )
+            } returns true
+            every {
+                com.lucasdss.ftpmusic.app.playback.DailyMixGenerator.generate(
+                    any(), any(), any(), any(), capture(excludeSlot), any(),
+                )
+            } returns listOf(songInfo("r2"))
+
+            assertEquals(1, repository.generateAll(today, manual = true))
+            assertTrue(excludeSlot.captured.containsAll(setOf("r1", "r3")))
+        } finally {
+            unmockkObject(com.lucasdss.ftpmusic.app.playback.DailyMixGenerator)
+        }
     }
 
     @Test

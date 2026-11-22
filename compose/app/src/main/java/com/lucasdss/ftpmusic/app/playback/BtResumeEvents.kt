@@ -17,9 +17,10 @@ object BtResumeEvents {
      * Record a connect-path outcome. [reason] is a short token, e.g.
      * `allow`, `skip`, `selected_null_mac`, `Started`, `NotificationFallback`,
      * `notif_disabled`, `info_notif_disabled`, `warm_a2dp`, `tap_play`,
-     * `autoplay`, `empty_queue`, `offline_empty`, `skip_playing`,
+     * `autoplay`, `autoplay_rebind`, `empty_queue`, `offline_empty`, `skip_playing`,
      * `play_suppressed`, `ignore_remote_stop`, `play_gated`.
      * Path B allow/Started extras include `source=warm|cold` (ADR-0154).
+     * Skip/rebind extras include `isPlaying` / `a2dpOut` for Tesla triage.
      */
     fun record(reason: String, extras: String = "") {
         val safeReason = reason.replace('\n', ' ').take(48)
