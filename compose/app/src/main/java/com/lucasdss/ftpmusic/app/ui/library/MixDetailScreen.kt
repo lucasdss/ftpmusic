@@ -98,6 +98,9 @@ data class GenreMixTrack(
     val coverArt: String?,
 )
 
+/** Cover item + sticky Play/Shuffle/⋮ precede track rows in Mix detail LazyColumn. */
+internal const val MIX_DETAIL_LAZY_HEADER_COUNT = 2
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MixDetailScreen(
@@ -155,7 +158,10 @@ fun MixDetailScreen(
     val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
     val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
     val nowPlayingLazyIndex = remember(trackIds, currentTrackId) {
-        resolveLazyIndex(headerCount = 1, trackIndex = indexOfTrackId(trackIds, currentTrackId))
+        resolveLazyIndex(
+            headerCount = MIX_DETAIL_LAZY_HEADER_COUNT,
+            trackIndex = indexOfTrackId(trackIds, currentTrackId),
+        )
     }
     ScrollToNowPlayingEffect(
         enabled = autoCenter && state.tracks.isNotEmpty(),
@@ -375,8 +381,8 @@ fun MixDetailScreen(
                     state = listState,
                     contentPadding = PaddingValues(bottom = 100.dp),
                 ) {
-                    // Header: art + play/shuffle
-                    item {
+                    // Cover scrolls away; Play/Shuffle/⋮ stick under the fixed title.
+                    item(key = "mix_detail_cover", contentType = "mix_cover") {
                         Column(
                             Modifier.fillMaxWidth().padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -440,92 +446,29 @@ fun MixDetailScreen(
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
-                            // Track count (parity with Album)
                             Text(
                                 "${state.tracks.size} tracks",
                                 color = coverScheme.onBgSecondary,
                                 fontSize = textLabelM(),
                             )
-                            Spacer(Modifier.height(16.dp))
-                            // Play + Shuffle + ⋮ buttons — consistent Box pattern (Album reference)
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Box(
-                                    Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
-                                        .background(
-                                            Brush.linearGradient(
-                                                listOf(BrandTeal, BrandPurple),
-                                                start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                                end = androidx.compose.ui.geometry.Offset(
-                                                    Float.POSITIVE_INFINITY,
-                                                    Float.POSITIVE_INFINITY,
-                                                ),
-                                            ),
-                                        )
-                                        .clickable { viewModel.playAll() },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.Default.PlayArrow,
-                                            null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(knobSize()),
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            "Play",
-                                            color = Color.White,
-                                            fontSize = textBodyM(),
-                                            fontWeight = FontWeight.Bold,
-                                        )
-                                    }
-                                }
-                                // Shuffle — dark with gradient border (consistent across screens)
-                                Box(
-                                    Modifier.weight(1f).height(adp(42f)).clip(RoundedCornerShape(cornerM()))
-                                        .background(Color(0xFF252538))
-                                        .border(
-                                            1.dp,
-                                            Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
-                                            RoundedCornerShape(cornerM()),
-                                        )
-                                        .clickable { viewModel.shuffle() },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.Default.Shuffle,
-                                            null,
-                                            tint = Color(0xFFCCCCCC),
-                                            modifier = Modifier.size(knobSize()),
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            "Shuffle",
-                                            color = Color(0xFFCCCCCC),
-                                            fontSize = textBodyM(),
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                    }
-                                }
-                                // ⋮ button — mix action sheet (parity with Album)
-                                Box(
-                                    Modifier.size(40.dp).clip(RoundedCornerShape(cornerM()))
-                                        .background(Color(0xFF252538))
-                                        .clickable { showMixSheet = true },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Default.MoreVert,
-                                        null,
-                                        tint = Color(0xFFAAAAAA),
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            }
                         }
-                        Spacer(Modifier.height(8.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                    }
+
+                    stickyHeader(key = "mix_detail_actions", contentType = "mix_actions") {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(coverScheme.bgMid)
+                                .semantics { testTag = "mix_detail_sticky_actions" },
+                        ) {
+                            MixDetailActionRow(
+                                onPlay = { viewModel.playAll() },
+                                onShuffle = { viewModel.shuffle() },
+                                onMore = { showMixSheet = true },
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            )
+                            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                        }
                     }
 
                     // Track list — SongListRow (fixed title size, meta below)
@@ -1237,6 +1180,103 @@ class MixDetailViewModel @Inject constructor(
         val username = storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_USERNAME) ?: ""
         val password = storage.get(com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_PASSWORD) ?: ""
         return authHelper.buildStreamUrl(base, trackId, username, password)
+    }
+}
+
+/** Play | Shuffle | ⋮ — sticky under Mix detail title while tracks scroll. */
+@Composable
+private fun MixDetailActionRow(
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            Modifier
+                .weight(1f)
+                .height(adp(42f))
+                .clip(RoundedCornerShape(cornerM()))
+                .background(
+                    Brush.linearGradient(
+                        listOf(BrandTeal, BrandPurple),
+                        start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                        end = androidx.compose.ui.geometry.Offset(
+                            Float.POSITIVE_INFINITY,
+                            Float.POSITIVE_INFINITY,
+                        ),
+                    ),
+                )
+                .clickable(onClick = onPlay)
+                .semantics { testTag = "mix_detail_play" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.PlayArrow,
+                    null,
+                    tint = Color.White,
+                    modifier = Modifier.size(knobSize()),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Play",
+                    color = Color.White,
+                    fontSize = textBodyM(),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        Box(
+            Modifier
+                .weight(1f)
+                .height(adp(42f))
+                .clip(RoundedCornerShape(cornerM()))
+                .background(Color(0xFF252538))
+                .border(
+                    1.dp,
+                    Brush.horizontalGradient(listOf(BrandTeal, BrandPurple)),
+                    RoundedCornerShape(cornerM()),
+                )
+                .clickable(onClick = onShuffle)
+                .semantics { testTag = "mix_detail_shuffle" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Shuffle,
+                    null,
+                    tint = Color(0xFFCCCCCC),
+                    modifier = Modifier.size(knobSize()),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Shuffle",
+                    color = Color(0xFFCCCCCC),
+                    fontSize = textBodyM(),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(cornerM()))
+                .background(Color(0xFF252538))
+                .clickable(onClick = onMore)
+                .semantics { testTag = "mix_detail_more" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.MoreVert,
+                null,
+                tint = Color(0xFFAAAAAA),
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 
