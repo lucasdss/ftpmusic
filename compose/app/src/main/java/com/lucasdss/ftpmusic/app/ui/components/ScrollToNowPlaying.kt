@@ -38,10 +38,15 @@ fun resolveLazyIndex(headerCount: Int, trackIndex: Int): Int {
  * Pixel scrollOffset for [LazyListState.animateScrollToItem] so the item sits
  * near the vertical center of the viewport. Negative = item higher in viewport.
  * Returns 0 when sizes unknown / too small (pin near top).
+ *
+ * [topInsetPx] reserves pinned chrome (e.g. Mix sticky Play/Shuffle) so the
+ * visual center is in the usable band below the overlay.
  */
-fun centerScrollOffset(viewportPx: Int, itemSizePx: Int): Int {
+fun centerScrollOffset(viewportPx: Int, itemSizePx: Int, topInsetPx: Int = 0): Int {
     if (viewportPx <= 0 || itemSizePx <= 0) return 0
-    val offset = (itemSizePx / 2) - (viewportPx / 2)
+    val inset = topInsetPx.coerceAtLeast(0)
+    val usable = (viewportPx - inset).coerceAtLeast(1)
+    val offset = (itemSizePx / 2) - (usable / 2) - inset
     return offset.coerceAtMost(0)
 }
 
@@ -95,6 +100,8 @@ fun ScrollToNowPlayingEffect(
     scrollKey: Any? = targetLazyIndex,
     suppressMs: Long = NOW_PLAYING_SCROLL_SUPPRESS_MS,
     onlyIfNotVisible: Boolean = false,
+    /** Pinned chrome height (sticky header) overlapping the list viewport top. */
+    topInsetPx: Int = 0,
 ) {
     // Saveable so rotation mid-suppress does not immediately re-yank.
     var suppressUntil by rememberSaveable { mutableLongStateOf(0L) }
@@ -147,7 +154,7 @@ fun ScrollToNowPlayingEffect(
             targetItemSizePx = targetVisible?.size,
             visibleItemSizesPx = visible.map { it.size },
         )
-        val offset = centerScrollOffset(viewport, itemSize)
+        val offset = centerScrollOffset(viewport, itemSize, topInsetPx = topInsetPx)
 
         programmaticScroll = true
         try {

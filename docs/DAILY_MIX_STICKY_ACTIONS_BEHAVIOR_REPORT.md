@@ -15,10 +15,15 @@ Library-style chrome (chips/search stay above the list on `LibraryScreen`).
 | Play \| Shuffle \| ⋮ | **Sticky** (`LazyColumn.stickyHeader`) |
 | Track rows | Scroll under sticky actions |
 
-Opaque sticky background uses `coverScheme.bgMid` so rows do not show through.
+Opaque sticky background uses a short `bgTop → bgMid` gradient (ArtBackdrop upper
+stops) so the pinned bar is not a flat mid band over the title region.
 
 Now-playing auto-center uses `MIX_DETAIL_LAZY_HEADER_COUNT = 2` (cover + sticky
-actions) via `resolveLazyIndex`.
+actions) via `resolveLazyIndex`, and passes measured sticky height as
+`ScrollToNowPlayingEffect(topInsetPx=…)` so center math stays in the usable band.
+
+Compose coverage: `MixDetailComposeTest` (render, play/shuffle/more, sticky after
+swipe, loadMix, playTrack).
 
 ## Out of scope
 

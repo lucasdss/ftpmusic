@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -155,6 +156,7 @@ fun MixDetailScreen(
     val listState = rememberLazyListState(
         cacheWindow = LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f),
     )
+    var stickyActionsHeightPx by remember { mutableIntStateOf(0) }
     val autoCenter = LocalListChromePrefs.current.autoCenterNowPlaying
     val trackIds = remember(state.tracks) { state.tracks.map { it.id } }
     val nowPlayingLazyIndex = remember(trackIds, currentTrackId) {
@@ -169,6 +171,7 @@ fun MixDetailScreen(
         targetLazyIndex = nowPlayingLazyIndex,
         scrollKey = currentTrackId,
         onlyIfNotVisible = true,
+        topInsetPx = stickyActionsHeightPx,
     )
 
     val covers = remember(state.tracks) { state.tracks.mapNotNull { it.coverArt }.distinct().take(4) }
@@ -451,6 +454,8 @@ fun MixDetailScreen(
                                 color = coverScheme.onBgSecondary,
                                 fontSize = textLabelM(),
                             )
+                            // Parity with pre-sticky layout gap before Play/Shuffle.
+                            Spacer(Modifier.height(16.dp))
                         }
                     }
 
@@ -458,7 +463,17 @@ fun MixDetailScreen(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .background(coverScheme.bgMid)
+                                // Match ArtBackdrop upper stops so the pinned bar is not a flat mid band.
+                                .background(
+                                    Brush.verticalGradient(
+                                        colorStops = arrayOf(
+                                            0.0f to coverScheme.bgTop,
+                                            0.55f to coverScheme.bgMid,
+                                            1.0f to coverScheme.bgMid,
+                                        ),
+                                    ),
+                                )
+                                .onSizeChanged { stickyActionsHeightPx = it.height }
                                 .semantics { testTag = "mix_detail_sticky_actions" },
                         ) {
                             MixDetailActionRow(

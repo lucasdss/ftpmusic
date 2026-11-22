@@ -39,6 +39,20 @@ class ScrollToNowPlayingTest {
     }
 
     @Test
+    fun `centerScrollOffset accounts for sticky top inset`() {
+        // usable = 1000 - 80 = 920; offset = 50 - 460 - 80 = -490
+        assertEquals(
+            -490,
+            centerScrollOffset(viewportPx = 1000, itemSizePx = 100, topInsetPx = 80),
+        )
+        // No inset matches legacy math.
+        assertEquals(
+            centerScrollOffset(viewportPx = 800, itemSizePx = 72),
+            centerScrollOffset(viewportPx = 800, itemSizePx = 72, topInsetPx = 0),
+        )
+    }
+
+    @Test
     fun `centerScrollOffset unknown sizes returns 0`() {
         assertEquals(0, centerScrollOffset(viewportPx = 0, itemSizePx = 100))
         assertEquals(0, centerScrollOffset(viewportPx = 1000, itemSizePx = 0))
