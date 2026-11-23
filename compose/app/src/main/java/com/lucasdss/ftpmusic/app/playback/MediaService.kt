@@ -2237,31 +2237,30 @@ class MediaService : MediaLibraryService() {
     /**
      * After Continuous Play appends while auto-skip left the player IDLE (last-track
      * stop / remove-to-empty), seek to the first new item and resume. No-op when
-     * casting, user-paused, or flag already cleared.
+     * casting or flag already cleared. User pause clears [autoSkipLeftIdle] in
+     * [onPlayWhenReadyChanged] — do not gate on [Player.playWhenReady] here:
+     * Media3 [Player.stop] leaves it true after a playing → stop idle path (ADR-0164).
+     *
+     * @param firstNewIndex first appended media index after eviction (from
+     *   [PlaybackManager.appendToContext]), or -1 if nothing was appended.
      */
     @VisibleForTesting
     internal fun maybeResumeAfterAutoSkipIdle(
         player: Player?,
-        indexBeforeAppend: Int,
+        firstNewIndex: Int,
         casting: Boolean = PlayerHolder.isCasting,
     ) {
         if (!autoSkipLeftIdle || casting || player == null) return
-        if (player.playWhenReady) {
-            autoSkipLeftIdle = false
-            return
-        }
         val count = player.mediaItemCount
-        if (count <= 0 || indexBeforeAppend >= count) {
+        if (count <= 0 || firstNewIndex < 0 || firstNewIndex >= count) {
             autoSkipLeftIdle = false
             return
         }
-        val seekIdx = indexBeforeAppend.coerceIn(0, count - 1)
         DiagnosticLog.d(
             "ftpmusic-playback",
-            "continuous-play resume-after-auto-skip-idle seekIdx=$seekIdx " +
-                "before=$indexBeforeAppend count=$count",
+            "continuous-play resume-after-auto-skip-idle seekIdx=$firstNewIndex count=$count",
         )
-        player.seekTo(seekIdx, 0L)
+        player.seekTo(firstNewIndex, 0L)
         resumeAfterSkip(player)
     }
 
@@ -3763,9 +3762,12 @@ class MediaService : MediaLibraryService() {
                             val urls = similar.map { auth.buildStreamUrl(base, it.id, user, pass) }
                             withContext(Dispatchers.Main) {
                                 if (!canCommitContinuousPlay(loadEpoch)) return@withContext
-                                val before = PlayerHolder.player?.mediaItemCount ?: 0
-                                playbackManager.appendToContext(similar, urls, asAutoplay = true)
-                                maybeResumeAfterAutoSkipIdle(PlayerHolder.player, before)
+                                val firstNew = playbackManager.appendToContext(
+                                    similar,
+                                    urls,
+                                    asAutoplay = true,
+                                )
+                                maybeResumeAfterAutoSkipIdle(PlayerHolder.player, firstNew)
                                 appended = true
                                 hasLoadedContinuation = true
                                 android.util.Log.d(
@@ -3831,13 +3833,12 @@ class MediaService : MediaLibraryService() {
                 if (candidates.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
                         if (!canCommitContinuousPlay(loadEpoch)) return@withContext
-                        val before = PlayerHolder.player?.mediaItemCount ?: 0
-                        playbackManager.appendToContext(
+                        val firstNew = playbackManager.appendToContext(
                             candidates.map { it.track },
                             candidates.map { it.streamUrl },
                             asAutoplay = true,
                         )
-                        maybeResumeAfterAutoSkipIdle(PlayerHolder.player, before)
+                        maybeResumeAfterAutoSkipIdle(PlayerHolder.player, firstNew)
                         appended = true
                         hasLoadedContinuation = true
                         android.util.Log.d(
@@ -3882,13 +3883,12 @@ class MediaService : MediaLibraryService() {
                     val (fallbackCandidates, tiers) = fallback
                     withContext(Dispatchers.Main) {
                         if (!canCommitContinuousPlay(loadEpoch)) return@withContext
-                        val before = PlayerHolder.player?.mediaItemCount ?: 0
-                        playbackManager.appendToContext(
+                        val firstNew = playbackManager.appendToContext(
                             fallbackCandidates.map { it.track },
                             fallbackCandidates.map { it.streamUrl },
                             asAutoplay = true,
                         )
-                        maybeResumeAfterAutoSkipIdle(PlayerHolder.player, before)
+                        maybeResumeAfterAutoSkipIdle(PlayerHolder.player, firstNew)
                         appended = true
                         hasLoadedContinuation = true
                         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(

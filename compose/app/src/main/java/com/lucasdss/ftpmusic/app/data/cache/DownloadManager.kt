@@ -349,8 +349,16 @@ class DownloadManager @Inject constructor(
                 }
             }
             if (item == null) {
-                // Await enqueue wake (max 60s) instead of 1s busy-poll when idle.
-                withTimeoutOrNull(60_000L) { workSignal.receive() }
+                // ADR-0165: constraint-/policy-blocked with pending pri1/2 work
+                // polls at 1s so clearing battery/Wi‑Fi wakes without waiting
+                // the empty-queue 60s signal. Truly empty queue keeps the long wait.
+                val pendingPri12 = cacheQueueDao.getNextPendingByPriority(1) != null ||
+                    cacheQueueDao.getNextPendingByPriority(2) != null
+                if (pendingPri12) {
+                    delay(1000)
+                } else {
+                    withTimeoutOrNull(60_000L) { workSignal.receive() }
+                }
                 continue
             }
 

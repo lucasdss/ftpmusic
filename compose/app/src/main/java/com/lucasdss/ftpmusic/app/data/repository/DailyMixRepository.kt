@@ -677,6 +677,10 @@ class DailyMixRepository @Inject constructor(
                 genreMixDao.updateDailyMixStatus(dailyMixId, DailyMixStatus.READY)
             }
             customMixDao.updateActivationPointers(mixId, dailyMixId, null)
+            // Pending cleared: drop leftover ready/building orphans (prior pending
+            // Vn that ADR-0162 keep-outs preserved during generateForMix). Without
+            // this, reconcileOrphansLocked re-points pending at a stale older ready.
+            genreMixDao.deleteUnpublishedBuilds(mixId)
             // Keep last 2 superseded for anti-repeat depth; drop older.
             val keep = buildList {
                 add(dailyMixId)
@@ -706,7 +710,11 @@ class DailyMixRepository @Inject constructor(
             if (recipe.activeDailyMixId == ready.id) continue
             if (recipe.pendingDailyMixId == ready.id) continue
             // Orphan ready → pending (rescue). Do not auto-activate.
+            // Never re-point at a version older/equal than the active card.
             if (recipe.pendingDailyMixId == null) {
+                val active = recipe.activeDailyMixId
+                    ?.let { genreMixDao.getDailyMixById(it) }
+                if (active != null && ready.version <= active.version) continue
                 customMixDao.updatePendingPointer(ready.mixId, ready.id)
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                     "ftpmusic-dailymix",

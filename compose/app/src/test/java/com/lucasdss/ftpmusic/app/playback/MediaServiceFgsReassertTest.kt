@@ -441,11 +441,24 @@ class MediaServiceFgsReassertTest {
     fun `maybeResumeAfterAutoSkipIdle seeks first new item when flag set`() {
         injectField(service, "autoSkipLeftIdle", true)
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("corpse", "a", "b"))
-        every { player.playWhenReady } returns false
+        // Media3 stop() leaves playWhenReady true after a playing→IDLE path;
+        // resume must still seek (ADR-0164). User pause clears the flag elsewhere.
+        every { player.playWhenReady } returns true
         every { player.playbackState } returns Player.STATE_IDLE
-        service.maybeResumeAfterAutoSkipIdle(player, indexBeforeAppend = 1, casting = false)
+        service.maybeResumeAfterAutoSkipIdle(player, firstNewIndex = 1, casting = false)
         verify { player.seekTo(1, 0L) }
         verify { player.prepare() }
+        assertFalse(readField(service, "autoSkipLeftIdle") as Boolean)
+    }
+
+    @Test
+    fun `maybeResumeAfterAutoSkipIdle no-op when firstNewIndex out of range`() {
+        injectField(service, "autoSkipLeftIdle", true)
+        val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a", "b"))
+        every { player.playWhenReady } returns true
+        every { player.playbackState } returns Player.STATE_IDLE
+        service.maybeResumeAfterAutoSkipIdle(player, firstNewIndex = 2, casting = false)
+        verify(exactly = 0) { player.seekTo(any(), any<Long>()) }
         assertFalse(readField(service, "autoSkipLeftIdle") as Boolean)
     }
 
@@ -453,8 +466,8 @@ class MediaServiceFgsReassertTest {
     fun `maybeResumeAfterAutoSkipIdle no-op when casting`() {
         injectField(service, "autoSkipLeftIdle", true)
         val player = mockOfflineQueuePlayer(currentIndex = 0, ids = listOf("a"))
-        every { player.playWhenReady } returns false
-        service.maybeResumeAfterAutoSkipIdle(player, indexBeforeAppend = 0, casting = true)
+        every { player.playWhenReady } returns true
+        service.maybeResumeAfterAutoSkipIdle(player, firstNewIndex = 0, casting = true)
         verify(exactly = 0) { player.seekTo(any(), any<Long>()) }
         assertTrue(readField(service, "autoSkipLeftIdle") as Boolean)
     }

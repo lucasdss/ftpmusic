@@ -916,10 +916,12 @@ class PlaybackManager @Inject constructor(
      *
      * @param asAutoplay when true, stamps [IS_AUTOPLAY_EXTRA] so Queue UI can
      *   render an Autoplay section separate from Continue Playing (ADR-0053).
+     * @return first appended media index after eviction (for CP idle resume),
+     *   or -1 when nothing was appended.
      */
-    fun appendToContext(tracks: List<Track>, streamUrls: List<String>, asAutoplay: Boolean = false) {
+    fun appendToContext(tracks: List<Track>, streamUrls: List<String>, asAutoplay: Boolean = false): Int {
         val (alignedTracks, alignedUrls) = alignedTracksAndUrls(tracks, streamUrls, "appendToContext")
-        if (alignedTracks.isEmpty()) return
+        if (alignedTracks.isEmpty()) return -1
         // CP-7: evict the oldest autoplay rows before appending so the tail can
         // never exceed the cap. The playing row is protected; pre-append merged
         // indices stay valid when removed descending.
@@ -974,6 +976,11 @@ class PlaybackManager @Inject constructor(
         } else {
             syncDualQueueToPlayer()
         }
+        // After eviction + append, first new index is count_after - appended
+        // (equals N - E). Do not use pre-append count: at autoplay cap, net
+        // count may be unchanged so "before" sits past the end (ADR-0164).
+        val countAfter = PlayerHolder.player?.mediaItemCount ?: dualQueue.getMerged().size
+        val firstNewIndex = (countAfter - items.size).coerceAtLeast(0)
         // D2: appends after the current item emit no media-item transition, so
         // this is the only place the growth is observable (see report §5).
         com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
@@ -981,9 +988,9 @@ class PlaybackManager @Inject constructor(
             "appendToContext asAutoplay=$asAutoplay adding=${items.size} " +
                 "evicted=${evictions.size} cap=$CONTINUOUS_PLAY_AUTOPLAY_CAP " +
                 "contextBefore=$contextBefore contextAfter=${dualQueue.contextSize} " +
-                "playerItems=${PlayerHolder.player?.mediaItemCount ?: 0}",
+                "firstNew=$firstNewIndex playerItems=$countAfter",
         )
-        val player = PlayerHolder.player ?: return
+        val player = PlayerHolder.player ?: return firstNewIndex
         // Persist the DUAL queue (authoritative, captures the grown contextSize).
         val (allTracks, allUrls) = buildQueueStateFromDual()
         persistenceSave(allTracks, allUrls, currentCanonicalIndex())
@@ -1000,6 +1007,7 @@ class PlaybackManager @Inject constructor(
         } else {
             emitCastAddsOrCommit(items)
         }
+        return firstNewIndex
     }
 
     /** Per merged index: Continuous Play autoplay-tail rows. */

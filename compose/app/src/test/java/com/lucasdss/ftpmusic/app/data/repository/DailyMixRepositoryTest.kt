@@ -1194,6 +1194,9 @@ class DailyMixRepositoryTest {
         assertTrue(repository.activateDailyMix(5L, 20))
         coVerify { genreMixDao.updateDailyMixStatus(10, com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.SUPERSEDED) }
         coVerify { customMixDao.updateActivationPointers(5L, 20, null) }
+        // Pending cleared → drop orphan ready/building so reconcile cannot
+        // resurrect a stale "New mix ready" banner (post-2.1.8 D1).
+        coVerify { genreMixDao.deleteUnpublishedBuilds(5L) }
         coVerify { genreMixDao.deleteSupersededExcept(5L, listOf(20, 10)) }
         coVerify { mixCacheCoordinator.onSourceChanged(5L, listOf("t1", "t2")) }
         coVerify(exactly = 0) { mixCacheCoordinator.onGenerated(any(), any()) }
@@ -1315,5 +1318,63 @@ class DailyMixRepositoryTest {
         assertEquals(0, result.produced)
         assertEquals(1, result.skippedFresh)
         coVerify(exactly = 0) { genreMixDao.upsertDailyMix(any()) }
+    }
+
+    @Test
+    fun `reconcileOrphans does not rescue ready older than active`() = runTest {
+        seeded()
+        val recipe = mixEntity(id = 5L, activeDailyMixId = 30, pendingDailyMixId = null)
+        coEvery { customMixDao.getById(5L) } returns recipe
+        coEvery { customMixDao.getAll() } returns listOf(recipe)
+        val staleReady = DailyMixEntity(
+            id = 20,
+            date = today,
+            mixId = 5L,
+            version = 2,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        val active = DailyMixEntity(
+            id = 30,
+            date = today,
+            mixId = 5L,
+            version = 3,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        coEvery { genreMixDao.getAllReadyDailyMixes() } returns listOf(staleReady, active)
+        coEvery { genreMixDao.getDailyMixById(30) } returns active
+        coEvery { genreMixDao.getDailyMixById(20) } returns staleReady
+
+        repository.reconcileOrphans()
+
+        coVerify(exactly = 0) { customMixDao.updatePendingPointer(5L, 20) }
+    }
+
+    @Test
+    fun `reconcileOrphans rescues ready newer than active`() = runTest {
+        seeded()
+        val recipe = mixEntity(id = 5L, activeDailyMixId = 10, pendingDailyMixId = null)
+        coEvery { customMixDao.getById(5L) } returns recipe
+        coEvery { customMixDao.getAll() } returns listOf(recipe)
+        val active = DailyMixEntity(
+            id = 10,
+            date = today,
+            mixId = 5L,
+            version = 1,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        val newerReady = DailyMixEntity(
+            id = 40,
+            date = today,
+            mixId = 5L,
+            version = 2,
+            status = com.lucasdss.ftpmusic.app.data.db.DailyMixStatus.READY,
+        )
+        coEvery { genreMixDao.getAllReadyDailyMixes() } returns listOf(newerReady, active)
+        coEvery { genreMixDao.getDailyMixById(10) } returns active
+        coEvery { genreMixDao.getDailyMixById(40) } returns newerReady
+
+        repository.reconcileOrphans()
+
+        coVerify { customMixDao.updatePendingPointer(5L, 40) }
     }
 }
