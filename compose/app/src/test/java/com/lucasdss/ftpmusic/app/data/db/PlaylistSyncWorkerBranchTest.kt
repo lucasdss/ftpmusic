@@ -14,6 +14,7 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -84,6 +85,14 @@ class PlaylistSyncWorkerBranchTest {
             // "can't create name string" instrumentation crash.
             mockkObject(SubsonicCredentials)
             mockkObject(DynamicBaseUrl)
+        }
+
+        @JvmStatic
+        @org.junit.AfterClass
+        fun releaseSingletonMocks() {
+            // Prevent mockkObject leakage into other test classes in the same JVM.
+            unmockkObject(SubsonicCredentials)
+            unmockkObject(DynamicBaseUrl)
         }
     }
 
@@ -253,7 +262,7 @@ class PlaylistSyncWorkerBranchTest {
         advanceTimeBy(1)
 
         // Loop no longer breaks on a high failure count — it keeps flushing
-        // (pending empty here, so the counter resets and backoff drops to 15s).
+        // (pending empty → idle backoff, not the failure ladder).
         coVerify(atLeast = 1) { pendingDao.getPending() }
         worker.stop()
     }
@@ -266,8 +275,8 @@ class PlaylistSyncWorkerBranchTest {
         worker.start()
         advanceTimeBy(1)
 
-        // First cycle completed despite cleanup failure
-        coVerify(exactly = 1) { pendingDao.getPending() }
+        // First cycle: flushPending + idle emptiness check both call getPending.
+        coVerify(atLeast = 1) { pendingDao.getPending() }
         worker.stop()
     }
 
@@ -302,13 +311,12 @@ class PlaylistSyncWorkerBranchTest {
 
     @Test
     fun `calculateBackoff scales with failure count`() {
-        val method = PlaylistSyncWorker::class.java.getDeclaredMethod("calculateBackoff", Int::class.javaPrimitiveType)
-        method.isAccessible = true
-        assertEquals(15_000L, method.invoke(worker, 0))
-        assertEquals(60_000L, method.invoke(worker, 1))
-        assertEquals(60_000L, method.invoke(worker, 3))
-        assertEquals(5 * 60_000L, method.invoke(worker, 6))
-        assertEquals(30 * 60_000L, method.invoke(worker, 7))
+        assertEquals(15_000L, worker.calculateBackoff(0, pendingEmpty = false))
+        assertEquals(PlaylistSyncWorker.IDLE_FLUSH_INTERVAL_MS, worker.calculateBackoff(0, pendingEmpty = true))
+        assertEquals(60_000L, worker.calculateBackoff(1))
+        assertEquals(60_000L, worker.calculateBackoff(3))
+        assertEquals(5 * 60_000L, worker.calculateBackoff(6))
+        assertEquals(30 * 60_000L, worker.calculateBackoff(7))
     }
 
     @Test

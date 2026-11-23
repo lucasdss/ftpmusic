@@ -11,6 +11,7 @@ import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -88,5 +89,12 @@ class NetworkPolicyHolderTest {
 
         // No legacy → default AUTO_CACHE (allowMobile missing treated as true).
         assertEquals(CellularMediaPolicy.AUTO_CACHE, holder.cellularMediaPolicy.value)
+    }
+
+    @Test
+    fun `periodic sync constraints require battery not low`() {
+        val holder = NetworkPolicyHolder(storage, context)
+        holder.initialize()
+        assertTrue(holder.periodicSyncConstraints().requiresBatteryNotLow())
     }
 }

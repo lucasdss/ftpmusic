@@ -141,6 +141,28 @@ class ServerReachabilityMonitorTest {
     }
 
     @Test
+    fun `currentIntervalMs is background interval when app backgrounded`() = runTest(testDispatcher) {
+        ReachabilityStateHolder.onApiSuccess()
+        coEvery { api.ping(any(), any(), any()) } returns mapOf("status" to "ok")
+        monitor.start()
+        monitor.setAppForeground(false)
+        assertEquals(
+            ServerReachabilityMonitor.INTERVAL_BACKGROUND_MS,
+            monitor.currentIntervalMs(),
+        )
+        // NetworkCallback must stay registered (do not stop watcher).
+        assertTrue(fakeWatcher.started)
+        monitor.setAppForeground(true)
+        // Drain the immediate resume probe; do not advanceUntilIdle (keepalive is infinite).
+        runCurrent()
+        assertEquals(
+            ServerReachabilityMonitor.INTERVAL_REACHABLE_MS,
+            monitor.currentIntervalMs(),
+        )
+        monitor.stop()
+    }
+
+    @Test
     fun `keepalive probes every 15s while unreachable`() = runTest(testDispatcher) {
         ReachabilityStateHolder.resetForTests(reachable = false)
         coEvery { api.ping(any(), any(), any()) } throws IOException("still down")

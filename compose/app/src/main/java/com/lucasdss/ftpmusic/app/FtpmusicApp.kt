@@ -215,9 +215,23 @@ class FtpmusicApp :
                 object : androidx.lifecycle.DefaultLifecycleObserver {
                     override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
                         try {
+                            serverReachabilityMonitor.setAppForeground(true)
+                        } catch (e: Exception) {
+                            Log.w("ftpmusic-reachability", "foreground reachability resume failed: ${e.message}")
+                        }
+                        try {
                             syncHealthGuard.onAppForeground()
                         } catch (e: Exception) {
                             Log.w("ftpmusic-synchealth", "foreground sync-health check failed: ${e.message}")
+                        }
+                    }
+
+                    override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                        try {
+                            // Keepalive slowdown only — NetworkCallback stays registered.
+                            serverReachabilityMonitor.setAppForeground(false)
+                        } catch (e: Exception) {
+                            Log.w("ftpmusic-reachability", "background reachability slowdown failed: ${e.message}")
                         }
                     }
                 },

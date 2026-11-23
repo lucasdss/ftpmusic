@@ -177,7 +177,7 @@ class CastBehaviorMapCompletionTest {
 
         cs.isCasting.value = false
         cs.connectedDeviceName.value = null
-        assertFalse(cs.isButtonVisible) // not visible without devices or casting
+        assertTrue(cs.isButtonVisible) // always visible so picker can open under passive discovery
     }
 
     // ═════════════════════════════════════════════════════════════════

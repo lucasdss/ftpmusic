@@ -1460,53 +1460,51 @@ class MetadataSyncWorker(
         // read the previous run's "complete" report.
         lastTrackDrain = TrackDrainReport(complete = false)
 
-        val wm = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val lock = wm?.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "ftpmusic:tracksync")
-        lock?.acquire()
+        // WifiLock scoped per network batch only (not across Room writes / delays).
+        val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
-        try {
-            val params = authHelper.buildAuthParams(username, password)
-            val albums = metadataDao.getAllAlbums()
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val storedVersion = prefs.getInt("metadata_version", 0)
-            val forceResync = force || storedVersion < METADATA_VERSION
-            val skipIds = try {
-                syncSkipAlbumDao?.getRetryableIds()?.toSet() ?: emptySet()
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                emptySet()
-            }
-            val exhaustedIds = try {
-                syncSkipAlbumDao?.getExhaustedIds()?.toSet() ?: emptySet()
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                emptySet()
-            }
+        val params = authHelper.buildAuthParams(username, password)
+        val albums = metadataDao.getAllAlbums()
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val storedVersion = prefs.getInt("metadata_version", 0)
+        val forceResync = force || storedVersion < METADATA_VERSION
+        val skipIds = try {
+            syncSkipAlbumDao?.getRetryableIds()?.toSet() ?: emptySet()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            emptySet()
+        }
+        val exhaustedIds = try {
+            syncSkipAlbumDao?.getExhaustedIds()?.toSet() ?: emptySet()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            emptySet()
+        }
 
-            // Pre-filter: only albums that actually need syncing.
-            // Exhausted poison rows stay in DB; excluded on DELTA unless force /
-            // retryExhausted (FULL) so server-side repairs can heal weekly.
-            val pendingAlbumsAll = albums.filter { album ->
-                if (forceResync) return@filter true
-                if (album.id in exhaustedIds) return@filter retryExhausted
-                if (album.id in skipIds) return@filter true
-                val existing = metadataDao.getAlbumTracks(album.id)
-                !(existing.isNotEmpty() && album.id !in changedAlbumIds)
-            }
-            // ADR-0139: prioritize durable skip-queue albums; drain full pending set (no cap).
-            val (retryFirst, rest) = pendingAlbumsAll.partition { it.id in skipIds }
-            val pendingAlbums = retryFirst + rest
-            val pendingTotal = pendingAlbums.size
-            _status.value = _status.value.copy(
-                phase = "tracks",
-                albumTracksProgressTotal = pendingTotal,
-                isRunning = true,
-            )
+        // Pre-filter: only albums that actually need syncing.
+        // Exhausted poison rows stay in DB; excluded on DELTA unless force /
+        // retryExhausted (FULL) so server-side repairs can heal weekly.
+        val pendingAlbumsAll = albums.filter { album ->
+            if (forceResync) return@filter true
+            if (album.id in exhaustedIds) return@filter retryExhausted
+            if (album.id in skipIds) return@filter true
+            val existing = metadataDao.getAlbumTracks(album.id)
+            !(existing.isNotEmpty() && album.id !in changedAlbumIds)
+        }
+        // ADR-0139: prioritize durable skip-queue albums; drain full pending set (no cap).
+        val (retryFirst, rest) = pendingAlbumsAll.partition { it.id in skipIds }
+        val pendingAlbums = retryFirst + rest
+        val pendingTotal = pendingAlbums.size
+        _status.value = _status.value.copy(
+            phase = "tracks",
+            albumTracksProgressTotal = pendingTotal,
+            isRunning = true,
+        )
 
-            if (pendingAlbums.isEmpty()) {
-                lastTrackDrain = TrackDrainReport(complete = true, pending = 0)
-                return true
-            }
+        if (pendingAlbums.isEmpty()) {
+            lastTrackDrain = TrackDrainReport(complete = true, pending = 0)
+            return true
+        }
 
             val count = AtomicInteger(0)
             val totalTracks = AtomicInteger(0)
@@ -1575,69 +1573,78 @@ class MetadataSyncWorker(
                 val chunk = pendingAlbums.subList(index, end).toList()
                 index = end
                 val batchFailures = AtomicInteger(0)
-                val fetched = coroutineScope {
-                    chunk.map { album ->
-                        async {
-                            val tracks = fetchAlbumTracks(album)
-                            if (tracks == null) {
-                                failedCount.incrementAndGet()
-                                batchFailures.incrementAndGet()
-                                firstFailedAlbumId.compareAndSet(null, album.id)
-                                val streak = consecutiveFailures.incrementAndGet()
-                                try {
-                                    val fails = syncSkipAlbumDao?.recordFailure(
-                                        albumId = album.id,
-                                        reason = "get_album_null",
-                                    ) ?: 1
-                                    if (fails >= SyncSkipAlbumDao.MAX_FAIL_COUNT) {
-                                        // Keep row — getExhaustedIds excludes from pending.
-                                        Log.w(
-                                            TAG,
-                                            "Skip album ${album.id} exhausted after $fails failures",
-                                        )
-                                    }
-                                } catch (e: Exception) {
-                                    if (e is CancellationException) throw e
-                                }
-                                if (streak >= TRACK_CONSECUTIVE_FAIL_SOFT_STOP) {
-                                    softStopped.set(true)
-                                    softStopStreak.set(streak)
-                                    Log.w(
-                                        TAG,
-                                        "Soft-stopping track drain after $streak consecutive failures",
-                                    )
-                                    // N4: the export's last word on this run used to be
-                                    // "complete". Record the cause at the trip, not only
-                                    // in logcat.
-                                    DiagnosticLog.w(
-                                        TAG,
-                                        "sync soft-stop trackDrain streak=$streak " +
-                                            "albumId=${album.id} reason=get_album_null " +
-                                            "drainFailed=${failedCount.get()} drainAttempted=$pendingTotal " +
-                                            "fetched=${count.get()}",
-                                    )
-                                }
-                                emptyList<CachedAlbumTrackEntity>()
-                            } else {
-                                consecutiveFailures.set(0)
-                                try {
-                                    syncSkipAlbumDao?.delete(album.id)
-                                } catch (e: Exception) {
-                                    if (e is CancellationException) throw e
-                                }
-                                // Legit empty album: clear any stale cached tracks.
-                                if (tracks.isEmpty()) {
+                val batchLock = wifiManager?.createWifiLock(
+                    WifiManager.WIFI_MODE_FULL_LOW_LATENCY,
+                    "ftpmusic:tracksync",
+                )
+                batchLock?.acquire()
+                val fetched = try {
+                    coroutineScope {
+                        chunk.map { album ->
+                            async {
+                                val tracks = fetchAlbumTracks(album)
+                                if (tracks == null) {
+                                    failedCount.incrementAndGet()
+                                    batchFailures.incrementAndGet()
+                                    firstFailedAlbumId.compareAndSet(null, album.id)
+                                    val streak = consecutiveFailures.incrementAndGet()
                                     try {
-                                        metadataDao.replaceAlbumTracks(album.id, emptyList())
-                                        metadataDao.setAlbumSongCount(album.id, 0)
+                                        val fails = syncSkipAlbumDao?.recordFailure(
+                                            albumId = album.id,
+                                            reason = "get_album_null",
+                                        ) ?: 1
+                                        if (fails >= SyncSkipAlbumDao.MAX_FAIL_COUNT) {
+                                            // Keep row — getExhaustedIds excludes from pending.
+                                            Log.w(
+                                                TAG,
+                                                "Skip album ${album.id} exhausted after $fails failures",
+                                            )
+                                        }
                                     } catch (e: Exception) {
                                         if (e is CancellationException) throw e
                                     }
+                                    if (streak >= TRACK_CONSECUTIVE_FAIL_SOFT_STOP) {
+                                        softStopped.set(true)
+                                        softStopStreak.set(streak)
+                                        Log.w(
+                                            TAG,
+                                            "Soft-stopping track drain after $streak consecutive failures",
+                                        )
+                                        // N4: the export's last word on this run used to be
+                                        // "complete". Record the cause at the trip, not only
+                                        // in logcat.
+                                        DiagnosticLog.w(
+                                            TAG,
+                                            "sync soft-stop trackDrain streak=$streak " +
+                                                "albumId=${album.id} reason=get_album_null " +
+                                                "drainFailed=${failedCount.get()} drainAttempted=$pendingTotal " +
+                                                "fetched=${count.get()}",
+                                        )
+                                    }
+                                    emptyList<CachedAlbumTrackEntity>()
+                                } else {
+                                    consecutiveFailures.set(0)
+                                    try {
+                                        syncSkipAlbumDao?.delete(album.id)
+                                    } catch (e: Exception) {
+                                        if (e is CancellationException) throw e
+                                    }
+                                    // Legit empty album: clear any stale cached tracks.
+                                    if (tracks.isEmpty()) {
+                                        try {
+                                            metadataDao.replaceAlbumTracks(album.id, emptyList())
+                                            metadataDao.setAlbumSongCount(album.id, 0)
+                                        } catch (e: Exception) {
+                                            if (e is CancellationException) throw e
+                                        }
+                                    }
+                                    tracks
                                 }
-                                tracks
                             }
-                        }
-                    }.awaitAll()
+                        }.awaitAll()
+                    }
+                } finally {
+                    if (batchLock?.isHeld == true) batchLock.release()
                 }
                 if (batchFailures.get() > 0) {
                     trackLimiter.onBatchFailure()
@@ -1701,10 +1708,7 @@ class MetadataSyncWorker(
                 firstFailedAlbumId = firstFailedAlbumId.get(),
                 lastFailReason = if (f > 0) "get_album_null" else null,
             )
-            changedAlbumIds.clear()
-            return !softStopped.get()
-        } finally {
-            lock?.release()
-        }
+        changedAlbumIds.clear()
+        return !softStopped.get()
     }
 }

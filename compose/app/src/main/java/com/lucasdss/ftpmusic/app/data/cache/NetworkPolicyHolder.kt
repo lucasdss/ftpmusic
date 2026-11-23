@@ -91,17 +91,21 @@ class NetworkPolicyHolder @Inject constructor(
     fun workManagerNetworkType(): NetworkType =
         if (librarySyncWifiOnly.value) NetworkType.UNMETERED else NetworkType.CONNECTED
 
+    /** Constraints for background periodic / enrich work (battery + network). */
+    fun periodicSyncConstraints(): Constraints =
+        Constraints.Builder()
+            .setRequiredNetworkType(workManagerNetworkType())
+            .setRequiresBatteryNotLow(true)
+            .build()
+
     fun rescheduleMetadataSync() {
         try {
             val hours = storage.get(SecureStorage.KEY_SYNC_INTERVAL_HOURS)?.toIntOrNull()?.coerceIn(1, 24) ?: 12
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(workManagerNetworkType())
-                .build()
             val periodicWork = PeriodicWorkRequestBuilder<SyncScheduleWorker>(
                 hours.toLong(),
                 TimeUnit.HOURS,
             )
-                .setConstraints(constraints)
+                .setConstraints(periodicSyncConstraints())
                 .addTag(SyncScheduleWorker.UNIQUE_WORK_NAME)
                 .build()
             WorkManager.getInstance(context)

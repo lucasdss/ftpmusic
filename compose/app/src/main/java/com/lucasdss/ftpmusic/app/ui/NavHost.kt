@@ -271,8 +271,17 @@ fun FtpmusicNavHost() {
         miniScroll.forceVisible()
     }
 
-    // Persistent Cast discovery — callback stays alive across dialog open/close
+    // Persistent Cast discovery — passive by default; ACTIVE_SCAN only while
+    // picker open or during a short force-scan window (battery best practices).
     val context = navController.context
+
+    // Force-scan window: drop isScanning after 5s so ACTIVE_SCAN reverts.
+    LaunchedEffect(CastButtonState.isScanning.value) {
+        if (CastButtonState.isScanning.value) {
+            delay(5_000L)
+            CastButtonState.isScanning.value = false
+        }
+    }
 
     DisposableEffect(Unit) {
         val router = androidx.mediarouter.media.MediaRouter.getInstance(context)
@@ -280,10 +289,6 @@ fun FtpmusicNavHost() {
             .addControlCategory(androidx.mediarouter.media.MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
             .addControlCategory("com.google.android.gms.cast.CATEGORY_CAST")
             .build()
-        val discoveryFlags =
-            androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or
-                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN or
-                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_UNFILTERED_EVENTS
         val callback = object : androidx.mediarouter.media.MediaRouter.Callback() {
             override fun onRouteAdded(
                 router: androidx.mediarouter.media.MediaRouter,
@@ -300,13 +305,33 @@ fun FtpmusicNavHost() {
                 refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
             }
         }
-        fun addDiscovery() {
-            router.addCallback(selector, callback, discoveryFlags)
+        var activeScanAttached = false
+        fun applyDiscovery(wantActiveScan: Boolean) {
+            if (wantActiveScan == activeScanAttached) {
+                // Still refresh routes when re-entering the same mode.
+                refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
+                return
+            }
+            try {
+                router.removeCallback(callback)
+            } catch (_: Exception) {
+            }
+            val flags =
+                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or
+                    androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_UNFILTERED_EVENTS or
+                    if (wantActiveScan) {
+                        androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN
+                    } else {
+                        0
+                    }
+            router.addCallback(selector, callback, flags)
+            activeScanAttached = wantActiveScan
+            refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
+            android.util.Log.d("ftpmusic-cast", "[NavHost] discovery activeScan=$wantActiveScan")
         }
-        addDiscovery()
-        refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
+        applyDiscovery(false)
 
-        // Short warmup poll (10s) — force-scan + callbacks cover the rest (ADR-0123)
+        // Short warmup poll (10s) under passive discovery
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         var pollCount = 0
         val pollRunnable = object : Runnable {
@@ -320,26 +345,26 @@ fun FtpmusicNavHost() {
         }
         handler.postDelayed(pollRunnable, 2000L)
 
-        val clearScanning = Runnable {
-            CastButtonState.isScanning.value = false
-        }
         CastButtonState.onForceScanRequested = {
             if (!CastButtonState.isScanning.value) {
+                android.util.Log.d("ftpmusic-cast", "[NavHost] force scan: ACTIVE_SCAN window 5s")
                 CastButtonState.isScanning.value = true
-                android.util.Log.d("ftpmusic-cast", "[NavHost] force scan: re-toggle ACTIVE_SCAN")
-                try {
-                    router.removeCallback(callback)
-                } catch (_: Exception) {}
-                addDiscovery()
-                refreshCastRoutes(router) { d -> CastButtonState.discoveredDevices.value = d }
-                handler.removeCallbacks(clearScanning)
-                handler.postDelayed(clearScanning, 5_000L)
+            }
+        }
+
+        val discoveryJob = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.Dispatchers.Main.immediate,
+        ).launch {
+            androidx.compose.runtime.snapshotFlow {
+                CastButtonState.showDialog.value || CastButtonState.isScanning.value
+            }.collect { wantActive ->
+                applyDiscovery(wantActive)
             }
         }
 
         onDispose {
+            discoveryJob.cancel()
             handler.removeCallbacks(pollRunnable)
-            handler.removeCallbacks(clearScanning)
             CastButtonState.onForceScanRequested = null
             CastButtonState.isScanning.value = false
             router.removeCallback(callback)

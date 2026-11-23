@@ -19,7 +19,11 @@ Cast works, but three product gaps remain:
 
 - Expose `CastButtonState.onForceScanRequested` + `isScanning`.
 - Picker shows **Search again** (header + empty state).
-- NavHost handler: remove discovery callback → re-add with `REQUEST_DISCOVERY | PERFORM_ACTIVE_SCAN | UNFILTERED_EVENTS` → `refreshCastRoutes`.
+- NavHost handler: set `isScanning` for ~5s; discovery flags swap via
+  `snapshotFlow` so ACTIVE_SCAN is **only** on while picker open or force-scan
+  window (ADR-0165). Default is `REQUEST_DISCOVERY | UNFILTERED_EVENTS`.
+- Cast button always visible (zero devices OK) so picker can open under passive
+  discovery.
 - Keep dialog-open auto-refresh. Shorten startup poll (callbacks + explicit scan suffice).
 
 ### 2. Reachability = SDK-honest, not non-GMS

@@ -39,6 +39,8 @@ class PlaylistSyncWorker(
     companion object {
         private const val TAG = "ftpmusic-sync"
         private const val FLUSH_INTERVAL_MS = 15_000L
+        /** Empty pending queue: avoid 15s forever ticks while idle. */
+        internal const val IDLE_FLUSH_INTERVAL_MS = 5 * 60_000L
         private const val CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
     }
 
@@ -53,13 +55,17 @@ class PlaylistSyncWorker(
     fun start() {
         flushJob = scope.launch {
             while (true) {
+                var pendingEmpty = true
                 try {
-                    flushMutex.withLock { flushPending() }
+                    flushMutex.withLock {
+                        flushPending()
+                        pendingEmpty = pendingDao.getPending().isEmpty()
+                    }
                     cleanupFlushedIfNeeded()
                 } catch (e: Exception) {
                     Log.w(TAG, "Flush cycle failed: ${e.message}", e)
                 }
-                val delayMs = calculateBackoff(consecutiveFailures)
+                val delayMs = calculateBackoff(consecutiveFailures, pendingEmpty)
                 delay(delayMs)
             }
         }
@@ -334,15 +340,15 @@ class PlaylistSyncWorker(
         }
     }
 
-    private fun calculateBackoff(failures: Int): Long = when {
+    /**
+     * @param pendingEmpty when true and [failures] is 0, use idle interval so an
+     * empty queue does not tick every 15s forever. Failure ladder unchanged.
+     */
+    internal fun calculateBackoff(failures: Int, pendingEmpty: Boolean = false): Long = when {
+        failures == 0 && pendingEmpty -> IDLE_FLUSH_INTERVAL_MS
         failures == 0 -> FLUSH_INTERVAL_MS
-
-        failures <= 3 -> 60_000L
-
-        // 1 minute
-        failures <= 6 -> 5 * 60_000L
-
-        // 5 minutes
+        failures <= 3 -> 60_000L // 1 minute
+        failures <= 6 -> 5 * 60_000L // 5 minutes
         else -> 30 * 60_000L // 30 minutes
     }
 

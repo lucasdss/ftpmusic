@@ -41,7 +41,16 @@ class DownloadManager @Inject constructor(
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
     private val downloadSemaphore = Semaphore(2)
+    /** Conflated wake so empty-queue wait does not spin every 1s. */
+    private val workSignal = kotlinx.coroutines.channels.Channel<Unit>(
+        kotlinx.coroutines.channels.Channel.CONFLATED,
+    )
     private val connectivity by lazy { context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
+
+    /** Wake the worker when pending work was created or requeued. */
+    internal fun signalWork() {
+        workSignal.trySend(Unit)
+    }
 
     private val downloadClient by lazy {
         okhttp3.OkHttpClient.Builder()
@@ -182,6 +191,7 @@ class DownloadManager @Inject constructor(
                     "ftpmusic-download",
                     "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=dedup_upgrade",
                 )
+                signalWork()
             }
             return
         }
@@ -243,6 +253,7 @@ class DownloadManager @Inject constructor(
                         "ftpmusic-download",
                         "enqueue trackId=$trackId priority=$priority isDownload=true result=retry_user",
                     )
+                    signalWork()
                     return
                 }
                 if (!stickyCt) {
@@ -255,6 +266,7 @@ class DownloadManager @Inject constructor(
                         "ftpmusic-download",
                         "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=retry_transient",
                     )
+                    signalWork()
                     return
                 }
                 com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
@@ -274,6 +286,7 @@ class DownloadManager @Inject constructor(
                 "ftpmusic-download",
                 "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=requeued",
             )
+            signalWork()
             return
         }
         val inserted = cacheQueueDao.insertIgnore(
@@ -294,11 +307,13 @@ class DownloadManager @Inject constructor(
                 "ftpmusic-download",
                 "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=dedup",
             )
+            signalWork()
         } else {
             com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog.d(
                 "ftpmusic-download",
                 "enqueue trackId=$trackId priority=$priority isDownload=$isDownload result=inserted",
             )
+            signalWork()
         }
     }
 
@@ -334,7 +349,8 @@ class DownloadManager @Inject constructor(
                 }
             }
             if (item == null) {
-                delay(1000)
+                // Await enqueue wake (max 60s) instead of 1s busy-poll when idle.
+                withTimeoutOrNull(60_000L) { workSignal.receive() }
                 continue
             }
 
@@ -521,9 +537,9 @@ class DownloadManager @Inject constructor(
             if (nextRetry > 0) {
                 delay(minOf(1000L * (1 shl (nextRetry - 1)), 8000L))
             }
-            // Reset to pending — worker loop picks up on next poll (1s)
-            // Retry count prevents infinite loops
+            // Reset to pending — wake idle waiter (or next 60s timeout).
             cacheQueueDao.updateStatus(item.id, "pending")
+            signalWork()
         } else {
             cacheQueueDao.updateStatus(item.id, STATUS_FAILED)
             // N3: exhaustion used to be silent. The row is terminal and invisible

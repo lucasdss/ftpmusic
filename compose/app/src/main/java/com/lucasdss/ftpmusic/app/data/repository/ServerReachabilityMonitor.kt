@@ -67,6 +67,8 @@ class ServerReachabilityMonitor(
     companion object {
         const val INTERVAL_UNREACHABLE_MS = 15_000L
         const val INTERVAL_REACHABLE_MS = 60_000L
+        /** Background keepalive while NetworkCallback stays registered. */
+        const val INTERVAL_BACKGROUND_MS = 15 * 60_000L
         const val NETWORK_DEBOUNCE_MS = 1_000L
         const val PROBE_TIMEOUT_MS = 5_000L
         private const val TAG = "ftpmusic-reachability"
@@ -77,6 +79,8 @@ class ServerReachabilityMonitor(
 
     @Volatile
     private var started = false
+    @Volatile
+    private var appForeground = true
     private var scope: CoroutineScope? = null
     private var keepaliveJob: Job? = null
     private var lastDebouncedProbeAt = 0L
@@ -84,6 +88,7 @@ class ServerReachabilityMonitor(
     fun start() {
         if (started) return
         started = true
+        appForeground = true
         val s = CoroutineScope(dispatcher + SupervisorJob())
         scope = s
         try {
@@ -99,7 +104,38 @@ class ServerReachabilityMonitor(
         } catch (e: Exception) {
             Log.w(TAG, "NetworkCallback register failed: ${e.message}")
         }
+        startKeepaliveLoop(s, probeImmediately = false)
+        Log.i(TAG, "Reachability monitor started")
+    }
+
+    /**
+     * Process foreground/background. Never unregisters [NetworkWatcher] —
+     * only slows or resumes the Subsonic keepalive ping.
+     */
+    fun setAppForeground(foreground: Boolean) {
+        if (!started) {
+            appForeground = foreground
+            return
+        }
+        if (appForeground == foreground) return
+        appForeground = foreground
+        val s = scope ?: return
+        startKeepaliveLoop(s, probeImmediately = foreground)
+        Log.i(TAG, "Reachability appForeground=$foreground interval=${currentIntervalMs()}ms")
+    }
+
+    private fun startKeepaliveLoop(s: CoroutineScope, probeImmediately: Boolean) {
+        keepaliveJob?.cancel()
         keepaliveJob = s.launch {
+            if (probeImmediately) {
+                try {
+                    probeOnce()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Foreground resume probe failed: ${e.message}")
+                }
+            }
             while (isActive) {
                 delay(currentIntervalMs())
                 try {
@@ -111,7 +147,6 @@ class ServerReachabilityMonitor(
                 }
             }
         }
-        Log.i(TAG, "Reachability monitor started")
     }
 
     fun stop() {
@@ -130,10 +165,13 @@ class ServerReachabilityMonitor(
     }
 
     /** Interval used by the keepalive loop (readable for tests). */
-    fun currentIntervalMs(): Long = if (ReachabilityStateHolder.isReachable.value) {
-        INTERVAL_REACHABLE_MS
-    } else {
-        INTERVAL_UNREACHABLE_MS
+    fun currentIntervalMs(): Long {
+        if (!appForeground) return INTERVAL_BACKGROUND_MS
+        return if (ReachabilityStateHolder.isReachable.value) {
+            INTERVAL_REACHABLE_MS
+        } else {
+            INTERVAL_UNREACHABLE_MS
+        }
     }
 
     /**

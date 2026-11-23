@@ -64,6 +64,7 @@ class MetadataEnrichRunner @Inject constructor(
             }
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(netType)
+                .setRequiresBatteryNotLow(true)
                 .build()
             val request = OneTimeWorkRequestBuilder<MetadataEnrichScheduleWorker>()
                 .setConstraints(constraints)

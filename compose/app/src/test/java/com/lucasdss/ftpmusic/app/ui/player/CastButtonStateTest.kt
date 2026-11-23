@@ -25,10 +25,11 @@ class CastButtonStateTest {
     }
 
     @Test
-    fun `isButtonVisible false when no devices and not casting`() {
+    fun `isButtonVisible true when no devices and not casting`() {
+        // Always-visible so picker can open under passive discovery.
         CastButtonState.discoveredDevices.value = emptyList()
         CastButtonState.isCasting.value = false
-        assertFalse(CastButtonState.isButtonVisible)
+        assertTrue(CastButtonState.isButtonVisible)
     }
 
     @Test

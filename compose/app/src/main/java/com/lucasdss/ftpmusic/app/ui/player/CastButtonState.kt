@@ -41,9 +41,12 @@ object CastButtonState {
     @Volatile
     var connectUserAborted: Boolean = false
 
-    /** Whether the Cast button should be visible (devices found OR already casting). */
+    /**
+     * Cast button stays visible even with zero discoveries so the picker can open
+     * and request ACTIVE_SCAN (passive discovery alone must not hide the affordance).
+     */
     val isButtonVisible: Boolean
-        get() = discoveredDevices.value.isNotEmpty() || isCasting.value
+        get() = true
 
     /**
      * Callback invoked immediately when the user initiates Cast disconnection.
