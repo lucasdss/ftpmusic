@@ -679,6 +679,25 @@ interface TrackDao {
     )
     suspend fun incrementPlayCount(trackId: String, timestamp: Long = System.currentTimeMillis())
 
+    /**
+     * ADR-0166 first-setup seed: raise local play_count / last_played_at to at
+     * least the server aggregates without lowering either.
+     */
+    @Query(
+        """
+        UPDATE tracks SET
+          play_count = MAX(play_count, :serverPlayCount),
+          last_played_at = CASE
+            WHEN :serverPlayDate IS NULL THEN last_played_at
+            WHEN last_played_at IS NULL THEN :serverPlayDate
+            WHEN last_played_at < :serverPlayDate THEN :serverPlayDate
+            ELSE last_played_at
+          END
+        WHERE id = :trackId
+        """,
+    )
+    suspend fun mergeServerPlayStats(trackId: String, serverPlayCount: Int, serverPlayDate: Long?)
+
     @Query("SELECT COUNT(*) FROM tracks WHERE is_downloaded = 1")
     suspend fun getDownloadedCount(): Int
 
@@ -2269,6 +2288,59 @@ interface TrackWaveformDao {
 interface ListenEventDao {
     @Insert
     suspend fun insert(event: ListenEventEntity): Long
+
+    @Insert
+    suspend fun insertAll(events: List<ListenEventEntity>)
+
+    @Query(
+        """
+        UPDATE listen_events
+        SET server_synced_at = :syncedAt
+        WHERE id = :id
+        """,
+    )
+    suspend fun markSynced(id: Long, syncedAt: Long)
+
+    @Query(
+        """
+        UPDATE listen_events
+        SET sync_attempts = sync_attempts + 1
+        WHERE id = :id
+        """,
+    )
+    suspend fun bumpSyncAttempts(id: Long)
+
+    /**
+     * Pending honest scrobbles for Navidrome drain (ADR-0166).
+     * Excludes backfill/seed and poison rows past [maxAttempts].
+     */
+    @Query(
+        """
+        SELECT * FROM listen_events
+        WHERE server_synced_at IS NULL
+          AND is_backfill = 0
+          AND sync_attempts < :maxAttempts
+        ORDER BY listened_at ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getPendingScrobbles(limit: Int, maxAttempts: Int = 8): List<ListenEventEntity>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM listen_events
+        WHERE is_backfill = 0
+        """,
+    )
+    suspend fun countHonestEvents(): Int
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM listen_events
+        WHERE track_id = :trackId
+        """,
+    )
+    suspend fun countEventsForTrack(trackId: String): Int
 
     @Query(
         """

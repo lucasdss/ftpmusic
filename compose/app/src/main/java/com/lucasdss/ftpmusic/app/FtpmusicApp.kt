@@ -9,6 +9,7 @@ import com.lucasdss.ftpmusic.app.data.cache.DownloadManager
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.MetadataSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
+import com.lucasdss.ftpmusic.app.data.db.ScrobbleSyncWorker
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -44,6 +45,8 @@ class FtpmusicApp :
     @Inject lateinit var cacheService: CacheService
 
     @Inject lateinit var playlistSyncWorker: PlaylistSyncWorker
+
+    @Inject lateinit var scrobbleSyncWorker: ScrobbleSyncWorker
 
     @Inject lateinit var metadataSyncWorker: MetadataSyncWorker
 
@@ -166,6 +169,9 @@ class FtpmusicApp :
         downloadManager.start()
         // Start playlist sync worker — flushes pending changes to server
         playlistSyncWorker.start()
+        // ADR-0166: drain pending listen_events to Navidrome
+        scrobbleSyncWorker.start()
+        offlineModeManager.addOnOnlineListener { scrobbleSyncWorker.flushNow() }
         // Start metadata sync — initial run, then periodic via WorkManager
         metadataSyncWorker.start()
         schedulePeriodicMetadataSync()

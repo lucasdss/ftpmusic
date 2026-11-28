@@ -3,6 +3,7 @@ package com.lucasdss.ftpmusic.app.data.repository
 import com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager
 import com.lucasdss.ftpmusic.app.data.db.ListenEventDao
 import com.lucasdss.ftpmusic.app.data.db.ListenEventEntity
+import com.lucasdss.ftpmusic.app.data.db.ScrobbleSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.diagnostics.DiagnosticLog
 import com.lucasdss.ftpmusic.app.data.model.Track
@@ -18,7 +19,8 @@ import kotlinx.coroutines.*
  * Increments local play_count, inserts listen_events, reports to Subsonic.
  *
  * Local-first: play count + listen event ALWAYS written (survives offline);
- * server API call skipped while software offline mode is on.
+ * server API call skipped while software offline mode is on. Pending events
+ * drain via [ScrobbleSyncWorker] with historical `time` (ADR-0166).
  */
 @Singleton
 class ScrobbleService @Inject constructor(
@@ -27,6 +29,7 @@ class ScrobbleService @Inject constructor(
     private val api: SubsonicApi,
     private val storage: SecureStorage,
     private val offlineModeManager: OfflineModeManager,
+    private val scrobbleSyncWorker: ScrobbleSyncWorker,
 ) {
     private val auth = SubsonicAuthHelper()
 
@@ -70,7 +73,7 @@ class ScrobbleService @Inject constructor(
                 trackId, title, artist, albumId, artistId, durationSeconds, coverArtUrl, genre,
                 album = null,
             )
-            if (!offlineModeManager.isOfflineEnabled()) {
+            if (!offlineModeManager.isQueueEnabled()) {
                 try {
                     api.scrobble(authParams(), id = trackId, submission = false)
                 } catch (e: CancellationException) {
@@ -119,7 +122,7 @@ class ScrobbleService @Inject constructor(
 
                 else -> listenedSeconds.coerceAtLeast(1)
             }
-            listenEventDao.insert(
+            val eventId = listenEventDao.insert(
                 ListenEventEntity(
                     trackId = trackId,
                     listenedAt = listenedAt,
@@ -131,21 +134,37 @@ class ScrobbleService @Inject constructor(
                     genre = genre ?: row?.genre,
                     trackTitle = title ?: row?.title ?: trackId,
                     isBackfill = false,
+                    serverSyncedAt = null,
                 ),
             )
             DiagnosticLog.d(
                 "ftpmusic-scrobble",
-                "listen event id=$trackId secs=$cappedSeconds",
+                "listen event id=$trackId secs=$cappedSeconds row=$eventId",
             )
             // Server report is best-effort and runs after the durable local write.
             if (!offlineModeManager.isQueueEnabled()) {
                 try {
-                    api.scrobble(authParams(), id = trackId, submission = true)
+                    val response = api.scrobble(
+                        authParams(),
+                        id = trackId,
+                        submission = true,
+                        time = listenedAt,
+                    )
+                    if (auth.checkResponseStatus(response)) {
+                        listenEventDao.markSynced(eventId, System.currentTimeMillis())
+                    } else {
+                        DiagnosticLog.w(
+                            "ftpmusic-scrobble",
+                            "API status failed — pending drain id=$eventId",
+                        )
+                        scrobbleSyncWorker.flushNow()
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     android.util.Log.w("ftpmusic-scrobble", "API call failed: " + e.message)
                     DiagnosticLog.w("ftpmusic-scrobble", "API skip/fail: ${e.message}")
+                    scrobbleSyncWorker.flushNow()
                 }
             } else {
                 DiagnosticLog.d("ftpmusic-scrobble", "API skip — offline id=$trackId")

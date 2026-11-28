@@ -21,19 +21,20 @@ class ScrobbleContinuousTest {
         api,
         storage,
         mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
+        mockk(relaxed = true),
     )
 
     @Test
     fun `nowPlaying calls scrobble API with submission false`() = runTest {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "testuser"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "testpass"
-        coEvery { api.scrobble(any(), id = "track-1", submission = false) } returns emptyMap()
+        coEvery { api.scrobble(any(), id = "track-1", submission = false, time = any()) } returns emptyMap()
 
         val service = createService()
         service.nowPlaying("track-1")
 
         coVerify(timeout = 2000) {
-            api.scrobble(any(), id = "track-1", submission = false)
+            api.scrobble(any(), id = "track-1", submission = false, time = any())
         }
     }
 
@@ -41,13 +42,13 @@ class ScrobbleContinuousTest {
     fun `scrobble calls scrobble API with submission true`() = runTest {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "testuser"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "testpass"
-        coEvery { api.scrobble(any(), id = "track-1", submission = true) } returns emptyMap()
+        coEvery { api.scrobble(any(), id = "track-1", submission = true, time = any()) } returns emptyMap()
 
         val service = createService()
         service.scrobble("track-1")
 
         coVerify(timeout = 2000) {
-            api.scrobble(any(), id = "track-1", submission = true)
+            api.scrobble(any(), id = "track-1", submission = true, time = any())
         }
     }
 
@@ -104,7 +105,7 @@ class ScrobbleContinuousTest {
     fun `ScrobbleService handles API errors gracefully`() = runTest {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "testuser"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "testpass"
-        coEvery { api.scrobble(any(), id = "track-1", submission = any()) } throws RuntimeException("network error")
+        coEvery { api.scrobble(any(), id = "track-1", submission = any(), time = any()) } throws RuntimeException("network error")
 
         val service = createService()
         // These should not throw
@@ -113,7 +114,7 @@ class ScrobbleContinuousTest {
 
         // Verify no exception thrown (if we get here, it passed)
         coVerify(exactly = 2, timeout = 2000) {
-            api.scrobble(any(), id = "track-1", submission = any())
+            api.scrobble(any(), id = "track-1", submission = any(), time = any())
         }
     }
 

@@ -18,6 +18,18 @@ class OfflineModeManager @Inject constructor(private val storage: SecureStorage)
     private val _isOffline = MutableStateFlow(false)
     val isOffline: StateFlow<Boolean> = _isOffline
 
+    /**
+     * Fired when the user turns offline mode off so outbox workers can flush
+     * (ADR-0166 scrobble drain, playlist pending, etc.).
+     */
+    @Volatile
+    var onOnlineListeners: List<() -> Unit> = emptyList()
+        private set
+
+    fun addOnOnlineListener(listener: () -> Unit) {
+        onOnlineListeners = onOnlineListeners + listener
+    }
+
     /** Direct Boolean read for synchronous gate checks (workers, download
      *  constraints, scrobble). Also mock-friendly: relaxed mocks return false
      *  without needing a stubbed StateFlow. */
@@ -45,6 +57,13 @@ class OfflineModeManager @Inject constructor(private val storage: SecureStorage)
         _isOffline.value = false
         storage.put(SecureStorage.KEY_OFFLINE_MODE, "false")
         android.util.Log.i("ftpmusic-offline", "Offline mode DISABLED — network available")
+        onOnlineListeners.forEach { listener ->
+            try {
+                listener()
+            } catch (e: Exception) {
+                android.util.Log.w("ftpmusic-offline", "onOnline listener failed: ${e.message}")
+            }
+        }
     }
 
     fun toggle() {

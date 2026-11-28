@@ -38,6 +38,9 @@ class ScrobbleServiceTest {
         // Default: no existing row (relaxed mock would invent one and break
         // null-preserving coalesce assertions).
         coEvery { trackDao.getTrack(any()) } returns null
+        coEvery { listenEventDao.insert(any()) } returns 1L
+        coEvery { api.scrobble(any(), id = any(), submission = any(), time = any()) } returns
+            mapOf("subsonic-response" to mapOf("status" to "ok"))
         service =
             ScrobbleService(
                 trackDao,
@@ -45,6 +48,7 @@ class ScrobbleServiceTest {
                 api,
                 storage,
                 mockk<com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager>(relaxed = true),
+                mockk(relaxed = true),
             )
     }
 
@@ -122,12 +126,12 @@ class ScrobbleServiceTest {
     fun `nowPlaying reports to Subsonic API`() = runTest(testDispatcher) {
         service.nowPlaying("t5")
 
-        coVerify(timeout = 2000) { api.scrobble(any(), id = "t5", submission = false) }
+        coVerify(timeout = 2000) { api.scrobble(any(), id = "t5", submission = false, time = any()) }
     }
 
     @Test
     fun `scrobble persists local metrics when network fails`() = runTest(testDispatcher) {
-        coEvery { api.scrobble(any(), id = any(), submission = any()) } throws
+        coEvery { api.scrobble(any(), id = any(), submission = any(), time = any()) } throws
             java.io.IOException("offline")
         service.scrobble("t-fail", "Title", "Artist")
 
@@ -160,6 +164,11 @@ class ScrobbleServiceTest {
         assertEquals("Album", slot.captured.albumName)
         assertEquals("Rock", slot.captured.genre)
         assertFalse(slot.captured.isBackfill)
+        assertNull(slot.captured.serverSyncedAt)
+        coVerify(timeout = 2000) {
+            api.scrobble(any(), id = "t-scrob", submission = true, time = 12345L)
+        }
+        coVerify(timeout = 2000) { listenEventDao.markSynced(eq(1L), any()) }
     }
 
     @Test

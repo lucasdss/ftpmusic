@@ -252,5 +252,11 @@ class SecureStorage @Inject constructor(@ApplicationContext private val context:
         const val KEY_AA_CONNECT_ALERT_ENABLED = "aa_connect_alert_enabled"
         /** Comma-separated Auto controller package fingerprints already notified. */
         const val KEY_AA_SEEN_CONTROLLERS = "aa_seen_controllers"
+
+        /**
+         * ADR-0166: first-setup listen seed from Subsonic playCount/playDate
+         * completed for this install/account bind ("true" when done).
+         */
+        const val KEY_LISTEN_HISTORY_SEEDED = "listen_history_seeded"
     }
 }

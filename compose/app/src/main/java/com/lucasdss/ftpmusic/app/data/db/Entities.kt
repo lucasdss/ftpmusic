@@ -630,6 +630,7 @@ data class DesiredItemEntity(
         Index(value = ["artist_id"]),
         Index(value = ["album_id"]),
         Index(value = ["genre"]),
+        Index(value = ["server_synced_at"]),
     ],
 )
 data class ListenEventEntity(
@@ -645,6 +646,12 @@ data class ListenEventEntity(
     @ColumnInfo(name = "track_title") val trackTitle: String? = null,
     /** v54: synthetic backfill rows excluded from honest minutes (ADR-0047). */
     @ColumnInfo(name = "is_backfill", defaultValue = "0") val isBackfill: Boolean = false,
+    /**
+     * v72 / ADR-0166: null = pending Navidrome submit; non-null = acked,
+     * grandfathered, or first-setup seed (already on server).
+     */
+    @ColumnInfo(name = "server_synced_at") val serverSyncedAt: Long? = null,
+    @ColumnInfo(name = "sync_attempts", defaultValue = "0") val syncAttempts: Int = 0,
 )
 
 data class TopCountRow(

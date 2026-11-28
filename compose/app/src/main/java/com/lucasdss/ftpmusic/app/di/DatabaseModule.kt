@@ -21,6 +21,7 @@ import com.lucasdss.ftpmusic.app.data.db.PlaylistSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.QueueDao
 import com.lucasdss.ftpmusic.app.data.db.QueueJournalDao
 import com.lucasdss.ftpmusic.app.data.db.RadioFavoriteDao
+import com.lucasdss.ftpmusic.app.data.db.ScrobbleSyncWorker
 import com.lucasdss.ftpmusic.app.data.db.SyncSkipAlbumDao
 import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackWaveformDao
@@ -30,6 +31,7 @@ import com.lucasdss.ftpmusic.app.data.network.SubsonicAuthHelper
 import com.lucasdss.ftpmusic.app.data.repository.DbTransactionRunner
 import com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository
 import com.lucasdss.ftpmusic.app.data.search.SearchIndexRebuilder
+import com.lucasdss.ftpmusic.app.data.security.SecureStorage
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -68,7 +70,7 @@ object DatabaseModule {
         // SupportSQLite path required: existing migrations only override
         // migrate(SupportSQLiteDatabase). BundledSQLiteDriver deferred until
         // all migrations dual-override migrate(SQLiteConnection) — ADR 0084.
-        .addMigrations(*AppDatabase.ALL_MIGRATIONS_71)
+        .addMigrations(*AppDatabase.ALL_MIGRATIONS_72)
         .addCallback(AppDatabase.FTS5_CALLBACK)
         // NO fallbackToDestructiveMigration: all migrations registered,
         // so a future version-bump that forgets one must FAIL loudly (recoverable)
@@ -135,6 +137,15 @@ object DatabaseModule {
 
     @Provides
     @Singleton
+    fun provideScrobbleSyncWorker(
+        listenEventDao: ListenEventDao,
+        api: SubsonicApi,
+        storage: SecureStorage,
+        offlineModeManager: com.lucasdss.ftpmusic.app.data.cache.OfflineModeManager,
+    ): ScrobbleSyncWorker = ScrobbleSyncWorker(listenEventDao, api, storage, offlineModeManager)
+
+    @Provides
+    @Singleton
     fun provideMetadataSyncWorker(
         @ApplicationContext context: Context,
         api: SubsonicApi,
@@ -150,6 +161,8 @@ object DatabaseModule {
         desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
         syncSkipAlbumDao: SyncSkipAlbumDao,
         playlistRepository: PlaylistRepository,
+        listenEventDao: ListenEventDao,
+        storage: SecureStorage,
     ): MetadataSyncWorker = MetadataSyncWorker(
         context, api, authHelper, metadataDao, trackDao, genreMixDao, coverArtFallback,
         offlineModeManager = offlineModeManager,
@@ -157,6 +170,8 @@ object DatabaseModule {
         searchIndexRebuilder = searchIndexRebuilder,
         metadataEnrichRunner = metadataEnrichRunner,
         desiredRepository = desiredRepository,
+        listenEventDao = listenEventDao,
+        storage = storage,
         syncSkipAlbumDao = syncSkipAlbumDao,
         playlistRepository = playlistRepository,
     )

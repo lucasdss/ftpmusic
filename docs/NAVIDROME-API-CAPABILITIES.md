@@ -18,7 +18,7 @@
 | 7 | `star` | Favorite track/album/artist | FavoriteRepository (3 call sites) |
 | 8 | `unstar` | Unfavorite | FavoriteRepository (3 call sites) |
 | 9 | `getStarred2` | Favorites list | FavoriteRepository (raw, not parsed into entities) |
-| 10 | `scrobble` | Now playing + submission | ScrobbleService (2 call sites) |
+| 10 | `scrobble` | Now playing + submission (`time` for historical) | ScrobbleService + ScrobbleSyncWorker (ADR-0166) |
 | 11 | `getSimilarSongs2` | Instant mix / continuous playback | ScrobbleService |
 | 12 | `savePlayQueue` | Persist queue to server | ScrobbleService → MediaService |
 | 13 | `getPlayQueue` | ❌ UNUSED — defined, never called | None |
@@ -140,7 +140,7 @@ Fields returned by Subsonic API but NOT mapped in Kotlin models:
 |--------|--------------|-----------------|-----------------|
 | Track | `starred` (DateTime?) | `getStarred2`, `getAlbum`, `search3` | Yes — favorites |
 | Track | `userRating` (Int? 1-5) | `getAlbum`, `search3` | Yes — star ratings |
-| Track | `playCount` (Int?) | Multiple endpoints | No |
+| Track | `playCount` (Int?) | Multiple endpoints | Yes — first-setup seed (ADR-0166) |
 | Track | `musicBrainzId` (String?) | `getAlbum`, `search3` | No |
 | Album | `starred` (DateTime?) | `getStarred2`, `getAlbumList2` | Yes — favorites |
 | Album | `songCount` (Int?) | `getAlbumList2`, `getArtist` | No — already have |

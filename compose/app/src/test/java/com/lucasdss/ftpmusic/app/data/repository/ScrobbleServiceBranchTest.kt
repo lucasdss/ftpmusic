@@ -5,6 +5,7 @@ import com.lucasdss.ftpmusic.app.data.db.TrackDao
 import com.lucasdss.ftpmusic.app.data.db.TrackEntity
 import com.lucasdss.ftpmusic.app.data.network.SubsonicApi
 import com.lucasdss.ftpmusic.app.data.security.SecureStorage
+import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -42,7 +43,14 @@ class ScrobbleServiceBranchTest {
         every { storage.get(SecureStorage.KEY_USERNAME) } returns "user"
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns "pass"
         every { offlineModeManager.isOfflineEnabled() } returns false
-        service = ScrobbleService(trackDao, mockk(relaxed = true), api, storage, offlineModeManager)
+        service = ScrobbleService(
+            trackDao,
+            mockk(relaxed = true),
+            api,
+            storage,
+            offlineModeManager,
+            mockk(relaxed = true),
+        )
     }
 
     @After
@@ -132,16 +140,32 @@ class ScrobbleServiceBranchTest {
 
     @Test
     fun `nowPlaying skips server call when offline`() = runTest(testDispatcher) {
+        every { offlineModeManager.isQueueEnabled() } returns true
         every { offlineModeManager.isOfflineEnabled() } returns true
+        // Recreate after stub so Dispatchers.IO coroutine sees offline=true.
+        service.cancelScopeForTest()
+        service = ScrobbleService(
+            trackDao,
+            mockk(relaxed = true) { coEvery { insert(any()) } returns 1L },
+            api,
+            storage,
+            offlineModeManager,
+            mockk(relaxed = true),
+        )
+        clearMocks(api, answers = false)
         service.nowPlaying("t1")
-        coVerify(timeout = 2000, exactly = 0) { api.scrobble(any(), id = "t1", submission = false) }
+        coVerify(timeout = 2000, exactly = 0) {
+            api.scrobble(any(), id = any(), submission = any(), time = any())
+        }
         coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
         coVerify(exactly = 0) { trackDao.upsert(any()) }
     }
 
     @Test
     fun `nowPlaying swallows API failure and still writes the local row`() = runTest(testDispatcher) {
-        coEvery { api.scrobble(any(), id = "t1", submission = false) } throws RuntimeException("boom")
+        coEvery {
+            api.scrobble(any(), id = "t1", submission = false, time = any())
+        } throws RuntimeException("boom")
         service.nowPlaying("t1")
         coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
         coVerify(timeout = 2000) { trackDao.updateTrackMetadata(trackId = "t1") }
@@ -152,7 +176,9 @@ class ScrobbleServiceBranchTest {
     fun `scrobble increments play count and reports submission`() = runTest(testDispatcher) {
         coEvery { trackDao.getTrack("t1") } returns null
         service.scrobble("t1", "Title", "Artist")
-        coVerify(timeout = 2000) { api.scrobble(any(), id = "t1", submission = true) }
+        coVerify(timeout = 2000) {
+            api.scrobble(any(), id = "t1", submission = true, time = any())
+        }
         coVerify(timeout = 2000) { trackDao.incrementPlayCount("t1", any()) }
         coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
         coVerify(exactly = 0) { trackDao.upsert(any()) }
@@ -160,7 +186,7 @@ class ScrobbleServiceBranchTest {
 
     @Test
     fun `scrobble swallows API failure and still updates local state`() = runTest(testDispatcher) {
-        coEvery { api.scrobble(any(), id = "t1", submission = true) } throws RuntimeException("boom")
+        coEvery { api.scrobble(any(), id = "t1", submission = true, time = any()) } throws RuntimeException("boom")
         service.scrobble("t1")
         coVerify(timeout = 2000) { trackDao.incrementPlayCount("t1", any()) }
         coVerify(timeout = 2000) { trackDao.ensureTrackRow("t1") }
@@ -190,7 +216,7 @@ class ScrobbleServiceBranchTest {
         every { storage.get(SecureStorage.KEY_PASSWORD) } returns null
         service.nowPlaying("t1")
         // api.scrobble invoked with auth built from empty strings — no crash
-        coVerify(timeout = 2000) { api.scrobble(any(), id = "t1", submission = false) }
+        coVerify(timeout = 2000) { api.scrobble(any(), id = "t1", submission = false, time = any()) }
     }
 
     @Test

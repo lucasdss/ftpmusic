@@ -69,6 +69,8 @@ interface SubsonicApi {
         @QueryMap params: Map<String, String>,
         @Query("id") id: String,
         @Query("submission") submission: Boolean = false,
+        /** Unix ms listened-at; omit (null) → server uses now (OpenSubsonic 1.8+). */
+        @Query("time") time: Long? = null,
     ): Map<String, Any>
 
     @GET("rest/getSimilarSongs2")

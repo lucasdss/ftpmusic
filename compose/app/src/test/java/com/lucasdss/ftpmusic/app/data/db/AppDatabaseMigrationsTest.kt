@@ -693,6 +693,29 @@ class AppDatabaseMigrationsTest {
     }
 
     @Test
+    fun `migration 71 to 72 adds listen outbox columns and grandfathers`() {
+        run(AppDatabase.MIGRATION_71_72)
+        verify {
+            db.execSQL("ALTER TABLE listen_events ADD COLUMN server_synced_at INTEGER")
+        }
+        verify {
+            db.execSQL(
+                "ALTER TABLE listen_events ADD COLUMN sync_attempts INTEGER NOT NULL DEFAULT 0",
+            )
+        }
+        verify {
+            db.execSQL(
+                match {
+                    it.contains("UPDATE listen_events SET server_synced_at = listened_at")
+                },
+            )
+        }
+        verify {
+            db.execSQL(match { it.contains("index_listen_events_server_synced_at") })
+        }
+    }
+
+    @Test
     fun `FTS5 callback creates table on create and open`() {
         AppDatabase.FTS5_CALLBACK.onCreate(db)
         AppDatabase.FTS5_CALLBACK.onOpen(db)
@@ -720,6 +743,7 @@ class AppDatabaseMigrationsTest {
         assertEquals(69, AppDatabase.ALL_MIGRATIONS_69.last().endVersion)
         assertEquals(70, AppDatabase.ALL_MIGRATIONS_70.last().endVersion)
         assertEquals(71, AppDatabase.ALL_MIGRATIONS_71.last().endVersion)
+        assertEquals(72, AppDatabase.ALL_MIGRATIONS_72.last().endVersion)
         // Referencing every array ensures the construction lines are covered
         val all = listOf(
             AppDatabase.ALL_MIGRATIONS_10, AppDatabase.ALL_MIGRATIONS_11,
@@ -753,8 +777,9 @@ class AppDatabaseMigrationsTest {
             AppDatabase.ALL_MIGRATIONS_66, AppDatabase.ALL_MIGRATIONS_67,
             AppDatabase.ALL_MIGRATIONS_68, AppDatabase.ALL_MIGRATIONS_69,
             AppDatabase.ALL_MIGRATIONS_70, AppDatabase.ALL_MIGRATIONS_71,
+            AppDatabase.ALL_MIGRATIONS_72,
         )
-        assertEquals(62, all.size)
+        assertEquals(63, all.size)
         for (m in all) {
             assertEquals(m.first().startVersion + m.size, m.last().endVersion)
         }

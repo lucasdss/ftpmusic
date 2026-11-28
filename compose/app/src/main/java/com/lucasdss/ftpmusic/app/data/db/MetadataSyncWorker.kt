@@ -158,11 +158,15 @@ class MetadataSyncWorker(
     private val desiredRepository: com.lucasdss.ftpmusic.app.data.repository.DesiredRepository,
     private val syncSkipAlbumDao: SyncSkipAlbumDao? = null,
     private val playlistRepository: com.lucasdss.ftpmusic.app.data.repository.PlaylistRepository? = null,
+    private val listenEventDao: ListenEventDao? = null,
+    private val storage: com.lucasdss.ftpmusic.app.data.security.SecureStorage? = null,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
         private const val TAG = "ftpmusic-metasync"
         private const val PAGE_SIZE = 500
+        /** Cap synthetic Profile events per track on first-setup seed (ADR-0166). */
+        internal const val SEED_EVENT_CAP = 100
 
         /** SharedPreferences file name for sync stats/versions. */
         const val PREFS_NAME = "ftpmusic_sync"
@@ -217,6 +221,39 @@ class MetadataSyncWorker(
         /** Top genres by song_count always warmed for local search (beyond mix picks). */
         private const val SEARCH_INDEX_WARM_GENRE_COUNT = 100
 
+        /**
+         * Parse Subsonic/Navidrome playDate (ISO-8601 or epoch ms/sec) to epoch ms.
+         * Returns null when absent or unparseable.
+         */
+        @VisibleForTesting
+        internal fun parsePlayDateMs(raw: Any?): Long? {
+            when (raw) {
+                null -> return null
+                is Number -> {
+                    val n = raw.toLong()
+                    // Heuristic: seconds vs millis
+                    return if (n in 1..9_999_999_999L) n * 1000L else n.takeIf { it > 0L }
+                }
+                is String -> {
+                    val trimmed = raw.trim()
+                    if (trimmed.isEmpty()) return null
+                    trimmed.toLongOrNull()?.let { n ->
+                        return if (n in 1..9_999_999_999L) n * 1000L else n.takeIf { it > 0L }
+                    }
+                    return try {
+                        java.time.Instant.parse(trimmed).toEpochMilli()
+                    } catch (_: Exception) {
+                        try {
+                            java.time.OffsetDateTime.parse(trimmed).toInstant().toEpochMilli()
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }
+                else -> return null
+            }
+        }
+
         /** getRandomSongs size per round (Subsonic max commonly 500). */
         private const val ORPHAN_RANDOM_SONG_SIZE = 500
 
@@ -252,6 +289,10 @@ class MetadataSyncWorker(
     private val isSyncing = AtomicBoolean(false)
     private val trackLimiter = AdaptiveSyncLimiter()
     private val nextRunId = AtomicLong(1L)
+
+    /** Accumulates Subsonic playCount/playDate during a sync for first-setup seed. */
+    private val pendingServerPlayStats =
+        java.util.concurrent.ConcurrentHashMap<String, ServerPlayStats>()
 
     @Volatile private var lastSyncFinishMs: Long = 0L
 
@@ -598,6 +639,17 @@ class MetadataSyncWorker(
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     Log.w(TAG, "desired reconcile: ${e.message}")
+                }
+                // ADR-0166: first-setup listen seed from Subsonic aggregates.
+                if (resolvedMode == LibrarySyncMode.FULL) {
+                    try {
+                        seedListenHistoryIfNeeded(fullDrainComplete = tracksDrainComplete)
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.w(TAG, "listen history seed: ${e.message}")
+                    }
+                } else {
+                    pendingServerPlayStats.clear()
                 }
                 val current = _status.value
                 // ADR-0068: watermarks only on full track-drain success.
@@ -1238,6 +1290,7 @@ class MetadataSyncWorker(
 
     private fun parseSongMapToTrack(m: Map<*, *>): TrackEntity? {
         val id = m["id"] as? String ?: return null
+        rememberServerPlayStats(id, m)
         return TrackEntity(
             id = id,
             title = m["title"] as? String ?: "",
@@ -1255,6 +1308,108 @@ class MetadataSyncWorker(
             bitrate = (m["bitRate"] as? Number)?.toInt(),
         )
     }
+
+    @VisibleForTesting
+    internal fun rememberServerPlayStats(trackId: String, m: Map<*, *>) {
+        val playCount = (m["playCount"] as? Number)?.toInt() ?: return
+        if (playCount <= 0) return
+        val playDate = parsePlayDateMs(m["playDate"])
+        val prior = pendingServerPlayStats[trackId]
+        if (prior == null || playCount > prior.playCount) {
+            pendingServerPlayStats[trackId] = ServerPlayStats(
+                playCount = playCount,
+                playDateMs = playDate ?: prior?.playDateMs,
+                durationSeconds = (m["duration"] as? Number)?.toInt()
+                    ?: prior?.durationSeconds,
+                title = (m["title"] as? String) ?: prior?.title,
+                artist = (m["artist"] as? String) ?: prior?.artist,
+                artistId = (m["artistId"] as? String) ?: prior?.artistId,
+                albumId = (m["albumId"] as? String) ?: prior?.albumId,
+                album = (m["album"] as? String) ?: prior?.album,
+                genre = (m["genre"] as? String) ?: prior?.genre,
+            )
+        }
+    }
+
+    /**
+     * ADR-0166: one-shot seed of local play_count / backfill listen_events from
+     * Subsonic aggregates collected during this FULL sync.
+     */
+    @VisibleForTesting
+    internal suspend fun seedListenHistoryIfNeeded(fullDrainComplete: Boolean) {
+        if (!fullDrainComplete) return
+        val eventsDao = listenEventDao ?: return
+        val secure = storage ?: return
+        if (secure.get(
+                com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LISTEN_HISTORY_SEEDED,
+            ) == "true"
+        ) {
+            pendingServerPlayStats.clear()
+            return
+        }
+        // Upgrade mid-listen: do not invent seed over honest local history.
+        if (eventsDao.countHonestEvents() > 0) {
+            secure.put(
+                com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LISTEN_HISTORY_SEEDED,
+                "true",
+            )
+            pendingServerPlayStats.clear()
+            DiagnosticLog.d(TAG, "listen seed skip reason=honest_events_exist")
+            return
+        }
+        val snapshot = pendingServerPlayStats.toMap()
+        pendingServerPlayStats.clear()
+        var seededTracks = 0
+        var seededEvents = 0
+        for ((trackId, stats) in snapshot) {
+            if (stats.playCount <= 0) continue
+            trackDao.mergeServerPlayStats(trackId, stats.playCount, stats.playDateMs)
+            if (eventsDao.countEventsForTrack(trackId) > 0) continue
+            val eventCount = stats.playCount.coerceAtMost(SEED_EVENT_CAP)
+            val listenedAt = stats.playDateMs ?: 0L
+            val seconds = (stats.durationSeconds ?: 1).coerceAtLeast(1)
+            val batch = List(eventCount) {
+                ListenEventEntity(
+                    trackId = trackId,
+                    listenedAt = listenedAt,
+                    listenedSeconds = seconds,
+                    artistId = stats.artistId,
+                    artistName = stats.artist,
+                    albumId = stats.albumId,
+                    albumName = stats.album,
+                    genre = stats.genre,
+                    trackTitle = stats.title ?: trackId,
+                    isBackfill = true,
+                    serverSyncedAt = listenedAt,
+                    syncAttempts = 0,
+                )
+            }
+            eventsDao.insertAll(batch)
+            seededTracks++
+            seededEvents += eventCount
+        }
+        secure.put(
+            com.lucasdss.ftpmusic.app.data.security.SecureStorage.KEY_LISTEN_HISTORY_SEEDED,
+            "true",
+        )
+        DiagnosticLog.d(
+            TAG,
+            "listen seed done tracks=$seededTracks events=$seededEvents seen=${snapshot.size}",
+        )
+        Log.d(TAG, "Listen history seed tracks=$seededTracks events=$seededEvents")
+    }
+
+    private data class ServerPlayStats(
+        val playCount: Int,
+        val playDateMs: Long?,
+        val durationSeconds: Int?,
+        val title: String?,
+        val artist: String?,
+        val artistId: String?,
+        val albumId: String?,
+        val album: String?,
+        val genre: String?,
+    )
 
     /**
      * Sync starred tracks, albums, artists and ratings from the Navidrome server.
@@ -1294,6 +1449,7 @@ class MetadataSyncWorker(
             for (s in songList) {
                 val m = s as? Map<*, *> ?: continue
                 val id = m["id"] as? String ?: continue
+                rememberServerPlayStats(id, m)
                 starredTrackIds.add(id)
                 starredEntities.add(
                     TrackEntity(

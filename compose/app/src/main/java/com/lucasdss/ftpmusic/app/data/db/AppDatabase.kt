@@ -41,7 +41,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ArtPaletteCacheEntity::class,
         // search_fts is FTS5 managed outside Room entities (ADR 0084) — see FTS5_CALLBACK
     ],
-    version = 71,
+    version = 72,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1369,6 +1369,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         val ALL_MIGRATIONS_71 = ALL_MIGRATIONS_70 + MIGRATION_70_71
+
+        /**
+         * ADR-0166: listen_events server outbox columns. Grandfather existing
+         * rows as synced so pre-feature history is not blindly re-pushed.
+         */
+        val MIGRATION_71_72 = object : Migration(71, 72) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE listen_events ADD COLUMN server_synced_at INTEGER",
+                )
+                database.execSQL(
+                    "ALTER TABLE listen_events ADD COLUMN sync_attempts INTEGER NOT NULL DEFAULT 0",
+                )
+                database.execSQL(
+                    "UPDATE listen_events SET server_synced_at = listened_at " +
+                        "WHERE server_synced_at IS NULL",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_listen_events_server_synced_at` " +
+                        "ON `listen_events` (`server_synced_at`)",
+                )
+            }
+        }
+        val ALL_MIGRATIONS_72 = ALL_MIGRATIONS_71 + MIGRATION_71_72
 
         /**
          * Fresh installs + repair: create FTS5 (not a Room entity).
